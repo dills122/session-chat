@@ -56,7 +56,9 @@
                     console.log(`Sent Message: ${this.text}`);
                     this.socket.chat.emit('chatToServer', {
                         sender: this.username,
-                        message: this.text
+                        message: this.text,
+                        room: 'general',
+                        timestamp: new Date().toISOString()
                     });
                     this.text = '';
                 },
@@ -71,11 +73,29 @@
             created() {
                 this.username = prompt('Enter Username');
                 this.socket.chat = io('http://localhost:3001/chat');
+                // client-side
+                this.socket.chat.on("connect", () => {
+                    this.socket.chat.emit('login', {
+                        sender: this.username,
+                        message: this.text,
+                        room: 'general',
+                        timestamp: new Date().toISOString()
+                    });
+                });
+
+                this.socket.chat.on("disconnect", () => {
+                    this.socket.chat.emit('logout', {
+                        sender: this.username,
+                        message: this.text,
+                        room: 'general',
+                        timestamp: new Date().toISOString()
+                    });
+                });
                 this.socket.chat.on('chatToClient', (msg) => {
                     this.receiveChatMessage(msg);
                 });
                 this.socket.alerts = io('http://localhost:3001/alerts');
-                this.socket.alerts.on('alertToClient', (msg) => {
+                this.socket.alerts.on('notification', (msg) => {
                     this.receiveAlertMessage(msg);
                 });
             }

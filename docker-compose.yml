@@ -1,18 +1,21 @@
 version: '3.7'
 services:
-  chatserver:
+  chat-backend:
     build:
       context: ./
       dockerfile: ./apps/chat-backend/Dockerfile
     ports:
       - '3000:3000'
       - '3001:3001'
-  nginx:
-    build:
-      context: .
+  redis:
+    image: redis:alpine
+    ports:
+      - '6379:6379'
     restart: always
+  nginx:
     image: nginx:1.19-alpine
     ports:
-      - '80:80'
+      - 443:443
     volumes:
+      - ./certs/:/etc/nginx/ssl
       - ./.docker/nginx/conf.d:/etc/nginx/conf.d

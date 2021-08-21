@@ -8,6 +8,7 @@ RUN apk add --update bash && rm -rf /var/cache/apk/*
 RUN npm install -g @microsoft/rush
 RUN rm -rf ./common/temp
 RUN rush update --purge
+RUN mv ./.env ./apps/chat-backend
 # RUN chown -R app /tmp
 # USER app
 
