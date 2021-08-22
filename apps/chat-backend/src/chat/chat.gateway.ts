@@ -1,21 +1,24 @@
 import { SubscribeMessage, WebSocketGateway, OnGatewayInit, WebSocketServer } from '@nestjs/websockets';
 
 import { Socket, Server } from 'socket.io';
+import { createAdapter } from 'socket.io-redis';
+import { RedisClient } from 'redis';
 import { Logger } from '@nestjs/common';
-import { RedisCacheService } from 'src/cache/redisCache.service';
 import { MessageFormat } from 'src/shared/types';
 
 @WebSocketGateway(3001, {
   cors: true,
-  namespace: '/chat'
+  namespace: '/chat',
+  transports: ['websocket']
 })
 export class ChatGateway implements OnGatewayInit {
   @WebSocketServer() wss: Server;
   private logger: Logger = new Logger('ChatGateway');
 
-  constructor(private service: RedisCacheService) {
-    this.service.registerPublisher();
-    this.service.registerSubscriber(this.wss);
+  constructor() {
+    const pubClient = new RedisClient({ host: 'localhost', port: 6379 });
+    const subClient = pubClient.duplicate();
+    this.wss.adapter(createAdapter({ pubClient, subClient }));
   }
 
   afterInit(): void {
@@ -63,7 +66,6 @@ export class ChatGateway implements OnGatewayInit {
         uid: message.uid
       });
       this.wss.in(message.room).emit('chatToClient', message);
-      await this.service.publishMessageToStore(message);
     } catch (err) {
       this.logger.error(err);
     }
