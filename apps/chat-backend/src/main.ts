@@ -1,12 +1,11 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { NestExpressApplication } from '@nestjs/platform-express';
-import { join } from 'path';
+import { RedisIoAdapter } from './chat/RedisIoAdapter';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
-  console.log(join(__dirname, '..', 'static'));
-  app.useStaticAssets(join(__dirname, '..', '..', 'static'));
+  app.useWebSocketAdapter(new RedisIoAdapter(app));
   await app.listen(3000);
 }
 bootstrap();

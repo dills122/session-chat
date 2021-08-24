@@ -42,6 +42,7 @@ specifiers:
   karma-coverage: ~2.0.3
   karma-jasmine: ~4.0.0
   karma-jasmine-html-reporter: ~1.7.0
+  ngx-socket-io: ~4.1.0
   pm2: ^5.1.0
   prettier: ^2.3.2
   redis: ~3.1.2
@@ -101,6 +102,7 @@ dependencies:
   karma-coverage: 2.0.3
   karma-jasmine: 4.0.1_karma@6.3.4
   karma-jasmine-html-reporter: 1.7.0_9a15b5a0a37a08b833e09d7aa2e69dd2
+  ngx-socket-io: 4.1.0_fd902e851afb72a22ce8445b6105d123
   pm2: 5.1.0
   prettier: 2.3.2
   redis: 3.1.2
@@ -3767,6 +3769,10 @@ packages:
       babel-preset-current-node-syntax: 1.0.1_@babel+core@7.15.0
     dev: false
 
+  /backo2/1.0.2:
+    resolution: {integrity: sha1-MasayLEpNjRj41s+u2n038+6eUc=}
+    dev: false
+
   /balanced-match/1.0.2:
     resolution: {integrity: sha512-3oSeUO0TMV67hN1AmbXsK4yaqU7tjiHlbxRDZOpH0KW9+CeX4bRAaX0Anxt0tx2MrpRpWwQaPwIlISEJhYU5Pw==}
     dev: false
@@ -5180,6 +5186,24 @@ packages:
       once: 1.4.0
     dev: false
 
+  /engine.io-client/5.1.2:
+    resolution: {integrity: sha512-blRrgXIE0A/eurWXRzvfCLG7uUFJqfTGFsyJzXSK71srMMGJ2VraBLg8Mdw28uUxSpVicepBN9X7asqpD1mZcQ==}
+    dependencies:
+      base64-arraybuffer: 0.1.4
+      component-emitter: 1.3.0
+      debug: 4.3.2
+      engine.io-parser: 4.0.2
+      has-cors: 1.1.0
+      parseqs: 0.0.6
+      parseuri: 0.0.6
+      ws: 7.4.6
+      yeast: 0.1.2
+    transitivePeerDependencies:
+      - bufferutil
+      - supports-color
+      - utf-8-validate
+    dev: false
+
   /engine.io-parser/4.0.2:
     resolution: {integrity: sha512-sHfEQv6nmtJrq6TKuIz5kyEKH/qSdK56H/A+7DnAuUPWosnIZAS2NHNcPLmyjtY3cGS/MqJdZbUjW97JU72iYg==}
     engines: {node: '>=8.0.0'}
@@ -6173,6 +6197,10 @@ packages:
     dependencies:
       ajv: 6.12.6
       har-schema: 2.0.0
+    dev: false
+
+  /has-cors/1.1.0:
+    resolution: {integrity: sha1-XkdHk/fqmEPRu5nCPu9J/xJv/zk=}
     dev: false
 
   /has-flag/3.0.0:
@@ -8068,6 +8096,12 @@ packages:
       picomatch: 2.3.0
     dev: false
 
+  /milligram/1.4.1:
+    resolution: {integrity: sha512-RCgh/boHhcXWOUfKJWm3RJRoUeaEguoipDg0mJ31G0tFfvcpWMUlO1Zlqqr12K4kAXfDlllaidu0x7PaL2PTFg==}
+    dependencies:
+      normalize.css: 8.0.1
+    dev: false
+
   /mime-db/1.49.0:
     resolution: {integrity: sha512-CIc8j9URtOVApSFCQIF+VBkX1RwXp/oMMOrqdyXSBXq5RWNEsRfyj1kiRnQgmNXmHxPoFIxOroKA3zcU9P+nAA==}
     engines: {node: '>= 0.6'}
@@ -8337,6 +8371,28 @@ packages:
     engines: {node: '>= 0.4.0'}
     dev: false
 
+  /ngx-socket-io/4.1.0_fd902e851afb72a22ce8445b6105d123:
+    resolution: {integrity: sha512-p/IxD/hdpF/3+Xu6FFoo1OMIi9+rbqN55smJKE1RSFHAhS0UmRno2soHd1RTG3QXm6hCntp2vvfPE4tn60P5mw==}
+    peerDependencies:
+      '@angular/common': ^12.0.0
+      '@angular/core': ^12.0.0
+      rxjs: ^6.1.0
+    dependencies:
+      '@angular/common': 12.1.5_@angular+core@12.1.5+rxjs@6.6.7
+      '@angular/core': 12.1.5_rxjs@6.6.7+zone.js@0.11.4
+      core-js: 3.15.1
+      reflect-metadata: 0.1.13
+      rxjs: 6.6.7
+      socket.io: 4.1.3
+      socket.io-client: 4.1.3
+      tslib: 2.3.1
+      zone.js: 0.10.3
+    transitivePeerDependencies:
+      - bufferutil
+      - supports-color
+      - utf-8-validate
+    dev: false
+
   /nice-try/1.0.5:
     resolution: {integrity: sha512-1nh45deeb5olNY7eX82BkPO7SSxR5SSYJiPTrTdFUVYwAl8CKMA5N9PjTYkHiRjisVcxcQ1HXdLhx2qxxJzLNQ==}
     dev: false
@@ -8415,6 +8471,10 @@ packages:
   /normalize-url/6.1.0:
     resolution: {integrity: sha512-DlL+XwOy3NxAQ8xuC0okPgK46iuVNAK01YN7RueYBqqFeGsBjV9XmCAzAdgt+667bCl5kPh9EqKKDwnaPG1I7A==}
     engines: {node: '>=10'}
+    dev: false
+
+  /normalize.css/8.0.1:
+    resolution: {integrity: sha512-qizSNPO93t1YUuUhP22btGOo3chcvDFqFaj2TRybP0DMxkHOCTYwp3n34fel4a31ORXy4m1Xq0Gyqpb5m33qIg==}
     dev: false
 
   /notepack.io/2.2.0:
@@ -8885,6 +8945,14 @@ packages:
 
   /parse5/6.0.1:
     resolution: {integrity: sha512-Ofn/CTFzRGTTxwpNEs9PP93gXShHcTq255nzRYSKe8AkVpZY7e1fpmTfOyoIvjP5HG7Z2ZM7VS9PPhQGW2pOpw==}
+    dev: false
+
+  /parseqs/0.0.6:
+    resolution: {integrity: sha512-jeAGzMDbfSHHA091hr0r31eYfTig+29g3GKKE/PPbEQ65X0lmMwlEoqmhzu0iztID5uJpZsFlUPDP8ThPL7M8w==}
+    dev: false
+
+  /parseuri/0.0.6:
+    resolution: {integrity: sha512-AUjen8sAkGgao7UyCX6Ahv0gIK2fABKmYjvP4xmy5JaKvcbTRueIqIPHLAfq30xJddqSE033IOMUSOMCcK3Sow==}
     dev: false
 
   /parseurl/1.3.3:
@@ -10685,6 +10753,23 @@ packages:
 
   /socket.io-adapter/2.3.1:
     resolution: {integrity: sha512-8cVkRxI8Nt2wadkY6u60Y4rpW3ejA1rxgcK2JuyIhmF+RMNpTy1QRtkHIDUOf3B4HlQwakMsWbKftMv/71VMmw==}
+    dev: false
+
+  /socket.io-client/4.1.3:
+    resolution: {integrity: sha512-hISFn6PDpgDifVUiNklLHVPTMv1LAk8poHArfIUdXa+gKgbr0MZbAlquDFqCqsF30yBqa+jg42wgos2FK50BHA==}
+    engines: {node: '>=10.0.0'}
+    dependencies:
+      '@types/component-emitter': 1.2.10
+      backo2: 1.0.2
+      component-emitter: 1.3.0
+      debug: 4.3.2
+      engine.io-client: 5.1.2
+      parseuri: 0.0.6
+      socket.io-parser: 4.0.4
+    transitivePeerDependencies:
+      - bufferutil
+      - supports-color
+      - utf-8-validate
     dev: false
 
   /socket.io-parser/4.0.4:
@@ -12494,6 +12579,10 @@ packages:
       yargs-parser: 20.2.9
     dev: false
 
+  /yeast/0.1.2:
+    resolution: {integrity: sha1-AI4G2AlDIMNy28L47XagymyKxBk=}
+    dev: false
+
   /yn/3.1.1:
     resolution: {integrity: sha512-Ux4ygGWsu2c7isFWe8Yu1YluJmqVhxqK2cLXNQA5AcC3QfbGNpM7fu0Y8b/z16pXLnFxZYvWhd3fhBY9DLmC6Q==}
     engines: {node: '>=6'}
@@ -12502,6 +12591,10 @@ packages:
   /yocto-queue/0.1.0:
     resolution: {integrity: sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q==}
     engines: {node: '>=10'}
+    dev: false
+
+  /zone.js/0.10.3:
+    resolution: {integrity: sha512-LXVLVEq0NNOqK/fLJo3d0kfzd4sxwn2/h67/02pjCjfKDxgx1i9QqpvtHD8CrBnSSwMw5+dy11O7FRX5mkO7Cg==}
     dev: false
 
   /zone.js/0.11.4:
@@ -12573,7 +12666,7 @@ packages:
     dev: false
 
   file:projects/chat-frontend.tgz:
-    resolution: {integrity: sha512-IycCRRosexlvz/Ntm93Dc0zuXxSRmL32GGZzzeHduSdHxV1ljgXqsku+MK5t2KehFotof6ip5QasVO75BEYeJw==, tarball: file:projects/chat-frontend.tgz}
+    resolution: {integrity: sha512-CxFslYPxeXNsJhk/UY8qTOAPWX1OUSZ0RDsSz0vK+J2GgA5MpwrY7wiFgCONhim5X385NuxcsDPPLKS9Ds3TXA==, tarball: file:projects/chat-frontend.tgz}
     name: '@rush-temp/chat-frontend'
     version: 0.0.0
     dependencies:
@@ -12596,6 +12689,8 @@ packages:
       karma-coverage: 2.0.3
       karma-jasmine: 4.0.1_karma@6.3.4
       karma-jasmine-html-reporter: 1.7.0_9a15b5a0a37a08b833e09d7aa2e69dd2
+      milligram: 1.4.1
+      ngx-socket-io: 4.1.0_fd902e851afb72a22ce8445b6105d123
       rxjs: 6.6.7
       tslib: 2.3.1
       typescript: 4.3.5
