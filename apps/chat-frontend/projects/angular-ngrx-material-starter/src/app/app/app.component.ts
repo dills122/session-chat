@@ -38,22 +38,17 @@ export class AppComponent implements OnInit {
   navigation = [
     { link: 'about', label: 'anms.menu.about' },
     { link: 'feature-list', label: 'anms.menu.features' },
-    { link: 'examples', label: 'anms.menu.examples' }
+    { link: 'examples', label: 'anms.menu.examples' },
+    { link: 'chat-room', label: 'anms.menu.chat-room' }
   ];
-  navigationSideMenu = [
-    ...this.navigation,
-    { link: 'settings', label: 'anms.menu.settings' }
-  ];
+  navigationSideMenu = [...this.navigation, { link: 'settings', label: 'anms.menu.settings' }];
 
   isAuthenticated$: Observable<boolean> | undefined;
   stickyHeader$: Observable<boolean> | undefined;
   language$: Observable<string> | undefined;
   theme$: Observable<string> | undefined;
 
-  constructor(
-    private store: Store<AppState>,
-    private storageService: LocalStorageService
-  ) {}
+  constructor(private store: Store<AppState>, private storageService: LocalStorageService) {}
 
   private static isIEorEdgeOrSafari() {
     return ['ie', 'edge', 'safari'].includes(browser().name || '');
@@ -84,8 +79,6 @@ export class AppComponent implements OnInit {
   }
 
   onLanguageSelect(event: MatSelectChange) {
-    this.store.dispatch(
-      actionSettingsChangeLanguage({ language: event.value })
-    );
+    this.store.dispatch(actionSettingsChangeLanguage({ language: event.value }));
   }
 }
