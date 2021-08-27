@@ -1,0 +1,21 @@
+@use '~@angular/material' as mat;
+
+@mixin anms-parent-component-theme($theme) {
+  $accent: map-get($theme, accent);
+
+  anms-parent {
+    > .container {
+      > .row {
+        > .col-md-6 {
+          > .example {
+            border-color: mat.get-color-from-palette($accent);
+
+            > h1 {
+              color: mat.get-color-from-palette($accent);
+            }
+          }
+        }
+      }
+    }
+  }
+}
