@@ -19,6 +19,8 @@ import { LocalStorageService } from 'src/app/services/local-storage/local-storag
 })
 export class ChatRoomComponent implements OnInit {
   messages: any[] = [];
+  protected username: string;
+  public room: string;
   readonly tableData = {
     columns: ['First Name', 'Last Name', 'Age'],
     rows: [
@@ -26,14 +28,14 @@ export class ChatRoomComponent implements OnInit {
       { firstName: 'Jaime', lastName: 'Lannister', age: 31 }
     ]
   };
-  protected username: string;
 
   constructor(private localStorageService: LocalStorageService) {
     this.loadMessages();
   }
   ngOnInit(): void {
     this.username = this.localStorageService.getItem('username');
-    console.log(this.username);
+    this.room = this.localStorageService.getItem('room');
+    console.log(this.username, this.room);
   }
 
   private loadMessages(): void {
@@ -107,7 +109,7 @@ export class ChatRoomComponent implements OnInit {
       reply: true,
       type: 'text',
       user: {
-        name: 'Jonh Doe',
+        name: this.username,
         avatar: 'https://i.gifer.com/no.gif'
       }
     });
