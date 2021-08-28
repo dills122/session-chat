@@ -66,5 +66,3 @@ common/autoinstallers/*/.npmrc
 **/.rush/temp/
 
 certs/
-
-apps/chat-frontend/
