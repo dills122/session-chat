@@ -1,8 +1,9 @@
-import { Component } from "@angular/core";
+import { Component, OnInit } from '@angular/core';
+import { LocalStorageService } from 'src/app/services/local-storage/local-storage.service';
 
 @Component({
-  selector: "nb-chat-room",
-  templateUrl: "./chat-room.component.html",
+  selector: 'nb-chat-room',
+  templateUrl: './chat-room.component.html',
   providers: [],
   styles: [
     `
@@ -13,84 +14,89 @@ import { Component } from "@angular/core";
       nb-chat {
         width: 500px;
       }
-    `,
-  ],
+    `
+  ]
 })
-export class ChatRoomComponent {
+export class ChatRoomComponent implements OnInit {
   messages: any[] = [];
   readonly tableData = {
-    columns: ["First Name", "Last Name", "Age"],
+    columns: ['First Name', 'Last Name', 'Age'],
     rows: [
-      { firstName: "Robert", lastName: "Baratheon", age: 46 },
-      { firstName: "Jaime", lastName: "Lannister", age: 31 },
-    ],
+      { firstName: 'Robert', lastName: 'Baratheon', age: 46 },
+      { firstName: 'Jaime', lastName: 'Lannister', age: 31 }
+    ]
   };
+  protected username: string;
 
-  constructor() {
+  constructor(private localStorageService: LocalStorageService) {
     this.loadMessages();
+  }
+  ngOnInit(): void {
+    this.username = this.localStorageService.getItem('username');
+    console.log(this.username);
   }
 
   private loadMessages(): void {
     this.messages = [
       {
-        type: "link",
-        text: "Now you able to use links!",
+        type: 'link',
+        text: 'Now you able to use links!',
         customMessageData: {
-          href: "https://akveo.github.io/nebular/",
-          text: "Go to Nebular",
+          href: 'https://akveo.github.io/nebular/',
+          text: 'Go to Nebular'
         },
         reply: false,
         date: new Date(),
         user: {
-          name: "Frodo Baggins",
-          avatar: "https://i.gifer.com/no.gif",
-        },
+          name: 'Frodo Baggins',
+          avatar: 'https://i.gifer.com/no.gif'
+        }
       },
       {
-        type: "link",
+        type: 'link',
         customMessageData: {
-          href: "https://akveo.github.io/ngx-admin/",
-          text: "Go to ngx-admin",
+          href: 'https://akveo.github.io/ngx-admin/',
+          text: 'Go to ngx-admin'
         },
         reply: true,
         date: new Date(),
         user: {
-          name: "Meriadoc Brandybuck",
-          avatar: "https://i.gifer.com/no.gif",
-        },
+          name: 'Meriadoc Brandybuck',
+          avatar: 'https://i.gifer.com/no.gif'
+        }
       },
       {
-        type: "button",
-        customMessageData: "Click to scroll down",
+        type: 'button',
+        customMessageData: 'Click to scroll down',
         reply: false,
         date: new Date(),
         user: {
-          name: "Gimli Gloin",
-          avatar: "",
-        },
+          name: 'Gimli Gloin',
+          avatar: ''
+        }
       },
       {
-        type: "table",
+        type: 'table',
         text: `Now let's try to add a table`,
         customMessageData: this.tableData,
         reply: false,
         date: new Date(),
         user: {
-          name: "Fredegar Bolger",
-          avatar: "https://i.gifer.com/no.gif",
-        },
+          name: 'Fredegar Bolger',
+          avatar: 'https://i.gifer.com/no.gif'
+        }
       },
       {
-        type: "table",
+        type: 'table',
         text: `And one more table but now in the reply`,
         customMessageData: this.tableData,
         reply: true,
         date: new Date(),
         user: {
-          name: "Fredegar Bolger",
-          avatar: "https://i.gifer.com/no.gif",
-        },
-      },
+          name: 'Fredegar Bolger',
+          avatar: 'https://i.gifer.com/no.gif'
+        }
+      }
     ];
   }
 
@@ -99,11 +105,11 @@ export class ChatRoomComponent {
       text: event.message,
       date: new Date(),
       reply: true,
-      type: "text",
+      type: 'text',
       user: {
-        name: "Jonh Doe",
-        avatar: "https://i.gifer.com/no.gif",
-      },
+        name: 'Jonh Doe',
+        avatar: 'https://i.gifer.com/no.gif'
+      }
     });
   }
 }

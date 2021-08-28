@@ -1,0 +1,27 @@
+<div class="container height-100">
+  <div class="row justify-content-center align-items-center height-100">
+    <div class="col-8">
+      <nb-card>
+        <nb-card-body>
+          <nb-card-body>
+            <div class="container">
+              <div class="row justify-content-center align-items-center mb-4">
+                <div class="col-10">
+                  <nb-form-field>
+                    <nb-icon nbPrefix icon="at-outline" pack="eva"></nb-icon>
+                    <input fullWidth type="text" [(ngModel)]="userName" nbInput>
+                  </nb-form-field>
+                </div>
+              </div>
+              <div class="row justify-content-center align-items-center">
+                <div class="col-10">
+                  <button nbButton fullWidth status="primary" (click)="login()">Sign In</button>
+                </div>
+              </div>
+            </div>
+          </nb-card-body>
+        </nb-card-body>
+      </nb-card>
+    </div>
+  </div>
+</div>

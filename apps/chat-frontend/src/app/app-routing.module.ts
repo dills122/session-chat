@@ -1,33 +1,34 @@
-import { NgModule } from "@angular/core";
-import { Routes, RouterModule, PreloadAllModules } from "@angular/router";
+import { NgModule } from '@angular/core';
+import { Routes, RouterModule, PreloadAllModules } from '@angular/router';
 
 const routes: Routes = [
   {
-    path: "",
-    redirectTo: "chat-room",
-    pathMatch: "full",
+    path: '',
+    redirectTo: 'login',
+    pathMatch: 'full'
   },
   {
-    path: "chat-room",
-    loadChildren: () =>
-      import("./features/chat-room/chat-room.module").then(
-        (m) => m.ChatRoomModule
-      ),
+    path: 'chat-room',
+    loadChildren: () => import('./features/chat-room/chat-room.module').then((m) => m.ChatRoomModule)
   },
   {
-    path: "**",
-    redirectTo: "chat-room",
+    path: 'login',
+    loadChildren: () => import('./features/login/login.module').then((m) => m.LoginModule)
   },
+  {
+    path: '**',
+    redirectTo: 'login'
+  }
 ];
 
 @NgModule({
   imports: [
     RouterModule.forRoot(routes, {
-      scrollPositionRestoration: "enabled",
+      scrollPositionRestoration: 'enabled',
       preloadingStrategy: PreloadAllModules,
-      relativeLinkResolution: "legacy",
-    }),
+      relativeLinkResolution: 'legacy'
+    })
   ],
-  exports: [RouterModule],
+  exports: [RouterModule]
 })
 export class AppRoutingModule {}
