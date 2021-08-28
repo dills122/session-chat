@@ -7,6 +7,12 @@ export interface AuthFormat {
   timestamp: string;
 }
 
+export interface AuthResponseFormat {
+  room: string;
+  uid: string;
+  token: string;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -17,7 +23,7 @@ export class AuthServiceService {
     this.socket.emit('login', payload);
   }
   subscribeLogin() {
-    return this.socket.fromEvent<AuthFormat>('login');
+    return this.socket.fromEvent<AuthResponseFormat>('login');
   }
   attemptLogout(payload: AuthFormat) {
     this.socket.emit('logout', payload);

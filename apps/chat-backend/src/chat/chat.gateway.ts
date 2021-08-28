@@ -3,6 +3,7 @@ import { SubscribeMessage, WebSocketGateway, OnGatewayInit, WebSocketServer } fr
 import { Socket, Server } from 'socket.io';
 import { Logger } from '@nestjs/common';
 import { AuthFormat, MessageFormat } from 'src/shared/types';
+import { JwtTokenService } from 'src/services/jwt-token/jwt-token.service';
 
 @WebSocketGateway(3001, {
   cors: true,
@@ -12,6 +13,8 @@ import { AuthFormat, MessageFormat } from 'src/shared/types';
 export class ChatGateway implements OnGatewayInit {
   @WebSocketServer() wss: Server;
   private logger: Logger = new Logger('ChatGateway');
+
+  constructor(private jwtTokenService: JwtTokenService) {}
 
   afterInit(): void {
     this.logger.log('Initialized Gateway');
@@ -24,8 +27,13 @@ export class ChatGateway implements OnGatewayInit {
         room: message.room,
         uid: message.uid
       });
+      const token = await this.jwtTokenService.generateClientToken(message.uid);
       await client.join(message.room);
-      client.emit('login', message); //TODO update this with something better
+      client.emit('login', {
+        token,
+        uid: message.uid,
+        room: message.room
+      });
       this.wss.in(message.room).emit('notification', {
         type: 'new-user'
       });
