@@ -25,6 +25,7 @@ export class ChatGateway implements OnGatewayInit {
         uid: message.uid
       });
       await client.join(message.room);
+      client.emit('login', message); //TODO update this with something better
       this.wss.in(message.room).emit('notification', {
         type: 'new-user'
       });

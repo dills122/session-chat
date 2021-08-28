@@ -1,18 +1,34 @@
 import { NgModule } from '@angular/core';
-import { RouterModule, Routes } from '@angular/router';
-
-import { LandingPageComponent } from './landing-page/landing-page.component';
-import { ChatRoomComponent } from './chat-room/chat-room.component';
-import { RoomCreationComponent } from './room-creation/room-creation.component';
+import { Routes, RouterModule, PreloadAllModules } from '@angular/router';
 
 const routes: Routes = [
-  { path: '', component: LandingPageComponent },
-  { path: 'room/:roomId', component: ChatRoomComponent },
-  { path: 'room-creation', component: RoomCreationComponent }
+  {
+    path: '',
+    redirectTo: 'login',
+    pathMatch: 'full'
+  },
+  {
+    path: 'chat-room',
+    loadChildren: () => import('./features/chat-room/chat-room.module').then((m) => m.ChatRoomModule)
+  },
+  {
+    path: 'login',
+    loadChildren: () => import('./features/login/login.module').then((m) => m.LoginModule)
+  },
+  {
+    path: '**',
+    redirectTo: 'login'
+  }
 ];
 
 @NgModule({
-  imports: [RouterModule.forRoot(routes)],
+  imports: [
+    RouterModule.forRoot(routes, {
+      scrollPositionRestoration: 'enabled',
+      preloadingStrategy: PreloadAllModules,
+      relativeLinkResolution: 'legacy'
+    })
+  ],
   exports: [RouterModule]
 })
 export class AppRoutingModule {}
