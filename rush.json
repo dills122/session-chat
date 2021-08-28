@@ -391,8 +391,5 @@
   "projects": [{
     "packageName": "chat-backend",
     "projectFolder": "apps/chat-backend"
-  }, {
-    "packageName": "chat-frontend",
-    "projectFolder": "apps/chat-frontend"
   }]
 }
