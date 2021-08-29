@@ -34,7 +34,7 @@ export class LoginComponent implements OnInit {
   }
 
   private setupSessionStorage({ room, token, uid }: { room: string; token: string; uid: string }) {
-    this.sessionStorageService.setItem(room, room);
+    this.sessionStorageService.setItem('room', room);
     this.sessionStorageService.setItem('jwt_token', token);
     this.sessionStorageService.setItem('uid', uid);
   }

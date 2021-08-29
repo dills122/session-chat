@@ -1,5 +1,6 @@
 import { Component, OnInit } from '@angular/core';
-import { LocalStorageService } from 'src/app/services/local-storage/local-storage.service';
+import { ChatServiceService, MessageFormat } from 'src/app/services/chat/chat-service.service';
+import { SessionStorageService } from 'src/app/services/session-storage/session-storage.service';
 
 @Component({
   selector: 'nb-chat-room',
@@ -21,97 +22,43 @@ export class ChatRoomComponent implements OnInit {
   messages: any[] = [];
   protected username: string;
   public room: string;
-  readonly tableData = {
-    columns: ['First Name', 'Last Name', 'Age'],
-    rows: [
-      { firstName: 'Robert', lastName: 'Baratheon', age: 46 },
-      { firstName: 'Jaime', lastName: 'Lannister', age: 31 }
-    ]
-  };
 
-  constructor(private localStorageService: LocalStorageService) {
-    this.loadMessages();
-  }
+  constructor(
+    private sessionStorageService: SessionStorageService,
+    private chatService: ChatServiceService
+  ) {}
   ngOnInit(): void {
-    this.username = this.localStorageService.getItem('username');
-    this.room = this.localStorageService.getItem('room');
+    this.username = this.sessionStorageService.getItem('uid');
+    this.room = this.sessionStorageService.getItem('room');
     console.log(this.username, this.room);
+    this.listenForMessages();
   }
 
-  private loadMessages(): void {
-    this.messages = [
-      {
-        type: 'link',
-        text: 'Now you able to use links!',
-        customMessageData: {
-          href: 'https://akveo.github.io/nebular/',
-          text: 'Go to Nebular'
-        },
-        reply: false,
-        date: new Date(),
-        user: {
-          name: 'Frodo Baggins',
-          avatar: 'https://i.gifer.com/no.gif'
-        }
-      },
-      {
-        type: 'link',
-        customMessageData: {
-          href: 'https://akveo.github.io/ngx-admin/',
-          text: 'Go to ngx-admin'
-        },
-        reply: true,
-        date: new Date(),
-        user: {
-          name: 'Meriadoc Brandybuck',
-          avatar: 'https://i.gifer.com/no.gif'
-        }
-      },
-      {
-        type: 'button',
-        customMessageData: 'Click to scroll down',
-        reply: false,
-        date: new Date(),
-        user: {
-          name: 'Gimli Gloin',
-          avatar: ''
-        }
-      },
-      {
-        type: 'table',
-        text: `Now let's try to add a table`,
-        customMessageData: this.tableData,
-        reply: false,
-        date: new Date(),
-        user: {
-          name: 'Fredegar Bolger',
-          avatar: 'https://i.gifer.com/no.gif'
-        }
-      },
-      {
-        type: 'table',
-        text: `And one more table but now in the reply`,
-        customMessageData: this.tableData,
-        reply: true,
-        date: new Date(),
-        user: {
-          name: 'Fredegar Bolger',
-          avatar: 'https://i.gifer.com/no.gif'
-        }
+  private listenForMessages() {
+    this.chatService.subscribeToMessages().subscribe((msg) => {
+      return this.messages.push(this.mapMessageToChatFormat(msg));
+    });
+  }
+
+  mapMessageToChatFormat(msg: MessageFormat) {
+    return {
+      text: msg.message,
+      date: new Date(),
+      reply: msg.uid === this.username,
+      type: 'text',
+      user: {
+        name: msg.uid
       }
-    ];
+    };
   }
 
   sendMessage(event: any) {
-    this.messages.push({
-      text: event.message,
-      date: new Date(),
-      reply: true,
-      type: 'text',
-      user: {
-        name: this.username,
-        avatar: 'https://i.gifer.com/no.gif'
-      }
+    this.messages.push();
+    this.chatService.sendMessage({
+      message: event.message,
+      room: this.room,
+      timestamp: new Date().toISOString(),
+      uid: this.username
     });
   }
 }
