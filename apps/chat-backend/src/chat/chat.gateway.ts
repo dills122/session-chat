@@ -3,7 +3,7 @@ import { SubscribeMessage, WebSocketGateway, OnGatewayInit, WebSocketServer } fr
 import { Socket, Server } from 'socket.io';
 import { Logger } from '@nestjs/common';
 import { AuthFormat, MessageFormat } from 'src/shared/types';
-import { JwtTokenService } from 'src/services/jwt-token/jwt-token.service';
+import { JwtTokenService, TokenInput } from 'src/services/jwt-token/jwt-token.service';
 
 @WebSocketGateway(3001, {
   cors: true,
@@ -27,7 +27,7 @@ export class ChatGateway implements OnGatewayInit {
         room: message.room,
         uid: message.uid
       });
-      const token = await this.jwtTokenService.generateClientToken(message.uid);
+      const token = await this.jwtTokenService.generateClientToken(message as TokenInput);
       await client.join(message.room);
       client.emit('login', {
         token,
@@ -66,9 +66,11 @@ export class ChatGateway implements OnGatewayInit {
         room: message.room,
         uid: message.uid
       });
+      await this.jwtTokenService.validateClientToken(message as TokenInput);
       this.wss.in(message.room).emit('chatToClient', message);
     } catch (err) {
       this.logger.error(err);
+      client.disconnect();
     }
   }
 }

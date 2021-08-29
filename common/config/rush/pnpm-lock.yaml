@@ -14,6 +14,7 @@ specifiers:
   '@angular/platform-browser': ~11.2.14
   '@angular/platform-browser-dynamic': ~11.2.14
   '@angular/router': ~11.2.14
+  '@auth0/angular-jwt': ~5.0.2
   '@nebular/eva-icons': 7.0.0
   '@nebular/theme': ^7.0.0
   '@nestjs/cli': ^8.0.0
@@ -41,6 +42,7 @@ specifiers:
   '@typescript-eslint/parser': ^4.28.2
   bootstrap: ~5.1.0
   codelyzer: ^6.0.0
+  crypto-browserify: ~3.12.0
   eslint: ^7.30.0
   eslint-config-prettier: ^8.3.0
   eslint-plugin-prettier: ^3.4.0
@@ -54,6 +56,7 @@ specifiers:
   karma-coverage-istanbul-reporter: ~3.0.2
   karma-jasmine: ~4.0.0
   karma-jasmine-html-reporter: ^1.5.0
+  lodash: ~4.17.21
   ngx-socket-io: ^4.1.0
   pm2: ^5.1.0
   prettier: ^2.3.2
@@ -87,6 +90,7 @@ dependencies:
   '@angular/platform-browser': 11.2.14_cc220f0cf26568bab1577f0589f48c4b
   '@angular/platform-browser-dynamic': 11.2.14_85d62dd5beb851f0d1c066e080f8fa0d
   '@angular/router': 11.2.14_3c7adb9250e2c2c2751a0e8da273743b
+  '@auth0/angular-jwt': 5.0.2_@angular+common@11.2.14
   '@nebular/eva-icons': 7.0.0_fce40857be57853c6ee52ce868e4bca2
   '@nebular/theme': 7.0.0_366e1deee14c799f0e7c0a230d57b62f
   '@nestjs/cli': 8.1.1
@@ -114,6 +118,7 @@ dependencies:
   '@typescript-eslint/parser': 4.29.2_eslint@7.32.0
   bootstrap: 5.1.0
   codelyzer: 6.0.2_tslint@6.1.3
+  crypto-browserify: 3.12.0
   eslint: 7.32.0
   eslint-config-prettier: 8.3.0_eslint@7.32.0
   eslint-plugin-prettier: 3.4.0_5a48a349ffec60f5257b5f148f5199c3
@@ -127,6 +132,7 @@ dependencies:
   karma-coverage-istanbul-reporter: 3.0.3
   karma-jasmine: 4.0.1_karma@6.3.4
   karma-jasmine-html-reporter: 1.7.0_fb490aaaf4cac2563aa07855d18f8066
+  lodash: 4.17.21
   ngx-socket-io: 4.1.0_f492959a76b3b0e4754dd8b45ae9f4ef
   pm2: 5.1.0
   prettier: 2.3.2
@@ -2874,6 +2880,12 @@ packages:
     resolution: {integrity: sha512-vt+kDhq/M2ayberEtJcIN/hxXy1Pk+59g2FV/ZQceeaTyCtCucjL2Q7FXlFjtWn4n15KCr1NE2lNNFhp0lEThw==}
     dev: false
 
+  /@types/diffie-hellman/5.0.0:
+    resolution: {integrity: sha512-7tAAd40YU/U6Wsv6I+mirSXaEIWiHWvUs+PpYqHJjJmHAhUJRi8uaZPood3n+Q9cQud7y9p1WEnZuHq6RMd5dw==}
+    dependencies:
+      '@types/node': 16.6.2
+    dev: false
+
   /@types/eslint-scope/3.7.1:
     resolution: {integrity: sha512-SCFeogqiptms4Fg29WpOTk5nHIzfpKCemSN63ksBQYKTcXoJEmJagV+DhVmbapZzY4/5YaOV1nZwrsU79fFm1g==}
     dependencies:
@@ -2967,6 +2979,10 @@ packages:
     resolution: {integrity: sha512-OGqtHQ7N5/Ap/TUwO6IgHDuLiAoTmHhGpNvgkCm/F4N6pKzx/RBSfr2OXZSwC6vkfnsEdb6+7DNZVtiXiwdwFw==}
     dependencies:
       '@types/node': 16.6.2
+    dev: false
+
+  /@types/lodash/4.14.172:
+    resolution: {integrity: sha512-/BHF5HAx3em7/KkzVKm3LrsD6HZAXuXO1AJZQ3cRRBZj4oHZDviWPYu0aEplAqDFNHZPW6d3G7KN+ONcCCC7pw==}
     dev: false
 
   /@types/mime/1.3.2:
@@ -14078,7 +14094,7 @@ packages:
     dev: false
 
   file:projects/chat-frontend.tgz:
-    resolution: {integrity: sha512-Y0QeVHjOktAGozfN4M7l+kxTom77XBGqaYv57SBWT1vf7FVQU21uIiWS5JkQnq0KUHTGJf49HNNFBGcmiP2FTg==, tarball: file:projects/chat-frontend.tgz}
+    resolution: {integrity: sha512-IhGSaxuL73KJNJAlvh2m7K0P2Pbw9orYskA/GzLUOS/k1wkeFlMRASsmvTtmXSEf+QGqE2g57Zdq5NeCOOtolg==, tarball: file:projects/chat-frontend.tgz}
     name: '@rush-temp/chat-frontend'
     version: 0.0.0
     dependencies:
@@ -14099,11 +14115,15 @@ packages:
       '@nebular/eva-icons': 7.0.0_fce40857be57853c6ee52ce868e4bca2
       '@nebular/theme': 7.0.0_366e1deee14c799f0e7c0a230d57b62f
       '@schematics/angular': 8.0.6
+      '@types/diffie-hellman': 5.0.0
       '@types/jasmine': 3.6.11
       '@types/jasminewd2': 2.0.10
+      '@types/lodash': 4.14.172
       '@types/node': 12.20.21
       bootstrap: 5.1.0
       codelyzer: 6.0.2_tslint@6.1.3
+      crypto-browserify: 3.12.0
+      diffie-hellman: 5.0.3
       eva-icons: 1.1.3
       jasmine-core: 3.6.0
       jasmine-spec-reporter: 5.0.2
@@ -14112,6 +14132,7 @@ packages:
       karma-coverage-istanbul-reporter: 3.0.3
       karma-jasmine: 4.0.1_karma@6.3.4
       karma-jasmine-html-reporter: 1.7.0_fb490aaaf4cac2563aa07855d18f8066
+      lodash: 4.17.21
       ngx-socket-io: 4.1.0_f492959a76b3b0e4754dd8b45ae9f4ef
       protractor: 7.0.0
       rxjs: 6.6.7

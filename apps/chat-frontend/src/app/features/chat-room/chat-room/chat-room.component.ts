@@ -19,7 +19,8 @@ import { SessionStorageService } from 'src/app/services/session-storage/session-
   ]
 })
 export class ChatRoomComponent implements OnInit {
-  messages: any[] = [];
+  public messages: any[] = [];
+  private token: string;
   protected username: string;
   public room: string;
 
@@ -30,7 +31,7 @@ export class ChatRoomComponent implements OnInit {
   ngOnInit(): void {
     this.username = this.sessionStorageService.getItem('uid');
     this.room = this.sessionStorageService.getItem('room');
-    console.log(this.username, this.room);
+    this.token = this.sessionStorageService.getItem('jwt_token');
     this.listenForMessages();
   }
 
@@ -58,7 +59,8 @@ export class ChatRoomComponent implements OnInit {
       message: event.message,
       room: this.room,
       timestamp: new Date().toISOString(),
-      uid: this.username
+      uid: this.username,
+      token: this.token
     });
   }
 }
