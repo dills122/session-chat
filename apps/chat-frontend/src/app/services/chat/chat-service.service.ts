@@ -6,6 +6,7 @@ export interface MessageFormat {
   room: string;
   uid: string;
   timestamp: string;
+  token: string;
 }
 
 @Injectable({

@@ -1,5 +1,6 @@
 import { NgModule } from '@angular/core';
 import { Routes, RouterModule, PreloadAllModules } from '@angular/router';
+import { AuthGuardService as AuthGuard } from './services/auth-guard/auth-guard.service';
 
 const routes: Routes = [
   {
@@ -9,7 +10,8 @@ const routes: Routes = [
   },
   {
     path: 'chat-room',
-    loadChildren: () => import('./features/chat-room/chat-room.module').then((m) => m.ChatRoomModule)
+    loadChildren: () => import('./features/chat-room/chat-room.module').then((m) => m.ChatRoomModule),
+    canActivate: [AuthGuard]
   },
   {
     path: 'login',

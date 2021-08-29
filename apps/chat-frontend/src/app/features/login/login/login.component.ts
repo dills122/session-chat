@@ -1,8 +1,8 @@
 import { Component, OnInit } from '@angular/core';
 import { Router } from '@angular/router';
 
-import { LocalStorageService } from '../../../services/local-storage/local-storage.service';
 import { AuthServiceService } from 'src/app/services/auth/auth-service.service';
+import { SessionStorageService } from 'src/app/services/session-storage/session-storage.service';
 
 @Component({
   selector: 'td-login',
@@ -13,16 +13,19 @@ export class LoginComponent implements OnInit {
   private username: string;
 
   constructor(
-    private localStorageService: LocalStorageService,
-    private router: Router,
-    private authService: AuthServiceService
+    private sessionStorageService: SessionStorageService,
+    private authService: AuthServiceService,
+    private router: Router
   ) {}
 
   ngOnInit(): void {
     this.authService.subscribeLogin().subscribe((resp) => {
-      console.log(resp);
       if (resp.uid === this.userName) {
-        this.localStorageService.setItem('room', resp.room);
+        this.setupSessionStorage({
+          token: resp.token,
+          room: resp.room,
+          uid: this.userName
+        });
         this.router.navigate(['/chat-room']);
       } else {
         console.log('Not correct response');
@@ -30,8 +33,14 @@ export class LoginComponent implements OnInit {
     });
   }
 
+  private setupSessionStorage({ room, token, uid }: { room: string; token: string; uid: string }) {
+    this.sessionStorageService.setItem('room', room);
+    this.sessionStorageService.setItem('jwt_token', token);
+    this.sessionStorageService.setItem('uid', uid);
+  }
+
   login() {
-    this.localStorageService.setItem('username', this.userName);
+    console.log(this.userName);
     this.authService.attemptLogin({
       room: 'general',
       uid: this.userName,
@@ -44,7 +53,6 @@ export class LoginComponent implements OnInit {
   }
 
   set userName(val: string) {
-    //do some extra work here
     this.username = val;
   }
 }

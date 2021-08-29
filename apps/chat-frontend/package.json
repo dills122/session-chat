@@ -27,7 +27,10 @@
     "rxjs": "~6.6.7",
     "tslib": "^2.0.0",
     "zone.js": "~0.10.2",
-    "bootstrap": "~5.1.0"
+    "bootstrap": "~5.1.0",
+    "@auth0/angular-jwt": "~5.0.2",
+    "crypto-browserify": "~3.12.0",
+    "lodash": "~4.17.21"
   },
   "devDependencies": {
     "@angular-devkit/build-angular": "~0.1102.14",
@@ -49,6 +52,7 @@
     "protractor": "~7.0.0",
     "ts-node": "~7.0.0",
     "tslint": "~6.1.0",
-    "typescript": "~4.0.8"
+    "typescript": "~4.0.8",
+    "@types/lodash": "~4.14.172"
   }
 }
