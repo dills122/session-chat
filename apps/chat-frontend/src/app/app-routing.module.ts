@@ -11,8 +11,7 @@ const routes: Routes = [
   {
     path: 'chat-room',
     loadChildren: () => import('./features/chat-room/chat-room.module').then((m) => m.ChatRoomModule),
-    canActivate: [AuthGuard],
-    canActivateChild: [AuthGuard]
+    canActivate: [AuthGuard]
   },
   {
     path: 'login',

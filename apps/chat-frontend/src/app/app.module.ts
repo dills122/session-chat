@@ -22,6 +22,9 @@ import { AppRoutingModule } from './app-routing.module';
 
 import { SocketIoConfig, SocketIoModule } from 'ngx-socket-io';
 
+import { JwtModule } from '@auth0/angular-jwt';
+import { SessionStorageService } from './services/session-storage/session-storage.service';
+
 const config: SocketIoConfig = {
   url: 'http://localhost:3001/chat',
   options: {
@@ -51,7 +54,14 @@ const config: SocketIoConfig = {
     // app
     AppRoutingModule,
 
-    SocketIoModule.forRoot(config)
+    SocketIoModule.forRoot(config),
+    JwtModule.forRoot({
+      config: {
+        tokenGetter: () => {
+          return new SessionStorageService().getItem('jwt_token');
+        }
+      }
+    })
   ],
   providers: [],
   bootstrap: [AppComponent]
