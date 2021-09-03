@@ -5,10 +5,18 @@ services:
       context: ./
       dockerfile: ./apps/chat-backend/Dockerfile
     ports:
-      - '3000:3000'
       - '3001:3001'
+    depends_on:
+      - 'redis'
+  chat-frontend:
+    build:
+      context: ./
+      dockerfile: ./apps/chat-frontend/Dockerfile
+    ports:
+      - '4200:4200'
   redis:
     image: redis:alpine
+    hostname: redis
     ports:
       - '6379:6379'
     restart: always
