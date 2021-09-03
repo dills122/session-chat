@@ -36,6 +36,7 @@ specifiers:
   '@types/jasminewd2': ~2.0.3
   '@types/jest': ^26.0.24
   '@types/jsonwebtoken': ~8.5.5
+  '@types/lodash': ~4.14.172
   '@types/redis': ~2.8.31
   '@types/supertest': ^2.0.11
   '@typescript-eslint/eslint-plugin': ^4.28.2
@@ -65,7 +66,7 @@ specifiers:
   reflect-metadata: ^0.1.13
   rimraf: ^3.0.2
   rxjs: ~6.6.7
-  socket.io: ~4.1.3
+  socket.io: ~4.0.0
   socket.io-redis: ~6.1.1
   supertest: ^6.1.3
   ts-jest: ^27.0.3
@@ -112,6 +113,7 @@ dependencies:
   '@types/jasminewd2': 2.0.10
   '@types/jest': 26.0.24
   '@types/jsonwebtoken': 8.5.5
+  '@types/lodash': 4.14.172
   '@types/redis': 2.8.31
   '@types/supertest': 2.0.11
   '@typescript-eslint/eslint-plugin': 4.29.2_061bcf7d10a51dd5ea7168c21da6ce0b
@@ -141,7 +143,7 @@ dependencies:
   reflect-metadata: 0.1.13
   rimraf: 3.0.2
   rxjs: 6.6.7
-  socket.io: 4.1.3
+  socket.io: 4.0.2
   socket.io-redis: 6.1.1
   supertest: 6.1.6
   ts-jest: 27.0.5_@types+jest@26.0.24+jest@27.0.6
@@ -5872,6 +5874,23 @@ packages:
 
   /engine.io/4.1.1:
     resolution: {integrity: sha512-t2E9wLlssQjGw0nluF6aYyfX8LwYU8Jj0xct+pAhfWfv/YrBn6TSNtEYsgxHIfaMqfrLx07czcMg9bMN6di+3w==}
+    engines: {node: '>=10.0.0'}
+    dependencies:
+      accepts: 1.3.7
+      base64id: 2.0.0
+      cookie: 0.4.1
+      cors: 2.8.5
+      debug: 4.3.2
+      engine.io-parser: 4.0.2
+      ws: 7.4.6
+    transitivePeerDependencies:
+      - bufferutil
+      - supports-color
+      - utf-8-validate
+    dev: false
+
+  /engine.io/5.0.0:
+    resolution: {integrity: sha512-BATIdDV3H1SrE9/u2BAotvsmjJg0t1P4+vGedImSs1lkFAtQdvk4Ev1y4LDiPF7BPWgXWEG+NDY+nLvW3UrMWw==}
     engines: {node: '>=10.0.0'}
     dependencies:
       accepts: 1.3.7
@@ -11943,6 +11962,25 @@ packages:
       - utf-8-validate
     dev: false
 
+  /socket.io/4.0.2:
+    resolution: {integrity: sha512-1sVnsumrYTshhH2LWUtmzNvuZqkEOAG5PxcHpKu1r/sIDhzACTdo9XbvonVB2M90Y2CkTZnCWT6hlaKEkdBu5Q==}
+    engines: {node: '>=10.0.0'}
+    dependencies:
+      '@types/cookie': 0.4.1
+      '@types/cors': 2.8.12
+      '@types/node': 16.6.2
+      accepts: 1.3.7
+      base64id: 2.0.0
+      debug: 4.3.2
+      engine.io: 5.0.0
+      socket.io-adapter: 2.2.0
+      socket.io-parser: 4.0.4
+    transitivePeerDependencies:
+      - bufferutil
+      - supports-color
+      - utf-8-validate
+    dev: false
+
   /socket.io/4.1.3:
     resolution: {integrity: sha512-tLkaY13RcO4nIRh1K2hT5iuotfTaIQw7cVIe0FUykN3SuQi0cm7ALxuyT5/CtDswOMWUzMGTibxYNx/gU7In+Q==}
     engines: {node: '>=10.0.0'}
@@ -14030,7 +14068,7 @@ packages:
     dev: false
 
   file:projects/chat-backend.tgz_rxjs@6.6.7:
-    resolution: {integrity: sha512-8EFb71DA1ISXttswrIJhEzoFjYZw0uN0xJ/IzWCTyol7sQnvDNVZJ992wbsFI1MvnUiFgpcf6BNCBsvA1YBAlQ==, tarball: file:projects/chat-backend.tgz}
+    resolution: {integrity: sha512-iMweA3qq3W99byvqHuECeziudEwSntjYIE8f3aBXgKjUpdbazOLQIblmrUtLeWnd9QbJpMnWHJGP5CYG3eBkjw==, tarball: file:projects/chat-backend.tgz}
     id: file:projects/chat-backend.tgz
     name: '@rush-temp/chat-backend'
     version: 0.0.0
@@ -14064,7 +14102,7 @@ packages:
       redis: 3.1.2
       reflect-metadata: 0.1.13
       rimraf: 3.0.2
-      socket.io: 4.1.3
+      socket.io: 4.0.2
       socket.io-redis: 6.1.1
       supertest: 6.1.6
       ts-jest: 27.0.5_52cc4273aa16028085013af47e479e10
