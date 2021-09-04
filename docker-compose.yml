@@ -12,6 +12,11 @@ services:
     ports:
       - '6379:6379'
     restart: always
+  url-shortner:
+    image: shlinkio/shlink:stable
+    ports:
+      - '8080:8080'
+    env_file: ./.env
   nginx:
     image: nginx:1.19-alpine
     ports:
