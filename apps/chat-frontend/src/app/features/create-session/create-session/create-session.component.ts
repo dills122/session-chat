@@ -1,4 +1,7 @@
 import { Component, OnInit } from '@angular/core';
+import { CryptoService } from 'src/app/services/crypto/crypto.service';
+import { LinkGenerationService } from 'src/app/services/link-generation/link-generation.service';
+import { LoginService } from 'src/app/services/login/login.service';
 
 @Component({
   selector: 'td-create-session',
@@ -8,11 +11,53 @@ import { Component, OnInit } from '@angular/core';
 export class CreateSessionComponent implements OnInit {
   public participantUid: string;
   public ownersUid: string;
-  constructor() {}
+  public linkUrl: string;
+  public hasLinkBeenGenerated: boolean = false;
+  public hasSessionBeenCreated: boolean = false;
+  private roomId: string;
+  constructor(
+    private linkGenerationService: LinkGenerationService,
+    private cryptoService: CryptoService,
+    private loginService: LoginService
+  ) {}
 
   ngOnInit(): void {}
 
-  createSession() {}
+  createSession() {
+    this.generateRoomId();
+    this.hasSessionBeenCreated = true;
+  }
 
-  joinSession() {}
+  joinSession() {
+    if (!this.hasSessionBeenCreated) {
+      //TODO show error notification
+    }
+    this.loginService.registerLoginCallback(this.ownersUid);
+    this.loginService.login({
+      uid: this.ownersUid,
+      roomId: this.roomId
+    });
+  }
+
+  generateLink($event) {
+    if (!this.hasSessionBeenCreated) {
+      this.createSession();
+    }
+    this.togleLinkGeneration();
+    if (this.hasSessionBeenCreated) {
+      //call service to create the session link
+      this.linkUrl = this.linkGenerationService.createLinkForSession({
+        uid: this.participantUid,
+        roomId: this.roomId
+      });
+    }
+  }
+
+  private generateRoomId() {
+    this.roomId = this.cryptoService.GenerateRandomString();
+  }
+
+  togleLinkGeneration() {
+    this.hasLinkBeenGenerated = !this.hasLinkBeenGenerated;
+  }
 }
