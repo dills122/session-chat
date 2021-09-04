@@ -13,10 +13,10 @@ export class CryptoService {
 
   HashString(input: string): string {
     this.Hash.update(input);
-    return this.Hash.digest('utf8');
+    return this.Hash.digest('hex');
   }
 
   GenerateRandomString() {
-    return RandomBytes(24).toString('utf8');
+    return RandomBytes(24).toString('hex');
   }
 }

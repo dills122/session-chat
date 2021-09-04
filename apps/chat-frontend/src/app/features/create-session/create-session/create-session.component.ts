@@ -2,7 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CryptoService } from 'src/app/services/crypto/crypto.service';
 import { LinkGenerationService } from 'src/app/services/link-generation/link-generation.service';
 import { LoginService } from 'src/app/services/login/login.service';
-
+import { Observable } from 'rxjs';
 @Component({
   selector: 'td-create-session',
   templateUrl: './create-session.component.html',
@@ -11,7 +11,7 @@ import { LoginService } from 'src/app/services/login/login.service';
 export class CreateSessionComponent implements OnInit {
   public participantUid: string;
   public ownersUid: string;
-  public linkUrl: string;
+  public linkUrl$: Observable<string>;
   public hasLinkBeenGenerated: boolean = false;
   public hasSessionBeenCreated: boolean = false;
   private roomId: string;
@@ -46,7 +46,7 @@ export class CreateSessionComponent implements OnInit {
     this.togleLinkGeneration();
     if (this.hasSessionBeenCreated) {
       //call service to create the session link
-      this.linkUrl = this.linkGenerationService.createLinkForSession({
+      this.linkUrl$ = this.linkGenerationService.createLinkForSession({
         uid: this.participantUid,
         roomId: this.roomId
       });
