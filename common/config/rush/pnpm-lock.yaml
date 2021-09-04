@@ -38,6 +38,7 @@ specifiers:
   '@types/jest': ^26.0.24
   '@types/jsonwebtoken': ~8.5.5
   '@types/lodash': ~4.14.172
+  '@types/randombytes': ~2.0.0
   '@types/redis': ~2.8.31
   '@types/supertest': ^2.0.11
   '@typescript-eslint/eslint-plugin': ^4.28.2
@@ -118,6 +119,7 @@ dependencies:
   '@types/jest': 26.0.24
   '@types/jsonwebtoken': 8.5.5
   '@types/lodash': 4.14.172
+  '@types/randombytes': 2.0.0
   '@types/redis': 2.8.31
   '@types/supertest': 2.0.11
   '@typescript-eslint/eslint-plugin': 4.29.2_061bcf7d10a51dd5ea7168c21da6ce0b
@@ -14114,7 +14116,7 @@ packages:
     dev: false
 
   file:projects/chat-frontend.tgz:
-    resolution: {integrity: sha512-XtUw4xwq/U0UeGJSDK8OwmE4xDYMza1+Y79PtIshnLwLj3L0ioX9YH1uxW+anNDOxau7kEzKrN12izq/wKX2xA==, tarball: file:projects/chat-frontend.tgz}
+    resolution: {integrity: sha512-Mi3XnTdwaF2Js/Wiu9dwnreY8qjDkPG0GdAyq28W63qX0p/MduOAoBc+5bxzcwDDbtXFmv9ob+QcSyA/PoODwQ==, tarball: file:projects/chat-frontend.tgz}
     name: '@rush-temp/chat-frontend'
     version: 0.0.0
     dependencies:
@@ -14159,6 +14161,7 @@ packages:
       ngx-socket-io: 4.1.0_f492959a76b3b0e4754dd8b45ae9f4ef
       protractor: 7.0.0
       randombytes: 2.1.0
+      readable-stream: 3.6.0
       rxjs: 6.6.7
       ts-node: 7.0.1
       tslib: 2.3.1
