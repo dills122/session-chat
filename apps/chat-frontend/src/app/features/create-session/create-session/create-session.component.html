@@ -1,0 +1,59 @@
+<div class="container height-100">
+  <div class="row justify-content-center align-items-center height-100">
+    <div class="col-8">
+      <nb-card>
+        <nb-card-header>
+          <h3>Create Session</h3>
+        </nb-card-header>
+        <nb-card-body>
+          <form (ngSubmit)="createSession()" action="#">
+            <div class="container">
+              <div class="row justify-content-center align-items-center mb-4">
+                <div class="col-10">
+                  <div class="container-fluid full-width g-0">
+                    <div class="row">
+                      <div class="col">
+                        <h6>Add Participant</h6>
+                      </div>
+                    </div>
+                    <div class="row">
+                      <div class="col-10">
+                        <nb-form-field>
+                          <nb-icon nbPrefix icon="at-outline" pack="eva"></nb-icon>
+                          <input fullWidth name="participantUid" type="text" placeholder="Participant Uid"
+                            [(ngModel)]="participantUid" nbInput>
+                        </nb-form-field>
+                      </div>
+                      <div class="col-2">
+                        <button nbButton nbTooltip="Generate link" nbTooltipIcon="link-outline" status="info">
+                          <nb-icon icon="link-2-outline"></nb-icon>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="row justify-content-center align-items-center mb-4">
+                <div class="col-10">
+                  <div>
+                    <h6>Create Unique ID</h6>
+                  </div>
+                  <nb-form-field>
+                    <nb-icon nbPrefix icon="at-outline" pack="eva"></nb-icon>
+                    <input fullWidth name="ownersUid" type="text" placeholder="Unique Id" [(ngModel)]="ownersUid"
+                      nbInput>
+                  </nb-form-field>
+                </div>
+              </div>
+              <div class="row justify-content-center align-items-center">
+                <div class="col-10">
+                  <button nbButton fullWidth status="primary" (click)="joinSession()">Create & Join Session</button>
+                </div>
+              </div>
+            </div>
+          </form>
+        </nb-card-body>
+      </nb-card>
+    </div>
+  </div>
+</div>

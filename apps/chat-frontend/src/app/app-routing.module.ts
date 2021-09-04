@@ -18,6 +18,11 @@ const routes: Routes = [
     loadChildren: () => import('./features/login/login.module').then((m) => m.LoginModule)
   },
   {
+    path: 'create-session',
+    loadChildren: () =>
+      import('./features/create-session/create-session.module').then((m) => m.CreateSessionModule)
+  },
+  {
     path: '**',
     redirectTo: 'login'
   }
