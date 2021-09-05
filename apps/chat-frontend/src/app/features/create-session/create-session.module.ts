@@ -6,15 +6,11 @@ import { CreateSessionComponent } from './create-session/create-session.componen
 import { CreateSessionRoutingModule } from './create-session-routing.module';
 
 import {
-  NbLayoutModule,
   NbCardModule,
   NbInputModule,
   NbButtonModule,
   NbIconModule,
   NbListModule,
-  NbCheckboxModule,
-  NbSelectModule,
-  NbChatModule,
   NbFormFieldModule,
   NbTooltipModule
 } from '@nebular/theme';
@@ -24,15 +20,11 @@ import {
   imports: [
     CommonModule,
     CreateSessionRoutingModule,
-    NbLayoutModule,
     NbCardModule,
     NbInputModule,
     NbButtonModule,
     NbIconModule,
     NbListModule,
-    NbCheckboxModule,
-    NbSelectModule,
-    NbChatModule,
     NbFormFieldModule,
     FormsModule,
     NbTooltipModule

@@ -1,11 +1,12 @@
 import { NgModule } from '@angular/core';
 import { Routes, RouterModule, PreloadAllModules } from '@angular/router';
 import { AuthGuardService as AuthGuard } from './services/auth-guard/auth-guard.service';
+import { LoginSessionGuardService } from './services/login-session-guard/login-session-guard.service';
 
 const routes: Routes = [
   {
     path: '',
-    redirectTo: 'login',
+    redirectTo: 'home',
     pathMatch: 'full'
   },
   {
@@ -15,7 +16,8 @@ const routes: Routes = [
   },
   {
     path: 'login',
-    loadChildren: () => import('./features/login/login.module').then((m) => m.LoginModule)
+    loadChildren: () => import('./features/login/login.module').then((m) => m.LoginModule),
+    canActivate: [LoginSessionGuardService]
   },
   {
     path: 'create-session',
@@ -23,8 +25,12 @@ const routes: Routes = [
       import('./features/create-session/create-session.module').then((m) => m.CreateSessionModule)
   },
   {
+    path: 'home',
+    loadChildren: () => import('./features/home/home.module').then((m) => m.HomeModule)
+  },
+  {
     path: '**',
-    redirectTo: 'login'
+    redirectTo: 'home'
   }
 ];
 
