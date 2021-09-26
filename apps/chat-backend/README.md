@@ -10,6 +10,13 @@ Install Dependencies
 rush update
 ```
 
+Setup the keys required for the JWT Tokens
+
+```bash
+mkdir ./keys && cd ./keys
+../generate-private-key.ps1 # or .sh
+```
+
 Start Dev Instance
 
 ```bash

@@ -5,25 +5,16 @@ services:
       context: ./
       dockerfile: ./apps/chat-backend/Dockerfile
     ports:
-      - '3001:3001'
+      - '${BACKEND_PORT}:${BACKEND_PORT}'
     depends_on:
       - 'redis'
-  chat-frontend:
-    build:
-      context: ./
-      dockerfile: ./apps/chat-frontend/Dockerfile
-    ports:
-      - '4200:4200'
   redis:
-    image: redis:alpine
-    hostname: redis
-    ports:
-      - '6379:6379'
-    restart: always
+    extends:
+      file: common-services.yml
+      service: redis-base
   nginx:
-    image: nginx:1.19-alpine
-    ports:
-      - 443:443
-    volumes:
-      - ./certs/:/etc/nginx/ssl
-      - ./.docker/nginx/conf.d:/etc/nginx/conf.d
+    extends:
+      file: common-services.yml
+      service: nginx-base
+    depends_on:
+      - chat-backend
