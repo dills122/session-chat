@@ -8,8 +8,8 @@ RUN apk add --update bash && rm -rf /var/cache/apk/*
 RUN npm install -g @microsoft/rush
 RUN rm -rf ./common/temp
 RUN rush update --purge
-RUN mv ./.env ./apps/chat-backend
+RUN mv ./.env ./apps/chat-frontend
 # RUN chown -R app /tmp
 # USER app
 
-CMD ["npm", "--prefix", "./apps/chat-backend/", "run", "start:dev"]
+CMD ["npm", "--prefix", "./apps/chat-frontend/", "run", "start:docker"]
