@@ -1,0 +1,15 @@
+version: '3.7'
+services:
+  nginx-base:
+    image: nginx:1.19-alpine
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./certs/:/etc/nginx/ssl
+  redis-base:
+    image: redis:alpine
+    hostname: redis
+    ports:
+      - '${REDIS_PORT}:${REDIS_PORT}'
+    restart: always
