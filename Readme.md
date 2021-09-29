@@ -27,3 +27,5 @@ rush docker-up:dev
 # start UI project separately
 cd ./apps/chat-frontend/ && rushx start:dev
 ```
+
+Url Shortner docs: https://shlink.io/documentation/

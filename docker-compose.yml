@@ -6,6 +6,7 @@ services:
       dockerfile: ./apps/chat-backend/Dockerfile
     ports:
       - '${BACKEND_PORT}:${BACKEND_PORT}'
+    restart: always
     depends_on:
       - 'redis'
   redis:
@@ -18,3 +19,7 @@ services:
       service: nginx-base
     depends_on:
       - chat-backend
+  url-shortner:
+    extends:
+      file: common-services.yml
+      service: url-shortner-base
