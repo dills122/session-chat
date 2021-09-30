@@ -1,6 +1,5 @@
 import { Injectable } from '@angular/core';
 import { CryptoService } from '../crypto/crypto.service';
-import { Router } from '@angular/router';
 import { HttpParams } from '@angular/common/http';
 import { Observable, of } from 'rxjs';
 
@@ -17,7 +16,7 @@ export interface LinkHashVerificationPayload extends LinkHashPayload {
   providedIn: 'root'
 })
 export class LinkGenerationService {
-  constructor(private cryptoService: CryptoService, private router: Router) {}
+  constructor(private cryptoService: CryptoService) {}
 
   createLinkForSession({ uid, roomId }: LinkHashPayload): Observable<string> {
     //TODO need check to see if link shortner service is running or not
