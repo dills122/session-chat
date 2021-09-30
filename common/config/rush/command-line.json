@@ -23,6 +23,40 @@
       "commandKind": "global",
       "shellCommand": "docker compose -f docker-compose.yml -f docker-compose.prod.yml down",
       "summary": "Shut down prod docker env"
+    },
+    {
+      "commandKind": "bulk",
+      "name": "test",
+      "summary": "runs all tests",
+      "enableParallelism": false
+    },
+    {
+      "commandKind": "bulk",
+      "name": "lint",
+      "summary": "runs eslint aganist all packages",
+      "enableParallelism": true
+    },
+    {
+      "commandKind": "bulk",
+      "name": "lint:fix",
+      "summary": "runs eslint and tries to fix any issues it finds in any of the packages",
+      "enableParallelism": true
+    },
+    {
+      "name": "prettier",
+      "commandKind": "global",
+      "summary": "Used by the pre-commit Git hook. This command invokes Prettier to reformat staged changes.",
+
+      "autoinstallerName": "rush-prettier",
+
+      // This will invoke common/autoinstallers/rush-prettier/node_modules/.bin/pretty-quick
+      "shellCommand": "pretty-quick --staged"
+    },
+    {
+      "name": "prettier-format",
+      "commandKind": "global",
+      "shellCommand": "prettier . --write",
+      "summary": "Formats all the repos code"
     }
   ],
 

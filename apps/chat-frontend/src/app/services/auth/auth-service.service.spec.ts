@@ -1,13 +1,22 @@
 import { TestBed } from '@angular/core/testing';
+import { Socket } from 'ngx-socket-io';
 
-import { AuthServiceService } from './auth-service.service';
+import { AuthService } from './auth-service.service';
 
 describe('AuthServiceService', () => {
-  let service: AuthServiceService;
-
+  let service: AuthService;
+  let socketIO: jasmine.SpyObj<Socket>;
   beforeEach(() => {
-    TestBed.configureTestingModule({});
-    service = TestBed.inject(AuthServiceService);
+    socketIO = jasmine.createSpyObj('Socket', ['emit', 'fromEvent']);
+    TestBed.configureTestingModule({
+      providers: [
+        {
+          provide: Socket,
+          useValue: socketIO
+        }
+      ]
+    });
+    service = TestBed.inject(AuthService);
   });
 
   it('should be created', () => {

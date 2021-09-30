@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { ParticipantPayload } from 'src/app/models/participant-payload';
-import { AuthServiceService } from '../auth/auth-service.service';
+import { AuthService } from '../auth/auth-service.service';
 import { Router } from '@angular/router';
 import { SessionStorageService } from '../session-storage/session-storage.service';
 import { LinkGenerationService } from '../link-generation/link-generation.service';
@@ -11,7 +11,7 @@ import { LinkGenerationService } from '../link-generation/link-generation.servic
 export class LoginService {
   private uid: string;
   constructor(
-    private authService: AuthServiceService,
+    private authService: AuthService,
     private router: Router,
     private sessionStorageService: SessionStorageService,
     private linkGenerateService: LinkGenerationService
