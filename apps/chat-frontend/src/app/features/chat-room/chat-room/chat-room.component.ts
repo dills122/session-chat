@@ -1,9 +1,10 @@
 import { Component, OnInit } from '@angular/core';
 import { ChatServiceService, MessageFormat } from 'src/app/services/chat/chat-service.service';
 import { SessionStorageService } from 'src/app/services/session-storage/session-storage.service';
+import { map } from 'rxjs/operators';
 
 @Component({
-  selector: 'nb-chat-room',
+  selector: 'td-chat-room',
   templateUrl: './chat-room.component.html',
   providers: [],
   styles: [
@@ -23,6 +24,9 @@ export class ChatRoomComponent implements OnInit {
   private token: string;
   protected username: string;
   public room: string;
+  public messages$ = this.chatService
+    .subscribeToMessages()
+    .pipe(map((msg) => this.mapMessageToChatFormat(msg)));
 
   constructor(
     private sessionStorageService: SessionStorageService,
@@ -32,13 +36,6 @@ export class ChatRoomComponent implements OnInit {
     this.username = this.sessionStorageService.getItem('uid');
     this.room = this.sessionStorageService.getItem('room');
     this.token = this.sessionStorageService.getItem('jwt_token');
-    this.listenForMessages();
-  }
-
-  private listenForMessages() {
-    this.chatService.subscribeToMessages().subscribe((msg) => {
-      return this.messages.push(this.mapMessageToChatFormat(msg));
-    });
   }
 
   mapMessageToChatFormat(msg: MessageFormat) {
@@ -54,7 +51,6 @@ export class ChatRoomComponent implements OnInit {
   }
 
   sendMessage(event: any) {
-    this.messages.push();
     this.chatService.sendMessage({
       message: event.message,
       room: this.room,

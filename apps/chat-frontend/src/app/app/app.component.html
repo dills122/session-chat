@@ -1,7 +1,11 @@
 <nb-layout>
-
   <nb-layout-header>
     <button nbButton (click)="toggleTheme()">Toggle Theme</button>
+    <nb-actions>
+      <nb-action icon="home-outline" routerLink="/home"></nb-action>
+      <nb-action icon="paper-plane-outline" routerLink="/create-session"></nb-action>
+      <nb-action icon="log-in-outline" routerLink="/login"></nb-action>
+    </nb-actions>
   </nb-layout-header>
 
   <nb-layout-column>

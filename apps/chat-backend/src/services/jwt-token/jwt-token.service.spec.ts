@@ -6,7 +6,7 @@ describe('JwtTokenService', () => {
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [JwtTokenService],
+      providers: [JwtTokenService]
     }).compile();
 
     service = module.get<JwtTokenService>(JwtTokenService);

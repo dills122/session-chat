@@ -6,12 +6,13 @@ describe('ChatRoomComponent', () => {
   let component: ChatRoomComponent;
   let fixture: ComponentFixture<ChatRoomComponent>;
 
-  beforeEach(waitForAsync(() => {
-    TestBed.configureTestingModule({
-      declarations: [ ChatRoomComponent ]
+  beforeEach(
+    waitForAsync(() => {
+      TestBed.configureTestingModule({
+        declarations: [ChatRoomComponent]
+      }).compileComponents();
     })
-    .compileComponents();
-  }));
+  );
 
   beforeEach(() => {
     fixture = TestBed.createComponent(ChatRoomComponent);

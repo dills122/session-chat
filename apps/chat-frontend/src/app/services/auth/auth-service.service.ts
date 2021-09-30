@@ -16,7 +16,7 @@ export interface AuthResponseFormat {
 @Injectable({
   providedIn: 'root'
 })
-export class AuthServiceService {
+export class AuthService {
   constructor(public socket: Socket) {}
 
   attemptLogin(payload: AuthFormat) {

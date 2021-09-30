@@ -1,8 +1,7 @@
 import { Component, OnInit } from '@angular/core';
-import { Router } from '@angular/router';
+import { Router, ActivatedRoute } from '@angular/router';
 
-import { AuthServiceService } from 'src/app/services/auth/auth-service.service';
-import { SessionStorageService } from 'src/app/services/session-storage/session-storage.service';
+import { LoginService } from 'src/app/services/login/login.service';
 
 @Component({
   selector: 'td-login',
@@ -10,49 +9,36 @@ import { SessionStorageService } from 'src/app/services/session-storage/session-
   styleUrls: ['./login.component.scss']
 })
 export class LoginComponent implements OnInit {
-  private username: string;
+  private uid: string;
+  private sessionHash: string;
+  private sessionId: string;
 
-  constructor(
-    private sessionStorageService: SessionStorageService,
-    private authService: AuthServiceService,
-    private router: Router
-  ) {}
+  constructor(private loginService: LoginService, private router: Router, private route: ActivatedRoute) {}
 
   ngOnInit(): void {
-    this.authService.subscribeLogin().subscribe((resp) => {
-      if (resp.uid === this.userName) {
-        this.setupSessionStorage({
-          token: resp.token,
-          room: resp.room,
-          uid: this.userName
-        });
-        this.router.navigate(['/chat-room']);
-      } else {
-        console.log('Not correct response');
+    this.loginService.registerLoginCallback(this.uId);
+    this.route.queryParamMap.subscribe((queryParams) => {
+      this.sessionId = queryParams.get('rid');
+      this.sessionHash = queryParams.get('hash');
+      if (!(this.sessionId || this.sessionHash)) {
+        this.router.navigate(['/home']);
       }
     });
   }
 
-  private setupSessionStorage({ room, token, uid }: { room: string; token: string; uid: string }) {
-    this.sessionStorageService.setItem('room', room);
-    this.sessionStorageService.setItem('jwt_token', token);
-    this.sessionStorageService.setItem('uid', uid);
-  }
-
   login() {
-    console.log(this.userName);
-    this.authService.attemptLogin({
-      room: 'general',
-      uid: this.userName,
-      timestamp: new Date().toISOString()
+    this.loginService.login({
+      roomId: this.sessionId,
+      uid: this.uId,
+      hash: this.sessionHash
     });
   }
 
-  get userName(): string {
-    return this.username;
+  get uId(): string {
+    return this.uid;
   }
 
-  set userName(val: string) {
-    this.username = val;
+  set uId(val: string) {
+    this.uid = val;
   }
 }

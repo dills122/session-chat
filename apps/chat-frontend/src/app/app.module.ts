@@ -13,7 +13,8 @@ import {
   NbListModule,
   NbCheckboxModule,
   NbSelectModule,
-  NbChatModule
+  NbChatModule,
+  NbActionsModule
 } from '@nebular/theme';
 import { NbEvaIconsModule } from '@nebular/eva-icons';
 
@@ -51,6 +52,7 @@ const config: SocketIoConfig = {
     NbSelectModule,
     FormsModule,
     NbChatModule,
+    NbActionsModule,
 
     // app
     AppRoutingModule,
