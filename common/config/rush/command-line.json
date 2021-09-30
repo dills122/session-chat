@@ -26,9 +26,9 @@
     },
     {
       "commandKind": "bulk",
-      "name": "test",
-      "summary": "runs all tests",
-      "enableParallelism": false
+      "name": "test:ci",
+      "summary": "runs all tests for ci",
+      "enableParallelism": true
     },
     {
       "commandKind": "bulk",
