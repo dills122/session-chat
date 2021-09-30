@@ -19,7 +19,7 @@ export class LinkGenerationService {
   constructor(private cryptoService: CryptoService) {}
 
   createLinkForSession({ uid, roomId }: LinkHashPayload): Observable<string> {
-    //TODO need check to see if link shortner service is running or not
+    // TODO need check to see if link shortner service is running or not
     const params = new HttpParams().set('hash', this.createLinkHash({ uid, roomId })).set('rid', roomId);
     return of(`${location.origin}/login?${params.toString()}`);
   }

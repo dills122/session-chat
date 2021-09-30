@@ -25,7 +25,7 @@ export class LoginService {
       hash: payload.hash
     });
     if (!isValid) {
-      //TODO send notification, or alert or something
+      // TODO send notification, or alert or something
       return;
     }
     this.authService.attemptLogin({

@@ -12,8 +12,8 @@ export class CreateSessionComponent implements OnInit {
   public participantUid: string;
   public ownersUid: string;
   public linkUrl$: Observable<string>;
-  public hasLinkBeenGenerated: boolean = false;
-  public hasSessionBeenCreated: boolean = false;
+  public hasLinkBeenGenerated = false;
+  public hasSessionBeenCreated = false;
   private roomId: string;
   constructor(
     private linkGenerationService: LinkGenerationService,
@@ -30,7 +30,7 @@ export class CreateSessionComponent implements OnInit {
 
   joinSession() {
     if (!this.hasSessionBeenCreated) {
-      //TODO show error notification
+      // TODO show error notification
     }
     this.loginService.registerLoginCallback(this.ownersUid);
     this.loginService.login({
@@ -46,7 +46,6 @@ export class CreateSessionComponent implements OnInit {
     }
     this.togleLinkGeneration();
     if (this.hasSessionBeenCreated) {
-      //call service to create the session link
       this.linkUrl$ = this.linkGenerationService.createLinkForSession({
         uid: this.participantUid,
         roomId: this.roomId
