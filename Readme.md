@@ -1,5 +1,7 @@
 # Session Chat: Secure Session Chatrooms
 
+[![CI Job](https://github.com/dills122/session-chat/actions/workflows/ci.action.yml/badge.svg)](https://github.com/dills122/session-chat/actions/workflows/ci.action.yml)
+
 Chat securely with one or more associates without a worry of it getting out.
 
 ## Getting Started
