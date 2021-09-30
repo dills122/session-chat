@@ -20,13 +20,25 @@
                       <div class="col-10">
                         <nb-form-field>
                           <nb-icon nbPrefix icon="at-outline" pack="eva"></nb-icon>
-                          <input fullWidth name="participantUid" type="text" placeholder="Participant Uid"
-                            [(ngModel)]="participantUid" nbInput>
+                          <input
+                            fullWidth
+                            name="participantUid"
+                            type="text"
+                            placeholder="Participant Uid"
+                            [(ngModel)]="participantUid"
+                            nbInput
+                          />
                         </nb-form-field>
                       </div>
                       <div class="col-2">
-                        <button (click)="generateLink($event)" name="link-generation" nbButton nbTooltip="Generate link"
-                          nbTooltipIcon="link-outline" status="info">
+                        <button
+                          (click)="generateLink($event)"
+                          name="link-generation"
+                          nbButton
+                          nbTooltip="Generate link"
+                          nbTooltipIcon="link-outline"
+                          status="info"
+                        >
                           <nb-icon icon="link-2-outline"></nb-icon>
                         </button>
                       </div>
@@ -34,7 +46,13 @@
                     <div class="row" *ngIf="linkUrl$ | async as generatedLink" class="mt-3">
                       <div class="col-12">
                         <nb-form-field>
-                          <input fullWidth name="participantLink" type="text" [value]="generatedLink" nbInput>
+                          <input
+                            fullWidth
+                            name="participantLink"
+                            type="text"
+                            [value]="generatedLink"
+                            nbInput
+                          />
                         </nb-form-field>
                       </div>
                     </div>
@@ -48,15 +66,28 @@
                   </div>
                   <nb-form-field>
                     <nb-icon nbPrefix icon="at-outline" pack="eva"></nb-icon>
-                    <input fullWidth name="ownersUid" type="text" placeholder="Unique Id" [(ngModel)]="ownersUid"
-                      nbInput>
+                    <input
+                      fullWidth
+                      name="ownersUid"
+                      type="text"
+                      placeholder="Unique Id"
+                      [(ngModel)]="ownersUid"
+                      nbInput
+                    />
                   </nb-form-field>
                 </div>
               </div>
               <div class="row justify-content-center align-items-center">
                 <div class="col-10">
-                  <button nbButton fullWidth status="primary" (click)="joinSession()"
-                    [disabled]="!(hasLinkBeenGenerated && hasSessionBeenCreated)">Create & Join Session</button>
+                  <button
+                    nbButton
+                    fullWidth
+                    status="primary"
+                    (click)="joinSession()"
+                    [disabled]="!(hasLinkBeenGenerated && hasSessionBeenCreated)"
+                  >
+                    Create & Join Session
+                  </button>
                 </div>
               </div>
             </div>

@@ -18,19 +18,13 @@ export class LocalStorageService {
           .map((key) =>
             key
               .split('-')
-              .map((token, index) =>
-                index === 0
-                  ? token
-                  : token.charAt(0).toUpperCase() + token.slice(1)
-              )
+              .map((token, index) => (index === 0 ? token : token.charAt(0).toUpperCase() + token.slice(1)))
               .join('')
           );
         let currentStateRef = state;
         stateKeys.forEach((key, index) => {
           if (index === stateKeys.length - 1) {
-            currentStateRef[key] = JSON.parse(
-              localStorage.getItem(storageKey) || '{}'
-            );
+            currentStateRef[key] = JSON.parse(localStorage.getItem(storageKey) || '{}');
             return;
           }
           currentStateRef[key] = currentStateRef[key] || {};
