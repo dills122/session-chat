@@ -35,7 +35,8 @@ export class CreateSessionComponent implements OnInit {
     this.loginService.registerLoginCallback(this.ownersUid);
     this.loginService.login({
       uid: this.ownersUid,
-      roomId: this.roomId
+      roomId: this.roomId,
+      hash: this.linkGenerationService.createLinkHash({ uid: this.ownersUid, roomId: this.roomId })
     });
   }
 

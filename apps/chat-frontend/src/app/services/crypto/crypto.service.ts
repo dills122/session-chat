@@ -6,14 +6,16 @@ import * as RandomBytes from 'randombytes';
   providedIn: 'root'
 })
 export class CryptoService {
-  private Hash: Hasher.HashAlgorithm;
+  private algorithm: Hasher.algorithm;
   constructor() {
-    this.Hash = Hasher('sha384');
+    this.algorithm = 'sha384';
   }
 
   HashString(input: string): string {
-    this.Hash.update(input);
-    return this.Hash.digest('hex');
+    const hasher = Hasher(this.algorithm);
+    hasher.update(input);
+    const hash = hasher.digest('hex');
+    return hash;
   }
 
   GenerateRandomString() {
