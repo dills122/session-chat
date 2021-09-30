@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component } from '@angular/core';
 import { CryptoService } from 'src/app/services/crypto/crypto.service';
 import { LinkGenerationService } from 'src/app/services/link-generation/link-generation.service';
 import { LoginService } from 'src/app/services/login/login.service';
@@ -8,7 +8,7 @@ import { Observable } from 'rxjs';
   templateUrl: './create-session.component.html',
   styleUrls: ['./create-session.component.scss']
 })
-export class CreateSessionComponent implements OnInit {
+export class CreateSessionComponent {
   public participantUid: string;
   public ownersUid: string;
   public linkUrl$: Observable<string>;
@@ -20,8 +20,6 @@ export class CreateSessionComponent implements OnInit {
     private cryptoService: CryptoService,
     private loginService: LoginService
   ) {}
-
-  ngOnInit(): void {}
 
   createSession() {
     this.generateRoomId();

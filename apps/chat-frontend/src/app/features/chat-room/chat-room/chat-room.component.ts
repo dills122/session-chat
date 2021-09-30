@@ -4,7 +4,7 @@ import { SessionStorageService } from 'src/app/services/session-storage/session-
 import { map } from 'rxjs/operators';
 
 @Component({
-  selector: 'nb-chat-room',
+  selector: 'td-chat-room',
   templateUrl: './chat-room.component.html',
   providers: [],
   styles: [
