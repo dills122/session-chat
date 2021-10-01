@@ -6,6 +6,8 @@ services:
       dockerfile: ./apps/chat-backend/Dockerfile
     ports:
       - '${BACKEND_PORT}:${BACKEND_PORT}'
+    environment:
+      - URL_SHORTNER_API_KEY=${URL_SHORTNER_API_KEY} # set via setup script
     restart: always
     depends_on:
       - 'redis'
@@ -19,7 +21,3 @@ services:
       service: nginx-base
     depends_on:
       - chat-backend
-  url-shortner:
-    extends:
-      file: common-services.yml
-      service: url-shortner-base
