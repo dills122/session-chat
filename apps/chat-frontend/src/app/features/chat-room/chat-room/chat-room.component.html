@@ -1,7 +1,13 @@
 <nb-chat [title]="room" size="large">
-  <nb-chat-message *ngFor="let msg of messages" [type]="msg.type" [message]="msg.text" [reply]="msg.reply"
-    [sender]="msg.user.name" [date]="msg.date" [quote]="msg.quote">
+  <nb-chat-message
+    *ngFor="let msg of messages$ | async"
+    [type]="msg.type"
+    [message]="msg.text"
+    [reply]="msg.reply"
+    [sender]="msg.user.name"
+    [date]="msg.date"
+    [quote]="msg.quote"
+  >
   </nb-chat-message>
-  <nb-chat-form (send)="sendMessage($event)" [dropFiles]="false">
-  </nb-chat-form>
+  <nb-chat-form (send)="sendMessage($event)" [dropFiles]="false"> </nb-chat-form>
 </nb-chat>

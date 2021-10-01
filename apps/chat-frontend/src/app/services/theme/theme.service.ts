@@ -7,11 +7,9 @@ export type Theme = 'default' | 'dark';
   providedIn: 'root'
 })
 export class ThemeService {
-
   currentTheme: Theme = 'default';
 
-  constructor(private themeService: NbThemeService) {
-  }
+  constructor(private themeService: NbThemeService) {}
 
   toggleTheme() {
     this.currentTheme = this.currentTheme === 'default' ? 'dark' : 'default';

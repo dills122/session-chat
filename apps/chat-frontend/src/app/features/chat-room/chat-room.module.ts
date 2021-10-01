@@ -1,11 +1,10 @@
-import { NgModule } from "@angular/core";
-import { CommonModule } from "@angular/common";
+import { NgModule } from '@angular/core';
+import { CommonModule } from '@angular/common';
 
-import { ChatRoomComponent } from "./chat-room/chat-room.component";
-import { ChatRoomRoutingModule } from "./chat-room-routing.module";
+import { ChatRoomComponent } from './chat-room/chat-room.component';
+import { ChatRoomRoutingModule } from './chat-room-routing.module';
 
 import {
-  NbLayoutModule,
   NbCardModule,
   NbInputModule,
   NbButtonModule,
@@ -13,15 +12,14 @@ import {
   NbListModule,
   NbCheckboxModule,
   NbSelectModule,
-  NbChatModule,
-} from "@nebular/theme";
+  NbChatModule
+} from '@nebular/theme';
 
 @NgModule({
   declarations: [ChatRoomComponent],
   imports: [
     CommonModule,
     ChatRoomRoutingModule,
-    NbLayoutModule,
     NbCardModule,
     NbInputModule,
     NbButtonModule,
@@ -29,7 +27,7 @@ import {
     NbListModule,
     NbCheckboxModule,
     NbSelectModule,
-    NbChatModule,
-  ],
+    NbChatModule
+  ]
 })
 export class ChatRoomModule {}
