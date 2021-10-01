@@ -5,7 +5,7 @@ services:
       context: ./
       dockerfile: ./apps/chat-backend/Dockerfile
     ports:
-      - '${BACKEND_PORT}:${BACKEND_PORT}'
+      - '3001:3001' # when you run from scripts with env ar it does not work
     environment:
       - URL_SHORTNER_API_KEY=${URL_SHORTNER_API_KEY} # set via setup script
     restart: always

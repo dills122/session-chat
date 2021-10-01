@@ -14,11 +14,3 @@ services:
     ports:
       - '${REDIS_PORT}:${REDIS_PORT}'
     restart: always
-  url-shortner-base:
-    image: shlinkio/shlink:stable
-    ports:
-      - '${SHORT_DOMAIN_PORT}:${SHORT_DOMAIN_PORT}'
-    environment:
-      - SHORT_DOMAIN_HOST=${SHORT_DOMAIN_HOST}
-      - SHORT_DOMAIN_SCHEMA=${SHORT_DOMAIN_SCHEMA}
-      - GEOLITE_LICENSE_KEY=${GEOLITE_LICENSE_KEY}

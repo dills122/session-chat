@@ -12,8 +12,12 @@ docker run -d \
     -e GEOLITE_LICENSE_KEY=$GEOLITE_LICENSE_KEY \
     shlinkio/shlink:stable
 
+sleep 10s
+
 # script used to create and extract api access key from url shortner service
-sh ./scripts/get-url-shortner-api-key.sh
+source ./scripts/get-url-shortner-api-key.sh
+
+echo "ENV Var: $URL_SHORTNER_API_KEY"
 
 # starts the remaining docker services
 docker compose up -d
