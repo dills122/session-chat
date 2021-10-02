@@ -37,6 +37,9 @@ export class ChatGateway implements OnGatewayInit {
         roomId: message.roomId
       });
       await this.redisService.set(message.roomId, 'true');
+      client.emit(ChatEvents.createChatRoom, {
+        roomId: message.roomId
+      });
     } catch (err) {
       this.logger.error(err);
       // TODO send error notification
