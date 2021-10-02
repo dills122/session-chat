@@ -2,7 +2,7 @@ import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
 
 import { ChatRoomComponent } from './chat-room.component';
 
-describe('ChatRoomComponent', () => {
+xdescribe('ChatRoomComponent', () => {
   let component: ChatRoomComponent;
   let fixture: ComponentFixture<ChatRoomComponent>;
 

@@ -28,7 +28,8 @@
       "commandKind": "bulk",
       "name": "test:ci",
       "summary": "runs all tests for ci",
-      "enableParallelism": true
+      "enableParallelism": true,
+      "allowWarningsInSuccessfulBuild": true
     },
     {
       "commandKind": "bulk",
