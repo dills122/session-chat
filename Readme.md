@@ -26,6 +26,19 @@ mkdir ./keys && cd ./keys
 ```bash
 # starts dev env
 rush docker-up:dev
+# or 
+sh ./scripts/url-shortner-docker-start.sh
 # start UI project separately
 cd ./apps/chat-frontend/ && rushx start:dev
 ```
+
+Custom Docker command scripts
+
+```bash
+# will startup all containers with the required data
+sh ./scripts/url-shortner-docker-start.sh
+# will shutdown all of the containers for dev
+sh ./scripts/shutdown-docker.sh
+```
+
+Url Shortner docs: https://shlink.io/documentation/
