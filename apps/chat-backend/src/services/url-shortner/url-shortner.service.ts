@@ -33,7 +33,7 @@ export class UrlShortnerService {
         )
       );
       if (resp.status !== 200) {
-        throw Error('Failed response');
+        throw Error('Failed response status');
       }
       return resp.data;
     } catch (err) {

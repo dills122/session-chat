@@ -1,39 +1,56 @@
-import { HttpService } from '@nestjs/axios';
+import { HttpModule, HttpService } from '@nestjs/axios';
 import { AxiosResponse } from 'axios';
 import { Test, TestingModule } from '@nestjs/testing';
 import { of } from 'rxjs';
-import { UrlShortnerService } from './url-shortner.service';
+import { UrlShortnerResponse, UrlShortnerService } from './url-shortner.service';
 
-// TODO need to learn how to write tests and why its getting dep injection issue
 describe('UrlShortnerService', () => {
   let service: UrlShortnerService;
-  let httpService: HttpService;
+  let httpPostSpy: jest.SpyInstance;
 
+  const data = {
+    shortCode: 'short',
+    shortUrl: 'short',
+    longUrl: 'long',
+    dateCreated: new Date().toISOString()
+  } as UrlShortnerResponse;
+  const response: AxiosResponse<UrlShortnerResponse> = {
+    data,
+    headers: {},
+    config: { url: 'http://localhost:3000/mockUrl' },
+    status: 200,
+    statusText: 'OK'
+  };
   beforeEach(async () => {
-    const data = {
-      shortCode: 'short',
-      shortUrl: 'short',
-      longUrl: 'long',
-      dateCreated: new Date().toISOString()
-    };
-    const response: AxiosResponse<any> = {
-      data,
-      headers: {},
-      config: { url: 'http://localhost:3000/mockUrl' },
-      status: 200,
-      statusText: 'OK'
-    };
-    const httpSpy = jest.spyOn(HttpService.prototype, 'get').mockReturnValue(of(response));
+    httpPostSpy = jest.spyOn(HttpService.prototype, 'post').mockImplementation(() => of(response));
     const module: TestingModule = await Test.createTestingModule({
       providers: [UrlShortnerService],
-      imports: [HttpService]
+      imports: [HttpModule]
     }).compile();
 
     service = module.get<UrlShortnerService>(UrlShortnerService);
-    httpService = module.get<HttpService>(HttpService);
   });
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  it('should go through happy path and return response', async () => {
+    const resp = await service.createShortUrl('test/url');
+    expect(resp).toEqual(data);
+  });
+
+  it('should throw if return status is not 200', async () => {
+    httpPostSpy.mockImplementation(() =>
+      of({
+        ...response,
+        status: 403
+      })
+    );
+    expect(service.createShortUrl('test/url')).rejects.toMatch('Failed response status');
+  });
+  it('should reject if http call returns error', async () => {
+    httpPostSpy.mockRejectedValue('Err');
+    expect(service.createShortUrl('test/url')).rejects.toMatch('Err');
   });
 });
