@@ -5,7 +5,7 @@ on:
     branches:
       - master
     paths:
-      - 'DockerFile'
+      - 'Dockerfile'
 
 env:
   REGISTRY: ghcr.io
@@ -33,7 +33,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@98669ae865ea3cffbcbaa878cf57c20bbf1c6c38
         with:
-          images: ${{ env.REGISTRY }}/base
+          images: session-chat-base
           tags: |
             type=ref,event=branch
             type=ref,event=pr
