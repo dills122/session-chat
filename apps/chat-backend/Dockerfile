@@ -4,8 +4,8 @@ COPY ../../ .
 
 RUN adduser -S app
 RUN rm -rf ./common/temp \
-    && rush install -f api -p \
-    && rush build --to api \
+    && rush install -p \
+    && rush build --to chat-backend \
     && mv ./.env ./apps/chat-backend
 RUN npm i -g @nestjs/cli
 RUN chown -R app /tmp/

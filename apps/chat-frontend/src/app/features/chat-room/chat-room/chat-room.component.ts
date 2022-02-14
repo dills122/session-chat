@@ -1,7 +1,8 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnDestroy, OnInit } from '@angular/core';
 import { ChatServiceService, MessageFormat } from 'src/app/services/chat/chat-service.service';
 import { SessionStorageService } from 'src/app/services/session-storage/session-storage.service';
-import { map } from 'rxjs/operators';
+import { map, takeUntil, tap } from 'rxjs/operators';
+import { Subject } from 'rxjs';
 
 @Component({
   selector: 'td-chat-room',
@@ -19,23 +20,31 @@ import { map } from 'rxjs/operators';
     `
   ]
 })
-export class ChatRoomComponent implements OnInit {
+export class ChatRoomComponent implements OnInit, OnDestroy {
+  private onDestroyNotifier = new Subject();
   public messages: any[] = [];
   private token: string;
   protected username: string;
   public room: string;
-  public messages$ = this.chatService
-    .subscribeToMessages()
-    .pipe(map((msg) => this.mapMessageToChatFormat(msg)));
+  public messages$ = this.chatService.subscribeToMessages().pipe(
+    takeUntil(this.onDestroyNotifier),
+    map((msg) => this.mapMessageToChatFormat(msg)),
+    tap((msg) => this.messages.push(msg))
+  );
 
   constructor(
     private sessionStorageService: SessionStorageService,
     private chatService: ChatServiceService
   ) {}
+  ngOnDestroy(): void {
+    this.onDestroyNotifier.next();
+    this.onDestroyNotifier.complete();
+  }
   ngOnInit(): void {
     this.username = this.sessionStorageService.getItem('uid');
     this.room = this.sessionStorageService.getItem('room');
     this.token = this.sessionStorageService.getItem('jwt_token');
+    this.messages$.subscribe();
   }
 
   mapMessageToChatFormat(msg: MessageFormat) {
