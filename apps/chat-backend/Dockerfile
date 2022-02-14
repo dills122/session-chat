@@ -1,11 +1,15 @@
-FROM ghcr.io/dills122/session-chat:master
+FROM ghcr.io/dills122/rushjs-base-img:edge
 WORKDIR /tmp
 COPY ../../ .
 
-RUN rm -rf ./common/temp
-RUN rush update --purge
-RUN mv ./.env ./apps/chat-backend
-# RUN chown -R app /tmp
-# USER app
+RUN adduser -S app
+RUN rm -rf ./common/temp \
+    && rush install -f api -p \
+    && rush build --to api \
+    && mv ./.env ./apps/chat-backend
+RUN npm i -g @nestjs/cli
+RUN chown -R app /tmp/
+USER app
+
 
 CMD ["npm", "--prefix", "./apps/chat-backend/", "run", "start:dev"]
