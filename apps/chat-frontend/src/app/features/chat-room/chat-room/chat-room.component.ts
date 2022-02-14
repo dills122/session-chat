@@ -1,8 +1,9 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
-import { ChatServiceService, MessageFormat } from 'src/app/services/chat/chat-service.service';
-import { SessionStorageService } from 'src/app/services/session-storage/session-storage.service';
-import { map, takeUntil, tap } from 'rxjs/operators';
 import { Subject } from 'rxjs';
+import { map, takeUntil, tap } from 'rxjs/operators';
+import { ChatServiceService, MessageFormat } from 'src/app/services/chat/chat-service.service';
+import { LoginService } from 'src/app/services/login/login.service';
+import { SessionStorageService } from 'src/app/services/session-storage/session-storage.service';
 
 @Component({
   selector: 'td-chat-room',
@@ -34,7 +35,8 @@ export class ChatRoomComponent implements OnInit, OnDestroy {
 
   constructor(
     private sessionStorageService: SessionStorageService,
-    private chatService: ChatServiceService
+    private chatService: ChatServiceService,
+    private loginService: LoginService
   ) {}
   ngOnDestroy(): void {
     this.onDestroyNotifier.next();
@@ -45,6 +47,10 @@ export class ChatRoomComponent implements OnInit, OnDestroy {
     this.room = this.sessionStorageService.getItem('room');
     this.token = this.sessionStorageService.getItem('jwt_token');
     this.messages$.subscribe();
+    this.loginService.reAuth({
+      roomId: this.room,
+      uid: this.username
+    });
   }
 
   mapMessageToChatFormat(msg: MessageFormat) {

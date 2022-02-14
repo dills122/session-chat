@@ -12,7 +12,7 @@ export interface NotificationMessageFormat {
   providedIn: 'root'
 })
 export class NotificationServiceService {
-  constructor(public socket: Socket) {}
+  constructor(private socket: Socket) {}
   subscribeToNotifications() {
     return this.socket.fromEvent<NotificationMessageFormat>('notification');
   }

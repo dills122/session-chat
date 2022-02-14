@@ -35,6 +35,14 @@ export class LoginService {
     });
   }
 
+  reAuth({ roomId, uid }) {
+    this.authService.attemptLogin({
+      room: roomId,
+      uid: uid,
+      timestamp: new Date().toISOString()
+    });
+  }
+
   registerLoginCallback(uid: string) {
     if (this.uid) {
       this.uid = uid;

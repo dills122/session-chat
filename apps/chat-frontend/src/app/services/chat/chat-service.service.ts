@@ -13,7 +13,7 @@ export interface MessageFormat {
   providedIn: 'root'
 })
 export class ChatServiceService {
-  constructor(public socket: Socket) {}
+  constructor(private socket: Socket) {}
   subscribeToMessages() {
     return this.socket.fromEvent<MessageFormat>('chatToClient');
   }

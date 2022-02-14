@@ -17,7 +17,7 @@ export interface AuthResponseFormat {
   providedIn: 'root'
 })
 export class AuthService {
-  constructor(public socket: Socket) {}
+  constructor(private socket: Socket) {}
 
   attemptLogin(payload: AuthFormat) {
     this.socket.emit('login', payload);
