@@ -1,13 +1,5 @@
 version: '3.7'
 services:
-  chat-backend:
-    build:
-      context: ./
-      dockerfile: ./apps/chat-backend/Dockerfile
-    ports:
-      - '${BACKEND_PORT}:${BACKEND_PORT}'
-    depends_on:
-      - 'redis'
   redis:
     extends:
       file: common-services.yml
@@ -16,5 +8,12 @@ services:
     extends:
       file: common-services.yml
       service: nginx-base
+  chat-backend:
+    build:
+      context: .
+      dockerfile: ./apps/chat-backend/Dockerfile
+    ports:
+      - '${BACKEND_PORT}:${BACKEND_PORT}'
     depends_on:
-      - chat-backend
+      - 'redis'
+      - 'nginx'

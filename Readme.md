@@ -11,17 +11,26 @@ Chat securely with one or more associates without a worry of it getting out.
 rush install
 ```
 
+### Setting Up Local Env
+
+Ensure you have `mkcert` installed on your PC, below will be the instructions for windows.
+
+Open a new `powershell` in `administrator` mode and run `choco install mkcert`.
+
 ```bash
 # Sets up the SSL certs for local development
 ./scripts/setup-certs-windows.ps1
 ```
 
+Now you'll need to setup the keys used by the backend for the `JWT` tokens
+
 ```bash
-cd ./app/chat-backend/
-# generate the keys for JWT tokens
-mkdir ./keys && cd ./keys
-../generate-private-key.ps1 # or .sh
+# If first setup, create the keys dir
+mkdir ./apps/chat-backend/keys/
+./scripts/setup-backend-keys.ps1
 ```
+
+Now that all the dependencies are setup you can spin up the local docker env.
 
 ```bash
 # starts dev env
