@@ -1,6 +1,6 @@
 <nb-chat [title]="room" size="large">
   <nb-chat-message
-    *ngFor="let msg of messages$ | async"
+    *ngFor="let msg of messages"
     [type]="msg.type"
     [message]="msg.text"
     [reply]="msg.reply"
