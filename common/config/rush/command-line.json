@@ -44,14 +44,13 @@
       "enableParallelism": true
     },
     {
-      "name": "prettier",
+      "name": "lint-staged",
       "commandKind": "global",
-      "summary": "Used by the pre-commit Git hook. This command invokes Prettier to reformat staged changes.",
+      "summary": "Used by the pre-commit Git hook. This command invokes lint-staged to reformat staged changes.",
 
-      "autoinstallerName": "rush-prettier",
+      "autoinstallerName": "lint-staged",
 
-      // This will invoke common/autoinstallers/rush-prettier/node_modules/.bin/pretty-quick
-      "shellCommand": "pretty-quick --staged"
+      "shellCommand": "lint-staged"
     },
     {
       "name": "prettier-format",

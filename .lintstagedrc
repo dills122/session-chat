@@ -1,0 +1,6 @@
+{
+  "*.{ts,tsx}": "eslint --cache --fix",
+  "*.{css,scss}": "stylelint --fix",
+  "*.{ts,tsx,css,scss,md,sh,ps1,yml}": "prettier --write",
+  "Dockerfile": "prettier --write"
+}
