@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v2
       - uses: actions/setup-node@v3
         with:
-          node-version: 18
+          node-version: 16
       - run: node common/scripts/install-run-rush.js update
       - run: node common/scripts/install-run-rush.js lint
   prettier_linter_job:
@@ -27,7 +27,7 @@ jobs:
       - uses: actions/checkout@v2
       - uses: actions/setup-node@v3
         with:
-          node-version: 18
+          node-version: 16
       - run: node common/scripts/install-run-rush.js update
       - run: node common/scripts/install-run-rush.js prettier
   pr_job:
@@ -36,7 +36,7 @@ jobs:
       - uses: actions/checkout@v2
       - uses: actions/setup-node@v3
         with:
-          node-version: 18
+          node-version: 16
       - run: node common/scripts/install-run-rush.js update
       - run: node common/scripts/install-run-rush.js test:ci
   automerge:
@@ -62,7 +62,7 @@ jobs:
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.ref }}
-          node-version: 18
+          node-version: 16
       - name: Update Lock File
         run: node common/scripts/install-run-rush.js update
       - name: Commit changes
