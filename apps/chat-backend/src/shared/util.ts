@@ -2,7 +2,7 @@ const nodeEnv = process.env.NODE_ENV;
 
 // local env, non-docker
 export const isLocal = (): boolean => {
-  return !isProd && !isDev;
+  return !nodeEnv || nodeEnv.toUpperCase() === 'LOCAL';
 };
 
 // local env, docker
