@@ -37,6 +37,7 @@ jobs:
       - uses: actions/setup-node@v3
         with:
           node-version: 16
+      - run: export NODE_OPTIONS=--openssl-legacy-provider
       - run: node common/scripts/install-run-rush.js update
       - run: node common/scripts/install-run-rush.js test:ci
   automerge:
