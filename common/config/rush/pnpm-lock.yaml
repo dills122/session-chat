@@ -64,7 +64,7 @@ specifiers:
   lodash: ~4.17.21
   ngx-socket-io: ^4.1.0
   pm2: ^5.1.0
-  prettier: ^2.3.2
+  prettier: ^3.1.1
   protractor: ~7.0.0
   puppeteer: ~10.4.0
   randombytes: ~2.1.0
@@ -134,7 +134,7 @@ dependencies:
   create-hash: 1.2.0
   crypto-browserify: 3.12.0
   eslint-config-prettier: 8.3.0
-  eslint-plugin-prettier: 3.4.0_ae3805332b62cec006ed24a9ec35ea79
+  eslint-plugin-prettier: 3.4.0_76014177b084328b62d38969a7c7bc21
   eva-icons: 1.1.3
   jasmine-core: 4.0.0
   jasmine-spec-reporter: 5.0.2
@@ -148,7 +148,7 @@ dependencies:
   lodash: 4.17.21
   ngx-socket-io: 4.1.0_f492959a76b3b0e4754dd8b45ae9f4ef
   pm2: 5.1.0
-  prettier: 2.3.2
+  prettier: 3.1.1
   protractor: 7.0.0
   puppeteer: 10.4.0
   randombytes: 2.1.0
@@ -3242,7 +3242,7 @@ packages:
     dev: false
 
   /@types/json5/0.0.29:
-    resolution: {integrity: sha1-7ihweulOEdK4J7y+UnC86n8+ce4=}
+    resolution: {integrity: sha512-dRLjCWHYg4oaA77cxO64oO+7JwCwnIzkZPdrrC71jQmQtlhM556pwKo5bUzqvZndkVbeFLIIi+9TC40JNF5hNQ==}
     dev: false
 
   /@types/jsonwebtoken/8.5.5:
@@ -3636,7 +3636,7 @@ packages:
       '@typescript-eslint/visitor-keys': 4.29.2
       debug: 4.3.2
       globby: 11.0.4
-      is-glob: 4.0.1
+      is-glob: 4.0.3
       semver: 7.3.5
       tsutils: 3.21.0_typescript@4.3.5
       typescript: 4.3.5
@@ -4367,7 +4367,7 @@ packages:
     dev: false
 
   /arrify/1.0.1:
-    resolution: {integrity: sha1-iYUI2iIm84DfkEcoRWhJwVAaSw0=}
+    resolution: {integrity: sha512-3CYzex9M9FGQjCGMGyi6/31c8GJbgb0qGyrx5HWxPd0aCwh4cB2YjMb2Xf9UuoogrMrlO9cTqnB5rI5GHZTcUA==}
     engines: {node: '>=0.10.0'}
     dev: false
 
@@ -5990,7 +5990,7 @@ packages:
     dev: false
 
   /deep-is/0.1.3:
-    resolution: {integrity: sha1-s2nW+128E+7PUk+RsHD+7cNXzzQ=}
+    resolution: {integrity: sha512-GtxAN4HvBachZzm4OnWqc45ESpUCMwkYcsjnsPs23FwJbsO+k4t0k9bQCgOmzIlpHO28+WPK/KRbRk0DDHuuDw==}
     dev: false
 
   /deepmerge/4.2.2:
@@ -6547,7 +6547,23 @@ packages:
       eslint: 7.32.0
     dev: false
 
-  /eslint-plugin-prettier/3.4.0_5a48a349ffec60f5257b5f148f5199c3:
+  /eslint-plugin-prettier/3.4.0_76014177b084328b62d38969a7c7bc21:
+    resolution: {integrity: sha512-UDK6rJT6INSfcOo545jiaOwB701uAIt2/dR7WnFQoGCVl1/EMqdANBmwUaqqQ45aXprsTGzSa39LI1PyuRBxxw==}
+    engines: {node: '>=6.0.0'}
+    peerDependencies:
+      eslint: '>=5.0.0'
+      eslint-config-prettier: '*'
+      prettier: '>=1.13.0'
+    peerDependenciesMeta:
+      eslint-config-prettier:
+        optional: true
+    dependencies:
+      eslint-config-prettier: 8.3.0
+      prettier: 3.1.1
+      prettier-linter-helpers: 1.0.0
+    dev: false
+
+  /eslint-plugin-prettier/3.4.0_7d24d7d0374abde46d26cbcbd0b1b651:
     resolution: {integrity: sha512-UDK6rJT6INSfcOo545jiaOwB701uAIt2/dR7WnFQoGCVl1/EMqdANBmwUaqqQ45aXprsTGzSa39LI1PyuRBxxw==}
     engines: {node: '>=6.0.0'}
     peerDependencies:
@@ -6560,23 +6576,7 @@ packages:
     dependencies:
       eslint: 7.32.0
       eslint-config-prettier: 8.3.0_eslint@7.32.0
-      prettier: 2.3.2
-      prettier-linter-helpers: 1.0.0
-    dev: false
-
-  /eslint-plugin-prettier/3.4.0_ae3805332b62cec006ed24a9ec35ea79:
-    resolution: {integrity: sha512-UDK6rJT6INSfcOo545jiaOwB701uAIt2/dR7WnFQoGCVl1/EMqdANBmwUaqqQ45aXprsTGzSa39LI1PyuRBxxw==}
-    engines: {node: '>=6.0.0'}
-    peerDependencies:
-      eslint: '>=5.0.0'
-      eslint-config-prettier: '*'
-      prettier: '>=1.13.0'
-    peerDependenciesMeta:
-      eslint-config-prettier:
-        optional: true
-    dependencies:
-      eslint-config-prettier: 8.3.0
-      prettier: 2.3.2
+      prettier: 3.1.1
       prettier-linter-helpers: 1.0.0
     dev: false
 
@@ -6666,7 +6666,7 @@ packages:
       ignore: 4.0.6
       import-fresh: 3.3.0
       imurmurhash: 0.1.4
-      is-glob: 4.0.1
+      is-glob: 4.0.3
       js-yaml: 3.14.1
       json-stable-stringify-without-jsonify: 1.0.1
       levn: 0.4.1
@@ -6978,7 +6978,7 @@ packages:
     dev: false
 
   /fast-levenshtein/2.0.6:
-    resolution: {integrity: sha1-PYpcZog6FqMMqGQ+hR8Zuqd5eRc=}
+    resolution: {integrity: sha512-DCXu6Ifhqcks7TZKY3Hxp3y6qphY5SJZmrWMDrKcERSOXWQdMhU9Ig/PYrzyw/ul9jOIyh0N4M0tbC5hodg8dw==}
     dev: false
 
   /fast-printf/1.6.6:
@@ -7346,7 +7346,7 @@ packages:
     dev: false
 
   /functional-red-black-tree/1.0.1:
-    resolution: {integrity: sha1-GwqzvVU7Kg1jmdKcDj6gslIHgyc=}
+    resolution: {integrity: sha512-dsKNQNdj6xA3T+QlADDA7mOSlX0qiMINjn0cgr+eGHGsbSHzTabcIogz2+p/iqP1Xs6EP/sS2SbqH+brGTbq0g==}
     dev: false
 
   /gauge/2.7.4:
@@ -7448,7 +7448,7 @@ packages:
     resolution: {integrity: sha512-AOIgSQCepiJYwP3ARnGx+5VnTu2HBYdzbGP45eLw1vr3zB3vZLeyed1sC9hnbcOc9/SrMyM5RPQrkGz4aS9Zow==}
     engines: {node: '>= 6'}
     dependencies:
-      is-glob: 4.0.1
+      is-glob: 4.0.3
     dev: false
 
   /glob-to-regexp/0.4.1:
@@ -7908,7 +7908,7 @@ packages:
     dev: false
 
   /imurmurhash/0.1.4:
-    resolution: {integrity: sha1-khi5srkoojixPcT7a21XbyMUU+o=}
+    resolution: {integrity: sha512-JmXMZ6wuvDmLiHEml9ykzqO6lwFbof0GG4IkcGaENdCRDDmMVnny7s5HsIgHCbaq0w2MyPhDqkhTUgS2LU2PHA==}
     engines: {node: '>=0.8.19'}
     dev: false
 
@@ -8139,7 +8139,7 @@ packages:
     dev: false
 
   /is-extglob/2.1.1:
-    resolution: {integrity: sha1-qIwCU1eR8C7TfHahueqXc8gz+MI=}
+    resolution: {integrity: sha512-SbKbANkN603Vi4jEZv49LeVJMn4yGwsbzZworEoyEiutsN3nJYdbO36zfhGJ6QEDpOZIFkDtnq5JRxmvl3jsoQ==}
     engines: {node: '>=0.10.0'}
     dev: false
 
@@ -9169,7 +9169,7 @@ packages:
     dev: false
 
   /json-stable-stringify-without-jsonify/1.0.1:
-    resolution: {integrity: sha1-nbe1lJatPzz+8wp1FC0tkwrXJlE=}
+    resolution: {integrity: sha512-Bdboy+l7tA3OGW6FjyFHWkP5LuByj1Tk33Ljyq0axyzdk9//JSi2u3fP1QSmd1KNwq6VOKYGlAu87CisVir6Pw==}
     dev: false
 
   /json-stringify-safe/5.0.1:
@@ -9506,7 +9506,7 @@ packages:
     dev: false
 
   /lodash.clonedeep/4.5.0:
-    resolution: {integrity: sha1-4j8/nE+Pvd6HJSnBBxhXoIblzO8=}
+    resolution: {integrity: sha512-H5ZhCF25riFd9uB5UCkVKo61m3S/xZk1x4wA6yp/L3RFP6Z/eHH1ymQcGLo7J3GMPfm0V/7m1tryHuGVxpqEBQ==}
     dev: false
 
   /lodash.get/4.4.2:
@@ -9562,7 +9562,7 @@ packages:
     dev: false
 
   /lodash.truncate/4.4.2:
-    resolution: {integrity: sha1-WjUNoLERO4N+z//VgSy+WNbq4ZM=}
+    resolution: {integrity: sha512-jttmRe7bRse52OsWIMDLaXxWqRAmtIUccAQ3garviCqJjafXOfNMO0yMfNpdD6zbGaTU0P5Nz7e7gAT6cKmJRw==}
     dev: false
 
   /lodash.uniq/4.5.0:
@@ -10049,7 +10049,7 @@ packages:
     dev: false
 
   /natural-compare/1.4.0:
-    resolution: {integrity: sha1-Sr6/7tdUHywnrPspvbvRXI1bpPc=}
+    resolution: {integrity: sha512-OWND8ei3VtNC9h7V60qff3SVobHr996CTwgxubgyQYEpg290h9J0buyECNNJexkFm5sOajh5G116RYA1c8ZMSw==}
     dev: false
 
   /needle/2.4.0:
@@ -11411,9 +11411,9 @@ packages:
       fast-diff: 1.2.0
     dev: false
 
-  /prettier/2.3.2:
-    resolution: {integrity: sha512-lnJzDfJ66zkMy58OL5/NY5zp70S7Nz6KqcKkXYzn2tMVrNxvbqaBpg7H3qHaLxCJ5lNMsGuM8+ohS7cZrthdLQ==}
-    engines: {node: '>=10.13.0'}
+  /prettier/3.1.1:
+    resolution: {integrity: sha512-22UbSzg8luF4UuZtzgiUOfcGM8s4tjBv6dJRT7j275NXsy2jb4aJa4NNveul5x4eqlF1wuhuR2RElK71RvmVaw==}
+    engines: {node: '>=14'}
     hasBin: true
     dev: false
 
@@ -12946,7 +12946,7 @@ packages:
     resolution: {integrity: sha512-AuvKTrTfQNYNIctbR1K/YGTR1756GycPsg7b9bdV9Duqur4gv6aKqHXah67Z8ImS7WEz5QVcOtlfW2rZEugt6w==}
     engines: {node: '>=8'}
     dependencies:
-      ansi-regex: 5.0.0
+      ansi-regex: 5.0.1
     dev: false
 
   /strip-bom/3.0.0:
@@ -14697,7 +14697,7 @@ packages:
     dev: false
 
   /yn/2.0.0:
-    resolution: {integrity: sha1-5a2ryKz0CPY4X8dklWhMiOavaJo=}
+    resolution: {integrity: sha512-uTv8J/wiWTgUTg+9vLTi//leUl5vDQS6uii/emeTb2ssY7vl6QWf2fFbIIGjnhjvbdKlU0ed7QPgY1htTC86jQ==}
     engines: {node: '>=4'}
     dev: false
 
@@ -14716,7 +14716,7 @@ packages:
     dev: false
 
   file:projects/chat-backend.tgz_rxjs@6.6.7:
-    resolution: {integrity: sha512-yhuHz78w+sn/vJcsWWOvgQyMa/eW2O+HiSLQ2AiwRiSd1xUCdu+710Ne5fH59JWkpcoIHWU3osKwkOgB1YtUJg==, tarball: file:projects/chat-backend.tgz}
+    resolution: {integrity: sha512-NnWGE2momdjbTwXL6uQlYAZYvvuwgV4FZKwdAjkD/YWNijnum0Sll0rojPgynqEwdSfnviDCbM7Pch1i6D5iCw==, tarball: file:projects/chat-backend.tgz}
     id: file:projects/chat-backend.tgz
     name: '@rush-temp/chat-backend'
     version: 0.0.0
@@ -14742,11 +14742,11 @@ packages:
       '@typescript-eslint/parser': 4.29.2_eslint@7.32.0+typescript@4.3.5
       eslint: 7.32.0
       eslint-config-prettier: 8.3.0_eslint@7.32.0
-      eslint-plugin-prettier: 3.4.0_5a48a349ffec60f5257b5f148f5199c3
+      eslint-plugin-prettier: 3.4.0_7d24d7d0374abde46d26cbcbd0b1b651
       jest: 27.5.1_ts-node@10.2.1
       jsonwebtoken: 8.5.1
       pm2: 5.1.0
-      prettier: 2.3.2
+      prettier: 3.1.1
       redis: 3.1.2
       reflect-metadata: 0.1.13
       rimraf: 3.0.2
