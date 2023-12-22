@@ -1,12 +1,12 @@
 #!/bin/bash
-
-site_name="dsteele.dev"
+DOMAINDEFAULT="dsteele.dev"
+site_name="${1:-$DOMAINDEFAULT}"
 cert_dir="certs"
 
 mkdir ./${cert_dir}
 
 # TODO add check for system type or arg for system
-sh ./configure-hosts-unix.sh
+sh ./configure-hosts-unix.sh $site_name
 
 which -s brew
 if [[ $? != 0 ]]; then
