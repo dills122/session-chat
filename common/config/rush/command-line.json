@@ -57,6 +57,12 @@
       "commandKind": "global",
       "shellCommand": "prettier . --write",
       "summary": "Formats all the repos code"
+    },
+    {
+      "name": "prettier",
+      "commandKind": "global",
+      "shellCommand": "prettier .",
+      "summary": "Formats all the repos code"
     }
   ],
 
