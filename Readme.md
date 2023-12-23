@@ -6,28 +6,37 @@ Chat securely with one or more associates without a worry of it getting out.
 
 ## Getting Started
 
+At the moment this will need `node v18` or greater.
+
 ```bash
+# setup the correct node version
+nvm install lts/hydrogen
+nvm use lts/hydrogen
 # installs all dependencies
 rush install
+# sanity check
+rush test:ci
 ```
 
 ### Setting Up Local Env
 
-Ensure you have `mkcert` installed on your PC, below will be the instructions for windows.
+If your on MacOS then you can get away with just running the `./scripts/setup-certs.sh`.
 
-Open a new `powershell` in `administrator` mode and run `choco install mkcert`.
+For other OS's you'll need to make sure these dependencies are installed first.
+
+Install `mkcert` & `nss` through `choco` for `Windows` or `apt-get` on your linux distro.
+
+**Note `powershell` needs to be run in `administrator` mode.**
+
+MacOS Setup:
 
 ```bash
 # Sets up the SSL certs for local development
-./scripts/setup-certs-windows.ps1
-```
-
-Now you'll need to setup the keys used by the backend for the `JWT` tokens
-
-```bash
-# If first setup, create the keys dir
-mkdir ./apps/chat-backend/keys/
-./scripts/setup-backend-keys.ps1
+./scripts/setup-certs.sh
+# Adds needed rows to the hosts file
+./scripts/configure-hosts-unix.sh
+# Setup Encryption keys for backend
+./scripts/setup-backend-keys.sh
 ```
 
 Now that all the dependencies are setup you can spin up the local docker env.
@@ -38,6 +47,8 @@ rush docker-up:dev
 # start UI project separately
 cd ./apps/chat-frontend/ && rushx start:dev
 ```
+
+## Notes & Misc
 
 ### Upgrading Packages
 
