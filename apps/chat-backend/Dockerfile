@@ -1,15 +1,16 @@
-FROM ghcr.io/dills122/rushjs-base-img:edge
+FROM ghcr.io/dills122/rushjs-base-img:master
 WORKDIR /tmp
-COPY ../../ .
+COPY . .
 
 RUN adduser -S app
 RUN rm -rf ./common/temp \
-    && rush install -p \
-    && rush build --to chat-backend \
-    && mv ./.env ./apps/chat-backend
-RUN npm i -g @nestjs/cli
-RUN chown -R app /tmp/
+  && rush install -o chat-backend -p \
+  && rush build -o chat-backend
+RUN mkdir ./prod \
+  && rush deploy --project chat-backend --target-folder ./prod \
+  && cp ./.env ./prod/apps/chat-backend/
+WORKDIR /tmp/prod/apps/chat-backend
+RUN chown -R app /tmp/prod
 USER app
 
-
-CMD ["npm", "--prefix", "./apps/chat-backend/", "run", "start:dev"]
+CMD ["npm", "run", "start:dev"]
