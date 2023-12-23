@@ -39,7 +39,7 @@ export class ChatRoomComponent implements OnInit, OnDestroy {
     private loginService: LoginService
   ) {}
   ngOnDestroy(): void {
-    this.onDestroyNotifier.next();
+    this.onDestroyNotifier.next(true);
     this.onDestroyNotifier.complete();
   }
   ngOnInit(): void {

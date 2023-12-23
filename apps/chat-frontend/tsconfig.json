@@ -10,11 +10,19 @@
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "importHelpers": true,
-    "target": "es2020",
-    "typeRoots": ["node_modules/@types"],
+    "target": "ES2022",
+    "typeRoots": [
+      "node_modules/@types"
+    ],
     "paths": {
-      "stream": ["./node_modules/readable-stream"]
+      "stream": [
+        "./node_modules/readable-stream"
+      ]
     },
-    "lib": ["es2018", "dom"]
+    "lib": [
+      "es2018",
+      "dom"
+    ],
+    "useDefineForClassFields": false
   }
 }
