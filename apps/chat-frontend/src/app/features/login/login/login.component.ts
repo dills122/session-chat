@@ -10,8 +10,8 @@ import { LoginService } from 'src/app/services/login/login.service';
 })
 export class LoginComponent implements OnInit {
   private uid: string;
-  private sessionHash: string;
-  private sessionId: string;
+  private sessionHash: string | null;
+  private sessionId: string | null;
 
   constructor(
     private loginService: LoginService,
@@ -31,6 +31,10 @@ export class LoginComponent implements OnInit {
   }
 
   login() {
+    if (!this.sessionId || !this.sessionHash) {
+      //TODO maybe have toast error or just redirect
+      return;
+    }
     this.loginService.login({
       roomId: this.sessionId,
       uid: this.uId,

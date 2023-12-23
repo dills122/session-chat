@@ -2,5 +2,9 @@
   "semi": true,
   "trailingComma": "none",
   "singleQuote": true,
-  "printWidth": 110
+  "printWidth": 110,
+  "plugins": [
+    "./common/autoinstallers/lint-staged/node_modules/.pnpm/prettier-plugin-sh@0.13.1_prettier@3.1.1/node_modules/prettier-plugin-sh/lib/index.cjs",
+    "common/autoinstallers/lint-staged/node_modules/.pnpm/prettier-plugin-nginx@1.0.3/node_modules/prettier-plugin-nginx/dist/index.js"
+  ]
 }

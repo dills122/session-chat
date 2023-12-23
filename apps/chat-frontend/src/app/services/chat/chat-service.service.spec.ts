@@ -1,18 +1,18 @@
 import { TestBed } from '@angular/core/testing';
 import { Socket } from 'ngx-socket-io';
 
-import { ChatServiceService, MessageFormat } from './chat-service.service';
+import { ChatServiceService } from './chat-service.service';
 
 describe('ChatServiceService', () => {
   let service: ChatServiceService;
   let socketIO: jasmine.SpyObj<Socket>;
-  const messageMock = {
-    uid: 'UUID',
-    room: 'roomId',
-    token: 'TOKEN',
-    message: 'msg',
-    timestamp: new Date().toISOString()
-  } as MessageFormat;
+  // const messageMock = {
+  //   uid: 'UUID',
+  //   room: 'roomId',
+  //   token: 'TOKEN',
+  //   message: 'msg',
+  //   timestamp: new Date().toISOString()
+  // } as MessageFormat;
 
   beforeEach(() => {
     socketIO = jasmine.createSpyObj('Socket', ['emit', 'fromEvent']);

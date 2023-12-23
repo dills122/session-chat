@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import * as Hasher from 'create-hash';
+import Hasher from 'create-hash';
 
 @Injectable({
   providedIn: 'root'
