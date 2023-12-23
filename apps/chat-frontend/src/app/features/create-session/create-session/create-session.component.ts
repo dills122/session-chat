@@ -38,7 +38,7 @@ export class CreateSessionComponent {
     });
   }
 
-  generateLink($event) {
+  generateLink() {
     if (!this.hasSessionBeenCreated) {
       this.createSession();
     }
