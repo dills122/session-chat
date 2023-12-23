@@ -11,6 +11,7 @@ const subClient = pubClient.duplicate();
 const redisAdapter = createAdapter({ pubClient, subClient });
 
 export class RedisIoAdapter extends IoAdapter {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   createIOServer(port: number, options?: ServerOptions): any {
     const server = super.createIOServer(port, options);
     server.adapter(redisAdapter);

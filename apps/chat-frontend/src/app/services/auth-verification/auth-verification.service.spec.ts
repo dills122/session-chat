@@ -37,13 +37,13 @@ describe('AuthVerificationService', () => {
   });
   it('should return true if token found and not expired', () => {
     sessionStorageSpy.getItem.and.returnValue('value');
-    jwtServiceSpy.isTokenExpired.and.returnValue(false);
+    spyOn(service, 'isExpired').and.returnValue(false);
     const isAuthenticated = service.isAuthenticated();
     expect(isAuthenticated).toBeTrue();
   });
   it('should return false if token found but expired', () => {
     sessionStorageSpy.getItem.and.returnValue('value');
-    jwtServiceSpy.isTokenExpired.and.returnValue(true);
+    spyOn(service, 'isExpired').and.returnValue(true);
     const isAuthenticated = service.isAuthenticated();
     expect(isAuthenticated).toBeFalse();
   });

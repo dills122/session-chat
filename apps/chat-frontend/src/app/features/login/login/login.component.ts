@@ -13,7 +13,11 @@ export class LoginComponent implements OnInit {
   private sessionHash: string;
   private sessionId: string;
 
-  constructor(private loginService: LoginService, private router: Router, private route: ActivatedRoute) {}
+  constructor(
+    private loginService: LoginService,
+    private router: Router,
+    private route: ActivatedRoute
+  ) {}
 
   ngOnInit(): void {
     this.loginService.registerLoginCallback(this.uId);

@@ -1,10 +1,10 @@
 import { Injectable } from '@angular/core';
-import { Router, CanActivate, ActivatedRouteSnapshot } from '@angular/router';
+import { Router, ActivatedRouteSnapshot } from '@angular/router';
 
 @Injectable({
   providedIn: 'root'
 })
-export class LoginSessionGuardService implements CanActivate {
+export class LoginSessionGuardService {
   constructor(public router: Router) {}
 
   canActivate(route: ActivatedRouteSnapshot): boolean {
