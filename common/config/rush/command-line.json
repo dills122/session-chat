@@ -61,7 +61,7 @@
     {
       "name": "prettier",
       "commandKind": "global",
-      "shellCommand": "prettier .",
+      "shellCommand": "prettier . --check",
       "summary": "Formats all the repos code"
     }
   ],

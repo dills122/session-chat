@@ -7,8 +7,7 @@
     "useWorkspaces": true
   },
   "nodeSupportedVersionRange": ">=16",
-  "gitPolicy": {
-  },
+  "gitPolicy": {},
 
   "repository": {
     "url": "https://github.com/dills122/session-chat",
@@ -23,8 +22,7 @@
     "preRushBuild": [],
     "postRushBuild": []
   },
-  "variants": [
-  ],
+  "variants": [],
   "projects": [
     {
       "packageName": "chat-backend",
