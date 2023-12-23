@@ -20,6 +20,7 @@ jobs:
         with:
           node-version: 16
       - run: node common/scripts/install-run-rush.js update
+      - run: node common/scripts/install-run-rush.js update-autoinstaller --name lint-staged
       - run: node common/scripts/install-run-rush.js lint
   prettier_linter_job:
     runs-on: ubuntu-latest
@@ -29,6 +30,7 @@ jobs:
         with:
           node-version: 16
       - run: node common/scripts/install-run-rush.js update
+      - run: node common/scripts/install-run-rush.js update-autoinstaller --name lint-staged
       - run: node common/scripts/install-run-rush.js prettier
   pr_job:
     runs-on: ubuntu-latest
