@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import * as jwt from 'jsonwebtoken';
+import jwt from 'jsonwebtoken';
 import * as fs from 'fs';
 import { join } from 'path';
 import { Logger } from '@nestjs/common';
@@ -7,7 +7,7 @@ import { Logger } from '@nestjs/common';
 export interface TokenInput {
   uid: string;
   room: string;
-  token?: string;
+  token: string;
 }
 @Injectable()
 export class JwtTokenService {
@@ -29,7 +29,7 @@ export class JwtTokenService {
           algorithm: 'ES512'
         },
         (err, token) => {
-          if (err) {
+          if (err || !token) {
             return reject(err);
           }
           return resolve(token);
@@ -49,22 +49,18 @@ export class JwtTokenService {
       if (!this.privateKey) {
         return reject('Unable to load private key');
       }
-      return jwt.verify(
-        tokenData.token,
-        this.privateKey,
-        {
-          algorithms: ['ES512']
-        },
-        (err, decoded: TokenInput) => {
-          if (err) {
-            return reject(err);
-          }
-          if (decoded.room !== tokenData.room || decoded.uid !== decoded.uid) {
-            return reject(Error('decoded data did not match'));
-          }
-          return resolve();
+      const decoded = jwt.verify(tokenData.token, this.privateKey, {
+        algorithms: ['ES512']
+      });
+
+      if (decoded && typeof decoded !== 'string') {
+        const matchingRoom = decoded.room === tokenData.room;
+        const matchingUid = decoded.uid !== decoded.uid;
+        if (!matchingRoom || !matchingUid) {
+          return reject(Error('decoded data did not match'));
         }
-      );
+      }
+      return resolve();
     });
   }
 
