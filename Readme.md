@@ -38,3 +38,10 @@ rush docker-up:dev
 # start UI project separately
 cd ./apps/chat-frontend/ && rushx start:dev
 ```
+
+### Upgrading Packages
+
+```bash
+# check all packages but angular ones
+ncu '/^(?!.*angular).*$/'
+```

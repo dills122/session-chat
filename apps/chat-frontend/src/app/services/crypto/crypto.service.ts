@@ -1,6 +1,5 @@
 import { Injectable } from '@angular/core';
 import * as Hasher from 'create-hash';
-import * as RandomBytes from 'randombytes';
 
 @Injectable({
   providedIn: 'root'
@@ -19,6 +18,6 @@ export class CryptoService {
   }
 
   GenerateRandomString() {
-    return RandomBytes(24).toString('hex');
+    return crypto.randomUUID();
   }
 }

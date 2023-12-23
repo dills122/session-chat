@@ -7,13 +7,20 @@ import * as _ from 'lodash';
   providedIn: 'root'
 })
 export class AuthVerificationService {
-  constructor(private jwtHelper: JwtHelperService, private sessionStorageService: SessionStorageService) {}
+  constructor(
+    private jwtHelper: JwtHelperService,
+    private sessionStorageService: SessionStorageService
+  ) {}
 
   public isAuthenticated(): boolean {
-    const token = this.sessionStorageService.getItem('jwt_token');
+    const token: string = this.sessionStorageService.getItem('jwt_token');
     if (_.isEmpty(token)) {
       return false;
     }
-    return !this.jwtHelper.isTokenExpired(token);
+    return !this.isExpired(token);
+  }
+
+  public isExpired(token: string): boolean {
+    return this.jwtHelper.isTokenExpired(token);
   }
 }
