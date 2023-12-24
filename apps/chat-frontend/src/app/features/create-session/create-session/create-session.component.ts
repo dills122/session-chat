@@ -3,6 +3,7 @@ import { CryptoService } from 'src/app/services/crypto/crypto.service';
 import { LinkGenerationService } from 'src/app/services/link-generation/link-generation.service';
 import { LoginService } from 'src/app/services/login/login.service';
 import { Observable } from 'rxjs';
+import { NbGlobalPhysicalPosition, NbToastrService } from '@nebular/theme';
 @Component({
   selector: 'td-create-session',
   templateUrl: './create-session.component.html',
@@ -15,10 +16,12 @@ export class CreateSessionComponent {
   public hasLinkBeenGenerated = false;
   public hasSessionBeenCreated = false;
   private roomId: string;
+  timeoutId: unknown;
   constructor(
     private linkGenerationService: LinkGenerationService,
     private cryptoService: CryptoService,
-    private loginService: LoginService
+    private loginService: LoginService,
+    private toastrService: NbToastrService
   ) {}
 
   createSession() {
@@ -30,12 +33,20 @@ export class CreateSessionComponent {
     if (!this.hasSessionBeenCreated) {
       // TODO show error notification
     }
-    this.loginService.registerLoginCallback(this.ownersUid);
-    this.loginService.login({
-      uid: this.ownersUid,
-      roomId: this.roomId,
-      hash: this.linkGenerationService.createLinkHash({ uid: this.ownersUid, roomId: this.roomId })
-    });
+    try {
+      this.createTimeoutwarningTimer();
+      this.loginService.registerLoginCallback(this.ownersUid, this.timeoutId);
+      this.loginService.login({
+        uid: this.ownersUid,
+        roomId: this.roomId,
+        hash: this.linkGenerationService.createLinkHash({ uid: this.ownersUid, roomId: this.roomId })
+      });
+    } catch (err) {
+      clearTimeout(this.timeoutId as string);
+      this.toastrService.danger('Issue joining session', 'Login Issue', {
+        position: NbGlobalPhysicalPosition.TOP_RIGHT
+      });
+    }
   }
 
   generateLink() {
@@ -57,5 +68,13 @@ export class CreateSessionComponent {
 
   togleLinkGeneration() {
     this.hasLinkBeenGenerated = !this.hasLinkBeenGenerated;
+  }
+
+  createTimeoutwarningTimer() {
+    this.timeoutId = setTimeout(() => {
+      this.toastrService.warning('Login is taking awhile, try refreshing', 'Timeout', {
+        position: NbGlobalPhysicalPosition.TOP_RIGHT
+      });
+    }, 10000);
   }
 }

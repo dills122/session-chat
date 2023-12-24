@@ -1,0 +1,11 @@
+{
+    "semi": true,
+    "trailingComma": "none",
+    "singleQuote": true,
+    "printWidth": 110,
+    "plugins": [
+      "./node_modules/.pnpm/prettier-plugin-sh@0.13.1_prettier@3.1.1/node_modules/prettier-plugin-sh/lib/index.cjs",
+      "./node_modules/.pnpm/prettier-plugin-nginx@1.0.3/node_modules/prettier-plugin-nginx/dist/index.js"
+    ]
+  }
+  

@@ -25,10 +25,9 @@ export class LoginService {
       hash: payload.hash
     });
     if (!isValid) {
-      // TODO send notification, or alert or something
-      return;
+      return Error('Unable to validate given participant data');
     }
-    this.authService.attemptLogin({
+    return this.authService.attemptLogin({
       room: payload.roomId,
       uid: payload.uid,
       timestamp: new Date().toISOString()
@@ -43,7 +42,7 @@ export class LoginService {
     });
   }
 
-  registerLoginCallback(uid: string) {
+  registerLoginCallback(uid: string, timeoutId?: unknown) {
     if (this.uid) {
       this.uid = uid;
     }
@@ -57,6 +56,9 @@ export class LoginService {
         this.router.navigate(['/chat-room']);
       } else {
         console.log('Not correct response');
+      }
+      if (timeoutId) {
+        clearTimeout(timeoutId as string);
       }
     });
   }
