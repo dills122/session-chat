@@ -1,4 +1,4 @@
-const nodeEnv = process.env.NODE_ENV;
+const nodeEnv = process.env.NODE_ENV || '';
 
 // local env, non-docker
 export const isLocal = (): boolean => {

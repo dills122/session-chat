@@ -1,20 +1,41 @@
 import { IoAdapter } from '@nestjs/platform-socket.io';
-import { RedisClient } from 'redis';
-import { ServerOptions } from 'socket.io';
-import { createAdapter } from 'socket.io-redis';
+import { Server, ServerOptions } from 'socket.io';
+import { createAdapter } from '@socket.io/redis-adapter';
+import { createClient } from 'redis';
 import * as util from '../shared/util';
+
+import { INestApplication } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 
 const host = util.isLocal() ? 'localhost' : 'redis';
 
-const pubClient = new RedisClient({ host, port: 6379 });
-const subClient = pubClient.duplicate();
-const redisAdapter = createAdapter({ pubClient, subClient });
-
 export class RedisIoAdapter extends IoAdapter {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  createIOServer(port: number, options?: ServerOptions): any {
-    const server = super.createIOServer(port, options);
-    server.adapter(redisAdapter);
+  protected redisAdapter;
+
+  constructor(app: INestApplication) {
+    super(app);
+    const configService = app.get(ConfigService);
+    const port: string = configService.get('REDIS_PORT');
+    console.log(port);
+    if (!port || !host) {
+      throw Error('Issue creating the Redis URL');
+    }
+    const pubClient = createClient({
+      url: `redis://${host}:${port}`
+    });
+    const subClient = pubClient.duplicate();
+
+    pubClient.connect(); // <------
+    subClient.connect(); // <------
+
+    this.redisAdapter = createAdapter(pubClient, subClient);
+  }
+
+  createIOServer(port: number, options?: ServerOptions) {
+    const server = super.createIOServer(port, options) as Server;
+
+    server.adapter(this.redisAdapter);
+
     return server;
   }
 }
