@@ -6,7 +6,12 @@ import { AlertController } from './alert/alert.controller';
 import { JwtTokenService } from './services/jwt-token/jwt-token.service';
 
 @Module({
-  imports: [ConfigModule.forRoot()],
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: ['.env', '.env.development']
+    })
+  ],
   controllers: [AlertController],
   providers: [ChatGateway, AlertGateway, JwtTokenService]
 })

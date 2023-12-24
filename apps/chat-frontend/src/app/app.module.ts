@@ -27,7 +27,8 @@ import { JwtModule } from '@auth0/angular-jwt';
 import { SessionStorageService } from './services/session-storage/session-storage.service';
 
 const config: SocketIoConfig = {
-  url: 'https://ws.dsteele.dev/chat',
+  // url: 'https://ws.dsteele.dev/chat',
+  url: 'localhost:3001/chat',
   options: {
     transports: ['websocket'],
     timeout: 15000

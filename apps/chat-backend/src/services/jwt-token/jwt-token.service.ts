@@ -1,20 +1,24 @@
 import { Injectable } from '@nestjs/common';
-import jwt from 'jsonwebtoken';
+import * as jwt from 'jsonwebtoken';
 import * as fs from 'fs';
 import { join } from 'path';
 import { Logger } from '@nestjs/common';
 
-export interface TokenInput {
-  uid: string;
-  room: string;
+export interface TokenValidationInput extends UserDataInput {
   token: string;
 }
+
+export interface UserDataInput {
+  uid: string;
+  room: string;
+}
+
 @Injectable()
 export class JwtTokenService {
   private privateKey: string;
   private logger: Logger = new Logger('JWTTokenService');
 
-  generateClientToken(userData: TokenInput): Promise<string> {
+  generateClientToken(userData: UserDataInput): Promise<string> {
     return new Promise((resolve, reject) => {
       if (!this.privateKey) {
         this.loadPrivateKey();
@@ -38,7 +42,7 @@ export class JwtTokenService {
     });
   }
 
-  validateClientToken(tokenData: TokenInput): Promise<void> {
+  validateClientToken(tokenData: TokenValidationInput): Promise<void> {
     return new Promise((resolve, reject) => {
       if (!tokenData.token) {
         return reject('missing token');
@@ -55,7 +59,7 @@ export class JwtTokenService {
 
       if (decoded && typeof decoded !== 'string') {
         const matchingRoom = decoded.room === tokenData.room;
-        const matchingUid = decoded.uid !== decoded.uid;
+        const matchingUid = decoded.uid === decoded.uid;
         if (!matchingRoom || !matchingUid) {
           return reject(Error('decoded data did not match'));
         }
