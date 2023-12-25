@@ -1,5 +1,6 @@
 import { Injectable } from '@angular/core';
 import { Socket } from 'ngx-socket-io';
+import { EventTypes } from 'src/app/models/event-types';
 
 export interface AuthFormat {
   room: string;
@@ -20,15 +21,15 @@ export class AuthService {
   constructor(private socket: Socket) {}
 
   attemptLogin(payload: AuthFormat) {
-    this.socket.emit('login', payload);
+    this.socket.emit(EventTypes.LOGIN, payload);
   }
   subscribeLogin() {
-    return this.socket.fromEvent<AuthResponseFormat>('login');
+    return this.socket.fromEvent<AuthResponseFormat>(EventTypes.LOGIN);
   }
   attemptLogout(payload: AuthFormat) {
-    this.socket.emit('logout', payload);
+    this.socket.emit(EventTypes.LOGOUT, payload);
   }
   subscribeLogout() {
-    return this.socket.fromEvent<AuthFormat>('logout');
+    return this.socket.fromEvent<AuthFormat>(EventTypes.LOGOUT);
   }
 }

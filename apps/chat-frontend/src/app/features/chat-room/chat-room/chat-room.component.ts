@@ -56,7 +56,7 @@ export class ChatRoomComponent implements OnInit, OnDestroy {
   mapMessageToChatFormat(msg: MessageFormat) {
     return {
       text: msg.message,
-      date: new Date(),
+      date: new Date(msg.timestamp),
       reply: msg.uid === this.username,
       type: 'text',
       user: {

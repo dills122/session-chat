@@ -1,5 +1,6 @@
 import { Injectable } from '@angular/core';
 import { Socket } from 'ngx-socket-io';
+import { EventTypes } from 'src/app/models/event-types';
 
 export interface NotificationMessageFormat {
   type: string;
@@ -14,6 +15,6 @@ export interface NotificationMessageFormat {
 export class NotificationServiceService {
   constructor(private socket: Socket) {}
   subscribeToNotifications() {
-    return this.socket.fromEvent<NotificationMessageFormat>('notification');
+    return this.socket.fromEvent<NotificationMessageFormat>(EventTypes.NOTIFICATION);
   }
 }
