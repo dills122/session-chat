@@ -2,7 +2,7 @@
   "name": "chat-frontend",
   "version": "0.0.1",
   "description": "",
-  "private":true,
+  "private": true,
   "author": "",
   "license": "MIT",
   "scripts": {

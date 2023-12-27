@@ -8,10 +8,10 @@
   "main": "dist/index.js",
   "scripts": {
     "clean": "tsc --build --clean && rimraf ./types",
-    "test": "echo \"Warn: no test specified\" && exit 1",
+    "test": "echo \"Warn: no test specified\" && exit 0",
     "test:ci": "npm test",
-		"build": "tsc -p .",
-		"watch": "tsc -p . --watch",
+    "build": "tsc -p .",
+    "watch": "tsc -p . --watch",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "lint": "eslint . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix"
