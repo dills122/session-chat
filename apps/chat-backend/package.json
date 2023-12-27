@@ -4,7 +4,7 @@
   "description": "",
   "author": "",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "MIT",
   "scripts": {
     "prebuild": "rimraf dist",
     "build": "nest build",
@@ -23,7 +23,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "pm2": "pm2 start processes.json --no-daemon",
     "pm2:dev": "ts-node-dev --respawn --transpile-only ./start.ts",
-    "clean": "tsc --build --clean && rm -rf ./types"
+    "clean": "tsc --build --clean && rimraf ./types"
   },
   "dependencies": {
     "@nestjs/common": "^10.3.0",
@@ -44,7 +44,8 @@
     "rxjs": "^7.8.1",
     "webpack": "^5.0.0",
     "socket.io-adapter": "~2.5.2",
-    "@socket.io/redis-adapter": "~8.2.1"
+    "@socket.io/redis-adapter": "~8.2.1",
+    "shared-sdk": "workspace:*"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.2.1",

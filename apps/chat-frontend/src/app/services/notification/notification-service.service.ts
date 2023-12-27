@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { Socket } from 'ngx-socket-io';
-import { EventTypes } from 'src/app/models/event-types';
+import { EventTypes } from 'shared-sdk';
 
 export interface NotificationMessageFormat {
   type: string;

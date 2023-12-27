@@ -2,7 +2,7 @@ import { SubscribeMessage, WebSocketGateway, OnGatewayInit, WebSocketServer } fr
 
 import { Socket, Server } from 'socket.io';
 import { Logger } from '@nestjs/common';
-import { AuthFormat, MessageFormat } from 'src/shared/types';
+import { AuthFormat, MessageFormat, EventTypes } from 'shared-sdk';
 import {
   JwtTokenService,
   TokenValidationInput,
@@ -24,7 +24,7 @@ export class ChatGateway implements OnGatewayInit {
     this.logger.log('Initialized Gateway');
   }
 
-  @SubscribeMessage('login')
+  @SubscribeMessage(EventTypes.LOGIN)
   async handleLogin(client: Socket, message: AuthFormat): Promise<void> {
     try {
       this.logger.verbose('Recieved Login attempt from client', {
@@ -33,12 +33,13 @@ export class ChatGateway implements OnGatewayInit {
       });
       const token = await this.jwtTokenService.generateClientToken(message as UserDataInput);
       await client.join(message.room);
-      client.emit('login', {
+      client.emit(EventTypes.LOGIN, {
         token,
         uid: message.uid,
-        room: message.room
+        room: message.room,
+        isReAuth: message.isReAuth
       });
-      this.wss.in(message.room).emit('notification', {
+      this.wss.in(message.room).emit(EventTypes.NOTIFICATION, {
         type: 'new-user'
       });
     } catch (err) {
@@ -46,14 +47,14 @@ export class ChatGateway implements OnGatewayInit {
     }
   }
 
-  @SubscribeMessage('logout')
+  @SubscribeMessage(EventTypes.LOGOUT)
   async handleLogout(client: Socket, message: AuthFormat): Promise<void> {
     try {
       this.logger.verbose('Recieved Logout attempt from client', {
         room: message.room,
         uid: message.uid
       });
-      this.wss.in(message.room).emit('notification', {
+      this.wss.in(message.room).emit(EventTypes.NOTIFICATION, {
         type: 'user-left',
         uid: message.uid
       });
@@ -63,7 +64,7 @@ export class ChatGateway implements OnGatewayInit {
     }
   }
 
-  @SubscribeMessage('chatToServer')
+  @SubscribeMessage(EventTypes.SEND)
   async handleMessage(client: Socket, message: MessageFormat): Promise<void> {
     try {
       this.logger.verbose('Recieved Message from client', {
@@ -71,7 +72,7 @@ export class ChatGateway implements OnGatewayInit {
         uid: message.uid
       });
       await this.jwtTokenService.validateClientToken(message as TokenValidationInput);
-      this.wss.in(message.room).emit('chatToClient', message);
+      this.wss.in(message.room).emit(EventTypes.RECEIVE, message);
     } catch (err) {
       this.logger.error(err);
       client.disconnect();

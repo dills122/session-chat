@@ -1,7 +1,8 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { Subject } from 'rxjs';
 import { map, takeUntil, tap } from 'rxjs/operators';
-import { ChatServiceService, MessageFormat } from 'src/app/services/chat/chat-service.service';
+import { MessageFormat } from 'shared-sdk';
+import { ChatServiceService } from 'src/app/services/chat/chat-service.service';
 import { LoginService } from 'src/app/services/login/login.service';
 import { SessionStorageService } from 'src/app/services/session-storage/session-storage.service';
 
@@ -46,11 +47,12 @@ export class ChatRoomComponent implements OnInit, OnDestroy {
     this.username = this.sessionStorageService.getItem('uid');
     this.room = this.sessionStorageService.getItem('room');
     this.token = this.sessionStorageService.getItem('jwt_token');
-    this.messages$.subscribe();
+    this.loginService.registerLoginCallback(this.username);
     this.loginService.reAuth({
       roomId: this.room,
       uid: this.username
     });
+    this.messages$.subscribe();
   }
 
   mapMessageToChatFormat(msg: MessageFormat) {

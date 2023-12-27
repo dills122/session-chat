@@ -1,18 +1,6 @@
 import { Injectable } from '@angular/core';
 import { Socket } from 'ngx-socket-io';
-import { EventTypes } from 'src/app/models/event-types';
-
-export interface AuthFormat {
-  room: string;
-  uid: string;
-  timestamp: string;
-}
-
-export interface AuthResponseFormat {
-  room: string;
-  uid: string;
-  token: string;
-}
+import { EventTypes, AuthFormat, AuthResponseFormat } from 'shared-sdk';
 
 @Injectable({
   providedIn: 'root'

@@ -4,6 +4,7 @@ import { AuthService } from '../auth/auth-service.service';
 import { Router } from '@angular/router';
 import { SessionStorageService } from '../session-storage/session-storage.service';
 import { LinkGenerationService } from '../link-generation/link-generation.service';
+import { UtilService } from '../util/util.service';
 
 @Injectable({
   providedIn: 'root'
@@ -14,7 +15,8 @@ export class LoginService {
     private authService: AuthService,
     private router: Router,
     private sessionStorageService: SessionStorageService,
-    private linkGenerateService: LinkGenerationService
+    private linkGenerateService: LinkGenerationService,
+    private utilService: UtilService
   ) {}
 
   login(payload: ParticipantPayload) {
@@ -38,7 +40,8 @@ export class LoginService {
     this.authService.attemptLogin({
       room: roomId,
       uid: uid,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      isReAuth: true
     });
   }
 
@@ -47,7 +50,11 @@ export class LoginService {
       this.uid = uid;
     }
     this.authService.subscribeLogin().subscribe((resp) => {
+      this.utilService.clearTimeoutIfExists(timeoutId as string);
       if (resp.uid === this.uid) {
+        if (resp.isReAuth) {
+          return;
+        }
         this.setupSessionStorage({
           token: resp.token,
           room: resp.room,
@@ -55,10 +62,10 @@ export class LoginService {
         });
         this.router.navigate(['/chat-room']);
       } else {
-        console.log('Not correct response');
-      }
-      if (timeoutId) {
-        clearTimeout(timeoutId as string);
+        console.warn('Not correct response');
+        if (resp.isReAuth) {
+          this.router.navigate(['/home']);
+        }
       }
     });
   }

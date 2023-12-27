@@ -31,6 +31,10 @@
     {
       "packageName": "chat-frontend",
       "projectFolder": "apps/chat-frontend"
+    },
+    {
+      "packageName": "shared-sdk",
+      "projectFolder": "libs/shared-sdk"
     }
   ]
 }

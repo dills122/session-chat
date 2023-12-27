@@ -2,6 +2,7 @@ import { NgModule } from '@angular/core';
 import { Routes, RouterModule, PreloadAllModules } from '@angular/router';
 import { AuthGuardService as AuthGuard } from './services/auth-guard/auth-guard.service';
 import { LoginSessionGuardService } from './services/login-session-guard/login-session-guard.service';
+import { ChatRoomComponent } from './features/chat-room/chat-room/chat-room.component';
 
 const routes: Routes = [
   {
@@ -12,7 +13,8 @@ const routes: Routes = [
   {
     path: 'chat-room',
     loadChildren: () => import('./features/chat-room/chat-room.module').then((m) => m.ChatRoomModule),
-    canActivate: [AuthGuard]
+    canActivate: [AuthGuard],
+    canDeactivate: [(comp: ChatRoomComponent) => comp.messages.length <= 0] //TODO might want to add more checks
   },
   {
     path: 'login',

@@ -3,6 +3,7 @@ import { Router, ActivatedRoute } from '@angular/router';
 import { NbGlobalPhysicalPosition, NbToastrService } from '@nebular/theme';
 
 import { LoginService } from 'src/app/services/login/login.service';
+import { UtilService } from 'src/app/services/util/util.service';
 
 @Component({
   selector: 'td-login',
@@ -19,7 +20,8 @@ export class LoginComponent implements OnInit {
     private loginService: LoginService,
     private toastrService: NbToastrService,
     private router: Router,
-    private route: ActivatedRoute
+    private route: ActivatedRoute,
+    private utilService: UtilService
   ) {}
 
   ngOnInit(): void {
@@ -47,7 +49,7 @@ export class LoginComponent implements OnInit {
           hash: this.sessionHash
         });
       } catch (err) {
-        clearTimeout(this.timeoutId as string);
+        this.utilService.clearTimeoutIfExists(this.timeoutId as string);
         this.toastrService.danger('Issue verifying participant data', 'Login Issue', {
           position: NbGlobalPhysicalPosition.TOP_RIGHT
         });

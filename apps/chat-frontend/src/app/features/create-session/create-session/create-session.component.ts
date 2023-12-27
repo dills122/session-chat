@@ -4,6 +4,7 @@ import { LinkGenerationService } from 'src/app/services/link-generation/link-gen
 import { LoginService } from 'src/app/services/login/login.service';
 import { Observable } from 'rxjs';
 import { NbGlobalPhysicalPosition, NbToastrService } from '@nebular/theme';
+import { UtilService } from 'src/app/services/util/util.service';
 @Component({
   selector: 'td-create-session',
   templateUrl: './create-session.component.html',
@@ -21,7 +22,8 @@ export class CreateSessionComponent {
     private linkGenerationService: LinkGenerationService,
     private cryptoService: CryptoService,
     private loginService: LoginService,
-    private toastrService: NbToastrService
+    private toastrService: NbToastrService,
+    private utilService: UtilService
   ) {}
 
   createSession() {
@@ -42,7 +44,8 @@ export class CreateSessionComponent {
         hash: this.linkGenerationService.createLinkHash({ uid: this.ownersUid, roomId: this.roomId })
       });
     } catch (err) {
-      clearTimeout(this.timeoutId as string);
+      console.error(err);
+      this.utilService.clearTimeoutIfExists(this.timeoutId as string);
       this.toastrService.danger('Issue joining session', 'Login Issue', {
         position: NbGlobalPhysicalPosition.TOP_RIGHT
       });
@@ -60,6 +63,16 @@ export class CreateSessionComponent {
         roomId: this.roomId
       });
     }
+  }
+
+  canJoinSession() {
+    if (!this.hasLinkBeenGenerated || !this.hasSessionBeenCreated) {
+      return false;
+    }
+    if (!this.ownersUid || this.ownersUid.length <= 0) {
+      return false;
+    }
+    return true;
   }
 
   private generateRoomId() {

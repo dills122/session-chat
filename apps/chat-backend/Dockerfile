@@ -4,8 +4,8 @@ COPY . .
 
 RUN adduser -S app
 RUN rm -rf ./common/temp \
-  && rush install -o chat-backend -p \
-  && rush build -o chat-backend
+  && rush install -t chat-backend -p \
+  && rush build -t chat-backend
 RUN mkdir ./prod \
   && rush deploy --project chat-backend --target-folder ./prod \
   && cp ./.env ./prod/apps/chat-backend/
