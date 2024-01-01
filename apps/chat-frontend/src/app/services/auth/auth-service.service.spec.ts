@@ -2,7 +2,8 @@ import { TestBed } from '@angular/core/testing';
 import { Socket } from 'ngx-socket-io';
 import { of } from 'rxjs';
 
-import { AuthFormat, AuthResponseFormat, AuthService } from './auth-service.service';
+import { AuthService } from './auth-service.service';
+import { AuthFormat, AuthResponseFormat } from 'shared-sdk';
 
 describe('AuthServiceService', () => {
   let service: AuthService;
