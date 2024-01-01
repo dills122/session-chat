@@ -63,6 +63,13 @@
       "commandKind": "global",
       "shellCommand": "prettier . --check",
       "summary": "Formats all the repos code"
+    },
+    {
+      "name": "build",
+      "commandKind": "bulk",
+      "allowWarningsInSuccessfulBuild": true,
+      "summary": "builds all projects",
+      "enableParallelism": true
     }
   ],
 
