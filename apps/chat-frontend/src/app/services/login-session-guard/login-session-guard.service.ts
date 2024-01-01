@@ -9,7 +9,7 @@ export class LoginSessionGuardService {
 
   canActivate(route: ActivatedRouteSnapshot): boolean {
     const { hash, rid } = route.queryParams;
-    if (!(hash || rid)) {
+    if (!hash || !rid) {
       this.router.navigate(['home']);
       return false;
     }

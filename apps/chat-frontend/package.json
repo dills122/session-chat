@@ -1,6 +1,10 @@
 {
   "name": "chat-frontend",
-  "version": "0.0.0",
+  "version": "0.0.1",
+  "description": "",
+  "private": true,
+  "author": "",
+  "license": "MIT",
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
@@ -11,7 +15,6 @@
     "lint": "ng lint",
     "e2e": "ng e2e"
   },
-  "private": true,
   "dependencies": {
     "@angular/animations": "^16.2.12",
     "@angular/cdk": "^16.2.12",
@@ -38,7 +41,8 @@
     "rxjs": "^7.8.1",
     "tslib": "^2.6.2",
     "zone.js": "~0.13.0",
-    "@popperjs/core": "^2.11.8"
+    "@popperjs/core": "^2.11.8",
+    "shared-sdk": "workspace:*"
   },
   "devDependencies": {
     "@angular-devkit/build-angular": "^16.2.11",
@@ -50,7 +54,7 @@
     "@angular/cli": "^16.2.11",
     "@angular/compiler-cli": "^16.2.12",
     "@angular/language-service": "^16.2.12",
-    "@schematics/angular": "^8.0.0",
+    "@schematics/angular": "16.2.10",
     "@types/jasmine": "~5.1.4",
     "@types/jasminewd2": "~2.0.13",
     "@types/lodash": "~4.14.202",

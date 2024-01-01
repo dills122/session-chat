@@ -1,13 +1,6 @@
 import { Injectable } from '@angular/core';
 import { Socket } from 'ngx-socket-io';
-
-export interface MessageFormat {
-  message: string;
-  room: string;
-  uid: string;
-  timestamp: string;
-  token: string;
-}
+import { EventTypes, MessageFormat } from 'shared-sdk';
 
 @Injectable({
   providedIn: 'root'
@@ -15,9 +8,9 @@ export interface MessageFormat {
 export class ChatServiceService {
   constructor(private socket: Socket) {}
   subscribeToMessages() {
-    return this.socket.fromEvent<MessageFormat>('chatToClient');
+    return this.socket.fromEvent<MessageFormat>(EventTypes.RECEIVE);
   }
   sendMessage(message: MessageFormat) {
-    this.socket.emit('chatToServer', message);
+    this.socket.emit(EventTypes.SEND, message);
   }
 }

@@ -84,7 +84,7 @@
                     fullWidth
                     status="primary"
                     (click)="joinSession()"
-                    [disabled]="!(hasLinkBeenGenerated && hasSessionBeenCreated)"
+                    [disabled]="!this.canJoinSession()"
                   >
                     Create & Join Session
                   </button>

@@ -15,9 +15,8 @@ export class RedisIoAdapter extends IoAdapter {
   constructor(app: INestApplication) {
     super(app);
     const configService = app.get(ConfigService);
-    const port: string = configService.get('REDIS_PORT');
-    console.log(port);
-    if (!port || !host) {
+    const port: string = configService.get('REDIS_PORT') || '';
+    if (!port || port.length <= 0 || !host) {
       throw Error('Issue creating the Redis URL');
     }
     const pubClient = createClient({
