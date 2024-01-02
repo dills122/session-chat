@@ -1,7 +1,8 @@
-import { Component, OnDestroy, OnInit } from '@angular/core';
+import { Component, HostListener, OnDestroy, OnInit } from '@angular/core';
 import { Subject } from 'rxjs';
 import { map, takeUntil, tap } from 'rxjs/operators';
 import { MessageFormat } from 'shared-sdk';
+import { CanComponentDeactivate } from 'src/app/guards/can-deactivate.guard';
 import { ChatServiceService } from 'src/app/services/chat/chat-service.service';
 import { LoginService } from 'src/app/services/login/login.service';
 import { SessionStorageService } from 'src/app/services/session-storage/session-storage.service';
@@ -22,7 +23,7 @@ import { SessionStorageService } from 'src/app/services/session-storage/session-
     `
   ]
 })
-export class ChatRoomComponent implements OnInit, OnDestroy {
+export class ChatRoomComponent implements OnInit, OnDestroy, CanComponentDeactivate {
   private onDestroyNotifier = new Subject();
   public messages: any[] = [];
   private token: string;
@@ -38,7 +39,9 @@ export class ChatRoomComponent implements OnInit, OnDestroy {
     private sessionStorageService: SessionStorageService,
     private chatService: ChatServiceService,
     private loginService: LoginService
-  ) {}
+  ) {
+    this.messages = [];
+  }
   ngOnDestroy(): void {
     this.onDestroyNotifier.next(true);
     this.onDestroyNotifier.complete();
@@ -53,6 +56,21 @@ export class ChatRoomComponent implements OnInit, OnDestroy {
       uid: this.username
     });
     this.messages$.subscribe();
+  }
+  @HostListener('window:beforeunload')
+  canDeactivate() {
+    if (this.messages && this.messages.length > 0) {
+      const deactivateSubject = new Subject<boolean>();
+      //TODO implement a Confirm Modal here, probably need to make a generic comp at the point
+      const result = confirm('Are you sure?');
+      if (result) {
+        return deactivateSubject;
+      } else {
+        return true;
+      }
+    } else {
+      return true;
+    }
   }
 
   mapMessageToChatFormat(msg: MessageFormat) {
