@@ -14,6 +14,7 @@ import {
   NbSelectModule,
   NbChatModule
 } from '@nebular/theme';
+import { CanDeactivateGuard } from 'src/app/guards/can-deactivate.guard';
 
 @NgModule({
   declarations: [ChatRoomComponent],
@@ -28,6 +29,7 @@ import {
     NbCheckboxModule,
     NbSelectModule,
     NbChatModule
-  ]
+  ],
+  providers: [CanDeactivateGuard]
 })
 export class ChatRoomModule {}

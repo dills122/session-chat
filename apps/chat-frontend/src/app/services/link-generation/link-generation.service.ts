@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { CryptoService } from '../crypto/crypto.service';
 import { HttpParams } from '@angular/common/http';
-import { Observable, of } from 'rxjs';
+import { Observable, of, throwError } from 'rxjs';
 
 export interface LinkHashPayload {
   uid: string;
@@ -20,8 +20,14 @@ export class LinkGenerationService {
 
   createLinkForSession({ uid, roomId }: LinkHashPayload): Observable<string> {
     // TODO need check to see if link shortner service is running or not
-    const params = new HttpParams().set('hash', this.createLinkHash({ uid, roomId })).set('rid', roomId);
-    return of(`${location.origin}/login?${params.toString()}`);
+    try {
+      const params = new HttpParams().set('hash', this.createLinkHash({ uid, roomId })).set('rid', roomId);
+      return of(`${location.origin}/login?${params.toString()}`);
+    } catch (err) {
+      throw throwError(() => {
+        return new Error('Issue generating participant link');
+      });
+    }
   }
 
   createLinkHash({ uid, roomId }: LinkHashPayload) {

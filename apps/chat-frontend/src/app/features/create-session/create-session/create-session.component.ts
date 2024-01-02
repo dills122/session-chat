@@ -2,7 +2,7 @@ import { Component } from '@angular/core';
 import { CryptoService } from 'src/app/services/crypto/crypto.service';
 import { LinkGenerationService } from 'src/app/services/link-generation/link-generation.service';
 import { LoginService } from 'src/app/services/login/login.service';
-import { Observable } from 'rxjs';
+import { Observable, catchError, of } from 'rxjs';
 import { NbGlobalPhysicalPosition, NbToastrService } from '@nebular/theme';
 import { UtilService } from 'src/app/services/util/util.service';
 @Component({
@@ -58,10 +58,18 @@ export class CreateSessionComponent {
     }
     this.togleLinkGeneration();
     if (this.hasSessionBeenCreated) {
-      this.linkUrl$ = this.linkGenerationService.createLinkForSession({
-        uid: this.participantUid,
-        roomId: this.roomId
-      });
+      this.linkUrl$ = this.linkGenerationService
+        .createLinkForSession({
+          uid: this.participantUid,
+          roomId: this.roomId
+        })
+        .pipe(
+          catchError((err) => {
+            //TODO update with toast after UI lib upgrade
+            console.warn(err);
+            return of();
+          })
+        );
     }
   }
 
