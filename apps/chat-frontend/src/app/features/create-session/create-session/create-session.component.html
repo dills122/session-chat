@@ -83,7 +83,7 @@
                     nbButton
                     fullWidth
                     status="primary"
-                    (click)="joinSession()"
+                    (click)="openConfirmationModal()"
                     [disabled]="!this.canJoinSession()"
                   >
                     Create & Join Session
@@ -94,6 +94,11 @@
           </form>
         </nb-card-body>
       </nb-card>
+      <td-confirm-modal
+        #session_confirmation
+        title="Confirm Session Creation"
+        (confirmEvent)="verifyConfirmModalResult($event)"
+      />
     </div>
   </div>
 </div>

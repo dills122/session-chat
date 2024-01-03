@@ -17,7 +17,7 @@
         "build": {
           "builder": "@angular-devkit/build-angular:browser",
           "options": {
-            "allowedCommonJsDependencies": ["crypto"],
+            "allowedCommonJsDependencies": ["crypto", "lodash", "shared-sdk", "create-hash", "eva-icons"],
             "outputPath": "dist/session-chat",
             "index": "src/index.html",
             "main": "src/main.ts",

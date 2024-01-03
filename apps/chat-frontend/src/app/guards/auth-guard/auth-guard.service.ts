@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { AuthVerificationService } from '../auth-verification/auth-verification.service';
+import { AuthVerificationService } from '../../services/auth-verification/auth-verification.service';
 import { Router } from '@angular/router';
 
 @Injectable({

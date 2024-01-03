@@ -14,6 +14,7 @@ import {
   NbFormFieldModule,
   NbTooltipModule
 } from '@nebular/theme';
+import { CoreModule } from 'src/app/core/core.module';
 
 @NgModule({
   declarations: [CreateSessionComponent],
@@ -27,7 +28,8 @@ import {
     NbListModule,
     NbFormFieldModule,
     FormsModule,
-    NbTooltipModule
+    NbTooltipModule,
+    CoreModule
   ]
 })
 export class CreateSessionModule {}
