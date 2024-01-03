@@ -7,12 +7,8 @@ import {
   NbThemeModule,
   NbLayoutModule,
   NbCardModule,
-  NbInputModule,
   NbButtonModule,
   NbIconModule,
-  NbListModule,
-  NbCheckboxModule,
-  NbSelectModule,
   NbChatModule,
   NbActionsModule,
   NbToastrModule
@@ -26,6 +22,7 @@ import { SocketIoConfig, SocketIoModule } from 'ngx-socket-io';
 
 import { JwtModule } from '@auth0/angular-jwt';
 import { SessionStorageService } from './services/session-storage/session-storage.service';
+import { GlobalModule } from './global/global.module';
 
 const config: SocketIoConfig = {
   // url: 'https://ws.dsteele.dev/chat',
@@ -42,20 +39,19 @@ const config: SocketIoConfig = {
     BrowserModule,
     BrowserAnimationsModule,
     RouterModule.forRoot([], {}),
+    //Global Nebular Theme/Component
     NbThemeModule.forRoot({ name: 'default' }),
     NbLayoutModule,
     NbEvaIconsModule,
     NbCardModule,
-    NbInputModule,
     NbButtonModule,
     NbIconModule,
-    NbListModule,
-    NbCheckboxModule,
-    NbSelectModule,
-    FormsModule,
     NbChatModule,
     NbActionsModule,
     NbToastrModule.forRoot(),
+
+    FormsModule,
+    GlobalModule,
 
     // app
     AppRoutingModule,
