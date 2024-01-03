@@ -1,9 +1,10 @@
-import { Component } from '@angular/core';
+import { Component, ViewChild } from '@angular/core';
+import { NbGlobalPhysicalPosition, NbToastrService } from '@nebular/theme';
+import { Observable, catchError, of } from 'rxjs';
+import { ConfirmModalComponent } from 'src/app/core/confirm-modal/confirm-modal.component';
 import { CryptoService } from 'src/app/services/crypto/crypto.service';
 import { LinkGenerationService } from 'src/app/services/link-generation/link-generation.service';
 import { LoginService } from 'src/app/services/login/login.service';
-import { Observable, catchError, of } from 'rxjs';
-import { NbGlobalPhysicalPosition, NbToastrService } from '@nebular/theme';
 import { UtilService } from 'src/app/services/util/util.service';
 @Component({
   selector: 'td-create-session',
@@ -18,6 +19,7 @@ export class CreateSessionComponent {
   public hasSessionBeenCreated = false;
   private roomId: string;
   timeoutId: unknown;
+  @ViewChild('session_confirmation') private modalComponent: ConfirmModalComponent;
   constructor(
     private linkGenerationService: LinkGenerationService,
     private cryptoService: CryptoService,
@@ -29,6 +31,12 @@ export class CreateSessionComponent {
   createSession() {
     this.generateRoomId();
     this.hasSessionBeenCreated = true;
+  }
+
+  verifyConfirmModalResult(event: boolean) {
+    if (event) {
+      this.joinSession();
+    }
   }
 
   joinSession() {
@@ -50,6 +58,10 @@ export class CreateSessionComponent {
         position: NbGlobalPhysicalPosition.TOP_RIGHT
       });
     }
+  }
+
+  openConfirmationModal() {
+    this.modalComponent.open();
   }
 
   generateLink() {

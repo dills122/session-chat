@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
-import { AuthVerificationService } from '../auth-verification/auth-verification.service';
+import { AuthVerificationService } from '../../services/auth-verification/auth-verification.service';
 
 import { AuthGuardService } from './auth-guard.service';
 

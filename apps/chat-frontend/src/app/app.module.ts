@@ -22,7 +22,7 @@ import { SocketIoConfig, SocketIoModule } from 'ngx-socket-io';
 
 import { JwtModule } from '@auth0/angular-jwt';
 import { SessionStorageService } from './services/session-storage/session-storage.service';
-import { GlobalModule } from './global/global.module';
+import { CoreModule } from './core/core.module';
 
 const config: SocketIoConfig = {
   // url: 'https://ws.dsteele.dev/chat',
@@ -51,7 +51,7 @@ const config: SocketIoConfig = {
     NbToastrModule.forRoot(),
 
     FormsModule,
-    GlobalModule,
+    CoreModule,
 
     // app
     AppRoutingModule,

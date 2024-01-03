@@ -9,4 +9,4 @@ import { ConfirmModalComponent } from './confirm-modal/confirm-modal.component';
   imports: [CommonModule, NbCardModule, NbButtonModule, NbDialogModule.forChild()],
   exports: [GenericModalComponent, ConfirmModalComponent]
 })
-export class GlobalModule {}
+export class CoreModule {}

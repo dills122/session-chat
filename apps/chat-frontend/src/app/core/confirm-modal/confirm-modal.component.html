@@ -1,0 +1,10 @@
+<td-generic-modal
+  #confirm_modal
+  [title]="title"
+  [showConfirm]="showConfirm"
+  [confirmBtnLabel]="confirmBtnLabel"
+  (confirmEvent)="onConfirm($event)"
+>
+  <span #ref><ng-content></ng-content></span>
+  <div *ngIf="!ref.innerHTML.trim()"><p>Are you sure you want to continue?</p></div>
+</td-generic-modal>

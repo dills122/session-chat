@@ -1,10 +1,11 @@
-import { Component, Input, TemplateRef, ViewChild } from '@angular/core';
+import { Component, EventEmitter, Input, Output, TemplateRef, ViewChild } from '@angular/core';
 import { NbDialogRef, NbDialogService } from '@nebular/theme';
 import { ButtonTypes } from 'src/app/models/button-types';
 
 @Component({
   selector: 'td-generic-modal',
-  templateUrl: './generic-modal.component.html'
+  templateUrl: './generic-modal.component.html',
+  styleUrls: ['./generic-modal.component.scss']
 })
 export class GenericModalComponent {
   @Input({ required: true }) title: string;
@@ -12,7 +13,7 @@ export class GenericModalComponent {
   @Input() confirmBtnType: ButtonTypes = ButtonTypes.GENERAL;
   @Input() showConfirm: boolean = false;
   @Input() confirmBtnLabel: string = 'Confirm';
-  @Input() confirmAction: (args?: any) => void; //TODO maybe update args
+  @Output() confirmEvent: EventEmitter<boolean> = new EventEmitter();
   @ViewChild('generic_modal') private modalContent: TemplateRef<GenericModalComponent>;
   private modalRef: NbDialogRef<GenericModalComponent>;
 
@@ -20,7 +21,7 @@ export class GenericModalComponent {
 
   confirmFunc() {
     this.close();
-    this.confirmAction();
+    this.confirmEvent.emit(true);
   }
 
   open() {

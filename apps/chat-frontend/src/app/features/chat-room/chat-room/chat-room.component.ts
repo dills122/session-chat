@@ -17,9 +17,6 @@ import { SessionStorageService } from 'src/app/services/session-storage/session-
         justify-content: center;
         display: flex;
       }
-      nb-chat {
-        width: 500px;
-      }
     `
   ]
 })
