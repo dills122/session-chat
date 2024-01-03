@@ -98,7 +98,12 @@
         #session_confirmation
         title="Confirm Session Creation"
         (confirmEvent)="verifyConfirmModalResult($event)"
-      />
+      >
+        <p class="text-warning-emphasis">Are you sure you want to create the session?</p>
+        <p class="text-body-emphasis">
+          Make sure you have sent the other Participant their link and username <u>before</u> proceeding.
+        </p>
+      </td-confirm-modal>
     </div>
   </div>
 </div>

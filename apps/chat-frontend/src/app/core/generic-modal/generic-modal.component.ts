@@ -4,7 +4,8 @@ import { ButtonTypes } from 'src/app/models/button-types';
 
 @Component({
   selector: 'td-generic-modal',
-  templateUrl: './generic-modal.component.html'
+  templateUrl: './generic-modal.component.html',
+  styleUrls: ['./generic-modal.component.scss']
 })
 export class GenericModalComponent {
   @Input({ required: true }) title: string;

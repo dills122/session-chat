@@ -2,13 +2,15 @@
   <nb-card>
     <nb-card-header>{{ title }}</nb-card-header>
     <nb-card-body>
-      <div *ngIf="bodyData && bodyData.length > 0; then thenBlock; else elseBlock"></div>
-      <ng-template #thenBlock>
-        <p>{{ bodyData }}</p>
-      </ng-template>
-      <ng-template #elseBlock>
-        <ng-content></ng-content>
-      </ng-template>
+      <div class="text-wrap body-container">
+        <div *ngIf="bodyData && bodyData.length > 0; then thenBlock; else elseBlock"></div>
+        <ng-template #thenBlock>
+          <p>{{ bodyData }}</p>
+        </ng-template>
+        <ng-template #elseBlock>
+          <ng-content></ng-content>
+        </ng-template>
+      </div>
     </nb-card-body>
     <nb-card-footer>
       <div class="container">
