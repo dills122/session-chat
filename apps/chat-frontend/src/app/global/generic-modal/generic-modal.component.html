@@ -1,0 +1,28 @@
+<ng-template #generic_modal let-data let-ref="dialogRef">
+  <nb-card>
+    <nb-card-header>{{ title }}</nb-card-header>
+    <nb-card-body>
+      <div *ngIf="bodyData && bodyData.length > 0; then thenBlock; else elseBlock"></div>
+      <ng-template #thenBlock>
+        <p>{{ bodyData }}</p>
+      </ng-template>
+      <ng-template #elseBlock>
+        <ng-content></ng-content>
+      </ng-template>
+    </nb-card-body>
+    <nb-card-footer>
+      <div class="container">
+        <div class="row">
+          <div class="col">
+            <button nbButton outline [status]="confirmBtnType" *ngIf="showConfirm" (click)="confirmFunc()">
+              {{ confirmBtnLabel }}
+            </button>
+          </div>
+          <div class="col">
+            <button nbButton outline (click)="close()">Close Dialog</button>
+          </div>
+        </div>
+      </div>
+    </nb-card-footer>
+  </nb-card>
+</ng-template>
