@@ -32,7 +32,8 @@ export class LoginService {
     return this.authService.attemptLogin({
       room: payload.roomId,
       uid: payload.uid,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      referrer: payload.referrer
     });
   }
 
@@ -41,7 +42,8 @@ export class LoginService {
       room: roomId,
       uid: uid,
       timestamp: new Date().toISOString(),
-      isReAuth: true
+      isReAuth: true,
+      referrer: 're-auth'
     });
   }
 

@@ -49,7 +49,8 @@ export class CreateSessionComponent {
       this.loginService.login({
         uid: this.ownersUid,
         roomId: this.roomId,
-        hash: this.linkGenerationService.createLinkHash({ uid: this.ownersUid, roomId: this.roomId })
+        hash: this.linkGenerationService.createLinkHash({ uid: this.ownersUid, roomId: this.roomId }),
+        referrer: 'creator'
       });
     } catch (err) {
       console.error(err);

@@ -34,6 +34,7 @@
                         <button
                           (click)="generateLink()"
                           name="link-generation"
+                          [disabled]="participantUid?.length <= 0"
                           nbButton
                           nbTooltip="Generate link"
                           nbTooltipIcon="link-outline"
@@ -54,6 +55,11 @@
                             nbInput
                           />
                         </nb-form-field>
+                      </div>
+                      <div class="col-12 mt-1">
+                        <div class="mx-2 fw-bold text-wrap fine-text-warning">
+                          Note: remember to send the other Participant their info above.
+                        </div>
                       </div>
                     </div>
                   </div>

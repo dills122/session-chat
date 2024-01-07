@@ -46,7 +46,8 @@ export class LoginComponent implements OnInit {
         this.loginService.login({
           roomId: this.sessionId,
           uid: this.uId,
-          hash: this.sessionHash
+          hash: this.sessionHash,
+          referrer: this.router.url
         });
       } catch (err) {
         this.utilService.clearTimeoutIfExists(this.timeoutId as string);

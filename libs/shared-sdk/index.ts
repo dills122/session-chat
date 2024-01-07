@@ -3,6 +3,7 @@ export enum EventTypes {
   RECEIVE = 'chatToClient',
   NOTIFICATION = 'notification',
   LOGIN = 'login',
+  FAILEDLOGIN = 'failedLogin',
   LOGOUT = 'logout'
 }
 
@@ -13,7 +14,9 @@ interface AuthBase {
   isReAuth?: boolean;
 }
 
-export interface AuthFormat extends AuthBase {}
+export interface AuthFormat extends AuthBase {
+  referrer: string;
+}
 
 export interface AuthResponseFormat extends AuthBase {
   token: string;
