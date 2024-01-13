@@ -16,5 +16,5 @@ export const redisClientFactory: FactoryProvider<Redis> = {
 
     return redisInstance;
   },
-  inject: []
+  inject: [ConfigService]
 };

@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 
-import { Room } from 'src/interfaces/room';
-import { hashString } from 'src/shared/util';
+import { Room } from '../../interfaces/room';
+import { hashString } from '../../shared/util';
 import { RedisRepository } from './redis.repository';
 
 @Injectable()
