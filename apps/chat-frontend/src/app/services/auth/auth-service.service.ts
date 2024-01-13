@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { Socket } from 'ngx-socket-io';
 import { EventTypes, AuthFormat, AuthResponseFormat } from 'shared-sdk';
+import { Optional } from 'utility-types';
 
 @Injectable({
   providedIn: 'root'
@@ -14,7 +15,7 @@ export class AuthService {
   subscribeLogin() {
     return this.socket.fromEvent<AuthResponseFormat>(EventTypes.LOGIN);
   }
-  attemptLogout(payload: AuthFormat) {
+  attemptLogout(payload: Optional<AuthFormat, 'referrer'>) {
     this.socket.emit(EventTypes.LOGOUT, payload);
   }
   subscribeLogout() {

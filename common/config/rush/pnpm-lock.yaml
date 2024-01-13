@@ -166,6 +166,7 @@ importers:
       ts-node: ~10.9.2
       tslib: ^2.6.2
       typescript: ~5.1.6
+      utility-types: ~3.10.0
       zone.js: ~0.13.0
     dependencies:
       '@angular/animations': 16.2.12_@angular+core@16.2.12
@@ -230,6 +231,7 @@ importers:
       stylelint-scss: 5.3.2_stylelint@15.11.0
       ts-node: 10.9.2_z5xsltvgyairbebq22unqpvn6m
       typescript: 5.1.6
+      utility-types: 3.10.0
 
   ../../libs/shared-sdk:
     specifiers:
