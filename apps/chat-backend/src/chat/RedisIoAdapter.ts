@@ -1,7 +1,7 @@
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { Server, ServerOptions } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
-import { createClient } from 'redis';
+import { Redis } from 'ioredis';
 import * as util from '../shared/util';
 
 import { INestApplication } from '@nestjs/common';
@@ -15,12 +15,13 @@ export class RedisIoAdapter extends IoAdapter {
   constructor(app: INestApplication) {
     super(app);
     const configService = app.get(ConfigService);
-    const port: string = configService.get('REDIS_PORT') || '';
+    const port: string = configService.get('REDIS_IO_PORT') || '';
     if (!port || port.length <= 0 || !host) {
       throw Error('Issue creating the Redis URL');
     }
-    const pubClient = createClient({
-      url: `redis://${host}:${port}`
+    const pubClient = new Redis({
+      host,
+      port: Number(port)
     });
     const subClient = pubClient.duplicate();
 
