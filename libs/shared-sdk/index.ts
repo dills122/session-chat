@@ -2,9 +2,21 @@ export enum EventTypes {
   SEND = 'chatToServer',
   RECEIVE = 'chatToClient',
   NOTIFICATION = 'notification',
+  CREATE_SESSION = 'createSession',
   LOGIN = 'login',
-  FAILEDLOGIN = 'failedLogin',
+  FAILED_LOGIN = 'failedLogin',
   LOGOUT = 'logout'
+}
+
+export enum EventStatuses {
+  SUCCESS = 'success',
+  FAILED = 'failed'
+}
+
+export interface SessionCreation {
+  roomId: string;
+  creatorUId: string;
+  validParticipantLinks: string[];
 }
 
 interface AuthBase {

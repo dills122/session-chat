@@ -1,4 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { SessionCreation } from 'shared-sdk';
+import { RedisService } from 'src/infrastructure/redis/redis.service';
 
 const nonLinkReferrerValues = ['re-auth', 'creator'];
 
@@ -6,15 +8,31 @@ const nonLinkReferrerValues = ['re-auth', 'creator'];
 export class RoomManagementService {
   private logger: Logger = new Logger('RoomManagementService');
 
-  updateParticipantList() {}
+  constructor(private redisService: RedisService) {}
 
-  isLinkExpired(referrer: string): boolean {
+  async createSession(session: SessionCreation) {
+    const { roomId, creatorUId, validParticipantLinks } = session;
+    await this.redisService.setupRoom(roomId, creatorUId);
+    for (const link of validParticipantLinks) {
+      await this.redisService.addParticpantLink(link);
+    }
+  }
+
+  async expireLink(link: string) {
+    await this.redisService.removeParticpantLink(link);
+  }
+
+  async updateParticipantList(roomId: string, uid: string) {
+    await this.redisService.addParticipantToRoom(roomId, uid);
+  }
+
+  async isLinkExpired(referrer: string): Promise<boolean> {
     if (nonLinkReferrerValues.includes(referrer)) {
       this.logger.warn('Non-link sent to isLinkExpired');
       return false;
     } else {
-      //TODO check Redis Chatroom obj if this link has been used yet
-      return false;
+      const linkExists = await this.redisService.checkParticpantLink(referrer);
+      return !!linkExists;
     }
   }
 }

@@ -1,7 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 
-import { RedisRepository } from './redis.repository';
 import { Room } from 'src/interfaces/room';
+import { hashString } from 'src/shared/util';
+import { RedisRepository } from './redis.repository';
 
 @Injectable()
 export class RedisService {
@@ -31,5 +32,24 @@ export class RedisService {
     roomObj.participants.push(participant);
     roomObj.everyoneJoined = true; //TODO update this when more than 2 participants are allowed
     await this.setRoomData(roomObj);
+  }
+
+  async checkParticpantLink(link: string) {
+    const linkHash: string = hashString(link);
+    const linkValue = await this.redisRepository.get(linkHash);
+    if (!linkValue) {
+      return false;
+    }
+    return true;
+  }
+
+  async addParticpantLink(link: string) {
+    const linkHash: string = hashString(link);
+    await this.redisRepository.set(linkHash, 'true');
+  }
+
+  async removeParticpantLink(link: string) {
+    const linkHash: string = hashString(link);
+    await this.redisRepository.delete(linkHash);
   }
 }

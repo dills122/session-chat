@@ -1,7 +1,7 @@
 import { OnGatewayInit, SubscribeMessage, WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
 
 import { Logger } from '@nestjs/common';
-import { AuthFormat, EventTypes, MessageFormat } from 'shared-sdk';
+import { AuthFormat, EventStatuses, EventTypes, MessageFormat, SessionCreation } from 'shared-sdk';
 import { Server, Socket } from 'socket.io';
 import {
   JwtTokenService,
@@ -29,6 +29,23 @@ export class ChatGateway implements OnGatewayInit {
     this.logger.log('Initialized Gateway');
   }
 
+  @SubscribeMessage(EventTypes.CREATE_SESSION)
+  async handleSessionCreation(client: Socket, message: SessionCreation): Promise<void> {
+    try {
+      await this.roomManagementService.createSession(message);
+      client.emit(EventTypes.CREATE_SESSION, {
+        room: message.roomId,
+        status: EventStatuses.SUCCESS
+      });
+    } catch (err) {
+      this.logger.error(err);
+      client.emit(EventTypes.CREATE_SESSION, {
+        room: message.roomId,
+        status: EventStatuses.FAILED
+      });
+    }
+  }
+
   @SubscribeMessage(EventTypes.LOGIN)
   async handleLogin(client: Socket, message: AuthFormat): Promise<void> {
     try {
@@ -39,10 +56,9 @@ export class ChatGateway implements OnGatewayInit {
       });
       const token = await this.jwtTokenService.generateClientToken(message as UserDataInput);
       await client.join(message.room);
-      //TODO need to create obj in Redis for Room to keep track of links used
-      const isLinkExpired = this.roomManagementService.isLinkExpired(referrer);
+      const isLinkExpired = await this.roomManagementService.isLinkExpired(referrer);
       if (isLinkExpired) {
-        client.emit(EventTypes.FAILEDLOGIN, {
+        client.emit(EventTypes.FAILED_LOGIN, {
           uid,
           room
         });
