@@ -3,8 +3,14 @@
   "commands": [{
       "name": "docker-up:dev",
       "commandKind": "global",
-      "shellCommand": "docker compose up -d",
+      "shellCommand": "docker compose -f docker-compose.development.yml up -d",
       "summary": "Starts dev docker env"
+    },
+    {
+      "name": "docker-build:dev",
+      "commandKind": "global",
+      "shellCommand": "docker compose -f docker-compose.development.yml up -d --build",
+      "summary": "Builds from scratch & starts dev docker env"
     },
     {
       "name": "docker-down:dev",

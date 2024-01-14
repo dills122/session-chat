@@ -19,6 +19,11 @@ export interface SessionCreation {
   validParticipantLinks: string[];
 }
 
+export interface StatusResponseBase {
+  roomId: string;
+  status: EventStatuses;
+}
+
 interface AuthBase {
   room: string;
   uid: string;

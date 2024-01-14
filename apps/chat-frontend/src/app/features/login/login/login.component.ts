@@ -33,6 +33,7 @@ export class LoginComponent implements OnInit {
         this.router.navigate(['/home']);
       }
     });
+    //TODO implement guard to check link onLoad or something to see if its expired before even fully navigating to this view
   }
 
   login() {

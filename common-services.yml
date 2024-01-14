@@ -14,13 +14,14 @@ services:
       - '${REDIS_IO_PORT}:${REDIS_IO_PORT}'
     restart: always
   redis-db-base:
-    image: redislabs/rejson
-    hostname: redis-redisjson
+    image: redis/redis-stack-server:latest
+    hostname: redis-db
+    environment:
+      - REDIS_ARGS='--requirepass redis-stack'
+    command: >
+      redis-server /usr/local/etc/redis/redis.conf
+    volumes:
+      - $PWD/.docker/redis/redis-db.conf:/usr/local/etc/redis/redis.conf
     ports:
       - '${REDIS_DB_PORT}:${REDIS_DB_PORT}'
-    command: >
-      redis-server /usr/local/etc/redis/redis.conf 
-      --loadmodule /usr/lib/redis/modules/rejson.so
-    volumes:
-      - $PWD/.docker/redis/redis.conf:/usr/local/etc/redis/redis.conf
     restart: always

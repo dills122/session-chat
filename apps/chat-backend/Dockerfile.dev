@@ -1,0 +1,14 @@
+FROM ghcr.io/dills122/rushjs-base-img:master
+WORKDIR /tmp
+COPY . .
+
+RUN adduser -S app
+RUN rm -rf ./common/temp \
+    && rush install -t chat-backend -p \
+    && rush build -t chat-backend
+RUN cp ./.env ./apps/chat-backend/
+WORKDIR /tmp/apps/chat-backend
+RUN chown -R app /tmp
+USER app
+
+CMD ["npm", "run", "start:dev"]
