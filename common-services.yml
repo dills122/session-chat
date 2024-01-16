@@ -12,12 +12,18 @@ services:
     hostname: redis
     ports:
       - '${REDIS_IO_PORT}:${REDIS_IO_PORT}'
+    command:
+      - /bin/sh
+      - -c
+      - redis-server /usr/local/etc/redis/redis.conf --requirepass "${IO_PASS_STR}"
+    volumes:
+      - $PWD/.docker/redis/redis-io.conf:/usr/local/etc/redis/redis.conf
     restart: always
   redis-db-base:
     image: redis/redis-stack-server:latest
     hostname: redis-db
     environment:
-      - REDIS_ARGS='--requirepass redis-stack'
+      - REDIS_ARGS='--requirepass ${DB_PASS_STR}'
     command: >
       redis-server /usr/local/etc/redis/redis.conf
     volumes:

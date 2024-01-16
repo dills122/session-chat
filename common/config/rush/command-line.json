@@ -13,22 +13,16 @@
       "summary": "Builds from scratch & starts dev docker env"
     },
     {
-      "name": "docker-down:dev",
+      "name": "docker-down",
       "commandKind": "global",
       "shellCommand": "docker compose down",
-      "summary": "Shut down dev docker env"
+      "summary": "Shut down docker env"
     },
     {
       "name": "docker-up:prod",
       "commandKind": "global",
       "shellCommand": "docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d",
       "summary": "Starts prod docker env"
-    },
-    {
-      "name": "docker-down:prod",
-      "commandKind": "global",
-      "shellCommand": "docker compose -f docker-compose.yml -f docker-compose.prod.yml down",
-      "summary": "Shut down prod docker env"
     },
     {
       "commandKind": "bulk",

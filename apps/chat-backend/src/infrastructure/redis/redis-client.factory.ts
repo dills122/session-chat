@@ -4,24 +4,13 @@ import { createClient } from 'redis';
 
 export const redisClientFactory: FactoryProvider = {
   provide: 'RedisClient',
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  useFactory: (_configService: ConfigService) => {
-    // const redisInstance = new Redis({
-    //   port: configService.get<number>('REDIS_DB_PORT'),
-    //   host: configService.get<string>('REDIS_DB_HOST')
-    // });
-    // const redisInstance = new Redis({
-    //   port: 6380,
-    //   host: 'redis-db',
-    //   password: 'redis-stack'
-    // });
-
+  useFactory: (configService: ConfigService) => {
     const redisInstance = createClient({
       socket: {
-        port: 6380,
-        host: 'redis-db'
+        port: configService.get<number>('REDIS_DB_PORT'),
+        host: configService.get<string>('REDIS_DB_HOST')
       },
-      password: 'redis-stack',
+      password: configService.get<string>('DB_PASS_STR'),
       pingInterval: 1000,
       legacyMode: true
     });

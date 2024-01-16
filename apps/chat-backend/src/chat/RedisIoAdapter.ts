@@ -14,14 +14,16 @@ export class RedisIoAdapter extends IoAdapter {
     const configService = this.app.get(ConfigService);
     const port = configService.get<number>('REDIS_IO_PORT');
     const host = configService.get<string>('REDIS_IO_HOST');
+    const password = configService.get<string>('IO_PASS_STR');
     if (!port || !host) {
       throw Error('Issue creating the Redis URL');
     }
     const pubClient = createClient({
       socket: {
-        host: 'redis',
-        port: 6379
+        host,
+        port
       },
+      password,
       pingInterval: 1000,
       legacyMode: true
     });
