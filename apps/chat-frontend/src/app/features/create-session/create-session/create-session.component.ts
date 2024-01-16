@@ -90,7 +90,7 @@ export class CreateSessionComponent implements OnInit {
 
   generateLink() {
     this.togleLinkGeneration();
-    if (this.hasSessionBeenCreated) {
+    if (this.hasRoomIdBeenCreated) {
       this.linkUrl$ = this.linkGenerationService
         .createLinkForSession({
           uid: this.participantUid,
