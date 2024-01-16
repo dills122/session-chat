@@ -57,13 +57,12 @@ export class ChatRoomComponent implements OnInit, OnDestroy, CanComponentDeactiv
   @HostListener('window:beforeunload')
   canDeactivate() {
     if (this.messages && this.messages.length > 0) {
-      const deactivateSubject = new Subject<boolean>();
-      //TODO implement a Confirm Modal here, probably need to make a generic comp at the point
-      const result = confirm('Are you sure?');
+      //TODO need to update confirm comp to be able to have a return
+      const result = confirm('Are you sure you want to leave, you wont be able to come back?');
       if (result) {
-        return deactivateSubject;
-      } else {
         return true;
+      } else {
+        return false;
       }
     } else {
       return true;

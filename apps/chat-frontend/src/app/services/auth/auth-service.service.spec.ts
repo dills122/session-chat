@@ -35,7 +35,8 @@ describe('AuthServiceService', () => {
     service.attemptLogin({
       room: 'ROOM',
       timestamp: new Date().toISOString(),
-      uid: 'UUID'
+      uid: 'UUID',
+      referrer: 'creator'
     });
     expect(socketIO.emit).toHaveBeenCalled();
   });

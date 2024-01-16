@@ -1,0 +1,39 @@
+version: '3.7'
+services:
+  redis:
+    extends:
+      file: common-services.yml
+      service: redis-base
+    networks:
+      - net
+  redis-db:
+    extends:
+      file: common-services.yml
+      service: redis-db-base
+    networks:
+      - net
+  nginx:
+    extends:
+      file: common-services.yml
+      service: nginx-base
+    volumes:
+      - './.docker/nginx/conf.d/dev-api-proxy.conf:/etc/nginx/conf.d/api.conf:ro'
+      - './.docker/nginx/conf.d/dev-ui-proxy.conf:/etc/nginx/conf.d/ui.conf:ro'
+      - './.docker/nginx/conf.d/base.conf:/etc/nginx/conf.d/base.conf:ro'
+    networks:
+      - net
+  chat-backend:
+    build:
+      context: .
+      dockerfile: ./apps/chat-backend/Dockerfile.dev
+    ports:
+      - '${BACKEND_PORT}:${BACKEND_PORT}'
+    networks:
+      - net
+    depends_on:
+      - 'redis'
+      - 'redis-db'
+      - 'nginx'
+networks:
+  net:
+    driver: bridge

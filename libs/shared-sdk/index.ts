@@ -2,8 +2,26 @@ export enum EventTypes {
   SEND = 'chatToServer',
   RECEIVE = 'chatToClient',
   NOTIFICATION = 'notification',
+  CREATE_SESSION = 'createSession',
   LOGIN = 'login',
+  FAILED_LOGIN = 'failedLogin',
   LOGOUT = 'logout'
+}
+
+export enum EventStatuses {
+  SUCCESS = 'success',
+  FAILED = 'failed'
+}
+
+export interface SessionCreation {
+  roomId: string;
+  creatorUId: string;
+  validParticipantLinks: string[];
+}
+
+export interface StatusResponseBase {
+  roomId: string;
+  status: EventStatuses;
 }
 
 interface AuthBase {
@@ -13,7 +31,9 @@ interface AuthBase {
   isReAuth?: boolean;
 }
 
-export interface AuthFormat extends AuthBase {}
+export interface AuthFormat extends AuthBase {
+  referrer: string;
+}
 
 export interface AuthResponseFormat extends AuthBase {
   token: string;
