@@ -29,6 +29,7 @@ export class RedisIoAdapter extends IoAdapter {
     });
 
     pubClient.on('error', function (error) {
+      console.warn('Error REDIS-IO');
       console.error(error);
     });
 

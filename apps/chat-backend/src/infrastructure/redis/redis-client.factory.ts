@@ -17,6 +17,7 @@ export const redisClientFactory: FactoryProvider = {
 
     redisInstance.on('error', (err) => {
       // throw new Error(`Redis connection failed: ${e}`);
+      console.warn('Error REDIS-DB');
       console.error(err);
       throw err;
     });
