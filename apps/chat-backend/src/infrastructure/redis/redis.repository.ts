@@ -1,14 +1,14 @@
 import { Inject, Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { Redis } from 'ioredis';
 import { RedisRepositoryInterface } from './redis.repository.interface';
+import { RedisClientType } from 'redis';
 
 @Injectable()
 export class RedisRepository implements OnModuleInit, OnModuleDestroy, RedisRepositoryInterface {
-  constructor(@Inject('RedisClient') private readonly redisClient: Redis) {}
+  constructor(@Inject('RedisClient') private readonly redisClient: RedisClientType) {}
 
   async onModuleInit() {
-    const redisStatus = this.redisClient.status;
-    if (redisStatus !== 'ready') {
+    const isReady = this.redisClient.isReady;
+    if (!isReady) {
       await this.redisClient.connect();
     }
   }
@@ -18,7 +18,7 @@ export class RedisRepository implements OnModuleInit, OnModuleDestroy, RedisRepo
   }
 
   async get(key: string): Promise<string | null> {
-    return this.redisClient.get(key);
+    return await this.redisClient.get(key);
   }
 
   async set(key: string, value: string): Promise<void> {
@@ -30,6 +30,8 @@ export class RedisRepository implements OnModuleInit, OnModuleDestroy, RedisRepo
   }
 
   async setWithExpiry(key: string, value: string, expiry: number): Promise<void> {
-    await this.redisClient.set(key, value, 'EX', expiry);
+    await this.redisClient.set(key, value, {
+      EX: expiry
+    });
   }
 }

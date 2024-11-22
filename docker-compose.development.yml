@@ -26,6 +26,8 @@ services:
     build:
       context: .
       dockerfile: ./apps/chat-backend/Dockerfile.dev
+    volumes:
+      - ./apps/chat-backend/src:/tmp/apps/chat-backend/src
     ports:
       - '${BACKEND_PORT}:${BACKEND_PORT}'
     networks:

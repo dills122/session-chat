@@ -32,7 +32,7 @@ export class RoomManagementService {
       return false;
     } else {
       const linkExists = await this.redisService.checkParticpantLink(referrer);
-      return !!linkExists;
+      return !linkExists;
     }
   }
 }

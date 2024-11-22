@@ -10,9 +10,7 @@ export const redisClientFactory: FactoryProvider = {
         port: configService.get<number>('REDIS_DB_PORT'),
         host: configService.get<string>('REDIS_DB_HOST')
       },
-      password: configService.get<string>('DB_PASS_STR'),
-      pingInterval: 1000,
-      legacyMode: true
+      password: configService.get<string>('DB_PASS_STR')
     });
 
     redisInstance.on('error', (err) => {
