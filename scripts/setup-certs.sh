@@ -3,17 +3,20 @@ DOMAINDEFAULT="dsteele.dev"
 site_name="${1:-$DOMAINDEFAULT}"
 cert_dir="certs"
 
+echo "Making cert dir if not already existing"
 mkdir ./${cert_dir}
 
+echo "Configuring local hosts"
 # TODO add check for system type or arg for system
-sh ./configure-hosts-unix.sh $site_name
+sh ./scripts/configure-hosts-unix.sh $site_name
 
 if [ "$(uname)" == "Darwin" ]; then
-  sh ./brew-setup.sh
-elif [ "$(expr substr $(uname -s) 1 5)" == "Linux" ]; then
-  # Do something under GNU/Linux platform
-elif [ "$(expr substr $(uname -s) 1 10)" == "MINGW64_NT" ]; then
-  # Do something under 64 bits Windows NT platform
+  echo "Setting up Brew"
+  sh ./scripts/brew-setup.sh
+# elif [ "$(expr substr $(uname -s) 1 5)" == "Linux" ]; then
+#   # Do something under GNU/Linux platform
+# elif [ "$(expr substr $(uname -s) 1 10)" == "MINGW64_NT" ]; then
+#   # Do something under 64 bits Windows NT platform
 fi
 
 # Initialize and create certificates

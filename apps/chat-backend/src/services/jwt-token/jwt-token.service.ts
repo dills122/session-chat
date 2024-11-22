@@ -71,7 +71,7 @@ export class JwtTokenService {
   private loadPrivateKey() {
     try {
       this.privateKey = fs
-        .readFileSync(join(__dirname, '..', '..', '..', '..', 'keys', 'ecdsa-p521-private.pem'))
+        .readFileSync(join(__dirname, '..', '..', '..', 'keys', 'ecdsa-p521-private.pem'))
         .toString('utf-8'); //extra dir out due to dist on build
     } catch (err) {
       this.logger.error(err);
