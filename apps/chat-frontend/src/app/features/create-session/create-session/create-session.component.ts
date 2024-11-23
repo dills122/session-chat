@@ -32,6 +32,7 @@ export class CreateSessionComponent implements OnInit {
     private utilService: UtilService,
     private roomManagementService: RoomManagementService
   ) {}
+
   ngOnInit(): void {
     this.generateRoomId();
     this.roomManagementService.subscribeSessionCreation().subscribe((resp) => {
@@ -64,7 +65,10 @@ export class CreateSessionComponent implements OnInit {
 
   joinSession() {
     if (!this.hasSessionBeenCreated) {
-      // TODO show error notification
+      this.toastrService.danger('Issue joining session', 'Session Issue', {
+        position: NbGlobalPhysicalPosition.TOP_RIGHT
+      });
+      return;
     }
     try {
       this.createTimeoutwarningTimer();

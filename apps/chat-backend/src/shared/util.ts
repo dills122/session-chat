@@ -23,3 +23,8 @@ export const hashString = (str: string): string => {
   const hashStr: string = hash.digest('hex');
   return hashStr;
 };
+
+export const trimOrigin = (url: string): string => {
+  const parsedUrl = new URL(url);
+  return `${parsedUrl.pathname}${parsedUrl.search}${parsedUrl.hash}`;
+};

@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { SessionCreation } from 'shared-sdk';
 import { RedisService } from '../../infrastructure/redis/redis.service';
 
@@ -8,7 +8,10 @@ const nonLinkReferrerValues = ['re-auth', 'creator'];
 export class RoomManagementService {
   @Inject(RedisService)
   private readonly redisService: RedisService;
-  private logger: Logger = new Logger('RoomManagementService');
+
+  isReferrerALink(referrer: string): boolean {
+    return !nonLinkReferrerValues.includes(referrer);
+  }
 
   async createSession(session: SessionCreation) {
     const { roomId, creatorUId, validParticipantLinks } = session;
@@ -18,21 +21,21 @@ export class RoomManagementService {
     }
   }
 
-  async expireLink(link: string) {
-    await this.redisService.removeParticpantLink(link);
+  async expireLink(referrer: string) {
+    if (!this.isReferrerALink(referrer)) return;
+    await this.redisService.removeParticpantLink(referrer);
   }
 
   async updateParticipantList(roomId: string, uid: string) {
     await this.redisService.addParticipantToRoom(roomId, uid);
   }
 
-  async isLinkExpired(referrer: string): Promise<boolean> {
-    if (nonLinkReferrerValues.includes(referrer)) {
-      this.logger.warn('Non-link sent to isLinkExpired');
+  async isParticipantLinkStillValid(referrer: string): Promise<boolean> {
+    if (!this.isReferrerALink(referrer)) {
       return false;
     } else {
-      const linkExists = await this.redisService.checkParticpantLink(referrer);
-      return !linkExists;
+      const isGoodLink = await this.redisService.checkParticpantLink(referrer);
+      return isGoodLink;
     }
   }
 }

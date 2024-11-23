@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 
 import { Room } from '../../interfaces/room';
 import { hashString } from '../../shared/util';
@@ -6,7 +6,6 @@ import { RedisRepository } from './redis.repository';
 
 @Injectable()
 export class RedisService {
-  private logger: Logger = new Logger('RedisService');
   constructor(@Inject(RedisRepository) private readonly redisRepository: RedisRepository) {}
 
   async setupRoom(roomId: string, leadParticipant: string) {
@@ -35,13 +34,10 @@ export class RedisService {
     await this.setRoomData(roomObj);
   }
 
-  //TODO remove testing logs
-  async checkParticpantLink(link: string) {
+  async checkParticpantLink(link: string): Promise<boolean> {
     const linkHash: string = hashString(link);
     const linkValue = await this.redisRepository.get(linkHash);
-    this.logger.warn(`CHECKING LINK: ${linkHash} -- ${linkValue}`);
     if (linkValue == null) {
-      this.logger.log('LINK DOESNT EXIST');
       return false;
     }
     return Boolean(linkValue);

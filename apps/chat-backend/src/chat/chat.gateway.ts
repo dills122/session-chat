@@ -50,29 +50,34 @@ export class ChatGateway implements OnGatewayInit {
   async handleLogin(client: Socket, message: AuthFormat): Promise<void> {
     try {
       const { room, uid, referrer, isReAuth } = message;
+      const isReferrerALink = this.roomManagementService.isReferrerALink(referrer);
       this.logger.verbose('Recieved Login attempt from client', {
         room: room,
         uid: uid
       });
-      const token = await this.jwtTokenService.generateClientToken(message as UserDataInput);
-      await client.join(message.room);
-      const isLinkExpired = await this.roomManagementService.isLinkExpired(referrer);
-      if (isLinkExpired) {
+      const isParticipantLinkValid = await this.roomManagementService.isParticipantLinkStillValid(referrer);
+      if (isReferrerALink && !isParticipantLinkValid) {
         client.emit(EventTypes.FAILED_LOGIN, {
           uid,
           room
         });
-      } else {
-        client.emit(EventTypes.LOGIN, {
-          token,
-          uid: uid,
-          room: room,
-          isReAuth: isReAuth
-        });
-        this.wss.in(room).emit(EventTypes.NOTIFICATION, {
-          type: 'new-user'
-        });
+        return;
       }
+      const token = await this.jwtTokenService.generateClientToken(message as UserDataInput);
+      await client.join(message.room);
+      if (isReferrerALink) {
+        await this.roomManagementService.updateParticipantList(room, uid);
+        await this.roomManagementService.expireLink(referrer);
+      }
+      client.emit(EventTypes.LOGIN, {
+        token,
+        uid: uid,
+        room: room,
+        isReAuth: isReAuth
+      });
+      this.wss.in(room).emit(EventTypes.NOTIFICATION, {
+        type: 'new-user'
+      });
     } catch (err) {
       this.logger.error(err);
     }
