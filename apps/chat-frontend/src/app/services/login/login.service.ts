@@ -32,7 +32,7 @@ export class LoginService {
     return this.authService.attemptLogin({
       room: payload.roomId,
       uid: payload.uid,
-      timestamp: new Date().toISOString(),
+      // timestamp: new Date().toISOString(),
       referrer: payload.referrer
     });
   }
@@ -41,7 +41,7 @@ export class LoginService {
     this.authService.attemptLogin({
       room: roomId,
       uid: uid,
-      timestamp: new Date().toISOString(),
+      // timestamp: new Date().toISOString(),
       isReAuth: true,
       referrer: 're-auth'
     });
@@ -55,6 +55,10 @@ export class LoginService {
       this.utilService.clearTimeoutIfExists(timeoutId as string);
       if (resp.uid === this.uid) {
         if (resp.isReAuth) {
+          return;
+        }
+        if (!resp.token) {
+          console.warn('Not correct response');
           return;
         }
         this.setupSessionStorage({

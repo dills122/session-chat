@@ -1,7 +1,17 @@
 import { OnGatewayInit, SubscribeMessage, WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
 
 import { Logger } from '@nestjs/common';
-import { AuthFormat, EventStatuses, EventTypes, MessageFormat, SessionCreation } from 'shared-sdk';
+import {
+  AuthFormat,
+  AuthResponseFormat,
+  EventStatuses,
+  EventTypes,
+  MessageFormat,
+  NotificationFormat,
+  NotificationTypes,
+  SessionCreation,
+  SessionCreationResponse
+} from 'shared-sdk';
 import { Server, Socket } from 'socket.io';
 import {
   JwtTokenService,
@@ -31,18 +41,17 @@ export class ChatGateway implements OnGatewayInit {
 
   @SubscribeMessage(EventTypes.CREATE_SESSION)
   async handleSessionCreation(client: Socket, message: SessionCreation): Promise<void> {
+    const resp: SessionCreationResponse = {
+      room: message.roomId,
+      status: EventStatuses.SUCCESS
+    };
     try {
       await this.roomManagementService.createSession(message);
-      client.emit(EventTypes.CREATE_SESSION, {
-        room: message.roomId,
-        status: EventStatuses.SUCCESS
-      });
+      client.emit(EventTypes.CREATE_SESSION, resp);
     } catch (err) {
       this.logger.error(err);
-      client.emit(EventTypes.CREATE_SESSION, {
-        room: message.roomId,
-        status: EventStatuses.FAILED
-      });
+      resp.status = EventStatuses.FAILED;
+      client.emit(EventTypes.CREATE_SESSION, resp);
     }
   }
 
@@ -57,10 +66,12 @@ export class ChatGateway implements OnGatewayInit {
       });
       const isParticipantLinkValid = await this.roomManagementService.isParticipantLinkStillValid(referrer);
       if (isReferrerALink && !isParticipantLinkValid) {
-        client.emit(EventTypes.FAILED_LOGIN, {
+        const failedLogin: AuthResponseFormat = {
+          room,
           uid,
-          room
-        });
+          status: EventStatuses.FAILED
+        };
+        client.emit(EventTypes.LOGIN, failedLogin);
         return;
       }
       const token = await this.jwtTokenService.generateClientToken(message as UserDataInput);
@@ -69,15 +80,18 @@ export class ChatGateway implements OnGatewayInit {
         await this.roomManagementService.updateParticipantList(room, uid);
         await this.roomManagementService.expireLink(referrer);
       }
-      client.emit(EventTypes.LOGIN, {
+      const login: AuthResponseFormat = {
         token,
         uid: uid,
         room: room,
-        isReAuth: isReAuth
-      });
-      this.wss.in(room).emit(EventTypes.NOTIFICATION, {
-        type: 'new-user'
-      });
+        isReAuth: isReAuth,
+        status: EventStatuses.SUCCESS
+      };
+      client.emit(EventTypes.LOGIN, login);
+      const notif: NotificationFormat = {
+        type: NotificationTypes.NEW_USER
+      };
+      this.wss.in(room).emit(EventTypes.NOTIFICATION, notif);
     } catch (err) {
       this.logger.error(err);
     }
@@ -90,10 +104,13 @@ export class ChatGateway implements OnGatewayInit {
         room: message.room,
         uid: message.uid
       });
-      this.wss.in(message.room).emit(EventTypes.NOTIFICATION, {
-        type: 'user-left',
-        uid: message.uid
-      });
+      const notif: NotificationFormat = {
+        type: NotificationTypes.USER_LEFT,
+        data: {
+          uid: message.uid
+        }
+      };
+      this.wss.in(message.room).emit(EventTypes.NOTIFICATION, notif);
       await client.leave(message.room);
     } catch (err) {
       this.logger.error(err);
