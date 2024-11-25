@@ -13,6 +13,15 @@ export class RoomManagementService {
     return !nonLinkReferrerValues.includes(referrer);
   }
 
+  async isParticipantAndSessionStillValid(roomId: string, uid: string) {
+    const roomData = await this.redisService.getCurrentSessionByRoomId(roomId);
+    if (!roomData) {
+      return false;
+    }
+    const isParticipantInSession = roomData.participants.includes(uid);
+    return isParticipantInSession;
+  }
+
   async createSession(session: SessionCreation) {
     const { roomId, creatorUId, validParticipantLinks } = session;
     await this.redisService.setupRoom(roomId, creatorUId);

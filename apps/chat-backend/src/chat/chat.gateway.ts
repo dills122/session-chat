@@ -124,6 +124,11 @@ export class ChatGateway implements OnGatewayInit {
         room: message.room,
         uid: message.uid
       });
+      const canSendMessage = await this.roomManagementService.isParticipantAndSessionStillValid(
+        message.room,
+        message.uid
+      );
+      if (!canSendMessage) return;
       await this.jwtTokenService.validateClientToken(message as TokenValidationInput);
       this.wss.in(message.room).emit(EventTypes.RECEIVE, message);
     } catch (err) {

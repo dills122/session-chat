@@ -52,4 +52,12 @@ export class RedisService {
     const linkHash: string = hashString(link);
     await this.redisRepository.delete(linkHash);
   }
+
+  async getCurrentSessionByRoomId(roomId: string): Promise<Room | undefined> {
+    const roomData = await this.redisRepository.get(roomId);
+    if (!roomData) {
+      return undefined;
+    }
+    return JSON.parse(roomData) as Room;
+  }
 }
