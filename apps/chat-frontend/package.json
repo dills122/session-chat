@@ -73,7 +73,7 @@
     "protractor": "~7.0.0",
     "puppeteer": "~21.6.1",
     "stylelint": "15.11",
-    "stylelint-config-prettier": "9.0.3",
+    "stylelint-config-prettier": "9.0.5",
     "stylelint-config-recommended": "13.0.0",
     "stylelint-config-standard-scss": "11.1",
     "stylelint-scss": "5.3.2",
