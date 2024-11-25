@@ -71,7 +71,7 @@
     "karma-jasmine-html-reporter": "^2.1.0",
     "prettier": "~3.1.1",
     "protractor": "~7.0.0",
-    "puppeteer": "~21.6.1",
+    "puppeteer": "~23.9.0",
     "stylelint": "15.11",
     "stylelint-config-prettier": "9.0.3",
     "stylelint-config-recommended": "13.0.0",
