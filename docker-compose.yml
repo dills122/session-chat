@@ -4,6 +4,10 @@ services:
     extends:
       file: common-services.yml
       service: redis-base
+  redis-db:
+    extends:
+      file: common-services.yml
+      service: redis-db-base
   nginx:
     extends:
       file: common-services.yml
@@ -16,4 +20,5 @@ services:
       - '${BACKEND_PORT}:${BACKEND_PORT}'
     depends_on:
       - 'redis'
+      - 'redis-db'
       - 'nginx'

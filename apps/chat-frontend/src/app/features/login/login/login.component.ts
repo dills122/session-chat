@@ -33,6 +33,7 @@ export class LoginComponent implements OnInit {
         this.router.navigate(['/home']);
       }
     });
+    //TODO implement guard to check link onLoad or something to see if its expired before even fully navigating to this view
   }
 
   login() {
@@ -46,7 +47,8 @@ export class LoginComponent implements OnInit {
         this.loginService.login({
           roomId: this.sessionId,
           uid: this.uId,
-          hash: this.sessionHash
+          hash: this.sessionHash,
+          referrer: window.location.href
         });
       } catch (err) {
         this.utilService.clearTimeoutIfExists(this.timeoutId as string);

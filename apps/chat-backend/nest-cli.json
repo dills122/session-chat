@@ -1,7 +1,7 @@
 {
   "collection": "@nestjs/schematics",
   "sourceRoot": "src",
-  "entryFile": "src/main.js",
+  "entryFile": "main.js",
   "compilerOptions": {
     "tsConfigPath": "tsconfig.json"
   }

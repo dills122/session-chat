@@ -11,5 +11,19 @@ services:
     image: redis:alpine
     hostname: redis
     ports:
-      - '${REDIS_PORT}:${REDIS_PORT}'
+      - '${REDIS_IO_PORT}:${REDIS_IO_PORT}'
+    command: >
+      redis-server /usr/local/etc/redis/redis.conf --requirepass "${IO_PASS_STR}"
+    volumes:
+      - $PWD/.docker/redis/redis-io.conf:/usr/local/etc/redis/redis.conf
+    restart: always
+  redis-db-base:
+    image: redis/redis-stack-server:latest
+    hostname: redis-db
+    command: >
+      redis-server /usr/local/etc/redis/redis.conf --requirepass "${DB_PASS_STR}"
+    volumes:
+      - $PWD/.docker/redis/redis-db.conf:/usr/local/etc/redis/redis.conf
+    ports:
+      - '${REDIS_DB_PORT}:${REDIS_DB_PORT}'
     restart: always

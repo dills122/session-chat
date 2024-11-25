@@ -3,16 +3,17 @@ import { Socket } from 'ngx-socket-io';
 import { of } from 'rxjs';
 
 import { AuthService } from './auth-service.service';
-import { AuthFormat, AuthResponseFormat } from 'shared-sdk';
+import { AuthFormat, AuthResponseFormat, EventStatuses } from 'shared-sdk';
 
 describe('AuthServiceService', () => {
   let service: AuthService;
   let socketIO: jasmine.SpyObj<Socket>;
-  const loginReturnMock = {
+  const loginReturnMock: AuthResponseFormat = {
     uid: 'UUID',
     room: 'roomId',
-    token: 'TOKEN'
-  } as AuthResponseFormat;
+    token: 'TOKEN',
+    status: EventStatuses.SUCCESS
+  };
   const logoutReturnMock = loginReturnMock as unknown as AuthFormat;
   beforeEach(() => {
     socketIO = jasmine.createSpyObj('Socket', ['emit', 'fromEvent']);
@@ -34,15 +35,14 @@ describe('AuthServiceService', () => {
   it('should execute happy path for attemptLogin', () => {
     service.attemptLogin({
       room: 'ROOM',
-      timestamp: new Date().toISOString(),
-      uid: 'UUID'
+      uid: 'UUID',
+      referrer: 'creator'
     });
     expect(socketIO.emit).toHaveBeenCalled();
   });
   it('should execute happy path for attemptLogout', () => {
     service.attemptLogout({
       room: 'ROOM',
-      timestamp: new Date().toISOString(),
       uid: 'UUID'
     });
     expect(socketIO.emit).toHaveBeenCalled();

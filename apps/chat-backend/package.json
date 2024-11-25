@@ -36,7 +36,7 @@
     "@socket.io/sticky": "~1.0.4",
     "jsonwebtoken": "~9.0.2",
     "pm2": "^5.3.0",
-    "redis": "~4.6.12",
+    "redis": "4.7.0",
     "reflect-metadata": "^0.1.14",
     "rimraf": "^5.0.5",
     "socket.io": "4.5.1",
@@ -72,7 +72,8 @@
     "ts-node": "~10.9.2",
     "ts-node-dev": "^2.0.0",
     "tsconfig-paths": "^4.2.0",
-    "typescript": "~5.1.6"
+    "typescript": "~5.1.6",
+    "utility-types": "~3.10.0"
   },
   "jest": {
     "moduleFileExtensions": [

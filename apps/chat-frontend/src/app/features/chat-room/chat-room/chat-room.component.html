@@ -1,7 +1,7 @@
 <div class="container">
   <div class="row justify-content-around align-items-center">
     <div class="col-8">
-      <nb-chat [title]="room" size="large">
+      <nb-chat title="Current Chat Session" size="large">
         <nb-chat-message
           *ngFor="let msg of messages"
           [type]="msg.type"

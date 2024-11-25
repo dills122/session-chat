@@ -36,7 +36,7 @@ importers:
       prettier: ^3.1.1
       prettier-plugin-nginx: ^1.0.3
       prettier-plugin-sh: ^0.13.1
-      redis: ~4.6.12
+      redis: 4.7.0
       reflect-metadata: ^0.1.14
       rimraf: ^5.0.5
       rxjs: ^7.8.1
@@ -51,6 +51,7 @@ importers:
       ts-node-dev: ^2.0.0
       tsconfig-paths: ^4.2.0
       typescript: ~5.1.6
+      utility-types: ~3.10.0
       webpack: ^5.0.0
     dependencies:
       '@nestjs/common': 10.3.0_rcbhqa4so6dtcde4mhxkgzk6je
@@ -64,7 +65,7 @@ importers:
       '@socket.io/sticky': 1.0.4
       jsonwebtoken: 9.0.2
       pm2: 5.3.0
-      redis: 4.6.12
+      redis: 4.7.0
       reflect-metadata: 0.1.14
       rimraf: 5.0.5
       rxjs: 7.8.1
@@ -99,6 +100,7 @@ importers:
       ts-node-dev: 2.0.0_z5xsltvgyairbebq22unqpvn6m
       tsconfig-paths: 4.2.0
       typescript: 5.1.6
+      utility-types: 3.10.0
 
   ../../apps/chat-frontend:
     specifiers:
@@ -162,6 +164,7 @@ importers:
       ts-node: ~10.9.2
       tslib: ^2.6.2
       typescript: ~5.1.6
+      utility-types: ~3.10.0
       zone.js: ~0.13.0
     dependencies:
       '@angular/animations': 16.2.12_@angular+core@16.2.12
@@ -226,6 +229,7 @@ importers:
       stylelint-scss: 5.3.2_stylelint@15.11.0
       ts-node: 10.9.2_z5xsltvgyairbebq22unqpvn6m
       typescript: 5.1.6
+      utility-types: 3.10.0
 
   ../../libs/shared-sdk:
     specifiers:
@@ -242,6 +246,7 @@ importers:
       ts-node: ~10.9.2
       tsconfig-paths: ^4.2.0
       typescript: ~5.1.6
+      utility-types: ~3.10.0
     dependencies:
       rimraf: 5.0.5
     devDependencies:
@@ -257,6 +262,7 @@ importers:
       ts-node: 10.9.2_z5xsltvgyairbebq22unqpvn6m
       tsconfig-paths: 4.2.0
       typescript: 5.1.6
+      utility-types: 3.10.0
 
 packages:
 
@@ -3519,48 +3525,48 @@ packages:
       - supports-color
     dev: true
 
-  /@redis/bloom/1.2.0_@redis+client@1.5.13:
+  /@redis/bloom/1.2.0_@redis+client@1.6.0:
     resolution: {integrity: sha512-HG2DFjYKbpNmVXsa0keLHp/3leGJz1mjh09f2RLGGLQZzSHpkmZWuwJbAvo3QcRY8p80m5+ZdXZdYOSBLlp7Cg==}
     peerDependencies:
       '@redis/client': ^1.0.0
     dependencies:
-      '@redis/client': 1.5.13
+      '@redis/client': 1.6.0
 
-  /@redis/client/1.5.13:
-    resolution: {integrity: sha512-epkUM9D0Sdmt93/8Ozk43PNjLi36RZzG+d/T1Gdu5AI8jvghonTeLYV69WVWdilvFo+PYxbP0TZ0saMvr6nscQ==}
+  /@redis/client/1.6.0:
+    resolution: {integrity: sha512-aR0uffYI700OEEH4gYnitAnv3vzVGXCFvYfdpu/CJKvk4pHfLPEy/JSZyrpQ+15WhXe1yJRXLtfQ84s4mEXnPg==}
     engines: {node: '>=14'}
     dependencies:
       cluster-key-slot: 1.1.2
       generic-pool: 3.9.0
       yallist: 4.0.0
 
-  /@redis/graph/1.1.1_@redis+client@1.5.13:
+  /@redis/graph/1.1.1_@redis+client@1.6.0:
     resolution: {integrity: sha512-FEMTcTHZozZciLRl6GiiIB4zGm5z5F3F6a6FZCyrfxdKOhFlGkiAqlexWMBzCi4DcRoyiOsuLfW+cjlGWyExOw==}
     peerDependencies:
       '@redis/client': ^1.0.0
     dependencies:
-      '@redis/client': 1.5.13
+      '@redis/client': 1.6.0
 
-  /@redis/json/1.0.6_@redis+client@1.5.13:
-    resolution: {integrity: sha512-rcZO3bfQbm2zPRpqo82XbW8zg4G/w4W3tI7X8Mqleq9goQjAGLL7q/1n1ZX4dXEAmORVZ4s1+uKLaUOg7LrUhw==}
+  /@redis/json/1.0.7_@redis+client@1.6.0:
+    resolution: {integrity: sha512-6UyXfjVaTBTJtKNG4/9Z8PSpKE6XgSyEb8iwaqDcy+uKrd/DGYHTWkUdnQDyzm727V7p21WUMhsqz5oy65kPcQ==}
     peerDependencies:
       '@redis/client': ^1.0.0
     dependencies:
-      '@redis/client': 1.5.13
+      '@redis/client': 1.6.0
 
-  /@redis/search/1.1.6_@redis+client@1.5.13:
-    resolution: {integrity: sha512-mZXCxbTYKBQ3M2lZnEddwEAks0Kc7nauire8q20oA0oA/LoA+E/b5Y5KZn232ztPb1FkIGqo12vh3Lf+Vw5iTw==}
+  /@redis/search/1.2.0_@redis+client@1.6.0:
+    resolution: {integrity: sha512-tYoDBbtqOVigEDMAcTGsRlMycIIjwMCgD8eR2t0NANeQmgK/lvxNAvYyb6bZDD4frHRhIHkJu2TBRvB0ERkOmw==}
     peerDependencies:
       '@redis/client': ^1.0.0
     dependencies:
-      '@redis/client': 1.5.13
+      '@redis/client': 1.6.0
 
-  /@redis/time-series/1.0.5_@redis+client@1.5.13:
-    resolution: {integrity: sha512-IFjIgTusQym2B5IZJG3XKr5llka7ey84fw/NOYqESP5WUfQs9zz1ww/9+qoz4ka/S6KcGBodzlCeZ5UImKbscg==}
+  /@redis/time-series/1.1.0_@redis+client@1.6.0:
+    resolution: {integrity: sha512-c1Q99M5ljsIuc4YdaCwfUEXsofakb9c8+Zse2qxTadu8TalLXuAESzLvFAvNVbkmSlvlzIQOLpBCmWI9wTOt+g==}
     peerDependencies:
       '@redis/client': ^1.0.0
     dependencies:
-      '@redis/client': 1.5.13
+      '@redis/client': 1.6.0
 
   /@schematics/angular/16.2.10:
     resolution: {integrity: sha512-PXmoswvN7qknTsXDmEvhZ9UG+awwWnQ/1Jd/eqqQx08iAaAT81OsXj1bN7eSs6tEGBKGjPb6q2xzuiECAdymzg==}
@@ -3932,7 +3938,7 @@ packages:
     resolution: {integrity: sha512-bI+gth8La8Wg/QCR1+V1fhrL9+LZUSWfcqpOj2Kc80ZQ4ffbdL173vQd5wovmoV9i071FU9oP2g6etLuEwb6Rg==}
     deprecated: This is a stub types definition. redis provides its own type definitions, so you do not need this installed.
     dependencies:
-      redis: 4.6.12
+      redis: 4.7.0
     dev: true
 
   /@types/retry/0.12.0:
@@ -10921,15 +10927,15 @@ packages:
       redis-parser: 3.0.0
     dev: false
 
-  /redis/4.6.12:
-    resolution: {integrity: sha512-41Xuuko6P4uH4VPe5nE3BqXHB7a9lkFL0J29AlxKaIfD6eWO8VO/5PDF9ad2oS+mswMsfFxaM5DlE3tnXT+P8Q==}
+  /redis/4.7.0:
+    resolution: {integrity: sha512-zvmkHEAdGMn+hMRXuMBtu4Vo5P6rHQjLoHftu+lBqq8ZTA3RCVC/WzD790bkKKiNFp7d5/9PcSD19fJyyRvOdQ==}
     dependencies:
-      '@redis/bloom': 1.2.0_@redis+client@1.5.13
-      '@redis/client': 1.5.13
-      '@redis/graph': 1.1.1_@redis+client@1.5.13
-      '@redis/json': 1.0.6_@redis+client@1.5.13
-      '@redis/search': 1.1.6_@redis+client@1.5.13
-      '@redis/time-series': 1.0.5_@redis+client@1.5.13
+      '@redis/bloom': 1.2.0_@redis+client@1.6.0
+      '@redis/client': 1.6.0
+      '@redis/graph': 1.1.1_@redis+client@1.6.0
+      '@redis/json': 1.0.7_@redis+client@1.6.0
+      '@redis/search': 1.2.0_@redis+client@1.6.0
+      '@redis/time-series': 1.1.0_@redis+client@1.6.0
 
   /reflect-metadata/0.1.14:
     resolution: {integrity: sha512-ZhYeb6nRaXCfhnndflDK8qI6ZQ/YcWZCISRAWICW9XYqMUwjZM9Z0DveWX/ABN01oxSHwVxKQmxeYZSsm0jh5A==}
@@ -12706,6 +12712,11 @@ packages:
 
   /util-deprecate/1.0.2:
     resolution: {integrity: sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw==}
+
+  /utility-types/3.10.0:
+    resolution: {integrity: sha512-O11mqxmi7wMKCo6HKFt5AhO4BwY3VV68YU07tgxfz8zJTIxr4BpsezN49Ffwy9j3ZpwwJp4fkRwjRzq3uWE6Rg==}
+    engines: {node: '>= 4'}
+    dev: true
 
   /utils-merge/1.0.1:
     resolution: {integrity: sha512-pMZTvIkT1d+TFGvDOqodOclx0QWkkgi6Tdoa8gC8ffGAAqz9pzPTZWAybbsHHoED/ztMtkv/VoYTYyShUn81hA==}
