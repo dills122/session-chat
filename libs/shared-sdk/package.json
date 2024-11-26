@@ -17,22 +17,22 @@
     "lint:fix": "eslint . --ext .ts --fix"
   },
   "dependencies": {
-    "rimraf": "^6.0.1"
+    "rimraf": "^5.0.5"
   },
   "devDependencies": {
-    "@types/node": "^22.9.4",
-    "@typescript-eslint/eslint-plugin": "^8.16.0",
-    "@typescript-eslint/parser": "^8.16.0",
-    "eslint": "^9.15.0",
+    "@types/node": "^20.10.5",
+    "@typescript-eslint/eslint-plugin": "^6.15.0",
+    "@typescript-eslint/parser": "^6.15.0",
+    "eslint": "^8.56.0",
     "eslint-config-prettier": "^9.1.0",
-    "eslint-plugin-prettier": "^5.2.1",
-    "prettier": "^3.3.3",
+    "eslint-plugin-prettier": "^5.1.1",
+    "prettier": "^3.1.1",
     "prettier-plugin-nginx": "^1.0.3",
-    "prettier-plugin-sh": "^0.14.0",
+    "prettier-plugin-sh": "^0.13.1",
     "ts-node": "~10.9.2",
     "tsconfig-paths": "^4.2.0",
     "typescript": "~5.1.6",
-    "utility-types": "~3.11.0"
+    "utility-types": "~3.10.0"
   },
   "keywords": []
 }
