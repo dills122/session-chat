@@ -7,7 +7,6 @@ import {
   EventStatuses,
   EventTypes,
   MessageFormat,
-  NotificationFormat,
   NotificationTypes,
   SessionCreation,
   SessionCreationResponse
@@ -18,8 +17,9 @@ import {
   TokenValidationInput,
   UserDataInput
 } from 'src/services/jwt-token/jwt-token.service';
-import { Omit } from 'utility-types';
+import { NotificationService } from 'src/services/notification/notification.service';
 import { RoomManagementService } from 'src/services/room-management/room-management.service';
+import { Omit } from 'utility-types';
 
 @WebSocketGateway(3001, {
   cors: true,
@@ -32,7 +32,8 @@ export class ChatGateway implements OnGatewayInit {
 
   constructor(
     private jwtTokenService: JwtTokenService,
-    private roomManagementService: RoomManagementService
+    private roomManagementService: RoomManagementService,
+    private notificationService: NotificationService
   ) {}
 
   afterInit(): void {
@@ -88,10 +89,13 @@ export class ChatGateway implements OnGatewayInit {
         status: EventStatuses.SUCCESS
       };
       client.emit(EventTypes.LOGIN, login);
-      const notif: NotificationFormat = {
-        type: NotificationTypes.NEW_USER
-      };
-      this.wss.in(room).emit(EventTypes.NOTIFICATION, notif);
+      this.wss.in(room).emit(
+        EventTypes.NOTIFICATION,
+        this.notificationService.buildNotificationMessage({
+          type: NotificationTypes.NEW_USER,
+          room
+        })
+      );
     } catch (err) {
       this.logger.error(err);
     }
@@ -104,13 +108,16 @@ export class ChatGateway implements OnGatewayInit {
         room: message.room,
         uid: message.uid
       });
-      const notif: NotificationFormat = {
-        type: NotificationTypes.USER_LEFT,
-        data: {
-          uid: message.uid
-        }
-      };
-      this.wss.in(message.room).emit(EventTypes.NOTIFICATION, notif);
+      this.wss.in(message.room).emit(
+        EventTypes.NOTIFICATION,
+        this.notificationService.buildNotificationMessage({
+          type: NotificationTypes.USER_LEFT,
+          room: message.room,
+          data: {
+            uid: message.uid
+          }
+        })
+      );
       await client.leave(message.room);
     } catch (err) {
       this.logger.error(err);

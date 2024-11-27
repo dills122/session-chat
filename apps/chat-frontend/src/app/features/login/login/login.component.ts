@@ -1,8 +1,9 @@
 import { Component, OnInit } from '@angular/core';
-import { Router, ActivatedRoute } from '@angular/router';
-import { NbGlobalPhysicalPosition, NbToastrService } from '@nebular/theme';
+import { ActivatedRoute, Router } from '@angular/router';
+import { NotificationTypes } from 'shared-sdk';
 
 import { LoginService } from 'src/app/services/login/login.service';
+import { NotificationServiceService } from 'src/app/services/notification/notification-service.service';
 import { UtilService } from 'src/app/services/util/util.service';
 
 @Component({
@@ -18,7 +19,7 @@ export class LoginComponent implements OnInit {
 
   constructor(
     private loginService: LoginService,
-    private toastrService: NbToastrService,
+    private notificationService: NotificationServiceService,
     private router: Router,
     private route: ActivatedRoute,
     private utilService: UtilService
@@ -38,9 +39,7 @@ export class LoginComponent implements OnInit {
 
   login() {
     if (!this.sessionId || !this.sessionHash) {
-      this.toastrService.danger('Issue gathering required info from link', 'Login Issue', {
-        position: NbGlobalPhysicalPosition.TOP_RIGHT
-      });
+      this.notificationService.showNotification(NotificationTypes.LOGIN_ISSUES);
     } else {
       try {
         this.createTimeoutwarningTimer();
@@ -52,18 +51,14 @@ export class LoginComponent implements OnInit {
         });
       } catch (err) {
         this.utilService.clearTimeoutIfExists(this.timeoutId as string);
-        this.toastrService.danger('Issue verifying participant data', 'Login Issue', {
-          position: NbGlobalPhysicalPosition.TOP_RIGHT
-        });
+        this.notificationService.showNotification(NotificationTypes.LOGIN_ISSUES);
       }
     }
   }
 
   createTimeoutwarningTimer() {
     this.timeoutId = setTimeout(() => {
-      this.toastrService.warning('Login is taking awhile, try refreshing', 'Timeout', {
-        position: NbGlobalPhysicalPosition.TOP_RIGHT
-      });
+      this.notificationService.showNotification(NotificationTypes.LOGIN_TIMEOUT);
     }, 10000);
   }
 

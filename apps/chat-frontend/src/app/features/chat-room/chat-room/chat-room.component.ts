@@ -5,6 +5,7 @@ import { MessageFormat } from 'shared-sdk';
 import { CanComponentDeactivate } from 'src/app/guards/can-deactivate.guard';
 import { ChatServiceService } from 'src/app/services/chat/chat-service.service';
 import { LoginService } from 'src/app/services/login/login.service';
+import { NotificationServiceService as NotificationService } from 'src/app/services/notification/notification-service.service';
 import { SessionStorageService } from 'src/app/services/session-storage/session-storage.service';
 
 @Component({
@@ -35,7 +36,8 @@ export class ChatRoomComponent implements OnInit, OnDestroy, CanComponentDeactiv
   constructor(
     private sessionStorageService: SessionStorageService,
     private chatService: ChatServiceService,
-    private loginService: LoginService
+    private loginService: LoginService,
+    private notificationService: NotificationService
   ) {
     this.messages = [];
   }
@@ -53,7 +55,9 @@ export class ChatRoomComponent implements OnInit, OnDestroy, CanComponentDeactiv
       uid: this.username
     });
     this.messages$.subscribe();
+    this.notificationService.subscribeToNotifications().subscribe();
   }
+
   @HostListener('window:beforeunload')
   canDeactivate() {
     if (this.messages && this.messages.length > 0) {
