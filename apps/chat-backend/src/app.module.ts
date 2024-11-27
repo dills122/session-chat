@@ -6,6 +6,7 @@ import { AlertController } from './alert/alert.controller';
 import { JwtTokenService } from './services/jwt-token/jwt-token.service';
 import { RoomManagementService } from './services/room-management/room-management.service';
 import { RedisModule } from './infrastructure/redis/redis.module';
+import { NotificationService } from './services/notification/notification.service';
 
 @Module({
   imports: [
@@ -16,6 +17,6 @@ import { RedisModule } from './infrastructure/redis/redis.module';
     RedisModule
   ],
   controllers: [AlertController],
-  providers: [ChatGateway, AlertGateway, JwtTokenService, RoomManagementService]
+  providers: [ChatGateway, AlertGateway, JwtTokenService, RoomManagementService, NotificationService]
 })
 export class AppModule {}

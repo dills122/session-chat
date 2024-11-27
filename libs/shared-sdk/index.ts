@@ -15,7 +15,47 @@ export enum EventStatuses {
 
 export enum NotificationTypes {
   USER_LEFT = 'user-left',
-  NEW_USER = 'new-user'
+  NEW_USER = 'new-user',
+  LOGIN_ISSUES = 'login-issues',
+  LOGIN_TIMEOUT = 'login-timeout'
+}
+
+export const NotificationMapping: {
+  [key in NotificationTypes]: {
+    message: string;
+    title?: string;
+    type: 'info' | 'danger' | 'warn';
+  };
+} = {
+  [NotificationTypes.USER_LEFT]: {
+    message: 'A user has left the chat.',
+    title: 'User Left',
+    type: 'info'
+  },
+  [NotificationTypes.NEW_USER]: {
+    message: 'A new user has joined the chat.',
+    title: 'User joined session',
+    type: 'info'
+  },
+  [NotificationTypes.LOGIN_ISSUES]: {
+    message: 'Issue verifying participant data',
+    title: 'Login Issues',
+    type: 'danger'
+  },
+  [NotificationTypes.LOGIN_TIMEOUT]: {
+    message: 'Login is taking awhile, try refreshing',
+    title: 'Login Timeout',
+    type: 'warn'
+  }
+};
+
+export interface NotificationFormat {
+  type: NotificationTypes;
+  room: string;
+  timestamp: string;
+  data?: {
+    [key: string]: string;
+  };
 }
 
 export interface SessionCreation {
@@ -52,11 +92,4 @@ export interface MessageFormat {
   uid: string;
   timestamp: string;
   token: string;
-}
-
-export interface NotificationFormat {
-  type: NotificationTypes;
-  data?: {
-    [key: string]: string;
-  };
 }
