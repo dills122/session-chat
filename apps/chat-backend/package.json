@@ -57,7 +57,7 @@
     "@types/node": "^22.10.0",
     "@types/redis": "~4.0.10",
     "@types/supertest": "^6.0.2",
-    "@typescript-eslint/eslint-plugin": "^6.15.0",
+    "@typescript-eslint/eslint-plugin": "^8.18.0",
     "@typescript-eslint/parser": "^6.15.0",
     "eslint": "^8.56.0",
     "eslint-config-prettier": "^9.1.0",
