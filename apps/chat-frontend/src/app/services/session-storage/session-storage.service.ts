@@ -47,6 +47,18 @@ export class SessionStorageService {
     sessionStorage.removeItem(`${APP_PREFIX}${key}`);
   }
 
+  setupSessionStorage({ room, token, uid }: { room: string; token: string; uid: string }) {
+    this.setItem('room', room);
+    this.setItem('jwt_token', token);
+    this.setItem('uid', uid);
+  }
+
+  clearSessionStorage() {
+    this.removeItem('room');
+    this.removeItem('jwt_token');
+    this.removeItem('uid');
+  }
+
   /** Tests that sessionStorage exists, can be written to, and read from. */
   testSessionStorage() {
     const testValue = 'testValue';

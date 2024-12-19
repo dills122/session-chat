@@ -5,7 +5,7 @@ import { MessageFormat } from 'shared-sdk';
 import { CanComponentDeactivate } from 'src/app/guards/can-deactivate.guard';
 import { ChatServiceService } from 'src/app/services/chat/chat-service.service';
 import { LoginService } from 'src/app/services/login/login.service';
-import { NotificationServiceService as NotificationService } from 'src/app/services/notification/notification-service.service';
+import { NotificationService as NotificationService } from 'src/app/services/notification/notification-service.service';
 import { SessionStorageService } from 'src/app/services/session-storage/session-storage.service';
 
 @Component({
@@ -44,18 +44,23 @@ export class ChatRoomComponent implements OnInit, OnDestroy, CanComponentDeactiv
   ngOnDestroy(): void {
     this.onDestroyNotifier.next(true);
     this.onDestroyNotifier.complete();
+    this.sessionStorageService.clearSessionStorage();
   }
+
   ngOnInit(): void {
     this.username = this.sessionStorageService.getItem('uid');
     this.room = this.sessionStorageService.getItem('room');
     this.token = this.sessionStorageService.getItem('jwt_token');
-    this.loginService.registerLoginCallback(this.username);
-    this.loginService.reAuth({
-      roomId: this.room,
-      uid: this.username
-    });
+    this.loginService
+      .registerLoginCallback(this.username)
+      .pipe(takeUntil(this.onDestroyNotifier))
+      .subscribe();
+    // this.loginService.reAuth({
+    //   roomId: this.room,
+    //   uid: this.username
+    // });
     this.messages$.subscribe();
-    this.notificationService.subscribeToNotifications().subscribe();
+    this.notificationService.subscribeToNotifications().pipe(takeUntil(this.onDestroyNotifier)).subscribe();
   }
 
   @HostListener('window:beforeunload')

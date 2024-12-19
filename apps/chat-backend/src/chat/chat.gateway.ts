@@ -63,7 +63,8 @@ export class ChatGateway implements OnGatewayInit {
       const isReferrerALink = this.roomManagementService.isReferrerALink(referrer);
       this.logger.verbose('Recieved Login attempt from client', {
         room: room,
-        uid: uid
+        uid: uid,
+        isReAuth
       });
       const isParticipantLinkValid = await this.roomManagementService.isParticipantLinkStillValid(referrer);
       if (isReferrerALink && !isParticipantLinkValid) {
@@ -73,6 +74,7 @@ export class ChatGateway implements OnGatewayInit {
           status: EventStatuses.FAILED
         };
         client.emit(EventTypes.LOGIN, failedLogin);
+
         return;
       }
       const token = await this.jwtTokenService.generateClientToken(message as UserDataInput);
@@ -89,6 +91,7 @@ export class ChatGateway implements OnGatewayInit {
         status: EventStatuses.SUCCESS
       };
       client.emit(EventTypes.LOGIN, login);
+      if (isReAuth) return;
       this.wss.in(room).emit(
         EventTypes.NOTIFICATION,
         this.notificationService.buildNotificationMessage({

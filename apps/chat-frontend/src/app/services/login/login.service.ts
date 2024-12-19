@@ -1,9 +1,10 @@
 import { Injectable } from '@angular/core';
+import { Router } from '@angular/router';
+import { tap } from 'rxjs';
 import { ParticipantPayload } from 'src/app/models/participant-payload';
 import { AuthService } from '../auth/auth-service.service';
-import { Router } from '@angular/router';
-import { SessionStorageService } from '../session-storage/session-storage.service';
 import { LinkGenerationService } from '../link-generation/link-generation.service';
+import { SessionStorageService } from '../session-storage/session-storage.service';
 import { UtilService } from '../util/util.service';
 
 @Injectable({
@@ -20,6 +21,7 @@ export class LoginService {
   ) {}
 
   login(payload: ParticipantPayload) {
+    console.log('Attempting Login on Client:');
     this.uid = payload.uid;
     const isValid = this.linkGenerateService.verifyHash({
       uid: payload.uid,
@@ -47,38 +49,38 @@ export class LoginService {
     });
   }
 
+  cleanUpSession() {
+    return this.sessionStorageService.clearSessionStorage();
+  }
+
   registerLoginCallback(uid: string, timeoutId?: unknown) {
     if (this.uid) {
       this.uid = uid;
     }
-    this.authService.subscribeLogin().subscribe((resp) => {
-      this.utilService.clearTimeoutIfExists(timeoutId as string);
-      if (resp.uid === this.uid) {
-        if (resp.isReAuth) {
-          return;
-        }
-        if (!resp.token) {
+    return this.authService.subscribeLogin().pipe(
+      tap((resp) => {
+        this.utilService.clearTimeoutIfExists(timeoutId as string);
+        if (resp.uid === this.uid) {
+          if (resp.isReAuth) {
+            return;
+          }
+          if (!resp.token) {
+            console.warn('Not correct response');
+            return;
+          }
+          this.sessionStorageService.setupSessionStorage({
+            token: resp.token,
+            room: resp.room,
+            uid: this.uid
+          });
+          this.router.navigate(['/chat-room']);
+        } else {
           console.warn('Not correct response');
-          return;
+          if (resp.isReAuth) {
+            this.router.navigate(['/home']);
+          }
         }
-        this.setupSessionStorage({
-          token: resp.token,
-          room: resp.room,
-          uid: this.uid
-        });
-        this.router.navigate(['/chat-room']);
-      } else {
-        console.warn('Not correct response');
-        if (resp.isReAuth) {
-          this.router.navigate(['/home']);
-        }
-      }
-    });
-  }
-
-  private setupSessionStorage({ room, token, uid }: { room: string; token: string; uid: string }) {
-    this.sessionStorageService.setItem('room', room);
-    this.sessionStorageService.setItem('jwt_token', token);
-    this.sessionStorageService.setItem('uid', uid);
+      })
+    );
   }
 }

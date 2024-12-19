@@ -4,10 +4,10 @@ import { Socket } from 'ngx-socket-io';
 import { NbToastrService } from '@nebular/theme';
 import { of } from 'rxjs';
 import { NotificationFormat, NotificationTypes } from 'shared-sdk';
-import { NotificationServiceService } from './notification-service.service';
+import { NotificationService } from './notification-service.service';
 
 describe('NotificationServiceService', () => {
-  let service: NotificationServiceService;
+  let service: NotificationService;
   let socketIOMock: jasmine.SpyObj<Socket>;
   let NbToastrMock: jasmine.SpyObj<NbToastrService>;
 
@@ -26,7 +26,7 @@ describe('NotificationServiceService', () => {
         }
       ]
     });
-    service = TestBed.inject(NotificationServiceService);
+    service = TestBed.inject(NotificationService);
   });
 
   it('should be created', () => {

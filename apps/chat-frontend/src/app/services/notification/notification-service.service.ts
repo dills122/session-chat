@@ -7,7 +7,7 @@ import { EventTypes, NotificationFormat, NotificationMapping, NotificationTypes 
 @Injectable({
   providedIn: 'root'
 })
-export class NotificationServiceService {
+export class NotificationService {
   constructor(
     private socket: Socket,
     private toastrService: NbToastrService
