@@ -1,15 +1,18 @@
 <nb-layout>
   <nb-layout-header>
-    <!-- <button nbButton (click)="toggleTheme()">Toggle Theme</button> -->
-    <p class="m-0 text-lg font-semibold leading-none">Session Chat</p>
-    <nb-actions size="medium">
-      <nb-action icon="home-outline" routerLink="/home" title="Home">Home</nb-action>
-      <nb-action icon="paper-plane-outline" routerLink="/create-session" title="Create Session"></nb-action>
-    </nb-actions>
+    <div class="flex h-full items-center justify-between gap-6 px-6">
+      <div class="flex min-w-0 items-center gap-3">
+        <p class="m-0 whitespace-nowrap text-lg font-semibold leading-none">Session Chat</p>
+      </div>
+      <nb-actions size="medium" class="shrink-0">
+        <nb-action icon="home-outline" routerLink="/home" title="Home"></nb-action>
+        <nb-action icon="paper-plane-outline" routerLink="/create-session" title="Create Session"></nb-action>
+      </nb-actions>
+    </div>
   </nb-layout-header>
 
   <nb-layout-column>
-    <div class="mx-auto w-full max-w-6xl px-4 sm:px-6">
+    <div class="mx-auto w-full max-w-5xl px-4 sm:px-6">
       <router-outlet></router-outlet>
     </div>
   </nb-layout-column>

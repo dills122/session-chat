@@ -1,30 +1,36 @@
-<div class="mx-auto grid max-w-3xl gap-6 py-10">
-  <div class="mt-4 text-center">
-    <h3>Welcome to Session Chat!</h3>
+<div class="mx-auto grid max-w-4xl gap-5 py-8 sm:py-10">
+  <div class="space-y-3 pt-2 text-center">
+    <h1 class="text-4xl font-semibold tracking-tight text-slate-900">Welcome to Session Chat!</h1>
+    <p class="mx-auto max-w-2xl text-base leading-7 text-slate-600">
+      Private, short-lived rooms for conversations that should stay in your control.
+    </p>
   </div>
-  <div>
-    <nb-card>
-      <nb-card-body>
-        <p class="text-lg leading-8">
+
+  <nb-card>
+    <nb-card-body>
+      <div class="mx-auto max-w-3xl">
+        <p class="text-base leading-8 text-slate-700">
           If you're looking for a secure & easy way to chat with a number of invdividuals for... well we're not
           asking questions, then look no further. Create a secure session in seconds. If you're really dealing
           with some serious stuff, a self hosting option is available also.
         </p>
-      </nb-card-body>
-    </nb-card>
-  </div>
-  <div>
-    <nb-card>
-      <nb-card-body>
-        <div class="grid gap-8">
-          <div>
-            <h5>Get started today</h5>
-          </div>
-          <div class="text-center">
-            <button nbButton status="info" size="giant" routerLink="/create-session">Create Session</button>
-          </div>
+      </div>
+    </nb-card-body>
+  </nb-card>
+
+  <nb-card>
+    <nb-card-body>
+      <div class="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+        <div class="space-y-2">
+          <h5 class="m-0 text-3xl font-semibold text-slate-900">Get started today</h5>
+          <p class="m-0 max-w-xl text-sm leading-6 text-slate-600">
+            Create a room, generate a participant link, and bring the other side in when you are ready.
+          </p>
         </div>
-      </nb-card-body>
-    </nb-card>
-  </div>
+        <div class="sm:shrink-0">
+          <button nbButton status="info" size="giant" routerLink="/create-session">Create Session</button>
+        </div>
+      </div>
+    </nb-card-body>
+  </nb-card>
 </div>

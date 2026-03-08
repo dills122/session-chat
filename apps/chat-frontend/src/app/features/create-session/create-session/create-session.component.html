@@ -1,15 +1,18 @@
-<div class="flex min-h-[calc(100vh-12rem)] items-center justify-center py-10">
-  <div class="w-full max-w-3xl">
+<div class="mx-auto flex min-h-[calc(100vh-12rem)] max-w-4xl items-start justify-center py-8 sm:py-10">
+  <div class="w-full">
     <nb-card>
       <nb-card-header>
-        <h3>Create Session</h3>
+        <div class="space-y-1">
+          <h3 class="m-0">Create Session</h3>
+          <p class="m-0 text-sm text-slate-500">Set the participant identity, generate a one-time join link, then enter your own ID.</p>
+        </div>
       </nb-card-header>
       <nb-card-body>
         <form>
-          <div class="mx-auto grid max-w-xl gap-6 pb-4">
-            <div class="grid gap-3">
+          <div class="mx-auto grid max-w-2xl gap-8 pb-2">
+            <div class="grid gap-4 rounded-2xl border border-slate-200/80 p-5">
               <div>
-                <h6>Add Participant</h6>
+                <h6 class="m-0">Add Participant</h6>
               </div>
               <div class="grid grid-cols-[1fr_auto] gap-3">
                 <div>
@@ -39,20 +42,21 @@
                   </button>
                 </div>
               </div>
-              <div class="grid gap-1 pt-3" *ngIf="linkUrl$ | async as generatedLink">
+              <div class="grid gap-2 pt-1" *ngIf="linkUrl$ | async as generatedLink">
                 <div>
                   <nb-form-field>
                     <input #generated_link fullWidth name="participantLink" type="text" [value]="generatedLink" nbInput />
                   </nb-form-field>
                 </div>
-                <div class="mx-2 break-words text-xs font-bold text-amber-700">
+                <div class="break-words text-xs font-semibold leading-5 text-amber-700">
                   Note: remember to send the other Participant their info above.
                 </div>
               </div>
             </div>
-            <div class="grid gap-3">
+
+            <div class="grid gap-4 rounded-2xl border border-slate-200/80 p-5">
               <div>
-                <h6>Create Unique ID</h6>
+                <h6 class="m-0">Create Unique ID</h6>
               </div>
               <div>
                 <nb-form-field>
@@ -68,7 +72,8 @@
                 </nb-form-field>
               </div>
             </div>
-            <div>
+
+            <div class="pt-1">
               <button
                 nbButton
                 fullWidth
@@ -89,7 +94,7 @@
       (confirmEvent)="verifyConfirmModalResult($event)"
     >
       <p class="font-semibold text-amber-700">Are you sure you want to create the session?</p>
-      <p class="text-slate-700">
+      <p class="text-sm leading-6 text-slate-700">
         Make sure you have sent the other Participant their link and username <u>before</u> proceeding.
       </p>
     </td-confirm-modal>
