@@ -14,7 +14,7 @@ export class NotificationService {
   ) {}
 
   subscribeToNotifications() {
-    return this.socket.fromEvent<NotificationFormat>(EventTypes.NOTIFICATION).pipe(
+    return this.socket.fromEvent<NotificationFormat, EventTypes.NOTIFICATION>(EventTypes.NOTIFICATION).pipe(
       tap((notification) => {
         //TODO implement additional data object at some point
         this.showNotification(notification.type);

@@ -13,12 +13,12 @@ export class AuthService {
     this.socket.emit(EventTypes.LOGIN, payload);
   }
   subscribeLogin() {
-    return this.socket.fromEvent<AuthResponseFormat>(EventTypes.LOGIN);
+    return this.socket.fromEvent<AuthResponseFormat, EventTypes.LOGIN>(EventTypes.LOGIN);
   }
   attemptLogout(payload: Optional<AuthFormat, 'referrer'>) {
     this.socket.emit(EventTypes.LOGOUT, payload);
   }
   subscribeLogout() {
-    return this.socket.fromEvent<AuthFormat>(EventTypes.LOGOUT);
+    return this.socket.fromEvent<AuthFormat, EventTypes.LOGOUT>(EventTypes.LOGOUT);
   }
 }

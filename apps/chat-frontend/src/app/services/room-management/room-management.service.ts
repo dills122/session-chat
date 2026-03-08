@@ -13,6 +13,6 @@ export class RoomManagementService {
     this.socket.emit(EventTypes.CREATE_SESSION, payload);
   }
   subscribeSessionCreation(): Observable<StatusResponseBase> {
-    return this.socket.fromEvent<StatusResponseBase>(EventTypes.CREATE_SESSION);
+    return this.socket.fromEvent<StatusResponseBase, EventTypes.CREATE_SESSION>(EventTypes.CREATE_SESSION);
   }
 }
