@@ -24,10 +24,7 @@
             "polyfills": "src/polyfills.ts",
             "tsConfig": "tsconfig.app.json",
             "assets": ["src/favicon.ico", "src/assets"],
-            "styles": [
-              "node_modules/@nebular/theme/styles/prebuilt/default.css",
-              "node_modules/bootstrap/scss/bootstrap.scss"
-            ],
+            "styles": ["node_modules/@nebular/theme/styles/prebuilt/default.css", "src/styles.css"],
             "scripts": [],
             "vendorChunk": true,
             "extractLicenses": false,
@@ -69,18 +66,18 @@
         "serve": {
           "builder": "@angular-devkit/build-angular:dev-server",
           "options": {
-            "browserTarget": "session-chat:build"
+            "buildTarget": "session-chat:build"
           },
           "configurations": {
             "production": {
-              "browserTarget": "session-chat:build:production"
+              "buildTarget": "session-chat:build:production"
             }
           }
         },
         "extract-i18n": {
           "builder": "@angular-devkit/build-angular:extract-i18n",
           "options": {
-            "browserTarget": "session-chat:build"
+            "buildTarget": "session-chat:build"
           }
         },
         "test": {
@@ -91,10 +88,7 @@
             "tsConfig": "tsconfig.spec.json",
             "karmaConfig": "karma.conf.js",
             "assets": ["src/favicon.ico", "src/assets"],
-            "styles": [
-              "node_modules/@nebular/theme/styles/prebuilt/default.css",
-              "node_modules/bootstrap/scss/bootstrap.scss"
-            ],
+            "styles": ["node_modules/@nebular/theme/styles/prebuilt/default.css", "src/styles.css"],
             "scripts": []
           }
         },

@@ -10,8 +10,7 @@ import { UtilService } from 'src/app/services/util/util.service';
 @Component({
   selector: 'td-login',
   templateUrl: './login.component.html',
-  standalone: false,
-  styleUrls: ['./login.component.scss']
+  standalone: false
 })
 export class LoginComponent implements OnInit, OnDestroy {
   private uid: string;

@@ -1,7 +1,7 @@
 <nb-layout>
   <nb-layout-header>
     <!-- <button nbButton (click)="toggleTheme()">Toggle Theme</button> -->
-    <p class="h5 m-0">Session Chat</p>
+    <p class="m-0 text-lg font-semibold leading-none">Session Chat</p>
     <nb-actions size="medium">
       <nb-action icon="home-outline" routerLink="/home" title="Home">Home</nb-action>
       <nb-action icon="paper-plane-outline" routerLink="/create-session" title="Create Session"></nb-action>
@@ -9,12 +9,8 @@
   </nb-layout-header>
 
   <nb-layout-column>
-    <div class="container-fluid">
-      <div class="row">
-        <div class="col">
-          <router-outlet></router-outlet>
-        </div>
-      </div>
+    <div class="mx-auto w-full max-w-6xl px-4 sm:px-6">
+      <router-outlet></router-outlet>
     </div>
   </nb-layout-column>
 </nb-layout>

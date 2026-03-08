@@ -13,16 +13,14 @@
       </div>
     </nb-card-body>
     <nb-card-footer>
-      <div class="container">
-        <div class="row">
-          <div class="col">
-            <button nbButton outline [status]="confirmBtnType" *ngIf="showConfirm" (click)="confirmFunc()">
-              {{ confirmBtnLabel }}
-            </button>
-          </div>
-          <div class="col">
-            <button nbButton outline (click)="close()">Close Dialog</button>
-          </div>
+      <div class="flex flex-wrap justify-end gap-3">
+        <div>
+          <button nbButton outline [status]="confirmBtnType" *ngIf="showConfirm" (click)="confirmFunc()">
+            {{ confirmBtnLabel }}
+          </button>
+        </div>
+        <div>
+          <button nbButton outline (click)="close()">Close Dialog</button>
         </div>
       </div>
     </nb-card-footer>

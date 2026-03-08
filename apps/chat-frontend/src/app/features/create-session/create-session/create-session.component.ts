@@ -12,8 +12,7 @@ import { RoomManagementService } from 'src/app/services/room-management/room-man
 @Component({
   selector: 'td-create-session',
   templateUrl: './create-session.component.html',
-  standalone: false,
-  styleUrls: ['./create-session.component.scss']
+  standalone: false
 })
 export class CreateSessionComponent implements OnInit, OnDestroy {
   public participantUid: string;
