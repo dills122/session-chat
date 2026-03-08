@@ -6,12 +6,12 @@ Chat securely with one or more associates without a worry of it getting out.
 
 ## Getting Started
 
-At the moment this will need `node v18` or greater.
+Use Node.js `20.x` for local development. The repo also runs cleanly on newer Node releases, but `20.x` is the current baseline used in CI.
 
 ```bash
 # setup the correct node version
-nvm install lts/iron
-nvm use lts/iron
+nvm install 20
+nvm use 20
 # installs all dependencies
 rush install
 # sanity check
@@ -52,6 +52,15 @@ cd ./apps/chat-frontend/ && rushx start:dev
 
 - [Docs Overview](./docs/README.md)
 - [Dependency Upgrade Plan](./docs/dependency-upgrade-plan.md)
+
+### Frontend
+
+The frontend lives in `apps/chat-frontend` and currently uses Angular 20, Nebular, and Tailwind utilities.
+
+```bash
+cd apps/chat-frontend
+rushx start:dev
+```
 
 ## Notes & Misc
 
