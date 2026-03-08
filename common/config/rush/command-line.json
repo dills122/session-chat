@@ -55,12 +55,14 @@
     {
       "name": "prettier-format",
       "commandKind": "global",
+      "autoinstallerName": "lint-staged",
       "shellCommand": "prettier . --write",
       "summary": "Formats all the repos code"
     },
     {
       "name": "prettier",
       "commandKind": "global",
+      "autoinstallerName": "lint-staged",
       "shellCommand": "prettier . --check",
       "summary": "Formats all the repos code"
     },

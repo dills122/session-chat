@@ -1,7 +1,13 @@
 // Karma configuration file, see link for more information
 // https://karma-runner.github.io/1.0/config/configuration-file.html
 
-process.env.CHROME_BIN = require('puppeteer').executablePath();
+if (!process.env.CHROME_BIN) {
+  try {
+    process.env.CHROME_BIN = require('puppeteer').executablePath();
+  } catch (error) {
+    // CI can provide Chrome directly; only use Puppeteer when its managed browser exists.
+  }
+}
 
 module.exports = function (config) {
   config.set({

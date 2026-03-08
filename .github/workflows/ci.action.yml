@@ -40,6 +40,8 @@ jobs:
         with:
           node-version: 20
       - run: node common/scripts/install-run-rush.js update
+      - run: npx puppeteer browsers install chrome
+        working-directory: apps/chat-frontend
       - run: node common/scripts/install-run-rush.js build
       - run: node common/scripts/install-run-rush.js test:ci
   automerge:
