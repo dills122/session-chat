@@ -48,11 +48,11 @@ From [apps/chat-backend/package.json](/Users/dsteele/repos/session-chat/apps/cha
 
 From [rush.json](/Users/dsteele/repos/session-chat/rush.json):
 
-- Rush `5.62.4`
-- pnpm `7.33.6`
-- Node support range still set to `>=16`
+- Rush `5.169.3`
+- pnpm `10.31.0`
+- Node support range `>=20.0.0 <23.0.0`
 
-Local runtime currently reports Node `22.21.1`, which is fine for modern Angular, but the repo metadata has not been updated to reflect current supported engines.
+Local runtime currently reports Node `22.21.1`, which is within the repo's updated supported range.
 
 ## Recommended Target Versions
 

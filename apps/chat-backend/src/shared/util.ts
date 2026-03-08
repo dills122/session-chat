@@ -1,4 +1,4 @@
-const { createHash } = require('node:crypto');
+import { createHash } from 'node:crypto';
 
 const nodeEnv = process.env.NODE_ENV || '';
 
