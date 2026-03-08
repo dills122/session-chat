@@ -4,7 +4,9 @@
       <nb-card-header>
         <div class="space-y-1">
           <h3 class="m-0">Create Session</h3>
-          <p class="m-0 text-sm text-slate-500">Set the participant identity, generate a one-time join link, then enter your own ID.</p>
+          <p class="m-0 text-sm text-slate-500">
+            Set the participant identity, generate a one-time join link, then enter your own ID.
+          </p>
         </div>
       </nb-card-header>
       <nb-card-body>
@@ -45,7 +47,14 @@
               <div class="grid gap-2 pt-1" *ngIf="linkUrl$ | async as generatedLink">
                 <div>
                   <nb-form-field>
-                    <input #generated_link fullWidth name="participantLink" type="text" [value]="generatedLink" nbInput />
+                    <input
+                      #generated_link
+                      fullWidth
+                      name="participantLink"
+                      type="text"
+                      [value]="generatedLink"
+                      nbInput
+                    />
                   </nb-form-field>
                 </div>
                 <div class="break-words text-xs font-semibold leading-5 text-amber-700">
