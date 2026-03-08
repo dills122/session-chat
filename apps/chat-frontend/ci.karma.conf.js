@@ -30,11 +30,19 @@ module.exports = function (config) {
     logLevel: config.LOG_INFO,
     autoWatch: false,
     singleRun: true,
-    browsers: ['ChromeHeadless_without_security'],
+    browsers: ['ChromeHeadlessCI'],
     customLaunchers: {
-      ChromeHeadless_without_security: {
+      ChromeHeadlessCI: {
         base: 'ChromeHeadless',
-        flags: ['--disable-web-security', '--disable-site-isolation-trials']
+        flags: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--disable-web-security',
+          '--disable-site-isolation-trials',
+          '--remote-debugging-port=9222'
+        ]
       }
     }
   });
