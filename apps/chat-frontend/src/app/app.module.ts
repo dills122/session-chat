@@ -23,10 +23,10 @@ import { SocketIoConfig, SocketIoModule } from 'ngx-socket-io';
 import { JwtModule } from '@auth0/angular-jwt';
 import { SessionStorageService } from './services/session-storage/session-storage.service';
 import { CoreModule } from './core/core.module';
+import { environment } from '../environments/environment';
 
 const config: SocketIoConfig = {
-  // url: 'https://ws.dsteele.dev/chat',
-  url: 'localhost:3001/chat',
+  url: environment.socketUrl,
   options: {
     transports: ['websocket'],
     timeout: 15000
@@ -38,7 +38,7 @@ const config: SocketIoConfig = {
   imports: [
     BrowserModule,
     BrowserAnimationsModule,
-    RouterModule.forRoot([], {}),
+    RouterModule,
     //Global Nebular Theme/Component
     NbThemeModule.forRoot({ name: 'default' }),
     NbLayoutModule,

@@ -6,7 +6,7 @@
     "useWorkspaces": true,
     "strictPeerDependencies": true
   },
-  "nodeSupportedVersionRange": ">=16",
+  "nodeSupportedVersionRange": ">=18.13.0",
   "gitPolicy": {},
 
   "repository": {

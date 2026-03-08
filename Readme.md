@@ -10,8 +10,8 @@ At the moment this will need `node v18` or greater.
 
 ```bash
 # setup the correct node version
-nvm install lts/hydrogen
-nvm use lts/hydrogen
+nvm install lts/iron
+nvm use lts/iron
 # installs all dependencies
 rush install
 # sanity check
@@ -47,6 +47,11 @@ rush docker-up:dev
 # start UI project separately
 cd ./apps/chat-frontend/ && rushx start:dev
 ```
+
+## Docs
+
+- [Docs Overview](./docs/README.md)
+- [Dependency Upgrade Plan](./docs/dependency-upgrade-plan.md)
 
 ## Notes & Misc
 
