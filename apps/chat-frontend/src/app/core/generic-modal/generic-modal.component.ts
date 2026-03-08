@@ -5,6 +5,7 @@ import { ButtonTypes } from 'src/app/models/button-types';
 @Component({
   selector: 'td-generic-modal',
   templateUrl: './generic-modal.component.html',
+  standalone: false,
   styleUrls: ['./generic-modal.component.scss']
 })
 export class GenericModalComponent {

@@ -11,6 +11,7 @@ import { SessionStorageService } from 'src/app/services/session-storage/session-
 @Component({
   selector: 'td-chat-room',
   templateUrl: './chat-room.component.html',
+  standalone: false,
   providers: [],
   styles: [
     `

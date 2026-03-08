@@ -5,6 +5,7 @@ import { GenericModalComponent } from '../generic-modal/generic-modal.component'
 @Component({
   selector: 'td-confirm-modal',
   templateUrl: './confirm-modal.component.html',
+  standalone: false,
   styleUrls: ['./confirm-modal.component.scss']
 })
 export class ConfirmModalComponent {
