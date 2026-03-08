@@ -50,6 +50,15 @@ cd ./apps/chat-frontend/ && rushx start:dev
 
 ## Notes & Misc
 
+## Rearchitecture Planning
+
+The repo now includes a planning package for the secure redesign:
+
+- [Docs Overview](./docs/README.md)
+- [Rearchitecture Epic](./docs/rearchitecture-epic.md)
+- [Implementation Backlog](./docs/backlog.md)
+- [Prioritized Sprint Plan](./docs/sprint-plan.md)
+
 ### Upgrading Packages
 
 ```bash
