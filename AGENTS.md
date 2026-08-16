@@ -130,7 +130,7 @@ Current invitation-provider spike:
 node --test spikes/sealed-invitation-provider/test/provider.test.mjs
 ```
 
-Once the Rust v2 workspace exists, its minimum handoff gate is expected to include:
+Rust v2 workspace:
 
 ```sh
 cargo fmt --check

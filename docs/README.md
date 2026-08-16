@@ -1,6 +1,6 @@
 # Session Chat 2.0 design documents
 
-Status: pre-implementation design exploration
+Status: Phase 1 protocol laboratory in progress
 
 These documents describe the proposed Session Chat 2.0 pivot. They are a
 working design baseline, not a claim that the current application implements
@@ -67,6 +67,14 @@ envelopes.
 
 Nothing in these documents should be read as retroactively describing the
 legacy application as end-to-end encrypted.
+
+## Current implementation
+
+The final unchanged legacy baseline is preserved by the `legacy-v1` tag. Phase
+1 has begun with `crates/session-protocol`, which currently implements only the
+bounded, versioned, deterministic-CBOR opaque envelope defined by ADR 0005.
+Invitation signing, HPKE, admission, MLS, persistence, and transport adapters
+remain unimplemented and must not be inferred from that foundation.
 
 ## Reference standards and projects
 
