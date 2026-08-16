@@ -1,6 +1,6 @@
 # ADR 0004: Build v2 as a parallel capability-first protocol laboratory
 
-Status: accepted for implementation sequencing
+Status: accepted for Phase 1 scope; source-tree coexistence superseded by ADR 0006
 
 Date: 2026-08-16
 
@@ -24,6 +24,10 @@ new state machine has proved itself.
 Begin Phase 1 implementation. Preserve the legacy application and build a new
 Rust protocol laboratory alongside it. Do not perform a destructive cleanup or
 move legacy code until the first encrypted end-to-end milestone passes.
+
+ADR 0006 later superseded the coexistence and cleanup timing in this paragraph.
+The capability-only, two-person, in-memory, headless scope and acceptance
+evidence below remain in force.
 
 The first slice is deliberately capability-only, two-person, in-memory, and
 headless. It has no external service dependency.

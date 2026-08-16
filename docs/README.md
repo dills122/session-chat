@@ -31,9 +31,12 @@ all.
   invariants, and severity calibration.
 - [Roadmap](ROADMAP_V2.md) proposes an incremental implementation and validation
   sequence.
-- [Current build decision](adr/0004-build-v2-as-a-parallel-protocol-laboratory.md)
-  commits the next slice to a capability-first Rust protocol laboratory beside
-  the preserved legacy application.
+- [Phase 1 build decision](adr/0004-build-v2-as-a-parallel-protocol-laboratory.md)
+  commits the next slice to a capability-first Rust protocol laboratory.
+- [V1 retirement decision](adr/0006-retire-v1-from-the-default-branch.md)
+  removes the old runtime while preserving its exact tagged snapshot and lessons.
+- [Legacy v1 archive index](legacy-v1/README.md) records recovery commands,
+  behavior, security lessons, and project-history evidence.
 - [Research backlog](RESEARCH_BACKLOG.md) records unresolved questions without
   prematurely turning them into architecture decisions.
 - [Reference ledger](REFERENCES.md) records the standards and projects that
