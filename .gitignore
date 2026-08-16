@@ -67,3 +67,7 @@ common/autoinstallers/*/.npmrc
 
 certs/
 keys/
+
+# Local AI Central skill links; recreate with scripts/setup-codex-links.mjs.
+/.agents/skills/
+/.codex/skills/

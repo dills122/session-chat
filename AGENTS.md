@@ -143,10 +143,11 @@ area. Report exact commands and any check that could not run.
 
 ## AI Central Context
 
-Reusable steering and reviewed skills are linked locally from
-`/Users/dsteele/.ai-central`; repository-specific instructions remain real,
+Selected steering is committed, while reviewed skills are linked locally from
+the pinned AI Central checkout. Repository-specific instructions remain real,
 trackable files. This file is authoritative when generic linked guidance
-conflicts with Session Chat's security boundaries.
+conflicts with Session Chat's security boundaries. Recreate the ignored local
+skill links with `node scripts/setup-codex-links.mjs`.
 
 See `.codex/AI_CENTRAL.md` for the installed revision, selection,
 repository-visible link policy, verification, and refresh command.
