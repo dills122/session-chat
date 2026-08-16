@@ -1,0 +1,9 @@
+{
+  "name": "session-chat-sealed-invitation-provider-spike",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}

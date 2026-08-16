@@ -4,6 +4,16 @@
 
 Chat securely with one or more associates without a worry of it getting out.
 
+## Session Chat 2.0 design exploration
+
+The repository is planning a security and product redesign around temporary,
+end-to-end encrypted sessions with pluggable admission and delivery profiles.
+The proposal, threat model, research backlog, and architecture decisions are
+indexed in [the v2 design documents](docs/README.md).
+
+The Angular, NestJS, Socket.IO, JWT, and Redis application described below is
+the legacy prototype. It does not yet implement the v2 security architecture.
+
 ## Getting Started
 
 At the moment this will need `node v18` or greater.
