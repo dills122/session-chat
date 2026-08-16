@@ -29,7 +29,9 @@ plan, and documented library assumptions.
 
 ### P0: invitation protocol
 
-- Select canonical encoding and domain separation rules.
+- **Encoding decision:** ADR 0005 selects a restricted RFC 8949 deterministic
+  CBOR profile and exact wire fixtures. Domain separation remains open until
+  signature and HPKE suites are selected.
 - Select signature and HPKE suites.
 - Define one-use and bounded-multi-use state machines.
 - Define replay, expiration, clock-skew, and challenge semantics.

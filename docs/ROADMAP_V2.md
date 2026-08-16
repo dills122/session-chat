@@ -44,6 +44,11 @@ Exit criteria:
 
 ## Phase 1: protocol laboratory
 
+Implementation status: in progress. The first retained increment establishes
+the `session-protocol` Rust workspace and its bounded deterministic-CBOR opaque
+envelope. All invitation, admission, HPKE, MLS, state-machine, and transport
+work listed below remains outstanding.
+
 Create a Rust workspace containing:
 
 - `session-protocol`
