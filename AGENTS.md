@@ -4,19 +4,18 @@ AI coding guidance for Session Chat.
 
 ## Purpose
 
-This repository preserves a legacy Angular/NestJS chat prototype while building
-Session Chat 2.0: disposable, end-to-end encrypted conversations with pluggable
-admission and transport.
+This repository builds Session Chat 2.0: disposable, end-to-end encrypted
+conversations with pluggable admission and transport.
 
 Optimize for:
 
 - client-owned session keys and fail-closed security behavior
 - independence between identity/admission, rendezvous, transport, and MLS state
-- small, testable vertical slices instead of a destructive rewrite
+- small, testable vertical slices on a protocol-first foundation
 - explicit protocol contracts, threat-model updates, and retained test evidence
 
-The v2 documents are a design baseline, not a claim that the legacy application
-already provides the described security properties.
+The v2 documents are a design baseline, not a claim that the current protocol
+laboratory already provides the described security properties.
 
 ## Start Here
 
@@ -38,15 +37,13 @@ research item into a security or product claim.
 
 Current areas:
 
-- `apps/chat-frontend/`: legacy Angular UI
-- `apps/chat-backend/`: legacy NestJS, Socket.IO, JWT, and Redis backend
-- `libs/shared-sdk/`: legacy shared TypeScript contracts
+- `crates/session-protocol`: versioned wire objects and canonical serialization
 - `spikes/`: disposable feasibility code; production packages must not depend on it
-- `docs/`: canonical v2 product, architecture, threat-model, protocol, and ADR baseline
+- `docs/`: canonical v2 product, architecture, threat-model, protocol, ADR, and legacy-evidence baseline
+- `scripts/`: tested repository and AI Central setup tooling
 
 Planned v2 areas:
 
-- `crates/session-protocol`: versioned wire objects and canonical serialization
 - `crates/session-core`: invitation, join, membership, and session state machines
 - `crates/session-crypto-mls`: MLS integration and protected state persistence
 - `crates/session-admission` plus adapters: admission policy and verified key binding
@@ -89,9 +86,9 @@ requires compatibility fixtures and negative tests before it is considered done.
 
 ## Scope Control
 
-- Build v2 alongside the legacy prototype until the first encrypted end-to-end
-  protocol milestone passes; do not incrementally reinterpret legacy JWT or
-  Socket.IO state as v2 cryptographic state.
+- Do not restore or incrementally reinterpret retired JWT, Socket.IO, Redis, or
+  deterministic invitation-hash state as v2 cryptographic state. Use the
+  `legacy-v1` tag only for historical inspection.
 - Keep Phase 1 to two participants, capability admission, in-memory transport,
   and a headless client.
 - Defer GitHub admission, SSI/credentials, production rendezvous, Tauri UI,
@@ -105,8 +102,8 @@ requires compatibility fixtures and negative tests before it is considered done.
 - The default branch is `master`; use `codex/<topic>` feature branches for retained
   behavior, contract, test, or documentation work. Do not commit directly to
   `master`.
-- Follow existing Rush, TypeScript, Angular, NestJS, Prettier, and ESLint config
-  in legacy areas.
+- Follow the pinned Rust toolchain and workspace lints. Retained Node scripts use
+  ESM and built-in modules so they can be tested without an npm install.
 - Prefer deterministic, offline unit and integration tests for protocol work.
 - Add malformed, expired, replayed, duplicated, reordered, unauthorized, and
   persistence-rollback cases at every untrusted boundary where they apply.
@@ -115,18 +112,10 @@ requires compatibility fixtures and negative tests before it is considered done.
 
 ## Useful Commands
 
-Legacy workspace:
+Retained Node tooling and invitation-provider spike:
 
 ```sh
-node common/scripts/install-run-rush.js update
-node common/scripts/install-run-rush.js lint
-node common/scripts/install-run-rush.js build
-node common/scripts/install-run-rush.js test:ci
-```
-
-Current invitation-provider spike:
-
-```sh
+node --test scripts/setup-codex-links.test.mjs
 node --test spikes/sealed-invitation-provider/test/provider.test.mjs
 ```
 

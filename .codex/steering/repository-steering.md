@@ -1,8 +1,8 @@
 # Repository Scope And Priorities
 
 This repository builds Session Chat 2.0, a disposable end-to-end encrypted chat
-protocol and client, while preserving the current Angular/NestJS application as
-a legacy prototype.
+protocol and client. The retired web prototype is available only through the
+`legacy-v1` tag and `docs/legacy-v1/` evidence.
 
 Primary deliverables:
 
@@ -21,8 +21,8 @@ Core priorities:
 
 - `docs/` owns the v2 product, architecture, threat-model, roadmap, and decision baseline.
 - `spikes/` owns disposable feasibility experiments and is not a production dependency.
-- `apps/chat-frontend/`, `apps/chat-backend/`, and `libs/shared-sdk/` own the legacy prototype.
-- Future `crates/` packages own the Rust protocol core and adapters; future
+- `crates/session-protocol/` owns the current Rust wire-format implementation.
+- Future `crates/` packages own the remaining Rust protocol core and adapters; future
   `apps/sessionctl/` owns the headless conformance client.
 
 ## Safe Refactor Boundaries
@@ -34,7 +34,7 @@ security model changes:
 - client key ownership, member removal, epoch, or persistence guarantees
 - the separation between external identity, session-scoped member keys, and transport
 - private-mode fail-closed behavior or metadata claims
-- legacy public routes, storage behavior, or workspace project names
+- the decision to keep retired v1 contracts out of active protocol code
 
 Safe default changes:
 

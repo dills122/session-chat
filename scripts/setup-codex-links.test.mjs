@@ -24,6 +24,7 @@ test('builds the pinned full-catalog link-mode setup command', () => {
   assert.equal(argumentsToPass[argumentsToPass.indexOf('--bundles') + 1], 'all');
   assert.match(argumentsToPass[argumentsToPass.indexOf('--profiles') + 1], /javascript-typescript/);
   assert.match(argumentsToPass[argumentsToPass.indexOf('--profiles') + 1], /rust/);
+  assert.doesNotMatch(argumentsToPass[argumentsToPass.indexOf('--profiles') + 1], /angular/);
 });
 
 test('rejects incompatible or unknown options', () => {

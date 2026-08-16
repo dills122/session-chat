@@ -15,12 +15,13 @@ the absolute filesystem targets of its generated links.
 
 - Remote: `https://github.com/dills122/ai-central.git`
 - Reviewed revision: `1d4e91025a9379e0a741adb4f29faa41e9e51438`
-- Profiles: `base,javascript-typescript,angular,shell-scripting,frontend-design,rust`
+- Profiles: `base,javascript-typescript,shell-scripting,rust`
 - Skill bundles: `all`
 - Installation: committed steering copies and ignored local skill links
 
-The TypeScript, Angular, shell, and frontend profiles cover the legacy workspace.
-The Rust profile covers the planned v2 protocol laboratory.
+The JavaScript/TypeScript and shell profiles cover retained repository tooling
+and the invitation-provider spike. The Rust profile covers the v2 protocol
+laboratory. Angular and frontend-design steering were retired with v1.
 
 ## Repository-owned files
 
