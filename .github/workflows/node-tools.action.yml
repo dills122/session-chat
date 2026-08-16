@@ -1,0 +1,33 @@
+name: Retained Node Tools
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/node-tools.action.yml'
+      - 'scripts/**'
+      - 'spikes/sealed-invitation-provider/**'
+  push:
+    branches:
+      - master
+    paths:
+      - '.github/workflows/node-tools.action.yml'
+      - 'scripts/**'
+      - 'spikes/sealed-invitation-provider/**'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Use Node.js 22
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22
+      - name: Test AI Central link tooling
+        run: node --test scripts/setup-codex-links.test.mjs
+      - name: Test sealed invitation-provider spike
+        run: node --test spikes/sealed-invitation-provider/test/provider.test.mjs

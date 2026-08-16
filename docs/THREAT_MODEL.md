@@ -1,30 +1,29 @@
 # Session Chat repository threat model
 
-Status: design baseline for the legacy prototype and proposed v2 architecture
+Status: design baseline for the v2 architecture and protocol laboratory
 
 ## Overview
 
-Session Chat is a privacy- and security-sensitive messaging project. The
-current repository contains a legacy Angular client and NestJS/Socket.IO server
-that use JWTs and Redis-managed rooms. The proposed v2 product replaces that
-server-readable, server-authoritative model with client-owned MLS sessions,
-encrypted pre-membership rendezvous, optional external admission evidence, and
-pluggable delivery transports.
+Session Chat is a privacy- and security-sensitive messaging project. The active
+repository contains a headless Rust protocol laboratory and design artifacts;
+it does not yet contain a deployable client or network service. The retired v1
+Angular/NestJS application used a server-readable, server-authoritative model.
+The proposed v2 product replaces it with client-owned MLS sessions, encrypted
+pre-membership rendezvous, optional external admission evidence, and pluggable
+delivery transports.
 
 This document is repository-scoped. It covers both:
 
-- The real current runtime, so future reviews do not accidentally assign v2
-  guarantees to the legacy code.
+- The archived v1 trust failures that future work must not reintroduce.
 - The v2 security architecture being designed in this repository, so new code
   can be assessed against explicit invariants from its first commit.
 
-The current application sends a `MessageFormat` containing the message body,
+The retired application sent a `MessageFormat` containing the message body,
 room, user ID, timestamp, and token. The backend checks membership and JWT
-validity and rebroadcasts that object. Redis stores room membership and
-invitation-link state. The existing `CryptoService` hashes strings and generates
-UUIDs; it does not provide end-to-end encryption. TLS can protect connections
-from outside observers, but the current backend is inside the plaintext trust
-boundary.
+validity and rebroadcasts that object. Redis stored room membership and
+invitation-link state. Its `CryptoService` hashed strings and generated UUIDs;
+it did not provide end-to-end encryption. TLS could protect connections from
+outside observers, but the backend remained inside the plaintext trust boundary.
 
 The v2 goal is narrower and stronger: admitted clients hold plaintext and
 session keys; normal identity, rendezvous, mailbox, and relay infrastructure
@@ -231,7 +230,6 @@ Assumptions:
 
 - Invitation URLs, fragments, deep links, QR contents, and clipboard values
 - Join requests, KeyPackages, credential presentations, and attestations
-- Socket.IO events and HTTP requests in the legacy application
 - Mailbox identifiers, encrypted envelopes, acknowledgements, cursors, and
   transport frames
 - MLS proposals, Commits, Welcome messages, and application messages
@@ -403,19 +401,19 @@ encrypted databases, lock and idle behavior, transactional deletion, log and
 panic redaction, backup analysis, and tests that map implementation behavior to
 the selected retention policy.
 
-### Legacy web application
+### Retired legacy web application
 
-Until retired, the Angular/NestJS application remains a deployed web attack
-surface. Relevant classes include authentication and authorization bypass,
+The Angular/NestJS application is no longer present on the default branch. Its
+historical attack classes included authentication and authorization bypass,
 forged or replayed participant links, weak JWT configuration, Socket.IO input
 validation, Redis state races, room enumeration, XSS through message rendering,
 denial of service, secret leakage, CORS and TLS misconfiguration, and plaintext
 exposure to the server.
 
-TLS, JWT validation, expiring Redis entries, and one-use link behavior are
-useful controls within the legacy model, but they do not create end-to-end
-encryption. Reviews must evaluate the current runtime according to its actual
-server-trusted architecture.
+TLS, JWT validation, and deleting a participant link after successful use were
+useful controls within the legacy model, but they did not create end-to-end
+encryption. New work must not revive that server-trusted architecture through a
+compatibility layer. See `docs/legacy-v1/` and the `legacy-v1` tag for evidence.
 
 ### Supply chain and updates
 

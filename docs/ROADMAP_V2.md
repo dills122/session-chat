@@ -4,24 +4,26 @@ Status: proposed sequencing, not a delivery commitment
 
 ## Guiding approach
 
-Build a new protocol core alongside the legacy application. Preserve the
-legacy history and UX lessons, but do not incrementally reinterpret current
-Socket.IO messages, JWTs, Redis membership, or deterministic invitation hashes
-as cryptographic session state.
+Build a new protocol core without carrying the retired application as active
+source. Preserve its tagged history and documented UX lessons, but do not
+incrementally reinterpret Socket.IO messages, JWTs, Redis membership, or
+deterministic invitation hashes as cryptographic session state.
 
 Each milestone should produce a runnable vertical slice and explicit evidence
 for its security properties.
 
 ## Current target
 
-**Decision:** Phase 0 is sufficient to begin implementation. Start Phase 1 as a
-capability-only Rust protocol laboratory beside the preserved legacy
-application. Do not begin with broad cleanup, GitHub integration, SSI, a
-production mailbox, a GUI, or a real network transport.
+**Decision:** Phase 0 is sufficient to begin implementation. Continue Phase 1
+as a capability-only Rust protocol laboratory. V1 is retired under ADR 0006;
+do not turn that cleanup into GitHub integration, SSI, a production mailbox, a
+GUI, or a real network transport.
 
 The complete scope, acceptance evidence, bounded research questions, and later
 integration order are recorded in
-[ADR 0004](adr/0004-build-v2-as-a-parallel-protocol-laboratory.md).
+[ADR 0004](adr/0004-build-v2-as-a-parallel-protocol-laboratory.md), with
+source-tree coexistence superseded by
+[ADR 0006](adr/0006-retire-v1-from-the-default-branch.md).
 
 ## Phase 0: freeze the design baseline
 

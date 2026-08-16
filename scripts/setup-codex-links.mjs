@@ -13,7 +13,7 @@ const repositoryRoot = path.resolve(scriptDirectory, '..');
 const pinPath = path.join(repositoryRoot, '.codex', 'ai-central-pin.json');
 const isEntrypoint = Boolean(process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href);
 
-const profiles = 'base,javascript-typescript,angular,shell-scripting,frontend-design,rust';
+const profiles = 'base,javascript-typescript,shell-scripting,rust';
 
 export function usage() {
   return `Usage: node scripts/setup-codex-links.mjs [--dry-run] [--record-pin]

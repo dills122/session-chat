@@ -269,13 +269,13 @@ session-chat/
 |   |-- rendezvous/
 |   `-- admin/
 |-- deploy/
-|-- docs/
-`-- legacy/ or legacy-v1 tag
+`-- docs/
 ```
 
-The final location of the legacy application is an implementation decision.
-Preserving a tag and building v2 alongside it is safer than incrementally
-turning server-authoritative Socket.IO rooms into a new cryptographic protocol.
+The retired application is preserved by the `legacy-v1` tag and documented
+under `docs/legacy-v1/`; it is intentionally absent from the active layout.
+Restoring it as a compatibility layer would risk turning server-authoritative
+Socket.IO rooms into accidental cryptographic protocol state.
 
 ## Architecture invariants
 

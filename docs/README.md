@@ -3,8 +3,8 @@
 Status: Phase 1 protocol laboratory in progress
 
 These documents describe the proposed Session Chat 2.0 pivot. They are a
-working design baseline, not a claim that the current application implements
-the described security properties.
+working design baseline, not a claim that the current protocol laboratory
+implements the described security properties.
 
 The central product idea is:
 
@@ -58,24 +58,25 @@ The documents use the following labels:
 - **Research**: deliberately unresolved.
 - **Deferred**: potentially useful, but outside the first product slice.
 
-## Current repository versus v2
+## Retired v1 versus v2
 
-The current Angular, NestJS, Socket.IO, JWT, and Redis application is the legacy
-prototype. It is useful as product and UX history, but it is not the security
-foundation for v2. In the current wire format, the message body and bearer token
-are sent together, and the backend validates server-managed membership before
+The retired Angular, NestJS, Socket.IO, JWT, and Redis application is preserved
+at `legacy-v1`. It is useful as product and UX history, but it is not the
+security foundation for v2. Its wire format sent the message body and bearer
+token together, and the backend validated server-managed membership before
 rebroadcasting the same message object. The v2 design instead requires clients
-to own session keys and the infrastructure to handle opaque encrypted
-envelopes.
+to own session keys and infrastructure to handle opaque encrypted envelopes.
 
 Nothing in these documents should be read as retroactively describing the
 legacy application as end-to-end encrypted.
 
 ## Current implementation
 
-The final unchanged legacy baseline is preserved by the `legacy-v1` tag. Phase
-1 has begun with `crates/session-protocol`, which currently implements only the
-bounded, versioned, deterministic-CBOR opaque envelope defined by ADR 0005.
+The final unchanged legacy baseline is preserved by the `legacy-v1` tag and
+indexed under `docs/legacy-v1/`; it is no longer present in the active source
+tree. Phase 1 has begun with `crates/session-protocol`, which currently
+implements only the bounded, versioned, deterministic-CBOR opaque envelope
+defined by ADR 0005.
 Invitation signing, HPKE, admission, MLS, persistence, and transport adapters
 remain unimplemented and must not be inferred from that foundation.
 

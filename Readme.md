@@ -1,68 +1,54 @@
-# Session Chat: Secure Session Chatrooms
+# Session Chat
 
-[![CI Job](https://github.com/dills122/session-chat/actions/workflows/ci.action.yml/badge.svg)](https://github.com/dills122/session-chat/actions/workflows/ci.action.yml)
+[![Rust Protocol](https://github.com/dills122/session-chat/actions/workflows/rust.action.yml/badge.svg)](https://github.com/dills122/session-chat/actions/workflows/rust.action.yml)
+[![Retained Tools](https://github.com/dills122/session-chat/actions/workflows/node-tools.action.yml/badge.svg)](https://github.com/dills122/session-chat/actions/workflows/node-tools.action.yml)
 
-Chat securely with one or more associates without a worry of it getting out.
+Session Chat is a protocol-first project for disposable, end-to-end encrypted
+conversations with pluggable admission and delivery. The project is currently a
+headless research and implementation laboratory, not a deployable chat product.
 
-## Session Chat 2.0 design exploration
+The design principle is: **publish the door, not the key**.
 
-The repository is planning a security and product redesign around temporary,
-end-to-end encrypted sessions with pluggable admission and delivery profiles.
-The proposal, threat model, research backlog, and architecture decisions are
-indexed in [the v2 design documents](docs/README.md).
+## Current implementation
 
-The Angular, NestJS, Socket.IO, JWT, and Redis application described below is
-the legacy prototype. It does not yet implement the v2 security architecture.
+The Rust workspace currently contains `session-protocol`, which defines a
+bounded, versioned, deterministic-CBOR opaque envelope. It does not yet provide
+invitation signing, encrypted joins, admission, MLS, persistence, networking, or
+a user interface.
 
-## Getting Started
-
-At the moment this will need `node v18` or greater.
-
-```bash
-# setup the correct node version
-nvm install lts/hydrogen
-nvm use lts/hydrogen
-# installs all dependencies
-rush install
-# sanity check
-rush test:ci
+```sh
+cargo fmt --all --check
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo test --workspace --locked
 ```
 
-### Setting Up Local Env
+The retained JavaScript research and repository tooling have no third-party
+runtime dependencies:
 
-If your on MacOS then you can get away with just running the `./scripts/setup-certs.sh`.
-
-For other OS's you'll need to make sure these dependencies are installed first.
-
-Install `mkcert` & `nss` through `choco` for `Windows` or `apt-get` on your linux distro.
-
-**Note `powershell` needs to be run in `administrator` mode.**
-
-MacOS Setup:
-
-```bash
-# Sets up the SSL certs for local development
-./scripts/setup-certs.sh
-# Adds needed rows to the hosts file
-./scripts/configure-hosts-unix.sh
-# Setup Encryption keys for backend
-./scripts/setup-backend-keys.sh
+```sh
+node --test scripts/setup-codex-links.test.mjs
+node --test spikes/sealed-invitation-provider/test/provider.test.mjs
 ```
 
-Now that all the dependencies are setup you can spin up the local docker env.
+## Repository map
 
-```bash
-# starts dev env
-rush docker-up:dev
-# start UI project separately
-cd ./apps/chat-frontend/ && rushx start:dev
-```
+- `crates/` contains retained Rust protocol code.
+- `docs/` contains the product definition, architecture, threat model, roadmap,
+  research, ADRs, and legacy evidence.
+- `spikes/` contains disposable feasibility experiments; production crates must
+  not depend on them.
+- `scripts/` contains tested repository setup tooling.
 
-## Notes & Misc
+Start with [the v2 document index](docs/README.md). Security claims are bounded
+by the evidence recorded there and in the tests.
 
-### Upgrading Packages
+## Legacy v1
 
-```bash
-# check all packages but angular ones
-ncu '/^(?!.*angular).*$/'
-```
+The retired Angular/NestJS prototype is preserved by the `legacy-v1` tag rather
+than duplicated in the active source tree. See the
+[legacy archive index](docs/legacy-v1/README.md) for recovery commands, behavior,
+and security lessons.
+
+## License
+
+[MIT](LICENSE)

@@ -18,16 +18,13 @@ and adapter boundaries.
 Run the smallest reliable command that validates the changed area:
 
 - Invitation-provider spike: `node --test spikes/sealed-invitation-provider/test/provider.test.mjs`
-- Legacy lint: `node common/scripts/install-run-rush.js lint`
-- Legacy tests: `node common/scripts/install-run-rush.js test:ci`
-- Legacy build: `node common/scripts/install-run-rush.js build`
+- AI Central link tooling: `node --test scripts/setup-codex-links.test.mjs`
 - Rust formatting: `cargo fmt --check`
 - Rust lint: `cargo clippy --workspace --all-targets -- -D warnings`
 - Rust tests: `cargo test --workspace`
 - Documentation hygiene: `git diff --check`
 
-Rust commands apply once the v2 workspace exists. If a command cannot run
-locally, document why and the risk that remains.
+If a command cannot run locally, document why and the risk that remains.
 
 ## Quality Gates
 
