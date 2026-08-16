@@ -71,3 +71,6 @@ keys/
 # Local AI Central skill links; recreate with scripts/setup-codex-links.mjs.
 /.agents/skills/
 /.codex/skills/
+
+# Rust workspace build output.
+/target/
