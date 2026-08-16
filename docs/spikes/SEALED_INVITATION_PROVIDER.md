@@ -53,8 +53,8 @@ Alice                                        |
  |
  | HPKE-seal invitation to Bob's receive key
  v
-Sealed Mailbox -------------------------> Bob polls
-  random mailbox ID                        with read capability
+Sealed Mailbox -------------------------> Bob polls and acknowledges
+  random mailbox ID                        with separate read and acknowledgement
   fixed-size ciphertext                    and decrypts locally
   TTL and strict bounds
 ```
@@ -70,23 +70,22 @@ identity, and invitation content together.
 A directory lookup returns a signed record resembling:
 
 ```text
-version
-directory address binding
-random mailbox deposit ID
-recipient invitation-encryption public key
-mailbox expiration
-supported envelope versions and size classes
-mailbox service endpoint
-address-attestor signature over the complete bundle
-directory signature
-optional recipient/device signature
+claims:
+  version
+  directory address binding
+  complete receive-bundle body
+  address-attestor signature over the body
+  optional recipient/device continuity signature over the body
+directory signature over the complete claims
 ```
 
 The address attestor must bind the stable subject, lookup scope, and complete
-receive bundle. The directory signature must additionally bind the lookup
-address and every bundle field. Otherwise a valid receive bundle could be
-substituted under a different account. The sender validates both; the directory
-is not the only authority for the recipient encryption key.
+receive-bundle body. The directory signature must additionally bind the lookup
+address, every body field, and the complete attestation and continuity-signature
+objects carried in the record claims. Neither signature covers its own field.
+Otherwise a valid receive bundle could be substituted under a different
+account. The sender validates both; the directory is not the only authority for
+the recipient encryption key.
 
 The directory must authorize registration using one of:
 
@@ -163,7 +162,7 @@ each other.
 | Directory | Lookup address, rotating receive bundle, lookup timing | Invitation ciphertext or plaintext |
 | OHTTP relay | Sender network address, encrypted lookup request size/timing | Target lookup address or response |
 | OHTTP gateway/directory | Target lookup and response, relay address | Original sender network address |
-| Mailbox | Random mailbox ID, fixed ciphertext, access timing, source address unless hidden | Directory identity, invitation plaintext, read capability |
+| Mailbox | Random mailbox ID, fixed ciphertext, access timing, source address unless hidden | Directory identity, invitation plaintext, read or acknowledgement capabilities |
 | Recipient | Decrypted invitation and inviter-provided evidence | Nothing beyond the selected admission flow |
 
 If directory, relay, gateway, mailbox, and identity attestor are operated by one
@@ -271,8 +270,13 @@ The dependency-free simulator implements:
 - Separate directory and mailbox classes
 - Independent address-attestor signing over the address and complete bundle
 - Authorized directory registration using the attestation
+- Snapshotted bundle/proof inputs across asynchronous authorization
+- Bounded registration, address-control proof, and acknowledgement inputs
+- A closed provisional receive-bundle schema whose authenticated projection is
+  exactly the stored projection; unknown and recursive extras are rejected
 - Directory signatures bound to lookup key and bundle
 - Monotonic receive-bundle generation, chaining, and rollback rejection
+- Post-authorization predecessor recheck so one in-process concurrent successor wins
 - X25519 receive and ephemeral keys
 - HKDF-SHA-256 plus AES-256-GCM sealed envelopes
 - 1 KiB padded plaintext blocks
@@ -280,11 +284,13 @@ The dependency-free simulator implements:
 - TTL, queue bounds, lifetime deposit bounds, retry deduplication, fetch, and
   acknowledgement
 - Confidentiality, authorization, attestation binding, tamper, expiry, replay,
-  substitution, rotation, and rollback tests
+  substitution, rotation, rollback, and competing-successor tests
 
 The composition is intentionally a simulation, not an HPKE implementation. A
 production protocol must replace it with a reviewed RFC 9180 library and test
-vectors.
+vectors. The in-process predecessor recheck is not a durable transaction;
+production requires the compare-and-swap, crash, restart, and multi-instance
+evidence in the protocol draft and roadmap.
 
 ## Spike result
 
@@ -306,19 +312,25 @@ Recommended status:
 ## Acceptance criteria for a production prototype
 
 1. The provider cannot decrypt invitation envelopes.
-2. Mailbox storage contains no external identity or read capability.
+2. Mailbox storage contains no external identity or plaintext read or
+   acknowledgement capability; it stores only their one-way digests.
 3. Directory storage and logs contain no invitation traffic.
 4. Registration authorization binds lookup address, receive key, mailbox, and
    expiry.
 5. An independently verified address attestation binds the stable subject to
-   the complete receive bundle.
-6. Directory responses are signed over the lookup address and all bundle data.
+   the complete receive-bundle body.
+6. Directory responses are signed over closed claims containing the lookup
+   address, complete body, attestation, and any continuity signature.
 7. Envelopes use reviewed HPKE and published test vectors.
 8. Queues, total lifetime writes, sizes, retries, and computation are bounded.
 9. Expired, duplicate, malformed, and tampered objects fail safely.
 10. Private profile lookups, deposits, and polls never use direct network paths.
 11. The UI distinguishes invitation delivery from inviter verification and MLS
     admission.
+12. Registration uses durable compare-and-swap over generation and previous
+    bundle digest; concurrent competing successors cannot both commit.
+13. Crash, restart, and stale-snapshot tests prove monotonic bundle continuity
+    across multiple service instances.
 
 ## Primary references
 

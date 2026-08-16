@@ -6,6 +6,12 @@ on:
       - '.github/workflows/node-tools.action.yml'
       - 'scripts/**'
       - 'spikes/sealed-invitation-provider/**'
+      - 'docs/TRANSPORTS.md'
+      - 'docs/THREAT_MODEL.md'
+      - 'docs/ROADMAP_V2.md'
+      - 'docs/spikes/SEALED_INVITATION_PROVIDER.md'
+      - 'docs/spikes/SEALED_INVITATION_PROVIDER_PROTOCOL.md'
+      - 'docs/adr/**'
   push:
     branches:
       - master
@@ -13,6 +19,12 @@ on:
       - '.github/workflows/node-tools.action.yml'
       - 'scripts/**'
       - 'spikes/sealed-invitation-provider/**'
+      - 'docs/TRANSPORTS.md'
+      - 'docs/THREAT_MODEL.md'
+      - 'docs/ROADMAP_V2.md'
+      - 'docs/spikes/SEALED_INVITATION_PROVIDER.md'
+      - 'docs/spikes/SEALED_INVITATION_PROVIDER_PROTOCOL.md'
+      - 'docs/adr/**'
 
 permissions:
   contents: read

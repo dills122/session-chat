@@ -15,14 +15,15 @@ The Rust workspace currently contains:
 
 - `session-protocol`, with a bounded opaque envelope and a canonical,
   domain-separated Ed25519 signed capability invitation
-- `session-core`, with configurable expiration checks and bounded in-memory
-  one-time invitation consumption
+- `session-core`, with configurable expiration checks and a bounded inviter-owned
+  availability, reservation, release, and post-membership consumption lifecycle
 
 The signing key authenticates the invitation bytes, not a GitHub identity or
 person. The capability invitation is a secret bearer object and must not be
 posted publicly or placed in a transport envelope. Encrypted joins, capability
 proofs, admission approval, MLS, durable persistence, networking, and a user
-interface remain unimplemented.
+interface remain unimplemented. The current transition names encode caller
+preconditions; they do not prove admission or MLS has occurred.
 
 ```sh
 cargo fmt --all --check

@@ -7,11 +7,9 @@ publish = false
 readme = "README.md"
 
 [dependencies]
+ed25519-dalek.workspace = true
 session-protocol = { path = "../session-protocol" }
 thiserror.workspace = true
-
-[dev-dependencies]
-ed25519-dalek.workspace = true
 
 [lints]
 workspace = true

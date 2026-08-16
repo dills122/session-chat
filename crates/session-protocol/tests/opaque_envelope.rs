@@ -72,6 +72,26 @@ fn rejects_unknown_versions_and_object_types() {
 }
 
 #[test]
+fn rejects_wrong_cbor_types_for_every_envelope_field() {
+    let canonical = canonical_fixture();
+    let field_offsets = [1, 2, 3, 20, 22];
+
+    for offset in field_offsets {
+        let mut wrong_type = canonical.clone();
+        wrong_type[offset] = if matches!(offset, 1 | 2 | 20) {
+            0x40 // empty byte string where an integer is required
+        } else {
+            0x00 // integer where a byte string is required
+        };
+        assert_eq!(
+            OpaqueEnvelope::decode_canonical(&wrong_type),
+            Err(WireError::Malformed),
+            "wrong CBOR type at byte {offset} must fail"
+        );
+    }
+}
+
+#[test]
 fn rejects_wrong_field_counts_identifier_lengths_and_trailing_bytes() {
     let mut wrong_field_count = canonical_fixture();
     wrong_field_count[0] = 0x84;

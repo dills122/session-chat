@@ -76,7 +76,7 @@ impl TryFrom<u16> for InvitationUsePolicy {
 }
 
 /// A bearer capability whose owned bytes are cleared when dropped.
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Eq, PartialEq)]
 pub struct SecretCapability([u8; SECRET_CAPABILITY_BYTES]);
 
 impl SecretCapability {
@@ -103,7 +103,7 @@ impl Drop for SecretCapability {
 }
 
 /// Unsigned fields bound by a version 1 capability invitation signature.
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Eq, PartialEq)]
 pub struct CapabilityInvitationClaims {
     invitation_id: [u8; INVITATION_ID_BYTES],
     issued_at_unix_seconds: u64,
@@ -145,7 +145,7 @@ impl CapabilityInvitationClaims {
 }
 
 /// A canonical Phase 1 capability invitation authenticated by Ed25519.
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Eq, PartialEq)]
 pub struct SignedCapabilityInvitation {
     claims: CapabilityInvitationClaims,
     inviter_verifying_key: [u8; VERIFYING_KEY_BYTES],
@@ -229,6 +229,12 @@ impl SignedCapabilityInvitation {
         &self.inviter_verifying_key
     }
 
+    /// Returns the public signature that binds this exact descriptor.
+    #[must_use]
+    pub const fn signature(&self) -> &[u8; SIGNATURE_BYTES] {
+        &self.signature
+    }
+
     /// Encodes the restricted deterministic-CBOR representation from the spec.
     pub fn encode_canonical(&self) -> Result<Vec<u8>, WireError> {
         let mut encoder = Encoder::new(Vec::with_capacity(256));
@@ -296,10 +302,10 @@ impl SignedCapabilityInvitation {
             &mut decoder,
             WireError::InvalidJoinChallengeLength,
         )?;
-        let capability_bytes = decode_fixed::<SECRET_CAPABILITY_BYTES>(
+        let capability_bytes = Zeroizing::new(decode_fixed::<SECRET_CAPABILITY_BYTES>(
             &mut decoder,
             WireError::InvalidSecretCapabilityLength,
-        )?;
+        )?);
         let inviter_verifying_key = decode_fixed::<VERIFYING_KEY_BYTES>(
             &mut decoder,
             WireError::InvalidVerifyingKeyLength,
@@ -316,7 +322,7 @@ impl SignedCapabilityInvitation {
             issued_at_unix_seconds,
             expires_at_unix_seconds,
             join_challenge,
-            SecretCapability::new(capability_bytes)?,
+            SecretCapability::new(*capability_bytes)?,
         )?;
         let invitation = Self {
             claims,

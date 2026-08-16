@@ -1,7 +1,8 @@
 import { generateKeyPairSync, sign, verify } from 'node:crypto';
-import { bundleDigest } from './provider.mjs';
+import { bundleDigest, normalizeReceiveBundle } from './provider.mjs';
 
 const DEFAULT_ATTESTATION_TTL_MS = 60 * 60 * 1000;
+const MAX_ADDRESS_CONTROL_PROOF_BYTES = 4096;
 
 function canonicalAttestation(attestation) {
   return Buffer.from(
@@ -40,20 +41,22 @@ export class AddressAttestor {
   }
 
   async issue({ directoryKey, bundle, addressControlProof }) {
+    const bundleSnapshot = normalizeReceiveBundle(bundle);
     if (
       typeof directoryKey !== 'string' ||
       directoryKey.length === 0 ||
       directoryKey.length > 256 ||
-      !bundle ||
-      !Number.isSafeInteger(bundle.expiresAt) ||
-      bundle.expiresAt <= this.#now()
+      !bundleSnapshot ||
+      bundleSnapshot.expiresAt <= this.#now() ||
+      typeof addressControlProof !== 'string' ||
+      Buffer.byteLength(addressControlProof) > MAX_ADDRESS_CONTROL_PROOF_BYTES
     ) {
       throw new Error('invalid address attestation request');
     }
     if (
       !(await this.#authorizeAddressControl({
         directoryKey,
-        bundle,
+        bundle: structuredClone(bundleSnapshot),
         addressControlProof
       }))
     ) {
@@ -61,13 +64,16 @@ export class AddressAttestor {
     }
 
     const issuedAt = this.#now();
+    if (bundleSnapshot.expiresAt <= issuedAt) {
+      throw new Error('invalid address attestation request');
+    }
     const unsigned = {
       version: 1,
       issuer: this.#issuer,
       directoryKey,
-      receiveBundleDigest: bundleDigest(bundle),
+      receiveBundleDigest: bundleDigest(bundleSnapshot),
       issuedAt,
-      expiresAt: Math.min(bundle.expiresAt, issuedAt + this.#attestationTtlMs)
+      expiresAt: Math.min(bundleSnapshot.expiresAt, issuedAt + this.#attestationTtlMs)
     };
     const signature = sign(null, canonicalAttestation(unsigned), this.#signingKey).toString('base64url');
     return { ...unsigned, signature };
@@ -75,7 +81,9 @@ export class AddressAttestor {
 
   verify({ directoryKey, bundle, attestation }) {
     try {
+      const normalizedBundle = normalizeReceiveBundle(bundle);
       if (
+        !normalizedBundle ||
         attestation?.version !== 1 ||
         attestation.issuer !== this.#issuer ||
         attestation.directoryKey !== directoryKey ||
@@ -84,7 +92,7 @@ export class AddressAttestor {
         !Number.isSafeInteger(attestation.expiresAt) ||
         attestation.issuedAt > this.#now() ||
         attestation.expiresAt <= this.#now() ||
-        attestation.expiresAt > bundle.expiresAt
+        attestation.expiresAt > normalizedBundle.expiresAt
       ) {
         return false;
       }

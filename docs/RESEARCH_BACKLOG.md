@@ -15,17 +15,27 @@ foundational changes, an ADR.
 
 ## Cryptographic protocol
 
-### P0: MLS implementation selection
+### Decision recorded: MLS implementation selection
 
-- Evaluate current OpenMLS release maturity and security-review remediations.
-- Identify required MLS extensions, credential types, persistence boundaries,
-  and concurrency behavior.
+- ADR 0011 selects exact OpenMLS 0.8.1 and `openmls_rust_crypto` 0.5.1 versions,
+  the RFC 9420 mandatory-to-implement ciphersuite, and no draft/debug features
+  for a bounded Phase 1 integration spike.
+- ADR 0009 defines the BasicCredential, leaf signature key, and KeyPackage
+  binding that admission must authenticate.
+- OpenMLS selection does not resolve durable cross-layer atomicity. Its storage
+  provider writes MLS state, while Session Chat must transact that state with
+  invitation consumption, replay state, and Welcome work.
+- The May 2026 SRLabs audit left one Low-severity issue unresolved at
+  publication. Map all eight findings to the exact enabled 0.8.1 feature set
+  and require a fix or explicit risk decision before any non-laboratory path.
+- That audit excluded cryptographic and storage providers. Review the selected
+  Rust crypto provider and the Session Chat storage adapter as separate scopes.
 - Confirm how KeyPackages, Welcome messages, epoch state, and pending Commits
   are stored and recovered.
 - Prototype removal, key update, out-of-order delivery, and lost Commit cases.
 
-Expected output: implementation decision, version floor, interoperability test
-plan, and documented library assumptions.
+Remaining gate: interoperability fixtures plus transactional storage, crash,
+rollback, deletion, and pending-Commit evidence required by ADR 0011.
 
 ### P0: invitation protocol
 
@@ -36,12 +46,12 @@ plan, and documented library assumptions.
   for the secret-capability descriptor. HPKE domain separation remains open.
 - **Implemented boundary:** version 1 is single-use, uses explicit issue and
   expiration times, accepts realm-configured maximum lifetime and future skew,
-  and keeps bounded in-memory replay state until expiry.
+  and models the inviter-owned lifecycle in ADR 0008. Descriptor validation is
+  read-only; durable cross-layer transactions remain open.
 - Select the HPKE suite and encrypted join-request schema.
-- Define durable transactional replay state, rollback protection, revocation,
-  and bounded-multi-use state machines.
-- Define capability-proof binding to the invitation challenge and proposed
-  session member key.
+- Implement durable transactional replay state, rollback protection,
+  revocation, reservation recovery, and bounded-multi-use state machines.
+- Define the capability-proof wire schema over the exact ADR 0009 binding.
 - Decide public, encrypted, and local-only fields for targeted GitHub and
   credential invitations. The current capability descriptor is a secret bearer
   object and is not publicly postable.
@@ -122,6 +132,9 @@ Expected output: wire-format draft plus test vectors.
 - Remaining work includes OHTTP lookup privacy, production HPKE, anonymous
   deposit authorization, key transparency, persistence, concurrency, and
   realistic envelope-size measurement.
+- The production gate requires durable generation/digest compare-and-swap,
+  crash recovery, stale-snapshot rejection, and competing-successor tests
+  across multiple service instances; simulator-only rotation is insufficient.
 
 ### P1: private first-contact lookup
 
@@ -193,6 +206,16 @@ Expected output: wire-format draft plus test vectors.
 
 ## Client and storage
 
+### P0: desktop security boundary and UI framework
+
+- Validate approval, evidence, fingerprint, and transport-profile UX with the
+  early fixture-driven prototype in `PRODUCT_V2.md`.
+- Evaluate Tauri's command/permission boundary and alternative desktop shells.
+- Select the UI framework only after privilege separation, update signing,
+  accessibility, packaging, and dependency surface are compared.
+- Record the selection in a dedicated ADR. V1's Angular history is evidence,
+  not a default choice.
+
 ### P0: device and session key storage
 
 - Evaluate Tauri and Rust integration with platform keychains and secure
@@ -246,7 +269,8 @@ Expected output: wire-format draft plus test vectors.
 
 ### P0: assurance language
 
-- User-test the distinction between account control, personhood, and trust.
+- User-test the distinction between account control, personhood, and trust in
+  the early product-validation track before Phase 3/4 commitments.
 - Explain fast, private, pseudonymous, and anonymous profiles accurately.
 - Make transport failure and non-downgrade understandable.
 

@@ -60,9 +60,10 @@ exhaustion. The first release should not claim to solve that case.
 
 ### Recipient
 
-Creates the invitation receive key, mailbox read capability, bundle generation,
-and optional continuity signature. Polls the mailbox, decrypts invitation
-knocks, validates their inner protocol objects, and decides whether to respond.
+Creates the invitation receive key, distinct mailbox read and acknowledgement
+capabilities, bundle generation, and optional continuity signature. Polls the
+mailbox, decrypts invitation knocks, validates their inner protocol objects,
+and decides whether to respond.
 
 ### Sender
 
@@ -187,7 +188,7 @@ The following structures are illustrative. Final objects require canonical
 binary serialization, explicit suite registries, strict bounds, and test
 vectors.
 
-### `ReceiveBundleV1`
+### `ReceiveBundleBodyV1`
 
 ```text
 version
@@ -203,33 +204,70 @@ deposit_policy
 envelope_size_class
 not_before
 expires_at
-recipient_continuity_signature?
-address_attestation
-directory_receipt
 ```
 
-The mailbox read capability is never included. A full receive-code payload may
-contain additional secret material, but the directory record must not.
+The mailbox read and acknowledgement capabilities are never included. A full
+receive-code payload may contain additional secret material, but the directory
+record must not.
+
+Every receive-bundle body version is a closed schema. Unknown fields are
+rejected; new transport, suite, policy, or privacy-profile fields require a new
+supported schema whose canonical digest covers every body field.
+The current simulator deliberately implements only `version`, `generation`,
+`previousBundleDigest`, `mailboxId`, `recipientPublicKey`, and `expiresAt`.
 
 ### `AddressAttestationV1`
 
 ```text
-issuer
-subject_type
-stable_subject
-display_alias?
-realm
-receive_bundle_digest
-issued_at
-expires_at
-assurance claims
+claims:
+  issuer
+  subject_type
+  stable_subject
+  display_alias?
+  realm
+  receive_bundle_body_digest
+  issued_at
+  expires_at
+  assurance claims
 signature
 ```
 
 This object is intentionally similar in spirit to join admission attestations,
 but its audience and purpose are different. A receive-bundle attestation only
 says that an address authorized an invitation receive key. It does not admit
-that key to an MLS session.
+that key to an MLS session. Its signature covers the canonical `claims` object
+and never covers the `signature` field itself.
+
+### `AttestedReceiveBundleV1`
+
+```text
+body                          ReceiveBundleBodyV1
+recipient_continuity_signature?
+address_attestation           AddressAttestationV1
+```
+
+The address attestation signs the canonical `ReceiveBundleBodyV1` digest and
+the address scope. An optional continuity signature signs an explicitly
+domain-separated projection of that same body. Neither signature is a field of
+the body it authenticates.
+
+### `DirectoryRecordV1`
+
+```text
+claims:
+  version
+  directory_lookup_key
+  attested_receive_bundle     AttestedReceiveBundleV1
+  issued_at
+  expires_at
+directory_signature
+```
+
+The directory signature covers the canonical `claims` object, including every
+field and nested signature in the attested bundle, but never covers the
+`directory_signature` field itself. Each body, claims, attestation, and wrapper
+version is independently closed. Implementations reject unknown fields instead
+of authenticating one projection while storing or returning another.
 
 ### `SealedInviteEnvelopeV1`
 
@@ -284,20 +322,26 @@ measurement.
 
 ### Registration
 
-1. Bob creates a dedicated invitation HPKE key and a mailbox read capability.
+1. Bob creates a dedicated invitation HPKE key plus distinct mailbox read and
+   acknowledgement capabilities.
 2. Bob asks the mailbox service to create a random deposit mailbox with strict
    TTL, queue, and lifetime-write limits.
-3. Bob constructs generation 1 of the receive bundle.
+3. Bob constructs generation 1 of `ReceiveBundleBodyV1`.
 4. Bob proves control of the selected external address to the address attestor,
-   or binds the bundle to a private receive code.
-5. The attestor signs the complete bundle digest and address scope.
-6. Bob uploads the bundle and attestation to the directory.
+   or binds the body to a private receive code.
+5. The attestor signs the complete body digest and address scope.
+6. Bob constructs `AttestedReceiveBundleV1` and uploads it to the directory.
 7. The directory validates authorization, record shape, expiry, and generation,
-   then returns a signed receipt.
-8. Bob stores the receipt and begins polling the mailbox.
+   then returns `DirectoryRecordV1`, whose signature covers its complete claims.
+8. Bob stores the directory record and begins polling the mailbox.
 
-The directory must validate sizes and structure before invoking complex
-attestation logic.
+The directory must validate proof type, encoded size, nesting depth, entry
+count, and bundle structure before invoking complex attestation logic. It must
+snapshot the complete validated bundle body and proof before any asynchronous
+authorization and authorize, sign, and store that same snapshot. Exact-schema
+normalization must happen before recursive cloning: fixed field types and
+lengths bound the entire accepted body, while unknown, oversized, deep, cyclic,
+accessor-backed, or symbol-keyed properties fail closed.
 
 ### Lookup
 
@@ -332,8 +376,9 @@ Acceptance is not proof of recipient delivery or decryption.
 2. The mailbox returns a bounded padded batch with at-least-once semantics.
 3. Bob durably stores the envelopes locally before acknowledgement.
 4. Bob attempts decryption and strict typed decoding.
-5. Bob acknowledges valid, malformed, undecryptable, and locally rejected
-   envelopes so poison objects do not loop forever.
+5. Bob uses the separate acknowledgement capability to acknowledge valid,
+   malformed, undecryptable, and locally rejected envelopes so poison objects
+   do not loop forever.
 6. Bob deduplicates by envelope ID independently of provider state.
 7. The UI quarantines new invitations until local validation completes.
 
@@ -405,18 +450,43 @@ Each new bundle contains:
 - `generation = previous generation + 1`
 - The digest of the complete previous bundle
 - A fresh invitation receive key
-- A fresh mailbox and read capability
+- A fresh mailbox with distinct read and acknowledgement capabilities
 - A fresh address attestation
 - Optionally, a signature from the prior continuity key
 
 The directory rejects non-successors according to its stored state. Clients
 with cached state independently reject rollback or a non-chained generation.
-The simulator now exercises this local directory rule.
+The simulator exercises this local rule and rechecks the predecessor after
+asynchronous authorization so only one in-process competing successor commits.
 
 Directory enforcement is not sufficient against a malicious directory that
 maintains different histories for different users. Cached continuity detects
 some rollback; an out-of-band fingerprint detects some substitution; complete
 fork detection requires a transparency or multi-party design.
+
+### Durable registration transaction
+
+The in-memory simulator's generation check is feasibility evidence only. A
+production directory must update one address record through a durable
+compare-and-swap transaction whose precondition includes both the current
+generation and complete previous-bundle digest. Authorization may be verified
+before the transaction, but the precondition must be rechecked inside it.
+
+The committed record contains the highest accepted generation, current bundle
+digest, continuity/reset status, expiry, and the bounded rotation history needed
+for draining. A restart or restored snapshot must not lower that monotonic state.
+If the backing store cannot provide compare-and-swap plus rollback detection,
+the deployment cannot claim safe receive-bundle continuity.
+
+Required production evidence includes:
+
+- two concurrent successors for generation `N + 1` cannot both commit;
+- multiple directory processes produce the same result;
+- crashes before and after every write boundary recover to either generation
+  `N` or one complete generation `N + 1`, never a partial record;
+- restart with stale durable state is detected and fails closed;
+- the old mailbox drains according to the same committed rotation; and
+- an explicit continuity reset cannot be confused with ordinary rotation.
 
 ### Recovery
 
@@ -615,19 +685,23 @@ Requirements:
 
 - Mailbox creation is recipient-authorized and quota-bound.
 - Deposit accepts exactly supported fixed envelope shapes.
-- Poll and acknowledgement authenticate using proof of the read capability,
-  not by sending it in a URL.
+- Poll authenticates using proof of the read capability; acknowledgement uses
+  proof of a distinct acknowledgement capability. Neither is sent in a URL.
 - Missing mailbox, wrong capability, expired mailbox, and closed mailbox avoid
   useful enumeration differences.
 - Deposit authorization is validated before expensive or persistent work.
+- Acknowledgement accepts only a bounded list of canonical delivery identifiers
+  no larger than the mailbox queue bound.
 - Retry and acknowledgement are idempotent.
 
 The mixnet adapter can carry equivalent binary operations without HTTP.
 
 ## Provisional bounds to measure
 
-The simulator uses a 1 KiB plaintext block, queue depth 16, lifetime deposit
-limit 64, and seven-day mailbox lifetime only to demonstrate boundaries. They
+The simulator uses a 1 KiB plaintext block, queue depth and acknowledgement
+batch limit 16, lifetime deposit limit 64, registration-proof limit 8 KiB with
+bounded nesting/entries, address-control proof limit 4 KiB, and seven-day
+mailbox lifetime only to demonstrate boundaries. They
 are not selected production values.
 
 Before choosing limits, encode realistic objects containing:
@@ -693,7 +767,7 @@ plaintext.
 Build only:
 
 - GitHub stable-subject and high-entropy receive-code addresses
-- Address-attestor signature over the complete receive bundle
+- Address-attestor signature over the complete receive-bundle body
 - One active bundle plus one short draining generation
 - Fresh receive key and mailbox on rotation
 - Fast HTTPS transport with explicit metadata language
