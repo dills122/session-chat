@@ -1,6 +1,6 @@
 # Spec: Signed capability invitation v1
 
-Status: approved Phase 1 implementation slice
+Status: implemented in the Phase 1 protocol laboratory
 
 ## Objective
 

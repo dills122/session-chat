@@ -46,10 +46,11 @@ Exit criteria:
 
 ## Phase 1: protocol laboratory
 
-Implementation status: in progress. The first retained increment establishes
-the `session-protocol` Rust workspace and its bounded deterministic-CBOR opaque
-envelope. All invitation, admission, HPKE, MLS, state-machine, and transport
-work listed below remains outstanding.
+Implementation status: in progress. Retained increments now establish the Rust
+workspace, bounded deterministic-CBOR opaque envelope, canonical
+domain-separated Ed25519 secret-capability invitation, and bounded in-memory
+expiration/replay state. Capability proof and approval, HPKE, MLS, durable
+state, the headless flow, and transport work listed below remain outstanding.
 
 Create a Rust workspace containing:
 
@@ -64,7 +65,7 @@ Create a Rust workspace containing:
 
 Capabilities:
 
-- Create and parse signed invitations
+- Create, parse, authenticate, expire, and consume signed invitations
 - Encrypt and decrypt join requests
 - Reject replay and expiration
 - Approve a secret-capability join

@@ -145,6 +145,21 @@ the chosen transport, but should not possess message keys or plaintext.
 
 ## Protocol objects
 
+### Current Phase 1 evidence
+
+The active Rust laboratory now contains two narrow pieces of this architecture:
+
+- `session-protocol` encodes and strictly verifies the deterministic signed
+  secret-capability invitation defined in ADR 0007, in addition to the opaque
+  envelope from ADR 0005.
+- `session-core` applies caller-configured future-skew, expiration, and maximum
+  lifetime policy, then consumes the invitation ID once in bounded in-memory
+  state.
+
+The registry is atomic only within one mutable in-process state machine. It is
+not persistent, cross-process, or rollback-resistant. No join request,
+capability proof, approval, HPKE, MLS, or transport operation exists yet.
+
 Every persisted or transmitted object should declare enough version and suite
 information to reject ambiguity:
 

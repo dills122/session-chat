@@ -7,6 +7,20 @@ project maturity must be rechecked when an implementation decision is made.
 
 ## Session cryptography
 
+### Invitation signatures
+
+- [RFC 8032: Edwards-Curve Digital Signature Algorithm](https://www.rfc-editor.org/rfc/rfc8032)
+- [`ed25519-dalek` 3.0.0 documentation](https://docs.rs/ed25519-dalek/3.0.0/ed25519_dalek/)
+- [`zeroize` 1.9.0 documentation](https://docs.rs/zeroize/1.9.0/zeroize/)
+
+Relevance: ADR 0007 uses strict Ed25519 verification for invitation integrity,
+an application-defined signature domain, invitation-scoped signing keys, and
+zeroization of owned capability and temporary signing buffers.
+
+Caveat: an embedded verifying key authenticates the descriptor against
+mutation; it does not by itself identify the inviter or authenticate the
+channel that delivered the invitation.
+
 ### Messaging Layer Security
 
 - [RFC 9420: The Messaging Layer Security Protocol](https://www.rfc-editor.org/rfc/rfc9420)
