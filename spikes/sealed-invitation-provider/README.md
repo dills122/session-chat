@@ -13,7 +13,8 @@ The spike separates two roles:
 - `InvitationDirectory` maps an authorized lookup key to a signed, rotating
   receive bundle.
 - `InvitationMailboxService` stores fixed-size encrypted envelopes under a
-  random mailbox identifier and authorizes reads with a separate capability.
+  random mailbox identifier and uses distinct read and acknowledgement
+  capabilities.
 
 The directory sees the lookup key but does not receive invitation traffic. The
 mailbox sees random mailbox identifiers and ciphertext but has no identity
@@ -36,10 +37,15 @@ npm test
 - Address-attestor binding independent of the directory
 - Signed directory records bound to the lookup key
 - Chained receive-bundle rotation and rollback rejection
+- In-process rejection of concurrently authorized competing successors
+- Snapshotted async authorization inputs and bounded proof structures
+- Closed receive-bundle schemas with every stored field authenticated
+- Rejection of unknown, oversized, deep, and cyclic bundle extras before authorization
 - Read-capability enforcement
 - Ciphertext tamper detection
 - Envelope and mailbox expiration
-- Retry deduplication and acknowledgement
+- Retry deduplication and right-separated acknowledgement authority
+- Bounded, canonical acknowledgement identifier lists
 - Fixed envelope size and bounded queues
 - Rejection of unauthorized directory registration
 
@@ -60,7 +66,7 @@ ephemeral and have no production rotation or trust-distribution design.
 
 The spike does not implement:
 
-- HTTP, authentication, persistence, or concurrent transactions
+- HTTP, authentication, durable persistence, or multi-process/database transactions
 - Oblivious HTTP, a mixnet, or private information retrieval
 - Privacy Pass or another anonymous abuse-control mechanism
 - Directory transparency or equivocation detection

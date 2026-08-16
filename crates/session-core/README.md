@@ -2,32 +2,43 @@
 
 `session-core` owns invitation, join, approval, membership, and session state
 machines for the Session Chat 2.0 protocol laboratory. Only the first
-invitation-acceptance increment exists today; join, admission, MLS, persistence,
-and transport state remain unimplemented.
+inviter-owned invitation-lifecycle increment exists today; admission proof,
+MLS, persistence, and transport state remain unimplemented.
 
-## Capability invitation registry
+## Capability invitation lifecycle
 
-`InvitationRegistry` accepts attacker-controlled invitation bytes in this
-order:
+`InvitationRegistry` separates these operations:
 
-1. canonical parsing and strict signature verification in `session-protocol`
-2. configured future-skew, expiration, and maximum-lifetime checks
-3. live invitation-ID replay lookup
-4. bounded-capacity check
-5. expired-entry pruning and insertion as one successful mutable operation
+1. `issue` signs an invitation and creates bounded inviter-owned `Available` state.
+2. `validate_descriptor` authenticates attacker-controlled bytes and applies
+   configured time policy without mutation.
+3. `reserve_after_admission` reserves the matching locally issued invitation
+   for one nonzero join-request ID and binds the opaque reservation authority to
+   that exact signed descriptor instance.
+4. `release` returns a rejected or pre-commit failure to `Available`.
+5. `consume_after_membership` moves the matching reservation to `Consumed`.
 
-Every rejected input leaves the registry unchanged. Expiration is exclusive:
-an invitation with `expires_at == now` is expired. Replay entries remain only
-until the signed invitation expires and are pruned on the next successful
-acceptance.
+The explicit transition names encode caller preconditions. The current crate
+does not yet verify capability possession, bind an MLS KeyPackage, record human
+approval, or perform an MLS transition. Those operations must move behind one
+complete state-machine API as their slices land.
+
+Remote self-signed descriptors can be validated but cannot create registry
+state or consume its capacity. A stored invitation is matched by its expiration,
+inviter verifying key, and Ed25519 signature, which binds the complete canonical
+descriptor. Reservation authority carries that record commitment so expiry and
+same-ID reissuance cannot create an ABA transition.
 
 The current registry is deliberately single-process and in-memory. `&mut self`
-makes one acceptance indivisible within this state machine, but this is not a
-claim of durable or cross-process atomicity. Persistent transactional replay
-state and rollback protection remain a later Phase 1 slice.
+makes one transition indivisible within this state machine, but this is not a
+claim of durable or cross-process atomicity. Persistent implementations must
+commit MLS state, request replay state, invitation consumption, and queued
+Welcome delivery with approval/result state and an outbox idempotency key in one
+recoverable transaction under ADR 0008.
 
-Accepted objects still contain a bearer capability and therefore do not
-implement `Debug`. They must not enter logs or transport envelopes.
+Issued and validated objects contain a bearer capability and therefore do not
+implement `Debug` or `Clone`. They must not enter logs or transport metadata.
+Encoded invitation bytes are caller-owned bearer-secret buffers.
 
 ## Verification
 

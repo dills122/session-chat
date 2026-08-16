@@ -156,6 +156,66 @@ fn rejects_unknown_signature_admission_and_use_identifiers() {
 }
 
 #[test]
+fn rejects_unknown_versions_and_object_types() {
+    let encoded = encoded_invitation();
+    let cases = [
+        (1, 7, WireError::UnsupportedVersion(7)),
+        (2, 7, WireError::UnsupportedObjectType(7)),
+        (
+            2,
+            WireObjectType::OpaqueEnvelope as u8,
+            WireError::UnsupportedObjectType(WireObjectType::OpaqueEnvelope as u16),
+        ),
+    ];
+
+    for (offset, value, expected) in cases {
+        let mut unsupported = encoded.clone();
+        unsupported[offset] = value;
+        assert_eq!(
+            SignedCapabilityInvitation::decode_and_verify(&unsupported).err(),
+            Some(expected),
+            "field at byte {offset} must be allowlisted"
+        );
+    }
+}
+
+#[test]
+fn rejects_wrong_cbor_types_for_every_invitation_field() {
+    let encoded = encoded_invitation();
+    let field_offsets = [1, 2, 3, 4, 21, 26, 31, 32, 33, 67, 101, 135];
+
+    for offset in field_offsets {
+        let mut wrong_type = encoded.clone();
+        wrong_type[offset] = if matches!(offset, 1 | 2 | 3 | 21 | 26 | 31 | 32) {
+            0x40 // empty byte string where an integer is required
+        } else {
+            0x00 // integer where a byte string is required
+        };
+
+        assert_eq!(
+            SignedCapabilityInvitation::decode_and_verify(&wrong_type).err(),
+            Some(WireError::Malformed),
+            "wrong CBOR type at byte {offset} must fail before authentication"
+        );
+    }
+}
+
+#[test]
+fn rejects_indefinite_byte_strings_for_every_byte_field() {
+    let encoded = encoded_invitation();
+
+    for offset in [4, 33, 67, 101, 135] {
+        let mut indefinite = encoded.clone();
+        indefinite[offset] = 0x5f;
+        assert_eq!(
+            SignedCapabilityInvitation::decode_and_verify(&indefinite).err(),
+            Some(WireError::Malformed),
+            "indefinite byte string at byte {offset} is outside the profile"
+        );
+    }
+}
+
+#[test]
 fn rejects_malformed_non_deterministic_and_oversized_invitation_bytes() {
     let encoded = encoded_invitation();
 
@@ -201,27 +261,72 @@ fn rejects_malformed_non_deterministic_and_oversized_invitation_bytes() {
 #[test]
 fn rejects_invalid_fixed_lengths_and_verifying_keys() {
     let encoded = encoded_invitation();
+    let cases = [
+        (4, 0x4f, WireError::InvalidInvitationIdLength(15)),
+        (4, 0x51, WireError::InvalidInvitationIdLength(17)),
+        (34, 31, WireError::InvalidJoinChallengeLength(31)),
+        (34, 33, WireError::InvalidJoinChallengeLength(33)),
+        (68, 31, WireError::InvalidSecretCapabilityLength(31)),
+        (68, 33, WireError::InvalidSecretCapabilityLength(33)),
+        (102, 31, WireError::InvalidVerifyingKeyLength(31)),
+        (102, 33, WireError::InvalidVerifyingKeyLength(33)),
+        (136, 63, WireError::InvalidSignatureLength(63)),
+    ];
 
-    let mut short_id = encoded.clone();
-    short_id[4] = 0x4f;
+    for (offset, value, expected) in cases {
+        let mut invalid_length = encoded.clone();
+        invalid_length[offset] = value;
+        assert_eq!(
+            SignedCapabilityInvitation::decode_and_verify(&invalid_length).err(),
+            Some(expected),
+            "fixed-size field at byte {offset} must reject length {value}"
+        );
+    }
+
+    let mut long_signature = encoded.clone();
+    long_signature[136] = 65;
+    long_signature.push(0);
     assert_eq!(
-        SignedCapabilityInvitation::decode_and_verify(&short_id).err(),
-        Some(WireError::InvalidInvitationIdLength(15))
+        SignedCapabilityInvitation::decode_and_verify(&long_signature).err(),
+        Some(WireError::InvalidSignatureLength(65))
     );
 
-    let mut short_challenge = encoded.clone();
-    short_challenge[33] = 0x4f;
-    assert_eq!(
-        SignedCapabilityInvitation::decode_and_verify(&short_challenge).err(),
-        Some(WireError::InvalidJoinChallengeLength(15))
-    );
+    let weak_keys = [
+        [0; 32],
+        {
+            let mut identity = [0; 32];
+            identity[0] = 1;
+            identity
+        },
+        [0xff; 32],
+    ];
+    for weak_key in weak_keys {
+        let mut encoded_with_weak_key = encoded.clone();
+        encoded_with_weak_key[103..135].copy_from_slice(&weak_key);
+        assert!(matches!(
+            SignedCapabilityInvitation::decode_and_verify(&encoded_with_weak_key),
+            Err(WireError::InvalidVerifyingKey | WireError::InvalidSignature)
+        ));
+    }
+}
 
-    let mut invalid_key = encoded.clone();
-    invalid_key[103..135].fill(0xff);
-    assert!(matches!(
-        SignedCapabilityInvitation::decode_and_verify(&invalid_key),
-        Err(WireError::InvalidVerifyingKey | WireError::InvalidSignature)
-    ));
+#[test]
+fn rejects_zero_secret_and_binding_fields_after_decoding() {
+    let encoded = encoded_invitation();
+    let cases = [
+        (5..21, WireError::ZeroInvitationId),
+        (35..67, WireError::ZeroJoinChallenge),
+        (69..101, WireError::ZeroSecretCapability),
+    ];
+
+    for (range, expected) in cases {
+        let mut zeroed = encoded.clone();
+        zeroed[range].fill(0);
+        assert_eq!(
+            SignedCapabilityInvitation::decode_and_verify(&zeroed).err(),
+            Some(expected)
+        );
+    }
 }
 
 #[test]

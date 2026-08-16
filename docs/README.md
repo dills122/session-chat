@@ -37,6 +37,14 @@ all.
   exact Phase 1 capability wire object, signature boundary, and replay policy.
 - [Invitation signature decision](adr/0007-sign-capability-invitations-with-ed25519.md)
   selects scoped Ed25519 keys, strict verification, and application-domain separation.
+- [Invitation lifecycle decision](adr/0008-use-an-inviter-owned-transactional-invitation-lifecycle.md)
+  separates read-only descriptor validation from reservation and post-membership consumption.
+- [Admission-to-KeyPackage decision](adr/0009-bind-admission-to-the-mls-key-package.md)
+  binds every admission method to the exact MLS leaf proposed for membership.
+- [Mailbox authority decision](adr/0010-use-right-specific-mailbox-capabilities.md)
+  separates deposit, receive, acknowledgement, and rotation authority in transport APIs.
+- [MLS implementation decision](adr/0011-select-openmls-for-the-phase-1-laboratory.md)
+  selects a pinned, bounded OpenMLS integration and defines its persistence stop conditions.
 - [V1 retirement decision](adr/0006-retire-v1-from-the-default-branch.md)
   removes the old runtime while preserving its exact tagged snapshot and lessons.
 - [Legacy v1 archive index](legacy-v1/README.md) records recovery commands,
@@ -60,7 +68,7 @@ The documents use the following labels:
 - **Decision**: the current design baseline. Changing it should update an ADR.
 - **Proposed**: preferred direction, but not yet validated enough for an ADR.
 - **Research**: deliberately unresolved.
-- **Deferred**: potentially useful, but outside the first product slice.
+- **Deferred**: potentially useful, but outside the currently named milestone.
 
 ## Retired v1 versus v2
 
@@ -79,13 +87,15 @@ legacy application as end-to-end encrypted.
 The final unchanged legacy baseline is preserved by the `legacy-v1` tag and
 indexed under `docs/legacy-v1/`; it is no longer present in the active source
 tree. Phase 1 now implements the bounded opaque envelope, the canonical signed
-secret-capability invitation from ADR 0007, and bounded in-memory expiration
-and one-time-consumption state in `session-core`.
+secret-capability invitation from ADR 0007, and the bounded inviter-owned
+`Available -> Reserved -> Consumed` lifecycle from ADR 0008. Releasing a
+reservation returns it from `Reserved` to `Available`; it is not a terminal
+stored state.
 
 The invitation's self-contained key proves descriptor integrity only. HPKE,
-capability proof and approval, MLS, durable replay state, rollback protection,
-and transport adapters remain unimplemented and must not be inferred from this
-foundation.
+capability proof and approval, MLS, atomic durable state, rollback protection,
+and transport adapters remain unimplemented. Calling the explicit reservation
+or consumption methods is not proof that those caller preconditions exist yet.
 
 ## Reference standards and projects
 

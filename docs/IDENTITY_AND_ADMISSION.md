@@ -8,8 +8,8 @@ Session Chat should avoid using "identity" for several different concepts.
 
 - **Device root**: locally protected material used to establish continuity on a
   device. It is not automatically disclosed to peers.
-- **Session member key**: a fresh key used by one member in one session or
-  invitation context.
+- **Session member key**: the fresh MLS leaf signature public key authenticated
+  by the exact KeyPackage proposed for one session.
 - **External identity**: an application-meaningful account such as a stable
   GitHub subject identifier.
 - **Credential claim**: a statement made by a configured issuer, such as
@@ -29,7 +29,7 @@ Every member needs a cryptographic key so that MLS can authenticate group
 operations. A member does not need a globally stable username, DID, GitHub
 account, email, or phone number.
 
-Admission determines whether a proposed session key may join. It can consider:
+Admission determines whether one exact proposed MLS KeyPackage may join. It can consider:
 
 - GitHub control proof
 - A verifiable presentation from a trusted issuer
@@ -38,7 +38,8 @@ Admission determines whether a proposed session key may join. It can consider:
 - An out-of-band fingerprint comparison
 - Boolean combinations of the above
 
-The session key, rather than the external identity, is added to the encrypted
+The KeyPackage containing the session-scoped credential identity and leaf
+signature key, rather than the external identity, is added to the encrypted
 session.
 
 ## Common proof binding
@@ -48,25 +49,38 @@ Every admission method must bind its evidence to:
 ```text
 invitation ID
 invitation challenge
-proposed session member public key
+join request ID
+canonical MLS KeyPackage reference
+MLS protocol version and ciphersuite
+session-scoped credential type and identity
+MLS leaf signature public key
 intended verifier or realm
 issue time
 expiration time
-protocol version
+admission-proof protocol version
 ```
 
 This prevents a valid proof captured for one invitation from being replayed to
-admit a different key or join a different session.
+admit a different KeyPackage, credential, signature key, or session. The
+KeyPackage reference is the selected ciphersuite's RFC 9420 hash reference over
+the canonical TLS-serialized KeyPackage; Session Chat does not define a second
+hash representation.
 
-The join request also needs its own replay identifier. The inviter records
-consumption according to the invitation's one-use or bounded-multi-use policy.
+The inviter verifies the KeyPackage signature, lifetime, version, ciphersuite,
+credential, and extension policy, extracts the credential identity and leaf
+signature key, and compares them with the proof before approval. The exact
+verified KeyPackage/reference must be passed unchanged to MLS Add. See ADR 0009.
+
+The inviter records the join-request replay identifier separately. A valid
+request reserves locally issued invitation state; only the successful durable
+membership transaction consumes it under ADR 0008.
 
 ## GitHub admission
 
 ### Recommended flow
 
 1. The recipient creates or loads local device material and generates a fresh
-   session member key.
+   session-scoped credential, leaf signature key, and MLS KeyPackage.
 2. The client starts a GitHub authorization-code flow with PKCE through the
    configured identity bridge.
 3. The bridge resolves GitHub's stable numeric subject identifier and any
@@ -212,15 +226,35 @@ Verification should return normalized evidence without erasing provenance:
 
 ```rust
 struct VerifiedAdmission {
-    session_public_key: PublicKey,
+    invitation_id: InvitationId,
+    invitation_challenge: JoinChallenge,
+    join_request_id: JoinRequestId,
+    intended_verifier: VerifierRealm,
+    admission_proof_version: AdmissionProofVersion,
+    proof_issued_at: Timestamp,
+    proof_expires_at: Timestamp,
+    // The exact parsed object verified above; not reconstructible from the ref.
+    verified_key_package: ParsedVerifiedKeyPackage,
+    key_package_ref: KeyPackageRef,
+    mls_protocol_version: MlsProtocolVersion,
+    mls_ciphersuite: MlsCiphersuite,
+    credential_type: CredentialType,
+    credential_identity: SessionCredentialId,
+    leaf_signature_key: MlsSignaturePublicKey,
     assurance: AssuranceLevel,
     evidence_source: EvidenceSource,
     policy_claims: Vec<PolicyClaim>,
     display_claims: Vec<DisplayClaim>,
     verified_at: Timestamp,
-    expires_at: Timestamp,
 }
 ```
+
+`VerifiedAdmission` has private constructors, is opaque, does not implement
+`Clone`, and is consumed once by the membership state machine. It owns both the
+full admission context and the exact parsed KeyPackage that produced these
+values. No API exposes a path to reconstruct, substitute, or separately pair a
+KeyPackage after verification, and no membership API accepts an additional
+KeyPackage or invitation/request context beside this value.
 
 The UI must retain the difference between a provider attestation, an
 issuer-signed credential, capability possession, and manual approval.

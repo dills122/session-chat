@@ -1,5 +1,10 @@
 # V1-to-v2 evidence brief
 
+> Historical boundary: this brief records evidence available when v1 was
+> retired in August 2026. Its statements about unimplemented v2 work are true
+> only at that boundary. Use `docs/README.md` and the active roadmap for current
+> implementation status.
+
 ## Scope
 
 - Project: Session Chat
@@ -49,10 +54,11 @@ identity-independent guarantees.
   deterministic link hashes as a secure v2 protocol.
 - Decision: separate security, admission, rendezvous, and transport; begin with
   a headless Rust protocol laboratory.
-- Supported result: the repository now has a bounded opaque wire envelope and
-  negative parser tests, plus a complete design and threat-model baseline.
-- Remaining boundary: invitation signing, encrypted join, replay state, MLS,
-  persistence, transports, and clients are not yet implemented.
+- Supported result at retirement: the repository had a bounded opaque wire
+  envelope and negative parser tests, plus a design and threat-model baseline.
+- Remaining boundary at retirement: invitation signing, encrypted join, replay
+  state, MLS, persistence, transports, and clients were not yet implemented.
+  This archival brief intentionally does not track later v2 increments.
 
 ## Contradictions and gaps
 

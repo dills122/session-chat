@@ -25,14 +25,24 @@ channel that delivered the invitation.
 
 - [RFC 9420: The Messaging Layer Security Protocol](https://www.rfc-editor.org/rfc/rfc9420)
 - [RFC 9750: The Messaging Layer Security Architecture](https://www.rfc-editor.org/rfc/rfc9750)
+- [OpenMLS 0.8.1 signed release](https://github.com/openmls/openmls/releases/tag/openmls-v0.8.1)
+- [OpenMLS 0.8.1 immutable changelog](https://github.com/openmls/openmls/blob/openmls-v0.8.1/CHANGELOG.md#081-2026-02-13)
+- [OpenMLS persistence documentation](https://book.openmls.tech/user_manual/persistence.html)
+- [May 2026 OpenMLS audit notice](https://blog.phnx.im/openmls-independent-security-audit/)
+- [SRLabs OpenMLS security assurance report](https://blog.openmls.tech/SRL-OpenMLS_security_assurance_assessment.pdf)
 
 Relevance: MLS provides asynchronous group end-to-end encryption, membership
 changes, forward secrecy, and post-compromise security. Its architecture
 separates the Authentication Service from the Delivery Service, matching the
 proposed identity/admission and transport split.
 
-Open questions: OpenMLS version and review status, persistence model,
-credential representation, concurrent Commit handling, and interoperability.
+Decision: ADR 0011 selects exact OpenMLS 0.8.1 and its Rust crypto provider for
+a bounded Phase 1 spike; ADR 0009 defines the initial credential/KeyPackage
+binding. Durable cross-layer transactions, crash recovery, concurrent Commit
+handling, storage migration, interoperability evidence, and resolution or
+explicit applicability analysis of the audit's remaining Low finding are open gates.
+The SRLabs audit excluded cryptographic and storage providers, so it is not
+evidence for `openmls_rust_crypto` or the future Session Chat storage adapter.
 
 ### Pre-membership encryption
 
@@ -121,13 +131,12 @@ attestation format.
 
 - [Tauri 2 deep linking](https://v2.tauri.app/plugin/deep-linking/)
 - [Tauri security documentation](https://v2.tauri.app/security/)
-- [OpenMLS repository](https://github.com/openmls/openmls)
 
 Relevance: installed-client deep links, constrained native/webview boundary,
-platform integration, and a Rust MLS implementation candidate.
+and platform integration. MLS implementation evidence is tracked above.
 
-Open questions: platform key storage, Tauri command surface, dependency version
-floor, OpenMLS review remediations, and signed update design.
+Open questions: desktop-shell and UI-framework selection, platform key storage,
+Tauri command surface, and signed update design.
 
 ## Fast transport
 

@@ -136,6 +136,20 @@ identifiers. A mailbox capability may include separate rights for:
 - Acknowledging or deleting an envelope
 - Rotating the mailbox
 
+These rights are separate types, not flags on one bearer identifier:
+
+- `DepositEndpoint` contains only the route and authority a sender needs to deposit.
+- `ReceiveCapability` authorizes bounded reads but not deposit, deletion, or rotation.
+- `AcknowledgementCapability` authorizes deletion/acknowledgement for the
+  relevant mailbox or delivery scope.
+- `RotationCapability` authorizes continuity changes and is never supplied to
+  normal send, receive, or acknowledgement calls.
+
+Secret-bearing authority types do not implement `Debug` or `Display`, do not
+enter generic transport metadata, and are not obtained from ambient global
+credentials. A `DeliveryId` is an untrusted identifier, not acknowledgement
+authority. See ADR 0010.
+
 The service enforces:
 
 - Maximum object and queue sizes
@@ -160,6 +174,8 @@ All production transports:
 4. Reject expired envelopes.
 5. Bound memory, disk, and retry growth under attacker-controlled input.
 6. Exclude secrets and plaintext from logs.
+7. Reject an operation when given a capability for another right, mailbox, or delivery.
+8. Never serialize receive, acknowledgement, or rotation authority into send metadata.
 
 Private transport additionally:
 

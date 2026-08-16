@@ -8,6 +8,12 @@ on:
       - 'Cargo.toml'
       - 'rust-toolchain.toml'
       - 'crates/**'
+      - 'docs/ARCHITECTURE_V2.md'
+      - 'docs/IDENTITY_AND_ADMISSION.md'
+      - 'docs/THREAT_MODEL.md'
+      - 'docs/ROADMAP_V2.md'
+      - 'docs/specs/**'
+      - 'docs/adr/**'
   push:
     branches:
       - master
@@ -17,6 +23,12 @@ on:
       - 'Cargo.toml'
       - 'rust-toolchain.toml'
       - 'crates/**'
+      - 'docs/ARCHITECTURE_V2.md'
+      - 'docs/IDENTITY_AND_ADMISSION.md'
+      - 'docs/THREAT_MODEL.md'
+      - 'docs/ROADMAP_V2.md'
+      - 'docs/specs/**'
+      - 'docs/adr/**'
 
 permissions:
   contents: read

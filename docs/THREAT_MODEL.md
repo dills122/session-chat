@@ -8,7 +8,8 @@ Session Chat is a privacy- and security-sensitive messaging project. The active
 repository contains a headless Rust protocol laboratory and design artifacts;
 it does not yet contain a deployable client or network service. The laboratory
 currently has a bounded opaque envelope, a canonical domain-separated Ed25519
-secret-capability invitation, and bounded in-memory expiration/replay state. It
+secret-capability invitation, exhaustive fixed-field rejection fixtures, and a
+bounded inviter-owned invitation reservation/consumption state machine. It
 does not yet encrypt join requests, prove capability possession, approve a
 member, operate MLS, or persist rollback-resistant state. The retired v1
 Angular/NestJS application used a server-readable, server-authoritative model.
@@ -55,8 +56,8 @@ handles only the minimum information required for its role.
    keys.
 2. Infrastructure cannot read application content or fabricate authenticated
    member messages.
-3. Admission evidence cannot be replayed to another invitation, verifier, or
-   proposed key.
+3. Admission evidence cannot be replayed to another invitation, verifier,
+   KeyPackage, credential identity, or MLS leaf signature key.
 4. Targeted public invitations do not act as bearer membership credentials.
 5. Removed members cannot derive later group epochs; new members cannot decrypt
    earlier application history unless explicitly shared.
@@ -299,9 +300,16 @@ landing behavior, and fuzzing of every decoder.
 Current evidence covers the canonical fixed-field encoding, exact size bounds,
 explicit version/suite/mode/use-policy allowlists, application-domain-separated
 strict Ed25519 verification, structural nonzero identifiers/challenges/
-capabilities, configurable time policy, and bounded in-memory one-use tracking.
-Random generation quality, durable atomic consumption, rollback protection,
-deep-link leakage, fuzzing, HPKE, and admission binding remain open.
+capabilities, configurable time policy, exhaustive per-field malformed fixtures,
+and the inviter-owned `Available -> Reserved -> Consumed` lifecycle, with a
+release edge from `Reserved` back to `Available` rather than a stored
+`Released` state.
+Descriptor validation is read-only and remote self-signed objects cannot create
+registry state. Reservation authority is bound to the exact signed local record,
+so it cannot cross an expiry/reissue boundary even if invitation and request IDs
+recur. Random generation quality, durable atomic consumption with MLS,
+rollback protection, deep-link leakage, fuzzing, HPKE, and admission proof
+implementation remain open.
 
 Attacker story: an attacker copies a public targeted invitation and submits a
 validly encoded join request for their own key. Correct behavior is a policy
@@ -340,8 +348,9 @@ credential allowlists, local verification where possible, minimal disclosure,
 explicit evidence provenance, and manual approval where required.
 
 Attacker story: Mallory captures Bob's valid presentation and substitutes
-Mallory's MLS KeyPackage. Verification must fail because the presentation is
-bound to Bob's proposed session member key and the invitation challenge.
+Mallory's MLS KeyPackage. Verification must fail because the presentation binds
+the canonical KeyPackage reference, credential identity, leaf signature key,
+invitation challenge, request identifier, ciphersuite, and verifier under ADR 0009.
 
 ### MLS and session state
 
@@ -367,9 +376,10 @@ timing or error oracles, retained-expired data, deletion of join requests, and
 cross-mailbox correlation.
 
 Required controls include high-entropy capabilities, separated deposit/read
-rights, object and queue bounds, TTLs, quotas, idempotency, constant-shape errors
-where practical, capability rotation, no plaintext indexing, and logs that omit
-full identifiers and capabilities.
+rights plus distinct acknowledgement and rotation authority, object and queue
+bounds, TTLs, quotas, idempotency, constant-shape errors where practical,
+capability rotation, no plaintext indexing, and logs that omit full identifiers
+and capabilities. Delivery identifiers never authorize acknowledgement.
 
 Attacker story: an unauthenticated sender floods a public request mailbox with
 maximum-sized objects. The service must bound per-invitation and global storage,
@@ -521,5 +531,7 @@ necessary attacker control is absent from real deployments, only test tooling
 is affected, data is already public, or independent cryptographic verification
 prevents the claimed outcome.
 
-Repository: sha256:006deaede2378d74f3da0d6fae884ac94366a3c804c345a1418f552ba6085afe
-Version: c2fb40367ed69e9dbd7c967107183b1e036acfbc
+Provenance: living repository threat model updated with ADRs 0008-0011 and the
+inviter-owned invitation lifecycle. Git history is the authoritative reviewed
+version boundary; do not copy a commit hash forward without re-reviewing the
+document against that commit.

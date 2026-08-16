@@ -52,9 +52,10 @@ The client owns:
 - Message ordering, retry, replay, and expiration logic
 - User-visible descriptions of verified evidence and privacy guarantees
 
-The proposed shell is Angular inside Tauri, with Rust responsible for protocol,
-cryptography, storage, and networking. The browser UI is not the authority for
-keys or membership decisions.
+The desktop shell remains a research decision. Tauri with Rust responsible for
+protocol, cryptography, storage, and networking is the leading boundary, but no
+web UI framework is selected. Whatever shell is chosen, UI code is not the
+authority for keys or membership decisions.
 
 ### Identity bridge
 
@@ -62,7 +63,9 @@ The optional identity bridge converts an external authorization event into a
 short-lived attestation bound to:
 
 - The stable provider-side subject identifier
-- A fresh Session Chat public key
+- The canonical MLS KeyPackage reference, session-scoped credential identity,
+  leaf signature key, MLS version and ciphersuite, and join-request identifier
+  defined by ADR 0009
 - The invitation identifier and challenge
 - The intended verifier or realm
 - Issue and expiration times
@@ -152,12 +155,13 @@ The active Rust laboratory now contains two narrow pieces of this architecture:
 - `session-protocol` encodes and strictly verifies the deterministic signed
   secret-capability invitation defined in ADR 0007, in addition to the opaque
   envelope from ADR 0005.
-- `session-core` applies caller-configured future-skew, expiration, and maximum
-  lifetime policy, then consumes the invitation ID once in bounded in-memory
-  state.
+- `session-core` creates bounded inviter-owned invitation state, validates
+  attacker-controlled descriptors without mutation, and models explicit
+  reservation, release, and post-membership consumption in memory.
 
-The registry is atomic only within one mutable in-process state machine. It is
-not persistent, cross-process, or rollback-resistant. No join request,
+The registry is atomic only within one mutable in-process state machine. Its
+method names encode caller preconditions but do not implement admission or MLS.
+It is not persistent, cross-process, or rollback-resistant. No join request,
 capability proof, approval, HPKE, MLS, or transport operation exists yet.
 
 Every persisted or transmitted object should declare enough version and suite
@@ -199,10 +203,12 @@ requires the link itself to remain secret.
 The join request contains:
 
 - Admission proof or capability proof
-- Proposed session-scoped member key
-- MLS KeyPackage
+- Join-request replay identifier
+- MLS KeyPackage and its ciphersuite KeyPackage reference
+- Session-scoped credential identity and leaf signature key extracted from that KeyPackage
 - Supported versions and transports
-- Response mailbox capability
+- Response deposit endpoint carrying deposit authority only; it conveys no
+  receive, acknowledgement, or rotation authority
 - Fresh nonce and expiration
 
 The entire request is encrypted to the invitation key before entering a
@@ -213,12 +219,24 @@ rendezvous service or transport.
 After approval:
 
 1. The inviter validates the admission proof, invitation binding, expiry,
-   replay identifier, and MLS KeyPackage.
-2. The inviter constructs an MLS Add and Commit.
-3. The group advances to a new epoch.
-4. An encrypted Welcome is delivered to the joiner's response mailbox.
-5. The invitation is consumed, rotated, or retained according to its explicit
-   multi-use policy.
+   replay identifier, and exact admission-to-KeyPackage binding from ADR 0009.
+2. The inviter reserves the locally issued invitation for that request.
+3. The inviter records explicit approval or releases the reservation on rejection.
+4. The inviter consumes the opaque one-shot `VerifiedAdmission` to construct an
+   MLS Add and Commit with its owned, exact verified KeyPackage.
+5. MLS epoch/group state, request replay state, invitation consumption,
+   approval/result state, and the exact encrypted Welcome plus a durable outbox
+   job with an idempotency key commit atomically.
+6. The group advances to a new epoch.
+7. The committed outbox delivers the Welcome idempotently to a separately
+   authorized response endpoint; delivery failure does not undo membership and
+   a restart resumes the outbox job.
+
+A verified rejection or failure before the transaction releases the invitation
+reservation. Once commit begins, an ambiguous result is recovered from durable
+state rather than guessed: a committed result proceeds only through idempotent
+outbox retry, while an uncommitted result may safely release. Retry never
+repeats the MLS Add/Commit, and delivery failure never reopens the invitation.
 
 MLS protects group content and membership transitions; the invitation protocol
 only protects the pre-membership exchange.
@@ -239,19 +257,34 @@ trait AdmissionVerifier {
 trait EnvelopeTransport {
     async fn send(
         &self,
-        mailbox: MailboxId,
+        destination: &DepositEndpoint,
         envelope: OpaqueEnvelope,
     ) -> Result<DeliveryId>;
 
     async fn receive(
         &self,
-        mailbox: MailboxId,
+        authority: &ReceiveCapability,
         cursor: Option<Cursor>,
     ) -> Result<Vec<ReceivedEnvelope>>;
 
-    async fn acknowledge(&self, delivery: DeliveryId) -> Result<()>;
+    async fn acknowledge(
+        &self,
+        authority: &AcknowledgementCapability,
+        delivery: DeliveryId,
+    ) -> Result<()>;
 }
 ```
+
+`VerifiedAdmission` is privately constructible, opaque, non-`Clone`, and
+one-shot. It contains the full `AdmissionContext` and the exact parsed, verified KeyPackage. The
+membership state machine consumes it directly; the verifier interface does not
+return a detachable reference that can be reused with another request or
+reconstructed KeyPackage, and the membership API accepts no separately supplied
+KeyPackage or invitation/request context.
+
+`DepositEndpoint`, `ReceiveCapability`, `AcknowledgementCapability`, and
+`RotationCapability` are distinct authority-bearing types under ADR 0010.
+Secret-bearing variants do not implement `Debug` or enter transport metadata.
 
 Invitation publication is intentionally outside `EnvelopeTransport`. An invite
 may be posted to GitHub, copied privately, rendered as a QR code, or exchanged
@@ -262,7 +295,7 @@ through another system.
 ```text
 session-chat/
 |-- apps/
-|   |-- desktop/                 # Angular + Tauri client
+|   |-- desktop/                 # selected desktop shell around Rust core
 |   |-- landing/                 # public invite landing page
 |   `-- sessionctl/              # headless protocol/debug client
 |-- crates/
@@ -295,7 +328,8 @@ Socket.IO rooms into accidental cryptographic protocol state.
 ## Architecture invariants
 
 1. Infrastructure never receives application plaintext or MLS group secrets.
-2. Admission evidence is bound to the invitation and proposed session key.
+2. Admission evidence is bound to the invitation and the exact MLS KeyPackage,
+   credential identity, and leaf signature key proposed for membership.
 3. Copying a targeted public invite does not grant membership.
 4. A session-scoped key is not silently reused as a global identity.
 5. Transport selection does not change the session protocol or message format.
@@ -305,3 +339,6 @@ Socket.IO rooms into accidental cryptographic protocol state.
 9. Anonymous mode makes no external identity-provider requests.
 10. Logs, telemetry, and crash reports exclude secrets, plaintext, raw tokens,
     admission proofs, and stable identifiers unless explicitly justified.
+11. Descriptor validation is read-only; single-use consumption occurs only with
+    the successful membership transaction.
+12. Deposit, receive, acknowledgement, and rotation rights are not interchangeable.

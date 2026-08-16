@@ -6,13 +6,14 @@ Status: implemented in the Phase 1 protocol laboratory
 
 Add the first authenticated invitation boundary to the headless Rust protocol
 laboratory. An inviter can sign one deterministic, expiring, single-use secret
-capability invitation; a recipient can parse and authenticate it; and the core
-can consume it once in bounded in-memory state.
+capability invitation; a recipient can parse and authenticate it without
+mutation; and the inviter-owned core can reserve, release, and consume local
+state through the ADR 0008 lifecycle.
 
 This slice proves invitation integrity, explicit signature-domain separation,
-time-policy enforcement, and replay rejection. It does not yet prove admission,
-encrypt a join request, create an MLS group, or identify the inviter as a
-GitHub account or real-world person.
+time-policy enforcement, local-issuance anchoring, and transition exclusivity.
+It does not yet prove that admission validation or MLS membership actually
+occurred before callers invoke the correspondingly named transition methods.
 
 ## Assumptions
 
@@ -29,8 +30,9 @@ GitHub account or real-world person.
 4. Expiration and allowed clock skew are acceptance policy, not transport
    behavior. The core receives an explicit current time and configurable
    maximum lifetime/skew so tests remain deterministic.
-5. One-time consumption is atomic within one `&mut` in-memory registry. Durable
-   and concurrent replay state is deferred to the persistence slice.
+5. Descriptor validation is read-only. Only local issuance creates registry
+   state. Reservation, release, and consumption are atomic within one `&mut`
+   in-memory registry; durable cross-layer transactions are deferred.
 
 ## Tech stack
 
@@ -83,7 +85,7 @@ cargo test --workspace --locked
 
 ```text
 crates/session-protocol/       # signed wire schema, canonical codec, signature verification
-crates/session-core/           # expiration policy and bounded one-time consumption
+crates/session-core/           # inviter-owned availability/reservation/consumption lifecycle
 docs/specs/                    # executable feature contract
 docs/adr/                      # signature-suite and domain-separation rationale
 ```
@@ -94,13 +96,18 @@ Public types keep fields private, expose typed accessors, and return explicit
 errors without including secret bytes:
 
 ```rust
-let accepted = registry.accept(&encoded_invitation, now)?;
-assert_eq!(accepted.invitation_id(), &expected_id);
+let validated = registry.validate_descriptor(&encoded_invitation, now)?;
+let reservation = registry.reserve_after_admission(&validated, request_id, now)?;
+registry.consume_after_membership(reservation, now)?;
 ```
 
-Secret-bearing types do not implement `Debug`. Capability buffers and temporary
-signature inputs are zeroized on drop. No `unsafe`, panics on attacker input,
-wall-clock reads, network calls, or ambient global state are allowed.
+Secret-bearing types do not implement `Debug` or `Clone`. The owned
+`SecretCapability`, temporary decoded capability array, canonical verification
+buffer, and temporary signature inputs are zeroized on drop. The returned
+canonical `Vec<u8>` intentionally contains the bearer capability; callers own
+its storage, copying, transmission, and cleanup. Rust zeroization cannot promise
+removal of allocator, OS, backup, or hardware copies. No `unsafe`, panics on
+attacker input, wall-clock reads, network calls, or ambient global state are allowed.
 
 ## Testing strategy
 
@@ -108,20 +115,23 @@ wall-clock reads, network calls, or ambient global state are allowed.
 - Prove round-trip parsing, strict signature verification, and every public
   accessor against that fixture.
 - Tamper each signed class of field and prove authentication fails.
-- Reject wrong lengths, field counts/types, unknown versions/suites/modes/use
-  policies, non-deterministic integers, indefinite lengths, trailing bytes,
-  oversized inputs, zero IDs/challenges/capabilities, and invalid public keys.
-- Prove expiration boundary, future-issued policy, maximum lifetime, duplicate
-  consumption, same-ID replay under another valid signature, capacity bounds,
-  expired-entry pruning, and no state mutation on rejected input.
+- Reject wrong lengths and CBOR types for every field, unknown
+  versions/object-types/suites/modes/use policies, non-deterministic integers,
+  indefinite arrays and every byte string, trailing bytes, oversized inputs,
+  zero decoded IDs/challenges/capabilities, and distinct invalid or weak keys.
+- Prove descriptor validation never mutates lifecycle state; only local issuance
+  consumes capacity; substituted same-ID descriptors cannot reserve local state;
+  one request owns a reservation; release permits retry; only a matching
+  reservation can be consumed; and rejected input leaves state unchanged.
 - Run the complete workspace formatting, Clippy, and test gates after each
   complete increment.
 
 ## Boundaries
 
-- Always: authenticate before consumption; validate time before mutation; keep
-  replay state bounded; keep errors and debug output secret-free; update the
-  threat model and roadmap with implemented versus deferred claims.
+- Always: authenticate without mutation; validate time before every transition;
+  require local issuance before reservation; reserve only after admission and
+  KeyPackage binding checks; consume only with membership; keep state bounded;
+  keep errors and debug output secret-free; update the threat model and roadmap.
 - Ask first: change the Phase 1 admission mode; add persistent replay state;
   expose a public network/deep-link API; select HPKE or MLS dependencies.
 - Never: put this bearer invitation in an opaque transport envelope or log;
@@ -133,20 +143,21 @@ wall-clock reads, network calls, or ambient global state are allowed.
 
 1. A stable canonical fixture authenticates with `ed25519-dalek` 3.0.0.
 2. Any changed signed byte fails before state mutation.
-3. An invitation is accepted only when its signature and configured time policy
-   are valid.
-4. The same invitation ID cannot be accepted twice while the invitation is
-   valid, even when replayed in another validly signed descriptor.
-5. Replay memory cannot exceed its configured capacity and expired entries are
-   pruned.
-6. Existing opaque-envelope behavior remains unchanged and still rejects an
+3. Descriptor validation succeeds only when signature and configured time policy
+   are valid and does not create, reserve, or consume local state.
+4. A remotely supplied self-signed descriptor cannot occupy inviter lifecycle state.
+5. A locally issued invitation permits one reservation at a time, release is
+   retryable, and a successful membership transition consumes it once.
+6. A same-ID descriptor with another valid signature cannot operate on local state.
+7. Lifecycle memory cannot exceed its configured capacity and expired entries are pruned.
+8. Existing opaque-envelope behavior remains unchanged and still rejects an
    invitation object type.
-7. All workspace gates pass with the lockfile.
+9. All workspace gates pass with the lockfile.
 
 ## Deferred questions
 
 - HPKE suite, invitation encryption key, and encrypted join-request schema
-- Capability proof construction and binding to a proposed session member key
+- Capability proof construction over the ADR 0009 KeyPackage binding
 - Persistent transactional replay state and rollback protection
 - Bounded-multi-use invitations and revocation
 - Targeted GitHub and credential invitation schemas

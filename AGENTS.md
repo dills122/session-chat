@@ -38,7 +38,8 @@ research item into a security or product claim.
 Current areas:
 
 - `crates/session-protocol`: versioned wire objects and canonical serialization
-- `crates/session-core`: bounded in-memory invitation acceptance and replay state
+- `crates/session-core`: bounded inviter-owned invitation lifecycle state; descriptor
+  validation is read-only and consumption follows successful membership
 - `spikes/`: disposable feasibility code; production packages must not depend on it
 - `docs/`: canonical v2 product, architecture, threat-model, protocol, ADR, and legacy-evidence baseline
 - `scripts/`: tested repository and AI Central setup tooling
@@ -60,8 +61,9 @@ dependency direction described in `docs/ARCHITECTURE_V2.md`.
   persistence, and network input as attacker-controlled.
 - Never put plaintext, group keys, bearer capabilities, raw provider tokens, or
   stable external identity fields into transport envelopes or logs.
-- Admission proves authorization to propose a session-scoped member key; it does
-  not replace MLS membership or grant transport authority.
+- Admission proves authorization for one exact MLS KeyPackage, credential
+  identity, and leaf signature key; it does not replace MLS membership or grant
+  transport authority.
 - Private transport fails closed. Do not add an automatic fast/direct fallback.
 - Bind proofs to the invitation, challenge, verifier audience, proposed member
   key, and expiration as applicable.

@@ -48,9 +48,28 @@ Exit criteria:
 
 Implementation status: in progress. Retained increments now establish the Rust
 workspace, bounded deterministic-CBOR opaque envelope, canonical
-domain-separated Ed25519 secret-capability invitation, and bounded in-memory
-expiration/replay state. Capability proof and approval, HPKE, MLS, durable
-state, the headless flow, and transport work listed below remain outstanding.
+domain-separated Ed25519 secret-capability invitation, exhaustive field-boundary
+fixtures, and a bounded inviter-owned invitation reservation/consumption state
+machine. Capability proof and approval, HPKE, MLS, durable state, the headless
+flow, and transport work listed below remain outstanding.
+
+Contract hardening gate before HPKE or the isolated MLS laboratory:
+
+- Descriptor validation is read-only and only local issuance creates lifecycle state.
+- Invitation reservation and consumption follow ADR 0008.
+- Admission binds the exact KeyPackage, credential, and leaf key under ADR 0009.
+- Transport interfaces use the distinct authorities from ADR 0010.
+- The MLS integration obeys the selection and stop conditions in ADR 0011.
+
+The first MLS increment may use only isolated in-memory providers for
+deterministic protocol tests, as ADR 0011 specifies. Before any networked or
+user-facing join path is enabled, one durable transaction must own reservation
+recovery, request replay state, the MLS membership transition, invitation
+consumption, approval/result state, and the encrypted Welcome outbox job with
+an idempotency key. Dropped or abandoned
+reservation tokens must return safely to `Available` without permitting a
+second concurrent admission. Until that gate passes, the laboratory makes no
+networked, user-facing, durability, rollback-resistance, or product-security claim.
 
 Create a Rust workspace containing:
 
@@ -65,7 +84,9 @@ Create a Rust workspace containing:
 
 Capabilities:
 
-- Create, parse, authenticate, expire, and consume signed invitations
+- Create, parse, authenticate, and expire signed invitations without mutation
+- Reserve a locally issued invitation after validated admission and consume it
+  only with a successful membership transition
 - Encrypt and decrypt join requests
 - Reject replay and expiration
 - Approve a secret-capability join
@@ -81,6 +102,21 @@ Exit criteria:
 - Key and state-machine invariants are covered by property or model-based tests
   where practical.
 
+## Early product-validation track
+
+After the headless invitation/admission states are concrete, but before choosing
+the desktop UI framework or completing Phase 3 services, build the fixture-driven
+prototype defined in `PRODUCT_V2.md`. Test approval evidence, device-change
+warnings, transport guarantees, and failure states with representative users.
+
+Exit criteria:
+
+- Users can distinguish verified account control from personal trust.
+- Users understand that valid evidence still requires approval.
+- Fast and Private mode wording does not imply equivalent metadata guarantees.
+- Results are recorded as product evidence and do not become protocol authority.
+- A separate ADR selects the desktop shell and UI framework only after this evidence.
+
 ## Phase 2: prove identity independence
 
 Implement GitHub admission through a minimal identity bridge while keeping
@@ -90,7 +126,9 @@ Exit criteria:
 
 - The same invitation/join state machine accepts either configured proof type.
 - GitHub attestations bind provider subject, invitation challenge, audience,
-  session key, and expiration.
+  expiration, and the complete ADR 0009 tuple: canonical KeyPackage reference,
+  session-scoped credential identity, leaf signature key, MLS version and
+  ciphersuite, and join-request identifier.
 - Copying a targeted invitation cannot admit another GitHub account.
 - Anonymous capability mode makes no GitHub or bridge requests.
 - Raw GitHub tokens never enter rendezvous, peer messages, or logs.
@@ -116,10 +154,18 @@ Exit criteria:
 - NAT and offline scenarios have repeatable integration tests.
 - Abuse controls bound unauthenticated storage and computation.
 - Operational logs remain useful without containing sensitive protocol data.
+- Directory generation and previous-bundle digest update through one durable
+  compare-and-swap transaction.
+- The highest accepted generation survives restart and rejects stale-snapshot rollback.
+- Crash recovery is tested before and after every registration write boundary.
+- Concurrent competing successors across multiple service instances cannot both commit.
+- Rotation history, draining mailboxes, and continuity-reset state recover consistently.
 
 ## Phase 4: desktop client
 
-Create the Tauri shell and Angular interface around the Rust core.
+Create the desktop shell selected by its dedicated ADR around the Rust core.
+Tauri is the leading privilege boundary; Angular or another UI framework is not
+selected by the retirement history or this roadmap.
 
 Initial UX:
 

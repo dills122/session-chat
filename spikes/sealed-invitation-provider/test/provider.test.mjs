@@ -135,11 +135,28 @@ test('rejects unauthorized reads and tampered ciphertext', () => {
       }),
     /mailbox unavailable/
   );
+  assert.throws(
+    () =>
+      state.mailboxService.fetch({
+        mailboxId: state.mailbox.bundle.mailboxId,
+        readCapability: state.mailbox.acknowledgementCapability
+      }),
+    /mailbox unavailable/
+  );
 
   const [delivery] = state.mailboxService.fetch({
     mailboxId: state.mailbox.bundle.mailboxId,
     readCapability: state.mailbox.readCapability
   });
+  assert.throws(
+    () =>
+      state.mailboxService.acknowledge({
+        mailboxId: state.mailbox.bundle.mailboxId,
+        acknowledgementCapability: state.mailbox.readCapability,
+        deliveryIds: [delivery.deliveryId]
+      }),
+    /mailbox unavailable/
+  );
   const tampered = structuredClone(delivery.envelope);
   const ciphertext = Buffer.from(tampered.ciphertext, 'base64url');
   ciphertext[0] ^= 1;
@@ -219,7 +236,7 @@ test('deduplicates sender retries and does not redeliver acknowledged envelopes'
 
   state.mailboxService.acknowledge({
     mailboxId: state.mailbox.bundle.mailboxId,
-    readCapability: state.mailbox.readCapability,
+    acknowledgementCapability: state.mailbox.acknowledgementCapability,
     deliveryIds: [first.deliveryId]
   });
   assert.deepEqual(
@@ -301,7 +318,7 @@ test('bounds total accepted deposits for the lifetime of a mailbox', () => {
   });
   state.mailboxService.acknowledge({
     mailboxId: state.mailbox.bundle.mailboxId,
-    readCapability: state.mailbox.readCapability,
+    acknowledgementCapability: state.mailbox.acknowledgementCapability,
     deliveryIds: [accepted.deliveryId]
   });
 
@@ -424,4 +441,383 @@ test('accepts a chained receive-bundle rotation and rejects rollback', async () 
     }),
     /rotation chain mismatch/
   );
+});
+
+test('allows only one concurrent successor for the same bundle generation', async () => {
+  const state = setup();
+  const directoryKey = 'github:user:competing-rotation';
+  let authorizeSuccessor;
+  const bothSuccessorsWaiting = new Promise((resolve) => {
+    authorizeSuccessor = resolve;
+  });
+  let waitingSuccessors = 0;
+  const directory = new InvitationDirectory({
+    now: state.now,
+    authorizeRegistration: async ({ bundle }) => {
+      if (bundle.generation === 1) {
+        return true;
+      }
+      waitingSuccessors += 1;
+      if (waitingSuccessors === 2) {
+        authorizeSuccessor();
+      }
+      await bothSuccessorsWaiting;
+      return true;
+    }
+  });
+  const initial = await directory.register({
+    directoryKey,
+    bundle: state.mailbox.bundle,
+    registrationProof: { fixture: 'initial' }
+  });
+  const previousBundleDigest = bundleDigest(initial.bundle);
+
+  const firstKeys = generateReceiveKeyPair();
+  const firstMailbox = state.mailboxService.createMailbox({
+    recipientPublicKey: firstKeys.publicKey,
+    generation: 2,
+    previousBundleDigest
+  });
+  const secondKeys = generateReceiveKeyPair();
+  const secondMailbox = state.mailboxService.createMailbox({
+    recipientPublicKey: secondKeys.publicKey,
+    generation: 2,
+    previousBundleDigest
+  });
+
+  const attempts = await Promise.allSettled([
+    directory.register({
+      directoryKey,
+      bundle: firstMailbox.bundle,
+      registrationProof: { fixture: 'first-successor' }
+    }),
+    directory.register({
+      directoryKey,
+      bundle: secondMailbox.bundle,
+      registrationProof: { fixture: 'second-successor' }
+    })
+  ]);
+
+  assert.equal(attempts.filter(({ status }) => status === 'fulfilled').length, 1);
+  assert.equal(attempts.filter(({ status }) => status === 'rejected').length, 1);
+  assert.match(attempts.find(({ status }) => status === 'rejected').reason.message, /rotation chain mismatch/);
+
+  const winner = attempts.find(({ status }) => status === 'fulfilled').value;
+  assert.equal(directory.lookup(directoryKey).bundle.mailboxId, winner.bundle.mailboxId);
+});
+
+test('snapshots directory registration inputs before asynchronous authorization', async () => {
+  const state = setup();
+  const directoryKey = 'github:user:mutable-registration';
+  const originalBundle = structuredClone(state.mailbox.bundle);
+  let authorizationStarted;
+  let finishAuthorization;
+  const started = new Promise((resolve) => {
+    authorizationStarted = resolve;
+  });
+  const authorized = new Promise((resolve) => {
+    finishAuthorization = resolve;
+  });
+  const directory = new InvitationDirectory({
+    now: state.now,
+    authorizeRegistration: async ({ bundle, registrationProof }) => {
+      assert.deepEqual(bundle, originalBundle);
+      assert.deepEqual(registrationProof, { fixture: 'bounded-proof' });
+      authorizationStarted();
+      await authorized;
+      assert.deepEqual(bundle, originalBundle);
+      assert.deepEqual(registrationProof, { fixture: 'bounded-proof' });
+      return true;
+    }
+  });
+  const mutableBundle = structuredClone(originalBundle);
+  const mutableProof = { fixture: 'bounded-proof' };
+  const pending = directory.register({
+    directoryKey,
+    bundle: mutableBundle,
+    registrationProof: mutableProof
+  });
+
+  await started;
+  mutableBundle.recipientPublicKey = generateReceiveKeyPair().publicKey;
+  mutableProof.fixture = 'mutated-after-authorization-started';
+  finishAuthorization();
+
+  const registered = await pending;
+  assert.deepEqual(registered.bundle, originalBundle);
+  assert.deepEqual(registered.addressAttestation, { fixture: 'bounded-proof' });
+});
+
+test('bounds registration proof structure before authorization', async () => {
+  const state = setup();
+  let authorizationCalls = 0;
+  const directory = new InvitationDirectory({
+    now: state.now,
+    authorizeRegistration: async () => {
+      authorizationCalls += 1;
+      return true;
+    }
+  });
+
+  await assert.rejects(
+    directory.register({
+      directoryKey: 'github:user:oversized-proof',
+      bundle: state.mailbox.bundle,
+      registrationProof: { proof: 'x'.repeat(9_000) }
+    }),
+    /invalid directory registration/
+  );
+  await assert.rejects(
+    directory.register({
+      directoryKey: 'github:user:deep-proof',
+      bundle: state.mailbox.bundle,
+      registrationProof: { one: { two: { three: { four: { five: true } } } } }
+    }),
+    /invalid directory registration/
+  );
+  await assert.rejects(
+    directory.register({
+      directoryKey: 'github:user:wrong-proof-type',
+      bundle: state.mailbox.bundle,
+      registrationProof: 'not-an-object'
+    }),
+    /invalid directory registration/
+  );
+  await assert.rejects(
+    directory.register({
+      directoryKey: 'github:user:too-many-proof-fields',
+      bundle: state.mailbox.bundle,
+      registrationProof: Object.fromEntries(
+        Array.from({ length: 33 }, (_, index) => [`field${index}`, index])
+      )
+    }),
+    /invalid directory registration/
+  );
+  assert.equal(authorizationCalls, 0);
+});
+
+test('rechecks bundle freshness after asynchronous registration authorization', async () => {
+  const state = setup();
+  const directoryKey = 'github:user:expiring-registration';
+  let authorizationStarted;
+  let finishAuthorization;
+  const started = new Promise((resolve) => {
+    authorizationStarted = resolve;
+  });
+  const authorized = new Promise((resolve) => {
+    finishAuthorization = resolve;
+  });
+  const directory = new InvitationDirectory({
+    now: state.now,
+    authorizeRegistration: async () => {
+      authorizationStarted();
+      await authorized;
+      return true;
+    }
+  });
+  const pending = directory.register({
+    directoryKey,
+    bundle: state.mailbox.bundle,
+    registrationProof: { fixture: 'expires-during-authorization' }
+  });
+
+  await started;
+  state.advance(60_000);
+  finishAuthorization();
+
+  await assert.rejects(pending, /invalid directory registration/);
+  assert.equal(directory.inspectRecordForSpike(directoryKey), undefined);
+});
+
+test('bounds acknowledgement identifiers before allocating work', () => {
+  const state = setup({ maxQueueDepth: 2 });
+  const request = {
+    mailboxId: state.mailbox.bundle.mailboxId,
+    acknowledgementCapability: state.mailbox.acknowledgementCapability
+  };
+
+  assert.throws(
+    () => state.mailboxService.acknowledge({ ...request, deliveryIds: 'not-an-array' }),
+    /invalid acknowledgement request/
+  );
+  assert.throws(
+    () => state.mailboxService.acknowledge({ ...request, deliveryIds: ['not-a-delivery-id'] }),
+    /invalid acknowledgement request/
+  );
+  assert.throws(
+    () =>
+      state.mailboxService.acknowledge({
+        ...request,
+        deliveryIds: [
+          Buffer.alloc(16, 1).toString('base64url'),
+          Buffer.alloc(16, 2).toString('base64url'),
+          Buffer.alloc(16, 3).toString('base64url')
+        ]
+      }),
+    /invalid acknowledgement request/
+  );
+});
+
+test('snapshots attestation inputs before asynchronous address authorization', async () => {
+  const state = setup();
+  const directoryKey = 'github:user:mutable-attestation';
+  const originalBundle = structuredClone(state.mailbox.bundle);
+  let authorizationStarted;
+  let finishAuthorization;
+  const started = new Promise((resolve) => {
+    authorizationStarted = resolve;
+  });
+  const authorized = new Promise((resolve) => {
+    finishAuthorization = resolve;
+  });
+  const attestor = new AddressAttestor({
+    now: state.now,
+    authorizeAddressControl: async ({ bundle }) => {
+      assert.deepEqual(bundle, originalBundle);
+      authorizationStarted();
+      await authorized;
+      assert.deepEqual(bundle, originalBundle);
+      return true;
+    }
+  });
+  const mutableBundle = structuredClone(originalBundle);
+  const pending = attestor.issue({
+    directoryKey,
+    bundle: mutableBundle,
+    addressControlProof: 'bounded-proof'
+  });
+
+  await started;
+  mutableBundle.recipientPublicKey = generateReceiveKeyPair().publicKey;
+  finishAuthorization();
+
+  const attestation = await pending;
+  assert.equal(attestor.verify({ directoryKey, bundle: originalBundle, attestation }), true);
+});
+
+test('bounds address-control proof before authorization', async () => {
+  const state = setup();
+  let authorizationCalls = 0;
+  const attestor = new AddressAttestor({
+    now: state.now,
+    authorizeAddressControl: async () => {
+      authorizationCalls += 1;
+      return true;
+    }
+  });
+
+  await assert.rejects(
+    attestor.issue({
+      directoryKey: 'github:user:oversized-address-proof',
+      bundle: state.mailbox.bundle,
+      addressControlProof: 'x'.repeat(4_097)
+    }),
+    /invalid address attestation request/
+  );
+  assert.equal(authorizationCalls, 0);
+});
+
+test('rejects unknown, oversized, deep, cyclic, accessor-backed, and symbol-keyed receive-bundle properties before authorization', async () => {
+  const state = setup();
+  let directoryAuthorizationCalls = 0;
+  let attestorAuthorizationCalls = 0;
+  let bundleGetterCalls = 0;
+  const directory = new InvitationDirectory({
+    now: state.now,
+    authorizeRegistration: async () => {
+      directoryAuthorizationCalls += 1;
+      return true;
+    }
+  });
+  const attestor = new AddressAttestor({
+    now: state.now,
+    authorizeAddressControl: async () => {
+      attestorAuthorizationCalls += 1;
+      return true;
+    }
+  });
+  const invalidBundles = [
+    { ...state.mailbox.bundle, transportProfile: 'Private' },
+    { ...state.mailbox.bundle, extra: 'x'.repeat(1_000_000) },
+    { ...state.mailbox.bundle, extra: { one: { two: { three: { four: true } } } } }
+  ];
+  const cyclic = { ...state.mailbox.bundle };
+  cyclic.extra = cyclic;
+  invalidBundles.push(cyclic);
+  const accessorExtra = { ...state.mailbox.bundle };
+  Object.defineProperty(accessorExtra, 'extra', {
+    enumerable: true,
+    get() {
+      bundleGetterCalls += 1;
+      return 'must-not-be-read';
+    }
+  });
+  invalidBundles.push(accessorExtra);
+  const accessorField = { ...state.mailbox.bundle };
+  Object.defineProperty(accessorField, 'expiresAt', {
+    enumerable: true,
+    get() {
+      bundleGetterCalls += 1;
+      return state.mailbox.bundle.expiresAt;
+    }
+  });
+  invalidBundles.push(accessorField);
+  const symbolExtra = { ...state.mailbox.bundle };
+  symbolExtra[Symbol('extra')] = 'must-be-rejected';
+  invalidBundles.push(symbolExtra);
+
+  for (const [index, bundle] of invalidBundles.entries()) {
+    await assert.rejects(
+      directory.register({
+        directoryKey: `github:user:invalid-bundle-${index}`,
+        bundle,
+        registrationProof: { fixture: 'bounded-proof' }
+      }),
+      /invalid directory registration/
+    );
+    await assert.rejects(
+      attestor.issue({
+        directoryKey: `github:user:invalid-bundle-${index}`,
+        bundle,
+        addressControlProof: 'bounded-proof'
+      }),
+      /invalid address attestation request/
+    );
+  }
+  assert.equal(bundleGetterCalls, 0);
+  assert.equal(directoryAuthorizationCalls, 0);
+  assert.equal(attestorAuthorizationCalls, 0);
+});
+
+test('authenticates exactly the closed receive-bundle schema', async () => {
+  const state = setup();
+  const directoryKey = 'github:user:closed-bundle';
+  const attestation = await attest(state, directoryKey, state.mailbox.bundle);
+  const record = await state.directory.register({
+    directoryKey,
+    bundle: state.mailbox.bundle,
+    registrationProof: attestation
+  });
+  const mutations = [
+    { version: 2 },
+    { generation: 2 },
+    { previousBundleDigest: Buffer.alloc(32, 1).toString('base64url') },
+    { mailboxId: Buffer.alloc(32, 2).toString('base64url') },
+    { recipientPublicKey: generateReceiveKeyPair().publicKey },
+    { expiresAt: record.bundle.expiresAt + 1 },
+    { transportProfile: 'Private' }
+  ];
+
+  for (const mutation of mutations) {
+    const changed = { ...record, bundle: { ...record.bundle, ...mutation } };
+    assert.equal(state.directory.verifyRecord(changed), false);
+    assert.equal(
+      state.attestor.verify({
+        directoryKey,
+        bundle: changed.bundle,
+        attestation: record.addressAttestation
+      }),
+      false
+    );
+  }
 });

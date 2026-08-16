@@ -46,7 +46,9 @@ in every transport profile.
 2. Alice publishes a signed, expiring invitation in an issue, pull request,
    discussion, profile, or another channel.
 3. Bob opens the invitation and proves control of the expected GitHub account.
-4. The proof is bound to Bob's fresh session key and this invitation.
+4. The proof is bound to this invitation and Bob's complete ADR 0009 tuple:
+   canonical KeyPackage reference, session-scoped credential identity, leaf
+   signature key, MLS version and ciphersuite, and join-request identifier.
 5. Alice reviews the verified account and device fingerprint.
 6. Alice approves the join request.
 7. Bob is added to the MLS group and receives an encrypted Welcome.
@@ -141,11 +143,42 @@ screenshot, photograph a display, export a transcript, or run a compromised
 client. Product language should promise deletion of Session Chat's own retained
 copies and cryptographic access, not impossible control over recipient devices.
 
-## First product slice
+## Delivery milestones
+
+These labels are deliberately distinct. Passing a laboratory milestone does
+not create a user-ready product, and a UX prototype does not prove protocol
+security.
+
+### Phase 1 protocol laboratory
 
 Included:
 
-- Desktop application and headless test client
+- Headless two-client test flow
+- Secret-capability admission with explicit simulated approval
+- Two-person MLS session over deterministic memory transport
+- Invitation, admission, membership, replay, removal, and expiration tests
+- No external identity, network service, desktop shell, or deployment claim
+
+### Early UX-validation prototype
+
+Before committing to the desktop framework or completing network services,
+validate a non-production interactive prototype with representative users. It
+must test whether people can correctly understand:
+
+- what GitHub, credential, capability, and manual evidence proves;
+- why a valid proof still requires an approval decision;
+- device fingerprints and key-change warnings;
+- Fast versus Private transport availability and metadata caveats; and
+- the difference between rejecting a request, retrying delivery, and closing a session.
+
+This prototype uses fixtures or the headless core and carries no security or
+deployment claim. Its results inform, but cannot bypass, core policy.
+
+### First user-testable product slice
+
+Included:
+
+- Desktop application around the proven headless client
 - Local device storage and session-scoped member keys
 - Targeted GitHub admission
 - Secret-capability admission with no external provider calls
@@ -156,6 +189,10 @@ Included:
 - Encrypted offline rendezvous mailbox
 - Configurable expiration
 - Docker Compose self-hosting
+
+The desktop shell and UI framework remain research until a dedicated ADR
+selects them. Tauri with a Rust security core is the leading boundary, but
+Angular is neither selected nor required by this product definition.
 
 Designed but initially experimental:
 
@@ -174,6 +211,14 @@ Deferred:
 - Cross-realm federation
 - Anonymous public chatrooms
 - Claims of guaranteed recipient-side deletion
+
+### Initial security-focused release
+
+The first release that makes security-focused product claims additionally
+requires the Phase 7 hardening gates, durable rollback-resistant state,
+release/update provenance, external protocol and implementation review, and
+published operational limits. A successful user-testable slice alone is not
+that release.
 
 ## Success criteria
 
