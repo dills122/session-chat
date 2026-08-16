@@ -45,13 +45,7 @@ function importPrivateKey(value) {
 
 function associatedData(envelope) {
   return Buffer.from(
-    JSON.stringify([
-      PROTOCOL,
-      envelope.version,
-      envelope.mailboxId,
-      envelope.envelopeId,
-      envelope.expiresAt
-    ])
+    JSON.stringify([PROTOCOL, envelope.version, envelope.mailboxId, envelope.envelopeId, envelope.expiresAt])
   );
 }
 
@@ -86,9 +80,7 @@ function unpadPlaintext(value) {
   }
 
   const parsed = JSON.parse(
-    value
-      .subarray(LENGTH_PREFIX_BYTES, LENGTH_PREFIX_BYTES + contentLength)
-      .toString('utf8')
+    value.subarray(LENGTH_PREFIX_BYTES, LENGTH_PREFIX_BYTES + contentLength).toString('utf8')
   );
 
   if (parsed?.type !== 'session-chat-invitation' || !parsed.invitation) {
@@ -114,13 +106,7 @@ export function capabilityDigest(capability) {
   return createHash('sha256').update(capability).digest('base64url');
 }
 
-export function sealInvitation({
-  recipientPublicKey,
-  mailboxId,
-  invitation,
-  expiresAt,
-  now = Date.now()
-}) {
+export function sealInvitation({ recipientPublicKey, mailboxId, invitation, expiresAt, now = Date.now() }) {
   if (!mailboxId || !recipientPublicKey) {
     throw new Error('mailbox and recipient public key are required');
   }
@@ -134,28 +120,21 @@ export function sealInvitation({
     publicKey: importPublicKey(recipientPublicKey)
   });
   const salt = randomBytes(SALT_BYTES);
-  const key = Buffer.from(
-    hkdfSync('sha256', sharedSecret, salt, Buffer.from(PROTOCOL), KEY_BYTES)
-  );
+  const key = Buffer.from(hkdfSync('sha256', sharedSecret, salt, Buffer.from(PROTOCOL), KEY_BYTES));
   const nonce = randomBytes(NONCE_BYTES);
   const envelope = {
     version: 1,
     mailboxId,
     envelopeId: randomUUID(),
     expiresAt,
-    ephemeralPublicKey: encode(
-      ephemeral.publicKey.export({ format: 'der', type: 'spki' })
-    ),
+    ephemeralPublicKey: encode(ephemeral.publicKey.export({ format: 'der', type: 'spki' })),
     salt: encode(salt),
     nonce: encode(nonce)
   };
 
   const cipher = createCipheriv('aes-256-gcm', key, nonce);
   cipher.setAAD(associatedData(envelope));
-  const ciphertext = Buffer.concat([
-    cipher.update(paddedPlaintext(invitation)),
-    cipher.final()
-  ]);
+  const ciphertext = Buffer.concat([cipher.update(paddedPlaintext(invitation)), cipher.final()]);
 
   return {
     ...envelope,
@@ -164,12 +143,7 @@ export function sealInvitation({
   };
 }
 
-export function openInvitation({
-  recipientPrivateKey,
-  envelope,
-  expectedMailboxId,
-  now = Date.now()
-}) {
+export function openInvitation({ recipientPrivateKey, envelope, expectedMailboxId, now = Date.now() }) {
   if (envelope.version !== 1 || envelope.mailboxId !== expectedMailboxId) {
     throw new Error('invitation envelope context mismatch');
   }
@@ -182,25 +156,12 @@ export function openInvitation({
     publicKey: importPublicKey(envelope.ephemeralPublicKey)
   });
   const key = Buffer.from(
-    hkdfSync(
-      'sha256',
-      sharedSecret,
-      decode(envelope.salt),
-      Buffer.from(PROTOCOL),
-      KEY_BYTES
-    )
+    hkdfSync('sha256', sharedSecret, decode(envelope.salt), Buffer.from(PROTOCOL), KEY_BYTES)
   );
-  const decipher = createDecipheriv(
-    'aes-256-gcm',
-    key,
-    decode(envelope.nonce)
-  );
+  const decipher = createDecipheriv('aes-256-gcm', key, decode(envelope.nonce));
   decipher.setAAD(associatedData(envelope));
   decipher.setAuthTag(decode(envelope.authenticationTag));
 
-  const plaintext = Buffer.concat([
-    decipher.update(decode(envelope.ciphertext)),
-    decipher.final()
-  ]);
+  const plaintext = Buffer.concat([decipher.update(decode(envelope.ciphertext)), decipher.final()]);
   return unpadPlaintext(plaintext);
 }

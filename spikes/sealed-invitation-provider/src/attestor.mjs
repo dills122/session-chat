@@ -69,11 +69,7 @@ export class AddressAttestor {
       issuedAt,
       expiresAt: Math.min(bundle.expiresAt, issuedAt + this.#attestationTtlMs)
     };
-    const signature = sign(
-      null,
-      canonicalAttestation(unsigned),
-      this.#signingKey
-    ).toString('base64url');
+    const signature = sign(null, canonicalAttestation(unsigned), this.#signingKey).toString('base64url');
     return { ...unsigned, signature };
   }
 

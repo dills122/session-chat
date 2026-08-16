@@ -1,16 +1,5 @@
-import {
-  createHash,
-  generateKeyPairSync,
-  randomBytes,
-  sign,
-  timingSafeEqual,
-  verify
-} from 'node:crypto';
-import {
-  capabilityDigest,
-  PADDED_PLAINTEXT_BYTES,
-  randomCapability
-} from './crypto.mjs';
+import { createHash, generateKeyPairSync, randomBytes, sign, timingSafeEqual, verify } from 'node:crypto';
+import { capabilityDigest, PADDED_PLAINTEXT_BYTES, randomCapability } from './crypto.mjs';
 
 const DEFAULT_MAILBOX_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_MAX_QUEUE_DEPTH = 16;
@@ -22,17 +11,11 @@ const AES_GCM_NONCE_BYTES = 12;
 const HKDF_SALT_BYTES = 32;
 
 function isCanonicalBase64url(value, expectedBytes) {
-  if (
-    typeof value !== 'string' ||
-    value.length === 0 ||
-    !/^[A-Za-z0-9_-]+$/.test(value)
-  ) {
+  if (typeof value !== 'string' || value.length === 0 || !/^[A-Za-z0-9_-]+$/.test(value)) {
     return false;
   }
   const decoded = Buffer.from(value, 'base64url');
-  return (
-    decoded.length === expectedBytes && decoded.toString('base64url') === value
-  );
+  return decoded.length === expectedBytes && decoded.toString('base64url') === value;
 }
 
 function isValidBundle(bundle) {
@@ -41,8 +24,7 @@ function isValidBundle(bundle) {
     Number.isSafeInteger(bundle.generation) &&
     bundle.generation > 0 &&
     ((bundle.generation === 1 && bundle.previousBundleDigest === null) ||
-      (bundle.generation > 1 &&
-        isCanonicalBase64url(bundle.previousBundleDigest, 32))) &&
+      (bundle.generation > 1 && isCanonicalBase64url(bundle.previousBundleDigest, 32))) &&
     isCanonicalBase64url(bundle.mailboxId, 32) &&
     isCanonicalBase64url(bundle.recipientPublicKey, X25519_SPKI_BYTES) &&
     Number.isSafeInteger(bundle.expiresAt)
@@ -78,9 +60,7 @@ function canonicalBundle(directoryKey, bundle) {
 }
 
 export function bundleDigest(bundle) {
-  return createHash('sha256')
-    .update(canonicalBundle('', bundle))
-    .digest('base64url');
+  return createHash('sha256').update(canonicalBundle('', bundle)).digest('base64url');
 }
 
 export function isSuccessorBundle(previous, candidate) {
@@ -95,11 +75,7 @@ function genericAuthorizationError() {
 }
 
 function capabilityMatches(expectedDigest, capability) {
-  if (
-    typeof capability !== 'string' ||
-    capability.length === 0 ||
-    capability.length > 128
-  ) {
+  if (typeof capability !== 'string' || capability.length === 0 || capability.length > 128) {
     return false;
   }
   const expected = Buffer.from(expectedDigest, 'base64url');
@@ -133,10 +109,7 @@ export class InvitationDirectory {
       throw new Error('invalid directory registration');
     }
     const current = this.#records.get(directoryKey);
-    if (
-      (!current && bundle.generation !== 1) ||
-      (current && !isSuccessorBundle(current.bundle, bundle))
-    ) {
+    if ((!current && bundle.generation !== 1) || (current && !isSuccessorBundle(current.bundle, bundle))) {
       throw new Error('directory rotation chain mismatch');
     }
     if (
@@ -149,11 +122,9 @@ export class InvitationDirectory {
       throw new Error('directory registration rejected');
     }
 
-    const signature = sign(
-      null,
-      canonicalBundle(directoryKey, bundle),
-      this.#signingKey
-    ).toString('base64url');
+    const signature = sign(null, canonicalBundle(directoryKey, bundle), this.#signingKey).toString(
+      'base64url'
+    );
     const record = {
       directoryKey,
       bundle: structuredClone(bundle),
@@ -209,11 +180,7 @@ export class InvitationMailboxService {
     this.#maxLifetimeDeposits = maxLifetimeDeposits;
   }
 
-  createMailbox({
-    recipientPublicKey,
-    generation = 1,
-    previousBundleDigest = null
-  }) {
+  createMailbox({ recipientPublicKey, generation = 1, previousBundleDigest = null }) {
     if (!recipientPublicKey) {
       throw new Error('recipient public key is required');
     }
@@ -244,11 +211,7 @@ export class InvitationMailboxService {
 
   deposit({ mailboxId, envelope }) {
     const mailbox = this.#liveMailbox(mailboxId);
-    if (
-      !mailbox ||
-      envelope?.mailboxId !== mailboxId ||
-      !isValidEnvelopeShape(envelope)
-    ) {
+    if (!mailbox || envelope?.mailboxId !== mailboxId || !isValidEnvelopeShape(envelope)) {
       throw genericAuthorizationError();
     }
     if (
@@ -296,9 +259,7 @@ export class InvitationMailboxService {
   acknowledge({ mailboxId, readCapability, deliveryIds }) {
     const mailbox = this.#authorizedMailbox(mailboxId, readCapability);
     const acknowledged = new Set(deliveryIds);
-    mailbox.queue = mailbox.queue.filter(
-      (delivery) => !acknowledged.has(delivery.deliveryId)
-    );
+    mailbox.queue = mailbox.queue.filter((delivery) => !acknowledged.has(delivery.deliveryId));
   }
 
   inspectMailboxForSpike(mailboxId) {
@@ -323,18 +284,13 @@ export class InvitationMailboxService {
 
   #authorizedMailbox(mailboxId, readCapability) {
     const mailbox = this.#liveMailbox(mailboxId);
-    if (
-      !mailbox ||
-      !capabilityMatches(mailbox.readCapabilityDigest, readCapability)
-    ) {
+    if (!mailbox || !capabilityMatches(mailbox.readCapabilityDigest, readCapability)) {
       throw genericAuthorizationError();
     }
     return mailbox;
   }
 
   #purgeExpiredEnvelopes(mailbox) {
-    mailbox.queue = mailbox.queue.filter(
-      ({ envelope }) => envelope.expiresAt > this.#now()
-    );
+    mailbox.queue = mailbox.queue.filter(({ envelope }) => envelope.expiresAt > this.#now());
   }
 }

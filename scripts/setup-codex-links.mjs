@@ -11,12 +11,9 @@ const execFileAsync = promisify(execFile);
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(scriptDirectory, '..');
 const pinPath = path.join(repositoryRoot, '.codex', 'ai-central-pin.json');
-const isEntrypoint = Boolean(
-  process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href,
-);
+const isEntrypoint = Boolean(process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href);
 
-const profiles =
-  'base,javascript-typescript,angular,shell-scripting,frontend-design,rust';
+const profiles = 'base,javascript-typescript,angular,shell-scripting,frontend-design,rust';
 
 export function usage() {
   return `Usage: node scripts/setup-codex-links.mjs [--dry-run] [--record-pin]
@@ -35,9 +32,7 @@ Options:
 
 export function parseArguments(argumentsToParse) {
   const allowed = new Set(['--dry-run', '--record-pin']);
-  const unknown = argumentsToParse.filter(
-    (argument) => argument !== '--' && !allowed.has(argument),
-  );
+  const unknown = argumentsToParse.filter((argument) => argument !== '--' && !allowed.has(argument));
 
   if (unknown.length > 0) {
     throw new Error(`Unknown option: ${unknown[0]}`);
@@ -58,16 +53,7 @@ export function resolveAiCentralRoot(input) {
 }
 
 export function buildSetupArguments(targetRoot, dryRun = false) {
-  const setupArguments = [
-    targetRoot,
-    '--yes',
-    '--mode',
-    'link',
-    '--profiles',
-    profiles,
-    '--bundles',
-    'all',
-  ];
+  const setupArguments = [targetRoot, '--yes', '--mode', 'link', '--profiles', profiles, '--bundles', 'all'];
 
   if (dryRun) {
     setupArguments.push('--dry-run');
@@ -88,12 +74,7 @@ async function readPin() {
 }
 
 async function resolveCurrentCommit(aiCentralRoot) {
-  const { stdout } = await execFileAsync('git', [
-    '-C',
-    aiCentralRoot,
-    'rev-parse',
-    'HEAD',
-  ]);
+  const { stdout } = await execFileAsync('git', ['-C', aiCentralRoot, 'rev-parse', 'HEAD']);
   return stdout.trim();
 }
 
@@ -101,7 +82,7 @@ async function recordCurrentPin(aiCentralRoot) {
   const currentCommit = await resolveCurrentCommit(aiCentralRoot);
   const payload = {
     expectedCommit: currentCommit,
-    note: 'Reviewed AI Central revision required by scripts/setup-codex-links.mjs.',
+    note: 'Reviewed AI Central revision required by scripts/setup-codex-links.mjs.'
   };
   await fs.writeFile(pinPath, `${JSON.stringify(payload, null, 2)}\n`);
   process.stdout.write(`Recorded AI Central pin: ${currentCommit}\n`);
@@ -122,16 +103,12 @@ async function runInstaller(aiCentralRoot, dryRun) {
     throw new Error(
       `AI Central commit ${currentCommit} does not match the reviewed pin ` +
         `${pin.expectedCommit ?? 'none'}. Review the checkout, then run ` +
-        '`node scripts/setup-codex-links.mjs --record-pin`.',
+        '`node scripts/setup-codex-links.mjs --record-pin`.'
     );
   }
 
   await new Promise((resolve, reject) => {
-    const child = execFile(
-      setupScript,
-      buildSetupArguments(repositoryRoot, dryRun),
-      { cwd: aiCentralRoot },
-    );
+    const child = execFile(setupScript, buildSetupArguments(repositoryRoot, dryRun), { cwd: aiCentralRoot });
 
     child.stdout.pipe(process.stdout);
     child.stderr.pipe(process.stderr);

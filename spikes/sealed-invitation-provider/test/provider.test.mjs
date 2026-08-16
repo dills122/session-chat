@@ -1,22 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { AddressAttestor } from '../src/attestor.mjs';
-import {
-  generateReceiveKeyPair,
-  openInvitation,
-  sealInvitation
-} from '../src/crypto.mjs';
-import {
-  bundleDigest,
-  InvitationDirectory,
-  InvitationMailboxService
-} from '../src/provider.mjs';
+import { generateReceiveKeyPair, openInvitation, sealInvitation } from '../src/crypto.mjs';
+import { bundleDigest, InvitationDirectory, InvitationMailboxService } from '../src/provider.mjs';
 
-function setup({
-  maxQueueDepth = 16,
-  maxLifetimeDeposits = 64,
-  mailboxTtlMs = 60_000
-} = {}) {
+function setup({ maxQueueDepth = 16, maxLifetimeDeposits = 64, mailboxTtlMs = 60_000 } = {}) {
   let now = 1_700_000_000_000;
   const clock = () => now;
   const recipient = generateReceiveKeyPair();
@@ -103,12 +91,8 @@ test('delivers a sealed invitation without exposing plaintext to either service'
     envelope
   });
 
-  const directoryView = JSON.stringify(
-    state.directory.inspectRecordForSpike(directoryKey)
-  );
-  const mailboxView = JSON.stringify(
-    state.mailboxService.inspectMailboxForSpike(lookup.bundle.mailboxId)
-  );
+  const directoryView = JSON.stringify(state.directory.inspectRecordForSpike(directoryKey));
+  const mailboxView = JSON.stringify(state.mailboxService.inspectMailboxForSpike(lookup.bundle.mailboxId));
   for (const secret of Object.values(invitation)) {
     assert.equal(directoryView.includes(secret), false);
     assert.equal(mailboxView.includes(secret), false);
@@ -363,11 +347,7 @@ test('binds signed directory records to their lookup key', async () => {
   const record = await state.directory.register({
     directoryKey: 'github:user:original',
     bundle: state.mailbox.bundle,
-    registrationProof: await attest(
-      state,
-      'github:user:original',
-      state.mailbox.bundle
-    )
+    registrationProof: await attest(state, 'github:user:original', state.mailbox.bundle)
   });
   assert.equal(state.directory.verifyRecord(record), true);
 
@@ -381,11 +361,7 @@ test('binds signed directory records to their lookup key', async () => {
 test('binds address attestations independently to the address and receive bundle', async () => {
   const state = setup();
   const directoryKey = 'github:user:attested';
-  const addressAttestation = await attest(
-    state,
-    directoryKey,
-    state.mailbox.bundle
-  );
+  const addressAttestation = await attest(state, directoryKey, state.mailbox.bundle);
   assert.equal(
     state.attestor.verify({
       directoryKey,
@@ -438,10 +414,7 @@ test('accepts a chained receive-bundle rotation and rejects rollback', async () 
     registrationProof: await attest(state, directoryKey, rotatedMailbox.bundle)
   });
   assert.equal(rotated.bundle.generation, 2);
-  assert.equal(
-    state.directory.lookup(directoryKey).bundle.mailboxId,
-    rotatedMailbox.bundle.mailboxId
-  );
+  assert.equal(state.directory.lookup(directoryKey).bundle.mailboxId, rotatedMailbox.bundle.mailboxId);
 
   await assert.rejects(
     state.directory.register({
