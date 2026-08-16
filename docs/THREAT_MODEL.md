@@ -6,7 +6,11 @@ Status: design baseline for the v2 architecture and protocol laboratory
 
 Session Chat is a privacy- and security-sensitive messaging project. The active
 repository contains a headless Rust protocol laboratory and design artifacts;
-it does not yet contain a deployable client or network service. The retired v1
+it does not yet contain a deployable client or network service. The laboratory
+currently has a bounded opaque envelope, a canonical domain-separated Ed25519
+secret-capability invitation, and bounded in-memory expiration/replay state. It
+does not yet encrypt join requests, prove capability possession, approve a
+member, operate MLS, or persist rollback-resistant state. The retired v1
 Angular/NestJS application used a server-readable, server-authoritative model.
 The proposed v2 product replaces it with client-owned MLS sessions, encrypted
 pre-membership rendezvous, optional external admission evidence, and pluggable
@@ -291,6 +295,13 @@ Required controls include canonical signed encoding, strict size and depth
 bounds, explicit version and suite allowlists, domain-separated signatures,
 random invitation identifiers, short expiration, replay tracking, fragment-safe
 landing behavior, and fuzzing of every decoder.
+
+Current evidence covers the canonical fixed-field encoding, exact size bounds,
+explicit version/suite/mode/use-policy allowlists, application-domain-separated
+strict Ed25519 verification, structural nonzero identifiers/challenges/
+capabilities, configurable time policy, and bounded in-memory one-use tracking.
+Random generation quality, durable atomic consumption, rollback protection,
+deep-link leakage, fuzzing, HPKE, and admission binding remain open.
 
 Attacker story: an attacker copies a public targeted invitation and submits a
 validly encoded join request for their own key. Correct behavior is a policy

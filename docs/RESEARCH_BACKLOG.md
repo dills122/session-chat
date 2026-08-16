@@ -30,12 +30,21 @@ plan, and documented library assumptions.
 ### P0: invitation protocol
 
 - **Encoding decision:** ADR 0005 selects a restricted RFC 8949 deterministic
-  CBOR profile and exact wire fixtures. Domain separation remains open until
-  signature and HPKE suites are selected.
-- Select signature and HPKE suites.
-- Define one-use and bounded-multi-use state machines.
-- Define replay, expiration, clock-skew, and challenge semantics.
-- Decide which invitation fields are public, encrypted, or local-only.
+  CBOR profile and exact wire fixtures.
+- **Signature decision:** ADR 0007 selects `ed25519-dalek` 3.0.0 strict Ed25519
+  verification and the `session-chat/signed-invitation/v1` application domain
+  for the secret-capability descriptor. HPKE domain separation remains open.
+- **Implemented boundary:** version 1 is single-use, uses explicit issue and
+  expiration times, accepts realm-configured maximum lifetime and future skew,
+  and keeps bounded in-memory replay state until expiry.
+- Select the HPKE suite and encrypted join-request schema.
+- Define durable transactional replay state, rollback protection, revocation,
+  and bounded-multi-use state machines.
+- Define capability-proof binding to the invitation challenge and proposed
+  session member key.
+- Decide public, encrypted, and local-only fields for targeted GitHub and
+  credential invitations. The current capability descriptor is a secret bearer
+  object and is not publicly postable.
 
 Expected output: wire-format draft plus test vectors.
 

@@ -33,6 +33,10 @@ all.
   sequence.
 - [Phase 1 build decision](adr/0004-build-v2-as-a-parallel-protocol-laboratory.md)
   commits the next slice to a capability-first Rust protocol laboratory.
+- [Signed invitation specification](specs/SIGNED_INVITATION_V1.md) defines the
+  exact Phase 1 capability wire object, signature boundary, and replay policy.
+- [Invitation signature decision](adr/0007-sign-capability-invitations-with-ed25519.md)
+  selects scoped Ed25519 keys, strict verification, and application-domain separation.
 - [V1 retirement decision](adr/0006-retire-v1-from-the-default-branch.md)
   removes the old runtime while preserving its exact tagged snapshot and lessons.
 - [Legacy v1 archive index](legacy-v1/README.md) records recovery commands,
@@ -74,11 +78,14 @@ legacy application as end-to-end encrypted.
 
 The final unchanged legacy baseline is preserved by the `legacy-v1` tag and
 indexed under `docs/legacy-v1/`; it is no longer present in the active source
-tree. Phase 1 has begun with `crates/session-protocol`, which currently
-implements only the bounded, versioned, deterministic-CBOR opaque envelope
-defined by ADR 0005.
-Invitation signing, HPKE, admission, MLS, persistence, and transport adapters
-remain unimplemented and must not be inferred from that foundation.
+tree. Phase 1 now implements the bounded opaque envelope, the canonical signed
+secret-capability invitation from ADR 0007, and bounded in-memory expiration
+and one-time-consumption state in `session-core`.
+
+The invitation's self-contained key proves descriptor integrity only. HPKE,
+capability proof and approval, MLS, durable replay state, rollback protection,
+and transport adapters remain unimplemented and must not be inferred from this
+foundation.
 
 ## Reference standards and projects
 

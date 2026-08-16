@@ -38,13 +38,14 @@ research item into a security or product claim.
 Current areas:
 
 - `crates/session-protocol`: versioned wire objects and canonical serialization
+- `crates/session-core`: bounded in-memory invitation acceptance and replay state
 - `spikes/`: disposable feasibility code; production packages must not depend on it
 - `docs/`: canonical v2 product, architecture, threat-model, protocol, ADR, and legacy-evidence baseline
 - `scripts/`: tested repository and AI Central setup tooling
 
 Planned v2 areas:
 
-- `crates/session-core`: invitation, join, membership, and session state machines
+- later `session-core` increments: join, approval, membership, and session state machines
 - `crates/session-crypto-mls`: MLS integration and protected state persistence
 - `crates/session-admission` plus adapters: admission policy and verified key binding
 - `crates/session-transport` plus adapters: opaque envelope delivery

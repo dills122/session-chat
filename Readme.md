@@ -11,10 +11,18 @@ The design principle is: **publish the door, not the key**.
 
 ## Current implementation
 
-The Rust workspace currently contains `session-protocol`, which defines a
-bounded, versioned, deterministic-CBOR opaque envelope. It does not yet provide
-invitation signing, encrypted joins, admission, MLS, persistence, networking, or
-a user interface.
+The Rust workspace currently contains:
+
+- `session-protocol`, with a bounded opaque envelope and a canonical,
+  domain-separated Ed25519 signed capability invitation
+- `session-core`, with configurable expiration checks and bounded in-memory
+  one-time invitation consumption
+
+The signing key authenticates the invitation bytes, not a GitHub identity or
+person. The capability invitation is a secret bearer object and must not be
+posted publicly or placed in a transport envelope. Encrypted joins, capability
+proofs, admission approval, MLS, durable persistence, networking, and a user
+interface remain unimplemented.
 
 ```sh
 cargo fmt --all --check
