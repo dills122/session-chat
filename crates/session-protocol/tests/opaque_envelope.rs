@@ -60,6 +60,15 @@ fn rejects_unknown_versions_and_object_types() {
         OpaqueEnvelope::decode_canonical(&unknown_type),
         Err(WireError::UnsupportedObjectType(7))
     );
+
+    let mut invitation_type = canonical_fixture();
+    invitation_type[2] = WireObjectType::SignedCapabilityInvitation as u8;
+    assert_eq!(
+        OpaqueEnvelope::decode_canonical(&invitation_type),
+        Err(WireError::UnsupportedObjectType(
+            WireObjectType::SignedCapabilityInvitation as u16
+        ))
+    );
 }
 
 #[test]
