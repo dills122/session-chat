@@ -28,7 +28,12 @@ module.exports = function (config) {
     customLaunchers: {
       ChromeHeadless_without_security: {
         base: 'ChromeHeadless',
-        flags: ['--disable-web-security', '--disable-site-isolation-trials']
+        flags: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-web-security',
+          '--disable-site-isolation-trials'
+        ]
       }
     }
   });
