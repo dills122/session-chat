@@ -1,0 +1,15 @@
+flowchart LR
+    ROOT["Offline realm root"] -->|"signs generation and service keys"| DESC["Pinned realm descriptor"]
+    C["Client"] -->|"verify pinned root and monotonic generation"| DESC
+    DESC --> H1["Old realm appliance"]
+    DESC --> H2["Replacement realm appliance"]
+    H1 -->|"drain opaque work"| H2
+    PEER["MLS-authenticated peer update"] -->|"rotate session deposit endpoints"| C
+    DNS["DNS and well-known discovery"] -.->|"location hint, not authority"| DESC
+    BK["Encrypted restore set"] --> H2
+
+    subgraph O["Operator controls service availability and metadata"]
+        H1
+        H2
+        BK
+    end

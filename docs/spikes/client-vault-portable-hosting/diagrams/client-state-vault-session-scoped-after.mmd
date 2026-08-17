@@ -1,0 +1,16 @@
+flowchart LR
+    A["Attacker with copied device files"] --> O["Bounded opaque inbox"]
+    A --> E["Encrypted secret-state store"]
+    N["Hostile network"] --> O
+    UI["Untrusted UI"] --> API["Narrow core commands"]
+    OS["OS user-presence protector"] -->|"unwrap root"| CORE["Privileged vault owner"]
+    CORE -->|"unwrap selected session only"| S["Session key and MLS state in memory"]
+    API --> CORE
+    O -->|"decrypt only while unlocked"| CORE
+    CORE --> E
+    EVT["Idle, sleep, screen lock, explicit lock"] -->|"zeroize and close"| CORE
+
+    subgraph B["Secret-bearing process boundary"]
+        CORE
+        S
+    end

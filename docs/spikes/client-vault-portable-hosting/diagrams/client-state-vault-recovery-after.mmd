@@ -1,0 +1,15 @@
+flowchart LR
+    A["Attacker with copied vault and wrapper"] --> E["Encrypted secret-state store"]
+    OS["OS user-presence protector"] --> W1["Device-bound wrapped root"]
+    PW["User recovery phrase"] --> KDF["Measured Argon2id"] --> W2["Portable wrapped root"]
+    W1 --> CORE["Privileged vault owner"]
+    W2 --> CORE
+    CORE --> E
+    B["Encrypted recovery backup"] --> W2
+
+    subgraph R["Additional recovery attack surface"]
+        PW
+        KDF
+        W2
+        B
+    end

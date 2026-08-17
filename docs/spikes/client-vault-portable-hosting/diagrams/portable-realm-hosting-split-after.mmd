@@ -1,0 +1,12 @@
+flowchart LR
+    C["Client"] --> D["Directory operator"]
+    C --> M["Mailbox operator"]
+    C --> R["Relay or mix operator"]
+    ROOT["Pinned realm or service roots"] --> D
+    ROOT --> M
+    ROOT --> R
+    D -.->|"no invitation traffic"| M
+    M -.->|"no external identity"| D
+    F["Independent failure domains"] --> D
+    F --> M
+    F --> R

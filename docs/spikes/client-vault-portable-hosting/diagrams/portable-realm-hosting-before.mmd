@@ -1,0 +1,16 @@
+flowchart LR
+    C["Client"] -->|"hostname and TLS"| H["Single realm host"]
+    H --> D["Directory state"]
+    H --> M["Opaque mailbox state"]
+    H --> K["Online service keys"]
+    F["Host failure or operator change"] --> H
+    B["Ad hoc backup"] -.-> D
+    B -.-> M
+    B -.-> K
+
+    subgraph O["Operator trust and availability boundary"]
+        H
+        D
+        M
+        K
+    end
