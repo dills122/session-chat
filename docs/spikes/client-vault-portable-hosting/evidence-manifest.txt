@@ -1,0 +1,35 @@
+Session Chat client-vault and portable-hosting hardening evidence collection v1
+
+Repository evidence
+docs/PRODUCT_V2.md
+docs/ARCHITECTURE_V2.md
+docs/IDENTITY_AND_ADMISSION.md
+docs/TRANSPORTS.md
+docs/THREAT_MODEL.md
+docs/ROADMAP_V2.md
+docs/RESEARCH_BACKLOG.md
+docs/adr/0002-session-scoped-member-keys.md
+docs/adr/0003-private-transport-fails-closed.md
+docs/adr/0008-use-an-inviter-owned-transactional-invitation-lifecycle.md
+docs/adr/0010-use-right-specific-mailbox-capabilities.md
+docs/adr/0011-select-openmls-for-the-phase-1-laboratory.md
+
+Primary external evidence reviewed 2026-08-16
+https://developer.apple.com/documentation/security/restricting-keychain-item-accessibility
+https://developer.apple.com/documentation/security/protecting-keys-with-the-secure-enclave
+https://learn.microsoft.com/en-us/windows/win32/api/dpapi/nf-dpapi-cryptprotectdata
+https://learn.microsoft.com/en-us/windows/win32/seccertenroll/cng-key-storage-providers
+https://specifications.freedesktop.org/secret-service/latest/unlocking.html
+https://www.rfc-editor.org/info/rfc9106
+https://book.openmls.tech/user_manual/persistence.html
+https://www.zetetic.net/sqlcipher/design/
+https://www.zetetic.net/sqlcipher/database-key-material/
+https://v2.tauri.app/plugin/stronghold/
+https://docs.docker.com/compose/how-tos/production/
+https://docs.docker.com/compose/how-tos/use-secrets/
+https://docs.docker.com/reference/compose-file/services/
+https://caddyserver.com/docs/automatic-https
+https://github.com/opencontainers/image-spec/blob/main/spec.md
+https://www.rfc-editor.org/info/rfc8615
+https://www.postgresql.org/docs/current/backup.html
+https://www.postgresql.org/docs/current/app-pgdump.html

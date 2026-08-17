@@ -61,6 +61,9 @@ all.
 - [Sealed invitation provider protocol](spikes/SEALED_INVITATION_PROVIDER_PROTOCOL.md)
   develops the spike into roles, objects, lifecycles, abuse policies, and
   deployment profiles.
+- [Client vault and portable realm hardening review](spikes/client-vault-portable-hosting/hardening.md)
+  compares sealed client-state and replaceable self-hosting designs without
+  selecting a desktop store or deployment dependency.
 - [Architecture decision records](adr/) record the foundational decisions that
   other documents rely on.
 

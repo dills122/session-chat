@@ -218,11 +218,21 @@ Expected output: wire-format draft plus test vectors.
 
 ### P0: device and session key storage
 
+- **Design spike completed:** the
+  [client-state vault proposal](spikes/client-vault-portable-hosting/proposals/client-state-vault.md)
+  recommends testing a session-scoped sealed vault with a bounded opaque inbox,
+  OS user-presence adapters, and a whole-store fallback. This is not an
+  implementation or dependency selection.
 - Evaluate Tauri and Rust integration with platform keychains and secure
   hardware.
 - Define database encryption, key hierarchy, lock behavior, and crash recovery.
 - Decide which keys are device-root, invitation-scoped, session-scoped, or
   epoch-scoped.
+- Measure platform-specific device binding, prompt, backup, biometric-change,
+  and cross-application unlock behavior rather than treating "keychain" as one
+  uniform guarantee.
+- Prove that sealed mode permits only bounded opaque receipt and rejects
+  decrypt, sign, admission, MLS mutation, acknowledgement, and rotation.
 
 ### P0: deep links and invitation handling
 
@@ -247,9 +257,20 @@ Expected output: wire-format draft plus test vectors.
 
 ### P1: realm packaging
 
+- **Design spike completed:** the
+  [portable realm hosting proposal](spikes/client-vault-portable-hosting/proposals/portable-realm-hosting.md)
+  recommends a digest-pinned single-host Compose appliance followed by a
+  client-pinned, offline-root-signed realm descriptor. This is not a deployable
+  service or accepted protocol decision.
 - Define the minimum Docker Compose realm and service separation.
 - Establish TLS, service signing keys, secret rotation, backups, and upgrades.
 - Ensure backups cannot recover client group keys or plaintext.
+- Define planned and sudden replacement semantics, including monotonic realm
+  generations, role-key delegation, bounded old/new overlap, and explicit
+  trust reset when the realm root is lost.
+- Keep active session endpoint rotation authenticated by session members; realm
+  discovery or redirects must not grant receive, acknowledgement, rotation,
+  admission, or MLS membership authority.
 
 ### P1: abuse resistance
 

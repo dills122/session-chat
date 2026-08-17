@@ -1,0 +1,11 @@
+flowchart LR
+    A["Attacker with copied device files"] --> E["Encrypted client database"]
+    OS["OS key protector"] -->|"unwrap after platform unlock"| V["Vault master key in process"]
+    UI["Desktop UI process"] --> C["Privileged client core"]
+    C --> V --> E
+    N["Hostile network"] --> I["Opaque inbox"] --> E
+
+    subgraph B["Unlocked application boundary"]
+        C
+        V
+    end

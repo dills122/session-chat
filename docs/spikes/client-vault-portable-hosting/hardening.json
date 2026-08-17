@@ -1,0 +1,237 @@
+{
+  "documentType": "codex-security.hardening-analysis",
+  "schemaVersion": "1.0",
+  "analysisId": "hardening_20260816_client_vault_portable_hosting",
+  "sourceEvidence": {
+    "kind": "document_collection",
+    "label": "Session Chat contracts and primary client-storage and portable-hosting documentation",
+    "collectionSha256": "70bac5404fa399191d5606d21a6c7d053e79e8c8863d8c95a52e789abcf40d84",
+    "artifactCount": 31,
+    "targetRevision": "bdab9107e8e4e813a2156e46ec8e0bfea0da8b60",
+    "sourceDrift": "unknown"
+  },
+  "assessment": {
+    "outcome": "opportunities_identified",
+    "summary": "Two related design opportunities are proposed: a session-scoped sealed client vault and a signed portable single-host realm appliance. Neither is implemented by this analysis."
+  },
+  "constraints": {
+    "profile": "balanced",
+    "changeHorizons": ["incremental", "medium_term", "foundational"],
+    "nonNegotiables": [
+      "Realm infrastructure never receives client group keys or message plaintext.",
+      "Private transport never silently downgrades.",
+      "MLS, invitation, replay, approval, and encrypted Welcome-outbox state retain one atomic durability boundary.",
+      "Multi-device recovery and federation remain deferred."
+    ],
+    "assumptions": [
+      "No client storage or production realm service is implemented.",
+      "No measured latency, memory, recovery-time, or availability budget was supplied.",
+      "The first deployable profile may target one Linux host with Docker Compose."
+    ]
+  },
+  "opportunities": [
+    {
+      "opportunityId": "client-state-vault",
+      "title": "Seal client secret state outside active use",
+      "summary": "Separate a bounded opaque inbox from a user-presence-gated, session-scoped secret-state vault.",
+      "diagnosis": "The design names OS-backed storage but does not yet own the unlock lifetime or define which operations remain legal while sealed.",
+      "evidence": [
+        {
+          "claimType": "observed",
+          "sourceKind": "threat_model",
+          "evidenceId": "V001",
+          "path": "docs/THREAT_MODEL.md",
+          "claim": "Local persistence, backups, swap, notifications, logs, and crash reports are part of the client secret boundary."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "document",
+          "evidenceId": "V003",
+          "path": "docs/adr/0011-select-openmls-for-the-phase-1-laboratory.md",
+          "claim": "OpenMLS persistence must participate in one rollback-resistant application transaction with invitation and Welcome-outbox state."
+        },
+        {
+          "claimType": "inferred",
+          "sourceKind": "source",
+          "evidenceId": "V009",
+          "path": "docs/ARCHITECTURE_V2.md",
+          "claim": "A whole-client unlock would unnecessarily couple background opaque receipt, UI lifetime, and every session secret."
+        }
+      ],
+      "desiredInvariants": [
+        "Sealed mode permits only bounded opaque-envelope receipt and non-sensitive settings.",
+        "The UI never receives vault roots, database keys, MLS secrets, or unrestricted mailbox capabilities.",
+        "Unlocking one session does not expose inactive session keys where platform and transaction constraints permit.",
+        "Encryption at rest is not treated as rollback protection."
+      ],
+      "proposalPath": "proposals/client-state-vault.md",
+      "options": [
+        {
+          "optionId": "whole-store-device-wrap",
+          "title": "Whole-store device wrapping",
+          "kind": "baseline",
+          "summary": "Wrap one random store key with the strongest available OS protector and open the whole store after unlock.",
+          "diagramPaths": {
+            "before": "diagrams/client-state-vault-before.mmd",
+            "after": "diagrams/client-state-vault-whole-store-after.mmd"
+          },
+          "evidenceCoverage": [{"evidenceId": "V001", "effect": "mitigates", "tacticalFixRequired": false, "rationale": "Copied files become encrypted, but the whole store remains exposed while open."}],
+          "tradeoffs": [
+            {"dimension": "security", "direction": "improves", "confidence": "medium", "basis": "source-derived", "assessment": "Narrows copied-file attacks but retains a broad unlocked scope.", "validationPlan": "Test platform binding, prompts, backup restore, and locked access on every target OS."},
+            {"dimension": "performance", "direction": "unknown", "confidence": "low", "basis": "hypothetical", "assessment": "One database open and one unwrap should be the smallest candidate overhead.", "validationPlan": "Measure cold unlock and message-operation latency against plaintext test storage."},
+            {"dimension": "memory", "direction": "unknown", "confidence": "low", "basis": "hypothetical", "assessment": "A whole-store cache may retain more decrypted pages than a scoped design.", "validationPlan": "Measure peak RSS with one and 1,000 expired sessions."},
+            {"dimension": "reliability", "direction": "improves", "confidence": "medium", "basis": "source-derived", "assessment": "The two-state open/closed model is comparatively simple, but loss of the device protector strands the store.", "validationPlan": "Exercise sleep, screen-lock, crash, and protector-loss recovery."},
+            {"dimension": "operability", "direction": "regresses", "confidence": "medium", "basis": "source-derived", "assessment": "Each OS needs a conformance-tested protector adapter.", "validationPlan": "Publish an adapter capability matrix and diagnostic output without secrets."},
+            {"dimension": "migration", "direction": "improves", "confidence": "medium", "basis": "source-derived", "assessment": "One versioned encrypted store is the simplest initial format.", "validationPlan": "Round-trip fixtures across supported application versions."}
+          ],
+          "residualRisks": ["All client secrets may be reachable while any session is open.", "OS compromise and unlocked malware remain out of scope."],
+          "implementationReadiness": {
+            "affectedComponents": ["future crates/session-storage", "future desktop core"],
+            "workPackages": ["Define a KeyProtector trait and whole-store lock state machine.", "Evaluate encrypted transactional stores."],
+            "acceptanceCriteria": ["Locked operations cannot open secret state.", "Copied files do not reveal canary secrets."],
+            "migrationNotes": ["No production client data exists."],
+            "rollback": "Delete laboratory stores and remove the adapter before any production format commitment."
+          }
+        },
+        {
+          "optionId": "session-scoped-sealed-vault",
+          "title": "Session-scoped sealed vault",
+          "kind": "isolation",
+          "summary": "Keep a bounded opaque inbox available while a narrow core unseals only selected session state after user presence.",
+          "diagramPaths": {
+            "before": "diagrams/client-state-vault-before.mmd",
+            "after": "diagrams/client-state-vault-session-scoped-after.mmd"
+          },
+          "evidenceCoverage": [{"evidenceId": "V001", "effect": "addresses", "tacticalFixRequired": false, "rationale": "The design gives sealed mode an explicit capability boundary and narrows useful secret lifetime."}],
+          "tradeoffs": [
+            {"dimension": "security", "direction": "improves", "confidence": "medium", "basis": "source-derived", "assessment": "Inactive sessions and powerful capabilities need not be available to the UI or background receiver.", "validationPlan": "Assert the locked-mode capability matrix and attempt UI-command exfiltration."},
+            {"dimension": "performance", "direction": "regresses", "confidence": "low", "basis": "hypothetical", "assessment": "Inbox import, per-session unwrap, and boundary crossings add work.", "validationPlan": "Benchmark unlock, import, send, and receive latency against the whole-store baseline."},
+            {"dimension": "memory", "direction": "improves", "confidence": "low", "basis": "hypothetical", "assessment": "Per-session loading may reduce the plaintext/key working set.", "validationPlan": "Compare peak RSS and decrypted page residency under equal workloads."},
+            {"dimension": "reliability", "direction": "unknown", "confidence": "medium", "basis": "source-derived", "assessment": "Opaque receipt continues while sealed, but lifecycle-event races and import recovery add states.", "validationPlan": "Model and crash-test every lock, wake, and concurrent-receipt transition."},
+            {"dimension": "operability", "direction": "regresses", "confidence": "medium", "basis": "source-derived", "assessment": "Platform lifecycle integration and safe lock diagnostics are required.", "validationPlan": "Run conformance tests on supported OS and desktop environments."},
+            {"dimension": "migration", "direction": "regresses", "confidence": "medium", "basis": "source-derived", "assessment": "Opaque-inbox and per-session key schemas add format and transaction work.", "validationPlan": "Test upgrades, rollback rejection, and interrupted rewrapping using fixtures."}
+          ],
+          "residualRisks": ["Malware controlling an unlocked session can capture its plaintext.", "Whole-device snapshot rollback needs a separate monotonic anchor."],
+          "implementationReadiness": {
+            "affectedComponents": ["future crates/session-storage", "future desktop core", "future transport inbox"],
+            "workPackages": ["Model sealed-state capabilities.", "Build fake and OS key protectors.", "Evaluate atomic encrypted storage.", "Implement bounded opaque inbox import."],
+            "acceptanceCriteria": ["Sealed mode rejects every secret-bearing operation.", "One session unlock does not expose inactive session keys.", "MLS and Welcome state remains atomic."],
+            "migrationNotes": ["Start with versioned laboratory data and no production migration promise."],
+            "rollback": "Fall back to the whole-store laboratory design if session scoping cannot preserve atomicity."
+          }
+        },
+        {
+          "optionId": "dual-wrapped-portable-recovery",
+          "title": "Dual-wrapped portable recovery",
+          "kind": "foundational",
+          "summary": "Add an explicit Argon2id-derived portable wrapper beside the normal device-bound wrapper.",
+          "diagramPaths": {
+            "before": "diagrams/client-state-vault-before.mmd",
+            "after": "diagrams/client-state-vault-recovery-after.mmd"
+          },
+          "evidenceCoverage": [{"evidenceId": "V008", "effect": "mitigates", "tacticalFixRequired": false, "rationale": "A standardized memory-hard KDF raises offline guessing cost but cannot supply passphrase entropy."}],
+          "tradeoffs": [
+            {"dimension": "security", "direction": "regresses", "confidence": "high", "basis": "source-derived", "assessment": "Recovery adds a portable offline guessing target and continuity decisions.", "validationPlan": "Threat-model stolen recovery packages and measure KDF cost on target hardware."},
+            {"dimension": "performance", "direction": "regresses", "confidence": "high", "basis": "source-derived", "assessment": "Argon2id intentionally consumes time and memory during recovery unlock.", "validationPlan": "Tune parameters against explicit latency and memory thresholds per platform."},
+            {"dimension": "memory", "direction": "regresses", "confidence": "high", "basis": "source-derived", "assessment": "Memory hardness requires a large temporary allocation.", "validationPlan": "Measure peak allocation and failure behavior under memory pressure."},
+            {"dimension": "reliability", "direction": "improves", "confidence": "medium", "basis": "source-derived", "assessment": "A lost device protector need not destroy recoverable state, but more paths can fail.", "validationPlan": "Restore on clean devices across application and KDF versions."},
+            {"dimension": "operability", "direction": "regresses", "confidence": "high", "basis": "source-derived", "assessment": "Recovery export, custody, support, and incident behavior become product responsibilities.", "validationPlan": "Run user and operator recovery drills with lost, weak, and corrupted phrases."},
+            {"dimension": "migration", "direction": "regresses", "confidence": "high", "basis": "source-derived", "assessment": "New-device continuity and wrapper versioning require a dedicated protocol decision.", "validationPlan": "Test wrapper rotation and visible peer key-change behavior."}
+          ],
+          "residualRisks": ["Weak recovery phrases remain guessable.", "Recovery can undermine device continuity if presented as silent restoration."],
+          "implementationReadiness": {
+            "affectedComponents": ["future crates/session-storage", "future recovery UX"],
+            "workPackages": ["Defer until the single-device vault passes.", "Create a dedicated recovery and device-continuity ADR."],
+            "acceptanceCriteria": ["Recovery never silently preserves device identity.", "KDF parameters meet measured target thresholds."],
+            "migrationNotes": ["No recovery wrapper is emitted by default."],
+            "rollback": "Delete the recovery wrapper without changing the device-bound wrapper."
+          }
+        }
+      ],
+      "recommendedOptionId": "session-scoped-sealed-vault",
+      "recommendation": "Spike session-scoped sealing with a whole-store fallback; defer portable recovery until single-device evidence and continuity UX exist."
+    },
+    {
+      "opportunityId": "portable-realm-hosting",
+      "title": "Make a realm replaceable without making it trusted for content",
+      "summary": "Package one-host realms portably and separate their stable signed identity from DNS, TLS, and any one machine.",
+      "diagnosis": "Compose is planned, but realm identity, key delegation, migration, restore classification, and session-authorized endpoint rotation are undefined.",
+      "evidence": [
+        {"claimType": "observed", "sourceKind": "document", "evidenceId": "H001", "path": "docs/ARCHITECTURE_V2.md", "claim": "Realm operators configure service policy but must not own message keys or plaintext."},
+        {"claimType": "observed", "sourceKind": "document", "evidenceId": "H004", "path": "docs/ROADMAP_V2.md", "claim": "Phase 3 requires Compose plus durable CAS, crash recovery, rollback rejection, and bounded abuse evidence."},
+        {"claimType": "inferred", "sourceKind": "source", "evidenceId": "H011", "path": "docs/TRANSPORTS.md", "claim": "Hostname-only realm continuity would conflate transport location with stable trust and capability authority."}
+      ],
+      "desiredInvariants": [
+        "Realm hosts and backups never contain client plaintext or MLS group keys.",
+        "Clients accept realm endpoint changes only through a pinned, monotonic signed descriptor.",
+        "Active session endpoint rotation remains member-authenticated and right-specific.",
+        "Host loss may reduce availability but cannot silently downgrade privacy or grant membership authority."
+      ],
+      "proposalPath": "proposals/portable-realm-hosting.md",
+      "options": [
+        {
+          "optionId": "hostname-compose-appliance",
+          "title": "Hostname-preserving Compose appliance",
+          "kind": "baseline",
+          "summary": "Use digest-pinned OCI images, automatic HTTPS, explicit per-service secrets, PostgreSQL, and tested restore on one host.",
+          "diagramPaths": {"before": "diagrams/portable-realm-hosting-before.mmd", "after": "diagrams/portable-realm-hosting-compose-after.mmd"},
+          "evidenceCoverage": [{"evidenceId": "H004", "effect": "mitigates", "tacticalFixRequired": false, "rationale": "It makes the planned Phase 3 deployment repeatable but does not separate realm identity from the hostname."}],
+          "tradeoffs": [
+            {"dimension": "security", "direction": "improves", "confidence": "medium", "basis": "source-derived", "assessment": "Pinned images and scoped secrets reduce packaging mistakes; one host and hostname remain concentrated.", "validationPlan": "Inspect images, mounts, logs, backups, and service secret access."},
+            {"dimension": "performance", "direction": "neutral", "confidence": "low", "basis": "hypothetical", "assessment": "Single-host services avoid additional network hops.", "validationPlan": "Load-test valid and abusive mailbox workloads on the minimum supported host."},
+            {"dimension": "memory", "direction": "regresses", "confidence": "low", "basis": "hypothetical", "assessment": "Proxy, services, and database share one host budget.", "validationPlan": "Measure idle and peak resident memory per container."},
+            {"dimension": "reliability", "direction": "improves", "confidence": "medium", "basis": "source-derived", "assessment": "Health checks, restart policy, and tested restores improve recoverability, but the host is one failure domain.", "validationPlan": "Kill services and restore onto a clean machine while measuring recovery time and loss."},
+            {"dimension": "operability", "direction": "improves", "confidence": "medium", "basis": "source-derived", "assessment": "Compose and automatic HTTPS minimize baseline operator actions after DNS setup.", "validationPlan": "Run a clean-host install with a first-time operator and record every manual step."},
+            {"dimension": "migration", "direction": "improves", "confidence": "medium", "basis": "source-derived", "assessment": "OCI and database exports are portable while hostname and keys are retained.", "validationPlan": "Move the appliance across supported distributions and runtimes."}
+          ],
+          "residualRisks": ["DNS, TLS account, database, and online keys remain one continuity boundary.", "Host loss may lose opaque envelopes."],
+          "implementationReadiness": {"affectedComponents": ["future services", "future deploy"], "workPackages": ["Define bounded services.", "Build production-shaped Compose and restore tests."], "acceptanceCriteria": ["Clean-host deployment and restore pass.", "No client plaintext or group key appears server-side."], "migrationNotes": ["Begin as local/test profile only."], "rollback": "Redeploy previous compatible image digests; never downgrade incompatible database state."}
+        },
+        {
+          "optionId": "signed-portable-realm-appliance",
+          "title": "Signed portable realm appliance",
+          "kind": "structural",
+          "summary": "Add a client-pinned offline-root realm identity, role-key delegation, monotonic descriptors, and member-authenticated session endpoint rotation.",
+          "diagramPaths": {"before": "diagrams/portable-realm-hosting-before.mmd", "after": "diagrams/portable-realm-hosting-signed-descriptor-after.mmd"},
+          "evidenceCoverage": [{"evidenceId": "H001", "effect": "addresses", "tacticalFixRequired": false, "rationale": "Stable service identity becomes explicit without granting the realm content or membership authority."}],
+          "tradeoffs": [
+            {"dimension": "security", "direction": "improves", "confidence": "medium", "basis": "source-derived", "assessment": "DNS/TLS takeover cannot silently replace a pinned realm, and online role compromise need not grant migration authority.", "validationPlan": "Test forged, expired, rolled-back, cross-realm, and wrong-role descriptors and keys."},
+            {"dimension": "performance", "direction": "neutral", "confidence": "medium", "basis": "source-derived", "assessment": "Descriptor verification is infrequent and does not add a normal envelope hop.", "validationPlan": "Measure descriptor fetch/verify/cache and normal delivery latency."},
+            {"dimension": "memory", "direction": "neutral", "confidence": "medium", "basis": "source-derived", "assessment": "Clients retain a bounded descriptor chain and role keys.", "validationPlan": "Set and test strict history and descriptor-size bounds."},
+            {"dimension": "reliability", "direction": "improves", "confidence": "medium", "basis": "source-derived", "assessment": "Planned overlap and explicit disaster modes aid replacement; losing the offline root forces a new realm.", "validationPlan": "Run planned and sudden replacement with clients offline across the overlap."},
+            {"dimension": "operability", "direction": "regresses", "confidence": "high", "basis": "source-derived", "assessment": "Offline-root custody, role issuance, descriptor generations, and drain procedures add duties.", "validationPlan": "Run operator drills for bootstrap, rotation, compromise, loss, and restore."},
+            {"dimension": "migration", "direction": "improves", "confidence": "medium", "basis": "source-derived", "assessment": "Signed endpoint changes can preserve realm identity across hosts and domains.", "validationPlan": "Conformance-test old/new overlap, rollback, and explicit new-realm reset."}
+          ],
+          "residualRisks": ["A compromised offline root can redirect future realm service configuration.", "Realm continuity does not rescue unbacked opaque mail or offline peers automatically."],
+          "implementationReadiness": {"affectedComponents": ["future session-protocol realm descriptor", "future services", "future deploy", "future client realm cache"], "workPackages": ["Build the Compose baseline.", "Specify RealmDescriptorV1.", "Implement root/role delegation.", "Model migration and peer endpoint rotation."], "acceptanceCriteria": ["Clients reject descriptor rollback and wrong-root substitution.", "Realm redirects never grant mailbox or MLS authority.", "Clean-host replacement passes."], "migrationNotes": ["Location discovery remains a hint; first trust is explicit or invitation-authenticated."], "rollback": "Issue a higher-generation descriptor returning to prior compatible endpoints."}
+        },
+        {
+          "optionId": "split-operator-realm",
+          "title": "Split-operator realm",
+          "kind": "isolation",
+          "summary": "Deploy directory, sealed mailbox, and transport roles under independent failure and administrative domains.",
+          "diagramPaths": {"before": "diagrams/portable-realm-hosting-before.mmd", "after": "diagrams/portable-realm-hosting-split-after.mmd"},
+          "evidenceCoverage": [{"evidenceId": "H001", "effect": "mitigates", "tacticalFixRequired": false, "rationale": "Role separation can reduce metadata correlation and compromise scope when operators do not collude."}],
+          "tradeoffs": [
+            {"dimension": "security", "direction": "improves", "confidence": "low", "basis": "hypothetical", "assessment": "Real operator diversity may reduce metadata correlation; co-located or colluding operators do not.", "validationPlan": "Define an observer matrix and verify traffic fields at each role."},
+            {"dimension": "performance", "direction": "regresses", "confidence": "low", "basis": "hypothetical", "assessment": "More network paths and privacy transports may add latency.", "validationPlan": "Measure end-to-end invitation and message latency under realistic topology."},
+            {"dimension": "memory", "direction": "regresses", "confidence": "medium", "basis": "source-derived", "assessment": "Separate deployments duplicate proxies, runtimes, and monitoring.", "validationPlan": "Measure aggregate idle and peak resources across roles."},
+            {"dimension": "reliability", "direction": "unknown", "confidence": "medium", "basis": "source-derived", "assessment": "Failure isolation improves, but more required roles can block a workflow.", "validationPlan": "Inject each single and combined role failure and record client behavior."},
+            {"dimension": "operability", "direction": "regresses", "confidence": "high", "basis": "source-derived", "assessment": "Independent upgrades, incident response, clocks, and policies require coordination.", "validationPlan": "Run multi-operator deployment and compromise drills."},
+            {"dimension": "migration", "direction": "regresses", "confidence": "medium", "basis": "source-derived", "assessment": "Clients and descriptors must support independent role endpoints and roots.", "validationPlan": "Move one role at a time without profile downgrade or capability confusion."}
+          ],
+          "residualRisks": ["Collusion or one organization operating every role collapses the privacy benefit.", "Small traffic volumes may remain highly correlatable."],
+          "implementationReadiness": {"affectedComponents": ["future service profiles", "future private transport"], "workPackages": ["Defer until the signed appliance and observer matrix pass."], "acceptanceCriteria": ["Independent placement creates a measured privacy benefit.", "Role failures never trigger downgrade."], "migrationNotes": ["Co-location is a different named privacy profile."], "rollback": "Return to co-location only through an explicit profile change."}
+        }
+      ],
+      "recommendedOptionId": "signed-portable-realm-appliance",
+      "recommendation": "Build the single-host Compose baseline, then add signed realm identity and migration before relying on hosted continuity; defer split operation."
+    }
+  ],
+  "openQuestions": [
+    "Which target OS and unlock grace policy define the first vault spike?",
+    "Which monotonic anchor can reject whole-device snapshot rollback without a mandatory remote service?",
+    "What opaque-message loss and restore-time objectives define acceptable realm replacement?",
+    "How is first-use realm trust presented and recovered when the offline root is lost?"
+  ]
+}

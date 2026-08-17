@@ -131,12 +131,46 @@ attestation format.
 
 - [Tauri 2 deep linking](https://v2.tauri.app/plugin/deep-linking/)
 - [Tauri security documentation](https://v2.tauri.app/security/)
+- [Tauri Stronghold plugin](https://v2.tauri.app/plugin/stronghold/)
+- [Apple Keychain accessibility and user-presence controls](https://developer.apple.com/documentation/security/restricting-keychain-item-accessibility)
+- [Apple Secure Enclave key protection](https://developer.apple.com/documentation/security/protecting-keys-with-the-secure-enclave)
+- [Windows DPAPI `CryptProtectData`](https://learn.microsoft.com/en-us/windows/win32/api/dpapi/nf-dpapi-cryptprotectdata)
+- [Windows CNG key storage providers](https://learn.microsoft.com/en-us/windows/win32/seccertenroll/cng-key-storage-providers)
+- [freedesktop.org Secret Service locking](https://specifications.freedesktop.org/secret-service/latest/unlocking.html)
+- [RFC 9106: Argon2](https://www.rfc-editor.org/rfc/rfc9106)
+- [SQLCipher design](https://www.zetetic.net/sqlcipher/design/)
+- [SQLCipher key-material guidance](https://www.zetetic.net/sqlcipher/database-key-material/)
 
 Relevance: installed-client deep links, constrained native/webview boundary,
-and platform integration. MLS implementation evidence is tracked above.
+platform integration, user-presence-gated key wrapping, encrypted local stores,
+and optional password-based recovery. MLS implementation evidence is tracked
+above.
 
 Open questions: desktop-shell and UI-framework selection, platform key storage,
-Tauri command surface, and signed update design.
+Tauri command surface, encrypted-store selection, rollback-resistant atomicity,
+recovery policy, and signed update design. Platform key stores do not expose one
+uniform user-presence or backup guarantee, and neither Stronghold nor SQLCipher
+is selected by citation alone.
+
+## Portable realm packaging and discovery
+
+- [Docker Compose production guidance](https://docs.docker.com/compose/how-tos/production/)
+- [Docker Compose secrets](https://docs.docker.com/compose/how-tos/use-secrets/)
+- [Docker Compose service health, restart, and read-only settings](https://docs.docker.com/reference/compose-file/services/)
+- [OCI image specification](https://github.com/opencontainers/image-spec/blob/main/spec.md)
+- [Caddy automatic HTTPS](https://caddyserver.com/docs/automatic-https)
+- [RFC 8615: Well-Known URIs](https://www.rfc-editor.org/rfc/rfc8615)
+- [PostgreSQL backup and restore](https://www.postgresql.org/docs/current/backup.html)
+- [`pg_dump` portability and restore behavior](https://www.postgresql.org/docs/current/app-pgdump.html)
+
+Relevance: a portable single-host deployment can use content-addressed images,
+declarative services, scoped secret files, automatic TLS, stable discovery, and
+tested database restore. These mechanisms do not make a hostname a realm trust
+root, prove rollback resistance, or protect a host administrator from metadata.
+
+Open questions: exact service graph and versions, realm descriptor schema,
+offline-root custody, restore objectives, stale-snapshot rejection, active
+session endpoint migration, and minimum supported host resources.
 
 ## Fast transport
 
