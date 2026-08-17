@@ -10,6 +10,11 @@ The central product idea is:
 
 > Publish the door, not the key.
 
+For an outside review, start with the
+[independent-audit brief](INDEPENDENT_AUDIT_BRIEF.md). It separates current
+code-backed evidence from accepted-but-unimplemented contracts, proposed
+experiments, deferred work, and explicit non-goals.
+
 Session Chat should provide disposable, end-to-end encrypted conversations
 between people who can be admitted using an external identity, a portable
 credential, a secret capability, or manual approval. Identity and network

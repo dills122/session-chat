@@ -1,20 +1,22 @@
 # Working context: client vault and portable realm hosting
 
-Source root during review:
-`/Users/dsteele/.codex/worktrees/92ff/session-chat`
-
 Review date: 2026-08-16
 
 This analysis was requested after the Phase 1 invitation foundation was
 reviewed and opened as draft PR 252. It is design work, not proof that a client
 vault or deployable realm exists. The working tree started from commit
-`bdab910` on a separate stacked branch.
+`bdab9107e8e4e813a2156e46ec8e0bfea0da8b60` on a separate stacked branch.
+That source snapshot was later merged with content-equivalent protocol changes
+as `5006bdb41741c6a3c697220e9d2ef73c177a6dc0`. Git history, rather than a
+developer-local checkout path, identifies the reviewed repository state.
 
 The evidence inventory is `evidence-manifest.txt`. Its SHA-256 digest is
-recorded in `hardening.json`. Repository documents were read as current design
-contracts. External sources were limited to primary specifications and vendor
-documentation and were used to establish available primitives, not to select a
-dependency.
+recorded in `hardening.json`; that digest authenticates the inventory text, not
+snapshots of mutable external pages. Repository evidence is bound by the Git
+revision. External sources record a retrieval date and use immutable versioned
+references where the publisher offered them. They were limited to primary
+specifications and vendor documentation and were used to establish available
+primitives, not to select a dependency.
 
 The strongest constraints carried into the analysis were:
 
