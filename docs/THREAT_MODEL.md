@@ -422,6 +422,30 @@ encrypted databases, lock and idle behavior, transactional deletion, log and
 panic redaction, backup analysis, and tests that map implementation behavior to
 the selected retention policy.
 
+The [client-vault design spike](spikes/client-vault-portable-hosting/proposals/client-state-vault.md)
+adds a proposed test boundary, not a current guarantee: sealed mode may append
+only bounded opaque envelopes, while decrypt, signing, admission, MLS mutation,
+acknowledgement, and rotation require explicit unsealing. Platform key stores
+have different user-presence and unlock-sharing semantics, so adapters must
+report and test their actual behavior. Database encryption does not establish
+rollback resistance, and malware controlling an unlocked session remains out
+of scope.
+
+### Realm replacement and disaster recovery
+
+Relevant attacks include DNS or TLS-account takeover being treated as realm
+continuity, stale database restore, online service-key compromise gaining
+long-term migration authority, capability confusion during endpoint changes,
+backup retention, and a Private-mode failover to ordinary HTTPS.
+
+The [portable-hosting design spike](spikes/client-vault-portable-hosting/proposals/portable-realm-hosting.md)
+proposes separating a pinned realm identity from its current network location.
+Any future implementation must keep realm configuration signatures distinct
+from admission, MLS membership, and right-specific mailbox authority. Clients
+must reject non-monotonic realm state, session members must authenticate active
+session endpoint rotation, and loss of an offline realm root must require an
+explicit new-realm trust decision rather than silent recovery.
+
 ### Retired legacy web application
 
 The Angular/NestJS application is no longer present on the default branch. Its

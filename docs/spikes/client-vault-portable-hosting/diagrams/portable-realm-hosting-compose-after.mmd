@@ -1,0 +1,13 @@
+flowchart LR
+    C["Client"] --> TLS["Automatic HTTPS proxy"] --> APP["Single-node realm services"]
+    IMG["Pinned OCI images"] --> APP
+    SEC["Per-service secret files"] --> APP
+    APP --> DB["PostgreSQL durable state"]
+    BK["Encrypted tested backup"] --> DB
+    OPS["Operator"] -->|"one Compose profile"| APP
+
+    subgraph O["Replaceable host, unchanged hostname"]
+        TLS
+        APP
+        DB
+    end

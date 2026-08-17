@@ -1,0 +1,13 @@
+flowchart LR
+    A["Attacker with copied device files"] --> D["Local client state"]
+    OS["Operating system account"] --> D
+    UI["Desktop UI process"] --> D
+    D --> K["Device, invitation, mailbox, and MLS secrets"]
+    D --> P["Plaintext and searchable history"]
+    N["Hostile network"] --> I["Incoming opaque envelopes"] --> D
+
+    subgraph B["Unspecified local-storage boundary"]
+        D
+        K
+        P
+    end
