@@ -14,7 +14,10 @@ docs/adr/0008-use-an-inviter-owned-transactional-invitation-lifecycle.md
 docs/adr/0010-use-right-specific-mailbox-capabilities.md
 docs/adr/0011-select-openmls-for-the-phase-1-laboratory.md
 
-Primary external evidence reviewed 2026-08-16
+Primary external evidence retrieved 2026-08-16
+# The collection digest covers this manifest, not snapshots of these pages.
+# Versioned specifications are preferred; mutable vendor pages must be
+# revalidated when an implementation decision is made.
 https://developer.apple.com/documentation/security/restricting-keychain-item-accessibility
 https://developer.apple.com/documentation/security/protecting-keys-with-the-secure-enclave
 https://learn.microsoft.com/en-us/windows/win32/api/dpapi/nf-dpapi-cryptprotectdata
