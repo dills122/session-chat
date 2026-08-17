@@ -1,0 +1,155 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+  schedule:
+    - cron: '17 7 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: Rust
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out source without retained credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Verify repository-pinned Rust toolchain
+        run: |
+          rustc --version --verbose
+          test "$(rustc --version | awk '{print $2}')" = "1.97.1"
+
+      - name: Fetch the locked dependency graph
+        run: cargo fetch --locked
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      - name: Lint every target and feature
+        run: cargo clippy --workspace --all-targets --all-features --locked --offline -- -D warnings
+
+      - name: Test every feature
+        run: cargo test --workspace --all-features --locked --offline
+
+      - name: Build warning-free documentation
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --workspace --all-features --no-deps --locked --offline
+
+  node:
+    name: Retained Node tools
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out source without retained credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Install repository-pinned Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Report runtime version
+        run: node --version
+
+      - name: Test retained Node tooling
+        run: node --test scripts/setup-codex-links.test.mjs spikes/sealed-invitation-provider/test/provider.test.mjs
+
+  repository-policy:
+    name: Repository policy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out source without retained credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Install repository-pinned Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Test and run repository policy checks
+        run: |
+          node --test scripts/check-repository.test.mjs
+          node scripts/check-repository.mjs
+
+  dependency-policy:
+    name: Rust dependency policy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out source without retained credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Check advisories, licenses, sources, and bans
+        uses: EmbarkStudios/cargo-deny-action@c3bbe7e4e3f7baeee1a3dd9aec0a3b2aded580fb # v2.1.1
+        with:
+          arguments: --all-features --locked
+
+  dependency-review:
+    name: Pull-request dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out source without retained credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Reject vulnerable dependency changes
+        uses: actions/dependency-review-action@40c09b7dc99638e5ddb0bfd91c1673effc064d8a # v4.8.1
+        with:
+          fail-on-severity: moderate
+          fail-on-scopes: runtime, unknown
+          license-check: false
+
+  gate:
+    name: Gate
+    if: always()
+    needs:
+      - rust
+      - node
+      - repository-policy
+      - dependency-policy
+      - dependency-review
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Require every intended result
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RUST_RESULT: ${{ needs.rust.result }}
+          NODE_RESULT: ${{ needs.node.result }}
+          REPOSITORY_POLICY_RESULT: ${{ needs.repository-policy.result }}
+          DEPENDENCY_POLICY_RESULT: ${{ needs.dependency-policy.result }}
+          DEPENDENCY_REVIEW_RESULT: ${{ needs.dependency-review.result }}
+        run: |
+          test "$RUST_RESULT" = success
+          test "$NODE_RESULT" = success
+          test "$REPOSITORY_POLICY_RESULT" = success
+          test "$DEPENDENCY_POLICY_RESULT" = success
+          if test "$EVENT_NAME" = pull_request; then
+            test "$DEPENDENCY_REVIEW_RESULT" = success
+          else
+            test "$DEPENDENCY_REVIEW_RESULT" = skipped
+          fi

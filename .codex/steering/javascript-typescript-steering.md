@@ -2,10 +2,10 @@
 
 ## Scope And Enforcement
 
-Use this guidance for JavaScript and TypeScript under `{{JAVASCRIPT_TYPESCRIPT_ROOT}}`.
+Use this guidance for retained JavaScript under `scripts/` and
+`spikes/sealed-invitation-provider/`.
 
-Repository-specific instructions and closer-scoped steering take precedence. Replace every
-placeholder before enforcing this file.
+Repository-specific instructions and closer-scoped steering take precedence.
 
 The words **must**, **do not**, and **never** describe default requirements. An exception requires a
 documented reason, the narrowest possible scope, and a test or other guard against regression. Do
@@ -151,12 +151,14 @@ materially improve public contracts or complex data flow.
 Run the smallest relevant checks first, then the complete gate:
 
 ```sh
-{{JS_TS_FORMAT_COMMAND}}
-{{JS_TS_LINT_COMMAND}}
-{{JS_TS_TYPECHECK_COMMAND}}
-{{JS_TS_TEST_COMMAND}}
-{{JS_TS_BUILD_COMMAND}}
-{{JS_TS_DEPENDENCY_AUDIT_COMMAND}}
+node --check scripts/check-repository.mjs
+node --check scripts/setup-codex-links.mjs
+node --test scripts/check-repository.test.mjs scripts/setup-codex-links.test.mjs
+node --test spikes/sealed-invitation-provider/test/provider.test.mjs
 ```
+
+The retained modules use Node built-ins only and have no package install,
+TypeScript compilation, bundle, or JavaScript dependency-audit step. Add those
+gates before adding the corresponding dependency or build surface.
 
 Report exact commands and results. If a check cannot run, state why and what risk remains.

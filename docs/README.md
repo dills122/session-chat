@@ -10,6 +10,9 @@ The central product idea is:
 
 > Publish the door, not the key.
 
+The [secure-development policy](SECURE_DEVELOPMENT.md) maps the repository's
+threat and supply-chain boundaries to the required CI and GitHub merge gates.
+
 Session Chat should provide disposable, end-to-end encrypted conversations
 between people who can be admitted using an external identity, a portable
 credential, a secret capability, or manual approval. Identity and network

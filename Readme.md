@@ -1,7 +1,6 @@
 # Session Chat
 
-[![Rust Protocol](https://github.com/dills122/session-chat/actions/workflows/rust.action.yml/badge.svg)](https://github.com/dills122/session-chat/actions/workflows/rust.action.yml)
-[![Retained Tools](https://github.com/dills122/session-chat/actions/workflows/node-tools.action.yml/badge.svg)](https://github.com/dills122/session-chat/actions/workflows/node-tools.action.yml)
+[![CI](https://github.com/dills122/session-chat/actions/workflows/ci.yml/badge.svg)](https://github.com/dills122/session-chat/actions/workflows/ci.yml)
 
 Session Chat is a protocol-first project for disposable, end-to-end encrypted
 conversations with pluggable admission and delivery. The project is currently a
@@ -26,17 +25,21 @@ interface remain unimplemented. The current transition names encode caller
 preconditions; they do not prove admission or MLS has occurred.
 
 ```sh
+cargo fetch --locked
 cargo fmt --all --check
-cargo clippy --workspace --all-targets --locked -- -D warnings
-cargo test --workspace --locked
+cargo clippy --workspace --all-targets --all-features --locked --offline -- -D warnings
+cargo test --workspace --all-features --locked --offline
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps --locked --offline
+cargo deny --all-features --locked check
 ```
 
 The retained JavaScript research and repository tooling have no third-party
 runtime dependencies:
 
 ```sh
-node --test scripts/setup-codex-links.test.mjs
+node --test scripts/check-repository.test.mjs scripts/setup-codex-links.test.mjs
 node --test spikes/sealed-invitation-provider/test/provider.test.mjs
+node scripts/check-repository.mjs
 ```
 
 ## Repository map
@@ -49,7 +52,9 @@ node --test spikes/sealed-invitation-provider/test/provider.test.mjs
 - `scripts/` contains tested repository setup tooling.
 
 Start with [the v2 document index](docs/README.md). Security claims are bounded
-by the evidence recorded there and in the tests.
+by the evidence recorded there and in the tests. The
+[secure-development policy](docs/SECURE_DEVELOPMENT.md) explains the required
+merge gate and the repository settings that must back it.
 
 ## Legacy v1
 

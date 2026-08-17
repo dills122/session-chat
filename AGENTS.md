@@ -118,16 +118,20 @@ requires compatibility fixtures and negative tests before it is considered done.
 Retained Node tooling and invitation-provider spike:
 
 ```sh
-node --test scripts/setup-codex-links.test.mjs
+node --test scripts/check-repository.test.mjs scripts/setup-codex-links.test.mjs
 node --test spikes/sealed-invitation-provider/test/provider.test.mjs
+node scripts/check-repository.mjs
 ```
 
 Rust v2 workspace:
 
 ```sh
-cargo fmt --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
+cargo fetch --locked
+cargo fmt --all --check
+cargo clippy --workspace --all-targets --all-features --locked --offline -- -D warnings
+cargo test --workspace --all-features --locked --offline
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps --locked --offline
+cargo deny --all-features --locked check
 ```
 
 Run the smallest relevant checks first, then the complete gate for the changed
