@@ -19,9 +19,12 @@ Run the smallest reliable command that validates the changed area:
 
 - Invitation-provider spike: `node --test spikes/sealed-invitation-provider/test/provider.test.mjs`
 - AI Central link tooling: `node --test scripts/setup-codex-links.test.mjs`
-- Rust formatting: `cargo fmt --check`
-- Rust lint: `cargo clippy --workspace --all-targets -- -D warnings`
-- Rust tests: `cargo test --workspace`
+- Repository policy: `node --test scripts/check-repository.test.mjs && node scripts/check-repository.mjs`
+- Rust formatting: `cargo fmt --all --check`
+- Rust lint: `cargo clippy --workspace --all-targets --all-features --locked --offline -- -D warnings`
+- Rust tests: `cargo test --workspace --all-features --locked --offline`
+- Rust documentation: `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps --locked --offline`
+- Rust dependency policy: `cargo deny --all-features --locked check`
 - Documentation hygiene: `git diff --check`
 
 If a command cannot run locally, document why and the risk that remains.

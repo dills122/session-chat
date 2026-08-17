@@ -8,7 +8,7 @@ readme = "README.md"
 
 [dependencies]
 ed25519-dalek.workspace = true
-session-protocol = { path = "../session-protocol" }
+session-protocol = { version = "=0.1.0", path = "../session-protocol" }
 thiserror.workspace = true
 
 [lints]

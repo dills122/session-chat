@@ -5,10 +5,11 @@
   "sourceEvidence": {
     "kind": "document_collection",
     "label": "Session Chat contracts and primary client-storage and portable-hosting documentation",
-    "collectionSha256": "70bac5404fa399191d5606d21a6c7d053e79e8c8863d8c95a52e789abcf40d84",
+    "collectionSha256": "30b6a0015442c164bdee7f9167a0b926a93e6723e4ae5e4786f07c744b70f6ea",
     "artifactCount": 31,
     "targetRevision": "bdab9107e8e4e813a2156e46ec8e0bfea0da8b60",
-    "sourceDrift": "unknown"
+    "contentEquivalentMergedRevision": "5006bdb41741c6a3c697220e9d2ef73c177a6dc0",
+    "sourceDrift": "repository evidence is Git-bound; external-page content was not archived and may drift"
   },
   "assessment": {
     "outcome": "opportunities_identified",

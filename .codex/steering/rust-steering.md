@@ -2,10 +2,9 @@
 
 ## Scope And Enforcement
 
-Use this guidance for Rust crates and workspaces under `{{RUST_ROOT}}`.
+Use this guidance for the Rust workspace under `crates/`.
 
-Repository-specific instructions and closer-scoped steering take precedence. Replace every
-placeholder before enforcing this file.
+Repository-specific instructions and closer-scoped steering take precedence.
 
 The words **must**, **do not**, and **never** describe default requirements. Exceptions require a
 documented reason, narrow scope, and a regression guard. Do not relax compiler, lint, test, safety,
@@ -178,13 +177,16 @@ or supply-chain gates merely to make a change pass.
 Run the smallest relevant checks first, then the complete gate:
 
 ```sh
-{{RUST_FORMAT_COMMAND}}
-{{RUST_CLIPPY_COMMAND}}
-{{RUST_TEST_COMMAND}}
-{{RUST_FEATURE_CHECK_COMMAND}}
-{{RUST_DOC_COMMAND}}
-{{RUST_DEPENDENCY_AUDIT_COMMAND}}
-{{RUST_MSRV_COMMAND}}
+cargo fetch --locked
+cargo fmt --all --check
+cargo clippy --workspace --all-targets --all-features --locked --offline -- -D warnings
+cargo test --workspace --all-features --locked --offline
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps --locked --offline
+cargo deny --all-features --locked check
 ```
+
+The pinned development toolchain is the only supported toolchain today; the
+workspace does not yet promise a separate MSRV. Add an explicit compatibility
+job before making that promise.
 
 Report exact commands and results. If a check cannot run, state why and what risk remains.

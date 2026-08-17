@@ -2,11 +2,10 @@
 
 ## Scope And Enforcement
 
-Use this guidance for reusable automation under `{{SCRIPTS_ROOT}}`, including CI, container, VM,
-hook, bootstrap, release, and developer scripts.
+Use this guidance for reusable automation under `scripts/` and `.github/workflows/`,
+including CI, container, VM, hook, bootstrap, release, and developer scripts.
 
-Repository-specific instructions and closer-scoped steering take precedence. Replace every
-placeholder before enforcing this file.
+Repository-specific instructions and closer-scoped steering take precedence.
 
 The words **must**, **do not**, and **never** describe default requirements. Exceptions require a
 documented portability or platform need, narrow scope, and representative tests.
@@ -131,11 +130,12 @@ documented portability or platform need, narrow scope, and representative tests.
 Run the smallest relevant checks first, then the complete gate:
 
 ```sh
-{{SHELL_SYNTAX_COMMAND}}
-{{SHELL_LINT_COMMAND}}
-{{SHELL_FORMAT_CHECK_COMMAND}}
-{{SCRIPT_TEST_COMMAND}}
-{{SCRIPT_PORTABILITY_COMMAND}}
+find scripts -type f -name '*.sh' -exec sh -n {} \;
+node --test scripts/check-repository.test.mjs scripts/setup-codex-links.test.mjs
+node scripts/check-repository.mjs
 ```
+
+There are no retained shell scripts today. Add ShellCheck, formatting, and
+representative portability coverage before retaining one.
 
 Report exact commands and platform coverage. If a check cannot run, state why and what risk remains.
