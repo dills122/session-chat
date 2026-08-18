@@ -1,6 +1,6 @@
 # ADR 0011: Select OpenMLS for the Phase 1 laboratory
 
-Status: accepted for a bounded Phase 1 integration spike
+Status: accepted for evaluation; integration blocked by dependency policy
 
 Date: 2026-08-16
 
@@ -76,6 +76,27 @@ storage adapter and prove:
 If OpenMLS cannot support those tests without unsafe cross-layer gaps, stop the
 integration and revisit this ADR. Do not work around the limitation by treating
 in-memory success as durable correctness.
+
+## Applicability gate result
+
+The [OpenMLS applicability map](../research/OPENMLS_0_8_1_APPLICABILITY.md)
+records all eight published audit findings and the separately scoped provider
+review. A disposable local implementation established that the exact API can
+exercise the intended two-person flow and enforce the KeyPackage ownership
+seam. It was not retained in the workspace.
+
+The resolved `openmls_rust_crypto` graph introduces RustSec-advised HPKE and
+libcrux packages. The affected functions in the compiled SHA-3 and secret
+dependencies are not reachable from the selected X25519 suite. The advised
+AES-GCM and ChaCha packages belong to an unused optional backend. Nevertheless,
+the repository's advisory and GitHub dependency-review gates evaluate the added
+locked packages and reject the graph. This ADR does not authorize weakening
+those gates or adding broad advisory exceptions. Integration remains blocked
+until a reviewed, API-compatible resolution passes them.
+
+The acknowledged storage-desynchronization finding also remains applicable,
+and the memory provider supplies no failure injection, rollback resistance,
+secure deletion, or application transaction.
 
 ## Alternatives considered
 
