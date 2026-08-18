@@ -26,16 +26,25 @@ foundational changes, an ADR.
   provider writes MLS state, while Session Chat must transact that state with
   invitation consumption, replay state, and Welcome work.
 - The May 2026 SRLabs audit left one Low-severity issue unresolved at
-  publication. Map all eight findings to the exact enabled 0.8.1 feature set
-  and require a fix or explicit risk decision before any non-laboratory path.
+  publication. The
+  [applicability map](research/OPENMLS_0_8_1_APPLICABILITY.md) records all eight
+  findings against the exact 0.8.1 tag. It also records a newer locked HPKE and
+  libcrux advisory set that blocks adding the selected provider to the
+  workspace under the current dependency policy.
 - That audit excluded cryptographic and storage providers. Review the selected
   Rust crypto provider and the Session Chat storage adapter as separate scopes.
+  The applicability map contains a bounded source/dependency review of
+  `openmls_rust_crypto`; that is not an independent cryptographic audit, does
+  not clear the dependency gate, and no Session Chat storage adapter exists yet.
 - Confirm how KeyPackages, Welcome messages, epoch state, and pending Commits
   are stored and recovered.
 - Prototype removal, key update, out-of-order delivery, and lost Commit cases.
 
-Remaining gate: interoperability fixtures plus transactional storage, crash,
-rollback, deletion, and pending-Commit evidence required by ADR 0011.
+Immediate gate: wait for or select an audited, API-compatible provider graph
+that passes repository advisory and dependency-review policy without a broad
+exception. Then retain the isolated laboratory with interoperability fixtures
+plus the transactional storage, crash, rollback, deletion, reordered/lost
+message, and pending-Commit evidence required by ADR 0011.
 
 ### P0: invitation protocol
 

@@ -51,7 +51,9 @@ workspace, bounded deterministic-CBOR opaque envelope, canonical
 domain-separated Ed25519 secret-capability invitation, exhaustive field-boundary
 fixtures, and a bounded inviter-owned invitation reservation/consumption state
 machine. Capability proof and approval, HPKE, MLS, durable state, the headless
-flow, and transport work listed below remain outstanding.
+flow, and transport work listed below remain outstanding. The selected OpenMLS
+0.8.1 provider stack is blocked from integration by the dependency-policy result
+recorded in `research/OPENMLS_0_8_1_APPLICABILITY.md`.
 
 Contract hardening gate before HPKE or the isolated MLS laboratory:
 

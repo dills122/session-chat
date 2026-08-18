@@ -52,7 +52,11 @@ all.
 - [Mailbox authority decision](adr/0010-use-right-specific-mailbox-capabilities.md)
   separates deposit, receive, acknowledgement, and rotation authority in transport APIs.
 - [MLS implementation decision](adr/0011-select-openmls-for-the-phase-1-laboratory.md)
-  selects a pinned, bounded OpenMLS integration and defines its persistence stop conditions.
+  selects a pinned, bounded OpenMLS evaluation, records its dependency blocker,
+  and defines persistence stop conditions.
+- [OpenMLS 0.8.1 applicability map](research/OPENMLS_0_8_1_APPLICABILITY.md)
+  maps all published audit findings and the separately scoped provider to the
+  evaluated in-memory boundary and records the dependency-policy blocker.
 - [V1 retirement decision](adr/0006-retire-v1-from-the-default-branch.md)
   removes the old runtime while preserving its exact tagged snapshot and lessons.
 - [Legacy v1 archive index](legacy-v1/README.md) records recovery commands,

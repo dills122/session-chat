@@ -1,6 +1,6 @@
 # Reference ledger
 
-Last reviewed: 2026-08-16
+Last reviewed: 2026-08-17
 
 This is a research starting point, not a dependency manifest. Standards and
 project maturity must be rechecked when an implementation decision is made.
@@ -38,9 +38,11 @@ proposed identity/admission and transport split.
 
 Decision: ADR 0011 selects exact OpenMLS 0.8.1 and its Rust crypto provider for
 a bounded Phase 1 spike; ADR 0009 defines the initial credential/KeyPackage
-binding. Durable cross-layer transactions, crash recovery, concurrent Commit
-handling, storage migration, interoperability evidence, and resolution or
-explicit applicability analysis of the audit's remaining Low finding are open gates.
+binding. The [applicability map](research/OPENMLS_0_8_1_APPLICABILITY.md)
+records the exact tagged-source and provider review and the dependency-policy
+blocker discovered before integration. Durable cross-layer transactions, crash
+recovery, concurrent Commit handling, storage migration, and interoperability
+evidence remain open gates.
 The SRLabs audit excluded cryptographic and storage providers, so it is not
 evidence for `openmls_rust_crypto` or the future Session Chat storage adapter.
 
