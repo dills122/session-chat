@@ -6,6 +6,7 @@ license.workspace = true
 publish = false
 
 [dependencies]
+ed25519-dalek.workspace = true
 mls-rs-core.workspace = true
 mls-rs-crypto-awslc.workspace = true
 mls-rs-crypto-hpke.workspace = true
@@ -13,7 +14,6 @@ session-protocol = { version = "=0.1.0", path = "../session-protocol" }
 zeroize.workspace = true
 
 [dev-dependencies]
-ed25519-dalek.workspace = true
 hpke = { version = "=0.14.0", default-features = false, features = ["alloc", "aes", "x25519"] }
 
 [lints]

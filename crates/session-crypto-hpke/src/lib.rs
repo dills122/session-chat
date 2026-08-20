@@ -4,12 +4,17 @@
 
 use std::{error::Error, fmt};
 
+use ed25519_dalek::SigningKey;
 use mls_rs_core::crypto::{
-    CipherSuite, HpkeContextR, HpkeContextS, HpkePsk, HpkePublicKey, HpkeSecretKey,
+    CipherSuite, CipherSuiteProvider, CryptoProvider, HpkeContextR, HpkeContextS, HpkePsk,
+    HpkePublicKey, HpkeSecretKey,
 };
-use mls_rs_crypto_awslc::{AwsLcAead, AwsLcHkdf, EcdhKem, dhkem};
+use mls_rs_crypto_awslc::{AwsLcAead, AwsLcCryptoProvider, AwsLcHkdf, EcdhKem, dhkem};
 use mls_rs_crypto_hpke::hpke::Hpke;
-use session_protocol::{CapabilityJoinRequest, ProtectedJoinRequest, SignedCapabilityInvitationV2};
+use session_protocol::{
+    CapabilityInvitationClaims, CapabilityInvitationV2Claims, CapabilityJoinRequest,
+    ProtectedJoinRequest, SecretCapability, SignedCapabilityInvitationV2,
+};
 use zeroize::{Zeroize, Zeroizing};
 
 const HPKE_KEY_BYTES: usize = 32;
@@ -67,6 +72,26 @@ pub struct GeneratedInvitationHpkeKey {
     public_key: [u8; HPKE_KEY_BYTES],
 }
 
+/// A complete fresh invitation-v2 context created by one reviewed provider API.
+pub struct GeneratedCapabilityInvitationV2 {
+    invitation: SignedCapabilityInvitationV2,
+    private_key: InvitationHpkePrivateKey,
+}
+
+impl GeneratedCapabilityInvitationV2 {
+    /// Borrows the signed bearer invitation for encoding and request protection.
+    #[must_use]
+    pub const fn invitation(&self) -> &SignedCapabilityInvitationV2 {
+        &self.invitation
+    }
+
+    /// Borrows the invitation-owned HPKE private key for opening one request.
+    #[must_use]
+    pub const fn private_key(&self) -> &InvitationHpkePrivateKey {
+        &self.private_key
+    }
+}
+
 /// A canonically decoded request authenticated by one successful HPKE PSK open.
 ///
 /// Construction is restricted to [`InvitationJoinProtector`]
@@ -99,6 +124,13 @@ impl GeneratedInvitationHpkeKey {
 
 /// Provider-neutral one-shot protection for the exact ADR 0014 join profile.
 pub trait InvitationJoinProtector {
+    /// Generates and signs every random field in one invitation-v2 context.
+    fn generate_capability_invitation(
+        &self,
+        issued_at_unix_seconds: u64,
+        expires_at_unix_seconds: u64,
+    ) -> Result<GeneratedCapabilityInvitationV2, JoinProtectionError>;
+
     /// Generates a fresh invitation-scoped X25519 key pair.
     fn generate_invitation_key(&self) -> Result<GeneratedInvitationHpkeKey, JoinProtectionError>;
 
@@ -130,6 +162,57 @@ impl AwsLcInvitationJoinProtector {
 }
 
 impl InvitationJoinProtector for AwsLcInvitationJoinProtector {
+    fn generate_capability_invitation(
+        &self,
+        issued_at_unix_seconds: u64,
+        expires_at_unix_seconds: u64,
+    ) -> Result<GeneratedCapabilityInvitationV2, JoinProtectionError> {
+        let crypto = AwsLcCryptoProvider::new();
+        let cipher_suite = crypto
+            .cipher_suite_provider(CipherSuite::CURVE25519_AES128)
+            .ok_or(JoinProtectionError::Rejected)?;
+        let mut invitation_id = [0; 16];
+        let mut join_challenge = [0; 32];
+        let mut invitation_key_id = [0; 16];
+        let mut capability = Zeroizing::new([0; 32]);
+        let mut signing_seed = Zeroizing::new([0; 32]);
+        for output in [
+            invitation_id.as_mut_slice(),
+            join_challenge.as_mut_slice(),
+            invitation_key_id.as_mut_slice(),
+            capability.as_mut_slice(),
+            signing_seed.as_mut_slice(),
+        ] {
+            cipher_suite
+                .random_bytes(output)
+                .map_err(coarse_provider_error)?;
+        }
+
+        let generated_hpke = self.generate_invitation_key()?;
+        let base = CapabilityInvitationClaims::new(
+            invitation_id,
+            issued_at_unix_seconds,
+            expires_at_unix_seconds,
+            join_challenge,
+            SecretCapability::new(*capability).map_err(protocol_error)?,
+        )
+        .map_err(protocol_error)?;
+        let claims = CapabilityInvitationV2Claims::new(
+            base,
+            invitation_key_id,
+            *generated_hpke.public_key(),
+        )
+        .map_err(protocol_error)?;
+        let signing_key = SigningKey::from_bytes(&signing_seed);
+        let invitation =
+            SignedCapabilityInvitationV2::sign(claims, &signing_key).map_err(protocol_error)?;
+
+        Ok(GeneratedCapabilityInvitationV2 {
+            invitation,
+            private_key: generated_hpke.into_private_key(),
+        })
+    }
+
     fn generate_invitation_key(&self) -> Result<GeneratedInvitationHpkeKey, JoinProtectionError> {
         let hpke = hpke()?;
         let (private_key, public_key) = hpke.generate().map_err(coarse_provider_error)?;

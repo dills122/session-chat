@@ -126,8 +126,10 @@ opens an AWS-LC-produced request with an independent dev-only HPKE
 implementation, and rejects wrong keys, changed signed context, mismatched
 inner bindings, and tampered encapsulation/ciphertext/AAD fields through one
 coarse public error. Its fresh invitation X25519 key generation is provider
-owned. Bearer-capability generation and the other random invitation fields are
-not yet owned by one production invitation-creation API.
+owned. The same provider boundary now generates and signs the complete
+invitation-v2 context: invitation ID, challenge, bearer capability, encryption
+key ID, Ed25519 signing seed, and HPKE keypair. Callers supply only issue and
+expiration times.
 
 `admission-capability` accepts only the private successful-open wrapper,
 independently validates the exact KeyPackage through the MLS provider, compares
@@ -202,8 +204,8 @@ under a new schema.
 
 - Any field-layout, code-point, HPKE-domain, fixed-length, or canonicalization
   change requires a new schema version and compatibility/negative fixtures.
-- Do not enable invitation v2 until capability, identifier, nonce, HPKE key,
-  and signing-key creation are owned by a reviewed CSPRNG/provider API.
+- Inviter-owned lifecycle state may accept invitation v2 only through the
+  provider-generated wrapper; it must not add a caller-constructed claims path.
 - Do not connect the contract to MLS membership until the one-shot admission
   ownership and before-mutation rejection matrix pass.
 - Do not enable a network or user-facing join until the inviter-local durable

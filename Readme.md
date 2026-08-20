@@ -19,7 +19,8 @@ The Rust workspace currently contains:
   availability, reservation, release, and post-membership consumption lifecycle
 - `session-crypto-hpke`, with provider-neutral one-shot RFC 9180 PSK join
   protection, an AWS-LC implementation, an RFC known-answer vector, and an
-  independent-provider interoperability test
+  independent-provider interoperability test, plus provider-owned creation of
+  every random invitation-v2 field
 - `admission-capability`, with HPKE-proof provenance, exact provider-validated
   KeyPackage ownership, bounded in-memory request-ID/nonce replay reservation,
   and direct ownership-preserving MLS prepare/apply

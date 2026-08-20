@@ -361,8 +361,9 @@ replay state while leaving membership unchanged. Tests cover substitution,
 same-generation replay, expiry/reissue with reused request values, stale-release
 ABA, foreign-verifier reservation rejection, capacity preservation, delayed
 expiry, and unchanged state after rejection or abandonment.
-Remaining requirements include one CSPRNG-owned API for every invitation
-secret/random field, manual approval and invitation orchestration,
+The provider now owns one complete invitation-v2 creation API covering every
+secret and random field; callers supply only issue and expiration times.
+Remaining requirements include manual approval and invitation orchestration,
 rights-confusion tests, competing deposits, durable replay/rollback protection,
 and crash-safe mutation ordering.
 

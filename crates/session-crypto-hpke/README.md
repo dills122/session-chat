@@ -12,6 +12,12 @@ in-flight operation. The first concrete adapter uses the pinned AWS-LC-backed
 `mls-rs` provider. Its invitation private-key wrapper is non-`Clone`,
 non-`Debug`, and zeroizes on drop.
 
+The same provider boundary can generate a complete invitation-v2 context. It
+uses the selected AWS-LC CSPRNG for the invitation ID, challenge, bearer
+capability, encryption-key ID, and Ed25519 signing seed, and generates the HPKE
+keypair through the existing provider operation. Callers provide only the issue
+and expiration times.
+
 Successful open returns a privately constructed, non-`Clone`, non-`Debug`
 `OpenedCapabilityJoinRequest`. The later admission boundary can therefore
 require proof that the request passed this exact cryptographic operation instead
@@ -23,14 +29,16 @@ Retained evidence includes:
   AES-128-GCM;
 - an AWS-LC-produced ciphertext opened by the independent `hpke` crate, which
   is a dev-only oracle rather than a runtime dependency;
+- two complete generated invitations with independent random fields, canonical
+  authentication, and a working seal/open round trip;
 - exact canonical inner round trips; and
 - rejection of wrong keys, changed signed context, mismatched inner bindings,
   and tampered encapsulation, ciphertext, or outer AAD fields through one
   coarse public error.
 
-This crate does not issue the bearer capability, verify current time, track
-replay, approve admission, reserve or consume an invitation, validate an MLS
-KeyPackage, mutate MLS state, operate a mailbox, or provide durable key storage.
+This crate does not enforce realm time policy, track replay, approve admission,
+reserve or consume an invitation, validate an MLS KeyPackage, mutate MLS state,
+operate a mailbox, or provide durable key storage.
 Successful open proves PSK possession for the exact cryptographic context only;
 the later admission state machine must enforce the remaining policy before any
 mutation.

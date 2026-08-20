@@ -142,6 +142,79 @@ fn generated_key_seals_and_opens_one_exact_capability_request() {
 }
 
 #[test]
+fn provider_generates_every_secret_and_identifier_for_invitation_v2() {
+    let implementation = AwsLcInvitationJoinProtector::new();
+    let protector: &dyn InvitationJoinProtector = &implementation;
+    let first = protector
+        .generate_capability_invitation(ISSUED_AT, EXPIRES_AT)
+        .expect("complete invitation generation succeeds");
+    let second = protector
+        .generate_capability_invitation(ISSUED_AT, EXPIRES_AT)
+        .expect("second complete invitation generation succeeds");
+    let first_invitation = first.invitation();
+    let second_invitation = second.invitation();
+
+    assert_ne!(first_invitation.invitation_id(), &[0; 16]);
+    assert_ne!(first_invitation.join_challenge(), &[0; 32]);
+    assert_ne!(first_invitation.capability().expose_secret(), &[0; 32]);
+    assert_ne!(first_invitation.invitation_key_id(), &[0; 16]);
+    assert_ne!(first_invitation.hpke_recipient_public_key(), &[0; 32]);
+    assert_ne!(first_invitation.inviter_verifying_key(), &[0; 32]);
+    assert_ne!(
+        first_invitation.invitation_id(),
+        second_invitation.invitation_id()
+    );
+    assert_ne!(
+        first_invitation.join_challenge(),
+        second_invitation.join_challenge()
+    );
+    assert_ne!(
+        first_invitation.capability().expose_secret(),
+        second_invitation.capability().expose_secret()
+    );
+    assert_ne!(
+        first_invitation.invitation_key_id(),
+        second_invitation.invitation_key_id()
+    );
+    assert_ne!(
+        first_invitation.hpke_recipient_public_key(),
+        second_invitation.hpke_recipient_public_key()
+    );
+    assert_ne!(
+        first_invitation.inviter_verifying_key(),
+        second_invitation.inviter_verifying_key()
+    );
+
+    let encoded = first_invitation
+        .encode_canonical()
+        .expect("generated invitation encodes");
+    SignedCapabilityInvitationV2::decode_and_verify(&encoded)
+        .expect("generated invitation authenticates");
+    let request = request_for(
+        *first_invitation.invitation_id(),
+        *first_invitation.join_challenge(),
+        *first_invitation.invitation_key_id(),
+        *first_invitation.inviter_verifying_key(),
+        ISSUED_AT + 1,
+        EXPIRES_AT,
+    );
+    let protected = protector
+        .seal_capability_request(first_invitation, &request)
+        .expect("generated context seals");
+    protector
+        .open_capability_request(first.private_key(), first_invitation, &protected)
+        .expect("generated private key opens its context");
+}
+
+#[test]
+fn complete_invitation_generation_rejects_an_invalid_time_range() {
+    let protector = AwsLcInvitationJoinProtector::new();
+
+    assert_rejected(protector.generate_capability_invitation(EXPIRES_AT, ISSUED_AT));
+    assert_rejected(protector.generate_capability_invitation(ISSUED_AT, ISSUED_AT));
+}
+
+#[test]
 fn sealing_rejects_every_cross_context_inner_binding() {
     let protector = AwsLcInvitationJoinProtector::new();
     let generated = protector

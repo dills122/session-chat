@@ -56,9 +56,10 @@ secret possession in the HPKE key schedule.
 
 ADR 0014 accepts this recommendation for the local Phase 1 contract. The
 normative specification assigns the exact schemas and code points. The one-shot
-implementation retains RFC/cross-provider and negative-context evidence; a
-CSPRNG-owned invitation-creation API and stateful admission evidence remain
-required.
+implementation retains RFC/cross-provider and negative-context evidence. The
+provider now owns complete CSPRNG-backed invitation-v2 creation, and automated
+stateful admission evidence is retained. Manual approval, v2 lifecycle
+orchestration, and durable state remain required.
 
 ## Method and source index
 
@@ -432,8 +433,8 @@ slice remains local and bounded:
 1. retain the exact version 2 invitation, version 1 protected-request,
    21-item inner request, and typed local response-descriptor schemas;
 2. retain provider-neutral join-protection types with an AWS-LC implementation;
-3. add CSPRNG-owned invitation creation; RFC/cross-provider fixtures are now
-   retained; and
+3. retain CSPRNG-owned invitation creation and the RFC/cross-provider fixtures;
+   and
 4. connect decryption to read-only validation only, leaving durable admission,
    reservation, MLS membership, Welcome outbox publication, and network
    transport for subsequent explicit slices.
