@@ -871,6 +871,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "session-storage"
+version = "0.1.0"
+dependencies = [
+ "session-protocol",
+ "thiserror",
+ "zeroize",
+]
+
+[[package]]
 name = "session-transport"
 version = "0.1.0"
 dependencies = [

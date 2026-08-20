@@ -9,6 +9,7 @@ members = [
   "crates/session-crypto-mls",
   "crates/session-inviter-transaction",
   "crates/session-protocol",
+  "crates/session-storage",
   "crates/session-transport",
   "crates/transport-memory",
 ]
