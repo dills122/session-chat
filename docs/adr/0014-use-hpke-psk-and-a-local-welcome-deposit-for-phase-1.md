@@ -12,9 +12,10 @@ The Phase 1 laboratory has an authenticated secret-capability invitation, an
 inviter-owned reservation lifecycle, exact MLS KeyPackage validation, an
 isolated two-party MLS lifecycle, the selected one-shot protected join
 operation, and an automated capability verifier owning the exact ADR 0009 value
-with bounded in-memory replay reservation. It does not yet perform manual
-approval, reserve invitation state, consume that value into MLS Add, or return
-a Welcome through a right-specific transport.
+with bounded in-memory replay reservation and a direct MLS prepare/apply seam.
+It does not yet perform manual approval, reserve or consume invitation state,
+commit durable cross-layer state, or return a Welcome through a right-specific
+transport.
 
 ADR 0010 requires deposit, receive, acknowledgement, and rotation authority to
 remain separate. ADR 0008 requires the inviter's future durable membership
@@ -134,14 +135,17 @@ the canonical reference, credential identity, and leaf signature key, and owns
 the parsed provider value. Its bounded in-memory replay reservation binds both
 request ID and nonce to the invitation generation and uses a monotonic
 reservation ID to prevent stale-release ABA. This is automated proof
-verification, not human approval, invitation reservation, MLS membership, or
-durable replay protection.
+verification. The same non-reconstructed provider object moves into MLS
+prepare/apply; rejected, expired, or abandoned preparation releases replay
+state without changing membership. This is not human approval, invitation
+reservation/consumption, a durable membership transaction, or durable replay
+protection.
 
 ## Consequences and limits
 
-- The next slice can connect the one-shot capability admission value to manual
-  approval and the invitation/MLS state machines, or add deterministic in-memory
-  transport, without claiming persistence or a networked product.
+- The next slice can connect manual approval and the v2 invitation lifecycle to
+  the existing admission/MLS seam, or add deterministic in-memory transport,
+  without claiming persistence or a networked product.
 - Hosted realm, public rendezvous, direct, relay, mixnet, and private-network
   endpoints require new transport-specific schemas. Version 1 has no generic
   route escape hatch.
@@ -153,7 +157,8 @@ durable replay protection.
   network authorization remains a future research question.
 - A committed membership transition is not rolled back because Welcome deposit,
   receipt, or acknowledgement fails. Exact outbox retry is the recovery path.
-- There is still no integrated admission/join, durable replay protection, outbox,
+- There is still no approved invitation-to-admission join transaction, durable
+  replay protection, outbox,
   deployable client, network service, hosted trust, forward-secret deletion, or
   production-security claim.
 

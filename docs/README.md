@@ -140,7 +140,9 @@ or migrate active MLS state.
 The `admission-capability` crate accepts only an HPKE-authenticated request,
 independently validates and owns its exact provider KeyPackage, verifies the
 ADR 0009 reference/credential/leaf tuple, and reserves the request ID and nonce
-in bounded in-memory state for one invitation generation.
+in bounded in-memory state for one invitation generation. It can move that
+owned value directly through MLS prepare/apply; rejected, expired, or abandoned
+preparation leaves membership unchanged and releases replay state.
 
 The invitation's self-contained key proves descriptor integrity only. The MLS
 laboratory is not connected to the invitation lifecycle or an admission proof.
@@ -149,8 +151,9 @@ Their bounded canonical invitation-v2, protected outer/inner, exact AAD, and
 deposit-endpoint value types are implemented with retained fixtures. The
 one-shot HPKE operation has RFC and independent-provider evidence. Replay-safe
 automated capability admission now has retained evidence. Manual approval,
-invitation reservation, direct MLS consumption, atomic durable state, rollback
-protection, mailbox behavior, and transport adapters remain unimplemented.
+invitation reservation/consumption, atomic durable membership and replay state,
+rollback protection, mailbox behavior, and transport adapters remain
+unimplemented.
 Calling the explicit
 reservation or consumption methods is not proof that those caller
 preconditions exist yet.

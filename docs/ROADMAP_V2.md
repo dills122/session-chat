@@ -62,9 +62,11 @@ provider-neutral HPKE adapter adds fixed one-shot AWS-LC seal/open, RFC 9180
 known-answer evidence, independent-provider opening, and hostile context
 rejection. The capability-admission adapter now retains HPKE proof provenance,
 independently validates and owns the exact KeyPackage, and reserves request IDs
-and nonces within bounded in-memory generation state. Manual approval,
-invitation/MLS orchestration, durable cross-layer state, mailbox behavior, the
-headless flow, and transport work listed below remain outstanding.
+and nonces within bounded in-memory generation state. It moves that exact value
+directly through the isolated MLS prepare/apply boundary and releases replay on
+rejected, expired, or abandoned preparation. Manual approval, invitation
+orchestration, durable cross-layer state, mailbox behavior, the headless flow,
+and transport work listed below remain outstanding.
 
 Contract hardening rules to preserve before wiring HPKE and the isolated MLS
 laboratory into a join flow:

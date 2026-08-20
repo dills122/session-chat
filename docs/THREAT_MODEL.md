@@ -14,9 +14,10 @@ PSK adapter with RFC/cross-provider evidence, exhaustive hostile fixtures, and
 a bounded inviter-owned invitation reservation/consumption state machine. The
 capability-admission adapter accepts only proven HPKE opens, owns the exact
 provider-validated KeyPackage, and performs bounded in-memory request-ID/nonce
-replay reservation for one invitation generation. It does not perform manual
-approval, invitation/MLS orchestration, mailbox operation, or rollback-resistant
-persistence. ADR 0014's implemented evidence is narrower than its accepted
+replay reservation for one invitation generation. It moves that same object
+directly through MLS prepare/apply and couples abandoned preparation to replay
+release. It does not perform manual approval, invitation orchestration, mailbox
+operation, or rollback-resistant persistence. ADR 0014's implemented evidence is narrower than its accepted
 integrated capability-join and one-Welcome contract. A separate isolated crate
 now
 operates an in-memory two-party MLS 1.0 lifecycle behind the reduced-feature
@@ -354,11 +355,14 @@ and coarse secret-free public failures. The separate capability-admission
 adapter accepts only HPKE-opened provenance, enforces current time and request
 lifetime, independently validates and owns the exact provider KeyPackage,
 compares the reference/credential/leaf tuple before mutation, and reserves both
-request ID and nonce in bounded in-memory state. Tests cover substitution,
+request ID and nonce in bounded in-memory state. The owned value moves directly
+through MLS prepare/apply; rejected, expired, or dropped preparation releases
+replay state while leaving membership unchanged. Tests cover substitution,
 same-generation replay, expiry/reissue with reused request values, stale-release
-ABA, capacity preservation, and unchanged replay state after rejection.
+ABA, foreign-verifier reservation rejection, capacity preservation, delayed
+expiry, and unchanged state after rejection or abandonment.
 Remaining requirements include one CSPRNG-owned API for every invitation
-secret/random field, manual approval and invitation/MLS orchestration,
+secret/random field, manual approval and invitation orchestration,
 rights-confusion tests, competing deposits, durable replay/rollback protection,
 and crash-safe mutation ordering.
 

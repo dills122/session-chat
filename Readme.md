@@ -21,7 +21,8 @@ The Rust workspace currently contains:
   protection, an AWS-LC implementation, an RFC known-answer vector, and an
   independent-provider interoperability test
 - `admission-capability`, with HPKE-proof provenance, exact provider-validated
-  KeyPackage ownership, and bounded in-memory request-ID/nonce replay reservation
+  KeyPackage ownership, bounded in-memory request-ID/nonce replay reservation,
+  and direct ownership-preserving MLS prepare/apply
 - `session-crypto-mls`, with an isolated in-memory two-party MLS 1.0 adapter for
   bounded KeyPackage validation, Add/Welcome, messages, path updates, and removal
 
@@ -31,9 +32,10 @@ posted publicly or placed in a transport envelope. The MLS adapter is not wired
 to invitations or admission and has no durable storage or network path.
 The protected-join and capability-admission adapters prove possession for one
 exact typed HPKE context, independently validate and own the exact KeyPackage,
-and reserve replay values within bounded in-memory state. They do not perform
-manual approval, reserve or consume invitation state, add an MLS member, or
-provide durable replay protection. Cross-layer atomic persistence, mailbox
+and reserve replay values within bounded in-memory state. That exact provider
+object can move directly into the isolated MLS prepare/apply boundary. The
+adapters do not perform manual approval, reserve or consume invitation state,
+or provide durable replay protection. Cross-layer atomic persistence, mailbox
 behavior, networking, and a user interface remain unimplemented. The core
 transition names encode caller preconditions; they do not prove admission or
 MLS membership has occurred.

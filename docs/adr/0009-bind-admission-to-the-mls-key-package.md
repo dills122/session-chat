@@ -107,6 +107,8 @@ HPKE-open provenance, independently validates its exact KeyPackage through the
 pinned MLS provider, compares the canonical reference, `BasicCredential`
 identity, and leaf signature key, and returns a private, non-`Clone`, non-`Debug`
 one-shot value owning that parsed provider object. Substitution and rejection
-tests retain unchanged replay state. Manual approval and direct consumption of
-that value into MLS Add remain unimplemented, so the complete admission-to-Add
-contract is not yet satisfied.
+tests retain unchanged replay state. The verifier moves that same object
+directly through MLS prepare/apply; rejected, expired, or abandoned preparation
+releases replay state without changing membership. Manual approval and atomic
+invitation/replay/MLS persistence remain unimplemented, so the complete product
+admission transaction is not yet satisfied.

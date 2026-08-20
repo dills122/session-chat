@@ -55,8 +55,8 @@ Planned v2 areas:
 - later `session-core` increments: join, approval, membership, and session state machines
 - later `session-crypto-mls` increments: admission orchestration and protected
   transactional state persistence
-- later admission increments: manual approval, invitation orchestration, direct
-  MLS consumption, and durable replay/result state
+- later admission increments: manual approval, invitation orchestration, and
+  durable replay/result and membership state
 - `crates/session-transport` plus adapters: opaque envelope delivery
 - `apps/sessionctl`: headless protocol and conformance client
 
