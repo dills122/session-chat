@@ -24,15 +24,17 @@ impl VaultKey {
         Ok(Self(key))
     }
 
-    fn raw_key_pragma(&self) -> String {
-        let mut hex = String::with_capacity(64);
+    fn raw_key_pragma(&self) -> Zeroizing<String> {
+        let mut pragma = Zeroizing::new(String::with_capacity(88));
+        pragma.push_str("PRAGMA key = \"x'");
         for byte in self.0 {
             use std::fmt::Write as _;
-            write!(&mut hex, "{byte:02X}").expect("writing to a String cannot fail");
+            write!(&mut pragma, "{byte:02X}").expect("writing to a String cannot fail");
         }
+        pragma.push_str("'\";");
         // SQLCipher requires this exact BLOB-literal wrapper for raw key data.
         // Every interpolated character is generated from the fixed hex alphabet.
-        format!("PRAGMA key = \"x'{hex}'\";")
+        pragma
     }
 }
 
@@ -745,6 +747,18 @@ impl StoredJoin {
             && self.welcome == commit.welcome
             && self.endpoint == commit.endpoint
             && self.outbox_expires_at == commit.outbox_expires_at as i64
+    }
+}
+
+impl Drop for StoredJoin {
+    fn drop(&mut self) {
+        self.generation.zeroize();
+        self.join_request_id.zeroize();
+        self.request_fingerprint.zeroize();
+        self.approval_record.zeroize();
+        self.mls_state.zeroize();
+        self.welcome.zeroize();
+        self.endpoint.zeroize();
     }
 }
 
