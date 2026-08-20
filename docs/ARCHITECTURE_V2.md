@@ -150,7 +150,7 @@ the chosen transport, but should not possess message keys or plaintext.
 
 ### Current Phase 1 evidence
 
-The active Rust laboratory now contains eleven narrow pieces of this architecture:
+The active Rust laboratory now contains twelve narrow pieces of this architecture:
 
 - `session-protocol` encodes and strictly verifies deterministic signed
   secret-capability invitation v1/v2 layouts and owns ADR 0014's bounded
@@ -188,6 +188,9 @@ The active Rust laboratory now contains eleven narrow pieces of this architectur
 - `session-inviter-transaction` is a bounded, fault-injectable conformance model
   for all-or-nothing invitation/replay/approval/MLS-snapshot/Welcome-outbox
   visibility, exact retry recovery, and delivery leasing. It is not storage.
+- `session-storage` is a deterministic in-memory conformance model for the
+  session-scoped sealed-vault lifecycle and bounded canonical opaque receipt.
+  It is not encrypted or durable storage and has no production key protector.
 - `sessionctl` composes the current local pieces into one headless Alice/Bob
   flow: capability join, simulated approval, Welcome delivery, bidirectional
   application messages, path update, removal, and post-removal rejection. It

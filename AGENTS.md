@@ -57,6 +57,8 @@ Current areas:
 - `crates/session-inviter-transaction`: bounded, fault-injectable conformance
   model for inviter-local atomic join and Welcome-outbox recovery semantics;
   not a durable storage implementation
+- `crates/session-storage`: deterministic sealed-session lifecycle and bounded
+  opaque-inbox conformance model; not encrypted or durable storage
 - `apps/sessionctl`: headless two-client Phase 1 composition and conformance
   flow over the local adapters; not a networked or durable client
 - `spikes/`: disposable feasibility code; production packages must not depend on it

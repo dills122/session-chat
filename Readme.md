@@ -36,6 +36,9 @@ The Rust workspace currently contains:
   reordering, retry, and acknowledgement controls for headless protocol tests
 - `session-inviter-transaction`, with a bounded fault-injectable conformance
   model for atomic invitation/replay/approval/MLS-snapshot/Welcome-outbox state
+- `session-storage`, with a deterministic session-scoped sealed-vault lifecycle,
+  stale-completion rejection, and a bounded canonical opaque inbox whose local
+  import requires the exact open session and state generation
 - `sessionctl`, with a headless Alice/Bob conformance flow covering protected
   join, explicit approval, Welcome delivery, bidirectional MLS messages, path
   update, removal, and post-removal rejection over the in-memory adapters
@@ -64,6 +67,11 @@ The `sessionctl` binary composes those present pieces into one executable
 two-client flow and prints only coarse milestones. It is retained integration
 evidence, not a deployable client, human approval UX, durable vault, hosted
 realm, or production transport.
+
+The `session-storage` model makes locked-mode capabilities and lifecycle races
+testable, but it retains data only in memory. It does not provide SQLCipher,
+platform user presence, encrypted persistence, rollback resistance, crash
+recovery, or production key protection.
 
 ADR 0014 defines the exact local-only invitation-v2, HPKE capability-join, and
 one-Welcome response contract. Its canonical protocol value types are now

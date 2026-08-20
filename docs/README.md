@@ -64,6 +64,9 @@ all.
 - [Provider-neutral approval-context decision](adr/0015-use-a-provider-neutral-approval-context.md)
   gives headless and later UI composition one display-only decision seam while
   concrete providers retain exact proof, reservation, and KeyPackage authority.
+- [Session-scoped sealed-vault decision](adr/0016-use-a-session-scoped-sealed-vault-contract.md)
+  defines the locked-mode capability matrix, linear lifecycle transitions, and
+  bounded opaque receipt contract without selecting durable storage.
 - [Protected capability join specification](specs/PROTECTED_CAPABILITY_JOIN_V1.md)
   assigns the fixed-array layouts, code points, cryptographic contexts, parsing
   order, mailbox lifecycle, and retained-evidence gates for ADR 0014.
@@ -185,6 +188,11 @@ fresh two-client run covering protected capability admission, explicit
 simulated approval, Welcome delivery, bidirectional MLS application messages,
 path update, removal, and post-removal rejection. It prints only coarse
 milestones and is neither a durable nor networked client.
+The `session-storage` crate now retains a deterministic in-memory conformance
+model for one-session unsealing, forced relock events, stale-completion
+rejection, and bounded canonical opaque receipt/import. It provides no
+encrypted persistence, platform key protector, durability, rollback, or crash
+recovery claim.
 
 ## Reference standards and projects
 

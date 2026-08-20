@@ -61,6 +61,9 @@ The checked-in runtime consists of:
   right-specific opaque-envelope trait;
 - `transport-memory`: a bounded deterministic test adapter for explicit drop,
   duplicate, hold/release reordering, retry, and acknowledgement behavior;
+- `session-storage`: a deterministic in-memory sealed-session lifecycle and
+  bounded canonical opaque-inbox conformance model with generation-bound local
+  import, but no encrypted or durable persistence;
 - `sessionctl`: a headless two-client composition covering protected capability
   join, simulated approval, local Welcome delivery, bidirectional MLS messages,
   path update, removal, and post-removal rejection; and
@@ -69,7 +72,7 @@ The checked-in runtime consists of:
   rotation, and capacity limits.
 
 There is no human approval UX, durable transaction, network or production
-transport, client vault, desktop shell, or hosted realm. The
+transport, production client vault, desktop shell, or hosted realm. The
 HPKE adapter proves PSK possession only for its exact typed context; the
 capability adapter performs automated verification, explicit simulated
 approval, exact v2/replay reservation, and in-memory MLS coordination. The
@@ -105,7 +108,8 @@ flowchart LR
   M --> T["Implemented: local right-specific Welcome delivery"]
   E --> T
   E --> D
-  A -. future .-> V["Atomic durable state and sealed vault"]
+  E --> V["Implemented: sealed lifecycle and bounded opaque inbox model"]
+  A -. future .-> S["Atomic durable state and platform-protected vault"]
   T -. proposed .-> H["Portable self-hosted realm"]
 ```
 
@@ -135,7 +139,9 @@ flowchart LR
 | One headless two-client flow composes protected join through removal | Implemented and tested in memory | `sessionctl` creates fresh Alice/Bob state, explicitly approves the exact capability request, delivers the MLS Welcome and protected traffic through local adapters, updates the epoch, removes Bob, and observes post-removal rejection; no durability, network, hosting, or UX claim |
 | Reusable or network mailbox rotation is a separate non-interchangeable right | Accepted contract, unimplemented | ADR 0010; the one-use local profile deliberately has no rotation operation, and Node simulator evidence does not establish production transport |
 | The Node simulator rejects unknown, cyclic, accessor-backed, symbol-keyed, deep, or oversized provider input before cloning or authorization | Implemented and tested | Retained non-production adversarial tests at directory and attestor entry points |
-| Client secrets are sealed when not in an active user-approved session | Proposed experiment | Session-scoped vault proposal with whole-store fallback; no dependency selected |
+| A sealed-session lifecycle and locked-mode capability matrix reject stale completion and gate privileged model operations | Implemented and tested in memory | ADR 0016 and `session-storage`; deterministic test protector only, with no durable or platform protection claim |
+| Sealed mode accepts only bounded canonical opaque receipt, and local import requires the exact open and insertion generations | Implemented and tested in memory | `session-storage` malformed, expiry, quota, all-state append, and vault/inbox ABA tests; local removal is not remote acknowledgement |
+| Client secrets are protected at rest when not in an active user-approved session | Accepted contract, unimplemented | No encrypted store or production platform key protector is selected; the deterministic model retains a fixture key in memory |
 | A realm can be replaced without giving its operator content or membership authority | Proposed experiment | Compose and signed-realm-descriptor proposal; no service exists |
 | GitHub and credential admission, recovery, multi-device, mixnets, and federation | Deferred | Later roadmap phases |
 

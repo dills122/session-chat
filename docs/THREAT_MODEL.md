@@ -546,14 +546,17 @@ encrypted databases, lock and idle behavior, transactional deletion, log and
 panic redaction, backup analysis, and tests that map implementation behavior to
 the selected retention policy.
 
-The [client-vault design spike](spikes/client-vault-portable-hosting/proposals/client-state-vault.md)
-adds a proposed test boundary, not a current guarantee: sealed mode may append
-only bounded opaque envelopes, while decrypt, signing, admission, MLS mutation,
-acknowledgement, and rotation require explicit unsealing. Platform key stores
-have different user-presence and unlock-sharing semantics, so adapters must
-report and test their actual behavior. Database encryption does not establish
-rollback resistance, and malware controlling an unlocked session remains out
-of scope.
+ADR 0016 and `session-storage` now make part of the client-vault proposal a
+deterministic conformance boundary: sealed mode may append only bounded
+canonical opaque envelopes, while decrypt, signing, admission, MLS mutation,
+acknowledgement, and rotation require the exact open session. Linear vault and
+inbox generations reject delayed completion and identifier-reuse ABA in the
+model. This is not encrypted or durable storage, and the deterministic key
+protector is not platform protection evidence. Platform key stores have
+different user-presence and unlock-sharing semantics, so production adapters
+must report and test their actual behavior. Database encryption does not
+establish rollback resistance, and malware controlling an unlocked session
+remains out of scope.
 
 ### Realm replacement and disaster recovery
 

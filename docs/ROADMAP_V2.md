@@ -96,6 +96,13 @@ retained test and coarse CLI output satisfy the no-GUI/no-network laboratory
 acceptance path. Durable state, human approval, and a network profile remain
 separate gates.
 
+The first `session-storage` increment now makes the selected sealed-vault
+lifecycle and locked-mode capability matrix executable. Its deterministic
+model permits bounded canonical opaque receipt in every state and binds local
+import to the exact open session, vault generation, and inbox insertion. A
+durable encrypted store, real MLS persistence, platform user-presence adapters,
+rollback resistance, crash recovery, and deletion evidence remain outstanding.
+
 Contract hardening rules preserved by the current in-memory flow and required
 for the remaining headless and durable composition:
 

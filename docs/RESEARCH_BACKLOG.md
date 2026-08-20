@@ -259,11 +259,15 @@ Expected output: wire-format draft plus test vectors.
 
 ### P0: device and session key storage
 
+- **Design contract and conformance model implemented:** ADR 0016 and
+  `session-storage` now retain the recommended session-scoped lifecycle,
+  locked-mode capability matrix, stale-generation rejection, and bounded
+  canonical opaque inbox. The deterministic clock and key protector are test
+  providers, not encrypted-storage or user-presence evidence.
 - **Design spike completed:** the
   [client-state vault proposal](spikes/client-vault-portable-hosting/proposals/client-state-vault.md)
-  recommends testing a session-scoped sealed vault with a bounded opaque inbox,
-  OS user-presence adapters, and a whole-store fallback. This is not an
-  implementation or dependency selection.
+  recommends OS user-presence adapters and a whole-store fallback. It is not a
+  storage dependency or platform-protector selection.
 - **Local compatibility spike completed:** the isolated
   [SQLCipher inviter-store spike](../spikes/sqlcipher-inviter-store/README.md)
   proves raw-key, wrong-key, copied-file, tamper, process-crash, and atomic MLS
