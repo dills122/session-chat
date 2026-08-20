@@ -54,6 +54,9 @@ all.
 - [Current MLS implementation decision](adr/0012-select-mls-rs-for-the-phase-1-laboratory.md)
   selects a pinned, reduced-feature `mls-rs`/AWS-LC boundary for the isolated
   laboratory and defines its ownership, audit, and persistence stop conditions.
+- [Provider-neutral message interface decision](adr/0013-use-a-provider-neutral-message-session-interface.md)
+  keeps established-session message handling independent of the selected MLS
+  backend while prohibiting arbitrary plugins and silent active-session swaps.
 - [Superseded OpenMLS decision](adr/0011-select-openmls-for-the-phase-1-laboratory.md)
   retains the bounded OpenMLS evaluation and its dependency blocker.
 - [MLS implementation comparison](research/MLS_IMPLEMENTATION_COMPARISON.md)
@@ -115,6 +118,11 @@ in-memory two-party MLS 1.0 lifecycle: bounded exact KeyPackage validation,
 Add/Welcome, encrypted application messages, path updates, removal, replay and
 reordering rejection/recovery evidence, and explicit-only provider storage
 writes.
+The implementation-free `session-crypto` crate now defines the bounded,
+object-safe application message seam, and `session-crypto-mls` is its only
+current implementation. This defines where a future client can select a
+reviewed backend for a new session; it does not yet provide backend negotiation
+or migrate active MLS state.
 
 The invitation's self-contained key proves descriptor integrity only. The MLS
 laboratory is not connected to the invitation lifecycle or an admission proof.

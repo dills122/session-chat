@@ -54,7 +54,9 @@ machine. The isolated `session-crypto-mls` increment now retains bounded exact
 KeyPackage validation, a two-member Add/Welcome lifecycle, application
 messages, path updates, removal, adverse delivery cases, and explicit provider
 storage timing with the reduced-feature `mls-rs`/AWS-LC graph selected by ADR
-0012. Capability proof and approval, HPKE, durable cross-layer state, the
+0012. The `session-crypto` crate now supplies the provider-neutral established-
+session message seam from ADR 0013; backend negotiation and active-state
+migration do not exist. Capability proof and approval, HPKE, durable cross-layer state, the
 headless flow, and transport work listed below remain outstanding.
 
 Contract hardening rules to preserve before HPKE or wiring the isolated MLS
@@ -65,6 +67,8 @@ laboratory into a join flow:
 - Admission binds the exact KeyPackage, credential, and leaf key under ADR 0009.
 - Transport interfaces use the distinct authorities from ADR 0010.
 - The MLS integration obeys the selection and stop conditions in ADR 0012.
+- New sessions may select only a reviewed, compiled backend under ADR 0013;
+  active sessions cannot silently switch implementations.
 
 The current MLS increment uses only isolated in-memory providers for
 deterministic protocol tests, as ADR 0012 specifies. It does not establish
@@ -84,6 +88,7 @@ Create a Rust workspace containing:
 - `session-core`
 - `session-admission`
 - `admission-capability`
+- `session-crypto`
 - `session-crypto-mls`
 - `session-transport`
 - Deterministic in-memory transport

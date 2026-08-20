@@ -9,6 +9,7 @@ readme = "README.md"
 [dependencies]
 mls-rs.workspace = true
 mls-rs-crypto-awslc.workspace = true
+session-crypto = { path = "../session-crypto" }
 thiserror.workspace = true
 
 [dev-dependencies]

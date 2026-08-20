@@ -1,3 +1,7 @@
+use session_crypto::{
+    ApplicationMessage, MAX_APPLICATION_MESSAGE_BYTES, MessageEvent, MessageSession,
+    MessageSessionError,
+};
 use session_crypto_mls::{
     IncomingMessage, MAX_APPLICATION_BYTES, MAX_MLS_MESSAGE_BYTES, MlsAdapterError, MlsWireMessage,
     SessionGroupId, WelcomeMessage, create_client, create_key_package_validator,
@@ -96,6 +100,36 @@ fn exact_validated_key_package_reaches_add_welcome_and_two_party_messages()
     assert_eq!(
         bob_group.process_message(MlsWireMessage::from_bytes(&ciphertext_bytes)?),
         Err(MlsAdapterError::ProtocolRejected)
+    );
+
+    Ok(())
+}
+
+#[test]
+fn application_messages_use_the_provider_neutral_session_interface()
+-> Result<(), Box<dyn std::error::Error>> {
+    let alice = create_client()?;
+    let bob = create_client()?;
+    let validator = create_key_package_validator();
+    let bob_key_package = bob.generate_key_package(NOW)?;
+    let validated = validator.validate_key_package(bob_key_package.as_bytes(), NOW)?;
+    let mut alice_group = alice.create_group(group_id(), NOW)?;
+    let addition = alice_group.prepare_add(validated, NOW)?.apply()?;
+    let bob_group = bob.join_group(addition.into_welcome(), NOW)?;
+
+    let mut alice_session: Box<dyn MessageSession> = Box::new(alice_group);
+    let mut bob_session: Box<dyn MessageSession> = Box::new(bob_group);
+
+    let protected = alice_session.protect_application_message(b"provider-neutral hello")?;
+    assert_eq!(
+        bob_session.process_protected_message(protected)?,
+        MessageEvent::Application(ApplicationMessage::from_bytes(b"provider-neutral hello")?)
+    );
+    assert_eq!(alice_session.epoch(), 1);
+    assert_eq!(bob_session.member_count(), 2);
+    assert_eq!(
+        alice_session.protect_application_message(&vec![0; MAX_APPLICATION_MESSAGE_BYTES + 1]),
+        Err(MessageSessionError::InputTooLarge)
     );
 
     Ok(())

@@ -3,6 +3,13 @@
 Isolated Phase 1 adapter around the exact `mls-rs` and AWS-LC boundary selected
 by ADR 0012.
 
+It implements the provider-neutral established-session `MessageSession`
+contract from ADR 0013. Applications using that contract do not import
+`mls-rs` types or errors. The concrete API remains explicit for KeyPackage
+validation, group creation/joining, membership transitions, and Welcome
+ownership because those security semantics are not yet generalized across
+multiple implementations.
+
 This crate is a protocol laboratory. It does not provide durable storage,
 rollback resistance, admission proof verification, a network transport, or a
 production-security claim.

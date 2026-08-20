@@ -150,7 +150,7 @@ the chosen transport, but should not possess message keys or plaintext.
 
 ### Current Phase 1 evidence
 
-The active Rust laboratory now contains three narrow pieces of this architecture:
+The active Rust laboratory now contains four narrow pieces of this architecture:
 
 - `session-protocol` encodes and strictly verifies the deterministic signed
   secret-capability invitation defined in ADR 0007, in addition to the opaque
@@ -158,9 +158,12 @@ The active Rust laboratory now contains three narrow pieces of this architecture
 - `session-core` creates bounded inviter-owned invitation state, validates
   attacker-controlled descriptors without mutation, and models explicit
   reservation, release, and post-membership consumption in memory.
+- `session-crypto` defines the provider-neutral, object-safe message-session
+  contract for bounded protected bytes, redacted events, and coarse errors.
 - `session-crypto-mls` isolates the pinned `mls-rs`/AWS-LC provider behind
   bounded KeyPackage, Welcome, and message inputs and models an in-memory
-  two-member Add, path-update, message, and removal lifecycle.
+  two-member Add, path-update, message, and removal lifecycle. It is the only
+  current implementation of the provider-neutral message contract.
 
 The invitation registry and MLS adapter remain separate in-process state
 machines. Registry method names encode caller preconditions; they do not
@@ -306,6 +309,7 @@ session-chat/
 |-- crates/
 |   |-- session-core/            # state machines and invariants
 |   |-- session-protocol/        # canonical wire formats
+|   |-- session-crypto/          # provider-neutral message-session contract
 |   |-- session-crypto-mls/      # MLS integration
 |   |-- session-admission/       # admission traits and policies
 |   |-- admission-github/
@@ -347,3 +351,5 @@ Socket.IO rooms into accidental cryptographic protocol state.
 11. Descriptor validation is read-only; single-use consumption occurs only with
     the successful membership transaction.
 12. Deposit, receive, acknowledgement, and rotation rights are not interchangeable.
+13. A cryptographic backend is selected from a reviewed allowlist for a new
+    session; an active session never silently changes backend or storage format.

@@ -19,7 +19,16 @@ use mls_rs::{
     },
 };
 use mls_rs_crypto_awslc::AwsLcCryptoProvider;
+use session_crypto::{
+    ApplicationMessage, MessageEvent, MessageSession, MessageSessionError, ProtectedMessage,
+    validate_application_message,
+};
 use thiserror::Error;
+
+pub use session_crypto::{
+    MAX_APPLICATION_MESSAGE_BYTES as MAX_APPLICATION_BYTES,
+    MAX_PROTECTED_MESSAGE_BYTES as MAX_MLS_MESSAGE_BYTES,
+};
 
 /// Exact byte length of a Phase 1 session-scoped credential identity.
 pub const SESSION_CREDENTIAL_ID_BYTES: usize = 32;
@@ -27,11 +36,6 @@ pub const SESSION_CREDENTIAL_ID_BYTES: usize = 32;
 pub const SESSION_GROUP_ID_BYTES: usize = 32;
 /// Maximum TLS-serialized KeyPackage accepted before parsing.
 pub const MAX_KEY_PACKAGE_BYTES: usize = 16 * 1024;
-/// Maximum TLS-serialized MLS protocol message accepted before parsing.
-pub const MAX_MLS_MESSAGE_BYTES: usize = 64 * 1024;
-/// Maximum application plaintext accepted for one Phase 1 message.
-pub const MAX_APPLICATION_BYTES: usize = 16 * 1024;
-
 const KEY_PACKAGE_REFERENCE_BYTES: usize = 32;
 const KEY_PACKAGE_LIFETIME: Duration = Duration::from_secs(3_600);
 const CIPHERSUITE: CipherSuite = CipherSuite::CURVE25519_AES128;
@@ -713,6 +717,52 @@ impl<C: MlsConfig> SessionMlsGroup<C> {
             },
             _ => Err(MlsAdapterError::ProtocolRejected),
         }
+    }
+}
+
+impl<C: MlsConfig> MessageSession for SessionMlsGroup<C> {
+    fn epoch(&self) -> u64 {
+        SessionMlsGroup::epoch(self)
+    }
+
+    fn member_count(&self) -> usize {
+        SessionMlsGroup::member_count(self)
+    }
+
+    fn protect_application_message(
+        &mut self,
+        plaintext: &[u8],
+    ) -> Result<ProtectedMessage, MessageSessionError> {
+        validate_application_message(plaintext)?;
+        let message = SessionMlsGroup::encrypt_application_message(self, plaintext)
+            .map_err(message_session_error)?;
+        ProtectedMessage::from_vec(message.0)
+    }
+
+    fn process_protected_message(
+        &mut self,
+        message: ProtectedMessage,
+    ) -> Result<MessageEvent, MessageSessionError> {
+        let message = MlsWireMessage(message.into_bytes());
+        match SessionMlsGroup::process_message(self, message).map_err(message_session_error)? {
+            IncomingMessage::Application(plaintext) => Ok(MessageEvent::Application(
+                ApplicationMessage::from_vec(plaintext)?,
+            )),
+            IncomingMessage::EpochAdvanced => Ok(MessageEvent::EpochAdvanced),
+            IncomingMessage::Removed => Ok(MessageEvent::Removed),
+        }
+    }
+}
+
+fn message_session_error(error: MlsAdapterError) -> MessageSessionError {
+    match error {
+        MlsAdapterError::InputTooLarge => MessageSessionError::InputTooLarge,
+        MlsAdapterError::InvalidIdentifier
+        | MlsAdapterError::MalformedKeyPackage
+        | MlsAdapterError::RejectedKeyPackage
+        | MlsAdapterError::ProtocolRejected
+        | MlsAdapterError::UnexpectedProviderOutput
+        | MlsAdapterError::GroupFull => MessageSessionError::Rejected,
     }
 }
 

@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "crates/session-core",
+  "crates/session-crypto",
   "crates/session-crypto-mls",
   "crates/session-protocol",
 ]

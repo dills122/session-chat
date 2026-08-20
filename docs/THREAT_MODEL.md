@@ -367,12 +367,16 @@ Required controls include a reviewed MLS implementation, strict state-machine
 encapsulation, persistent monotonic state, transactionally stored epoch changes,
 idempotent delivery processing, explicit pending-Commit handling, known-answer
 and interoperability tests, fuzzing, and safe failure on unrecoverable state.
+Backend selection must come from a compiled, reviewed allowlist for new
+sessions. Network-supplied code, arbitrary dynamic crypto plugins, and silent
+mid-session implementation or storage-format switching are prohibited.
 
 Current isolated evidence covers bounded exact KeyPackage/Welcome/message
 parsing, retained KeyPackage ownership through Add and Welcome targeting,
 two-member roster enforcement, explicit prepare/apply and abandoned-pending
 handling, replay, reordering, temporarily lost epoch commits, path updates,
-removal, and explicit-only group-state writes. It does not cover durable
+removal, explicit-only group-state writes, and the provider-neutral established-
+session message interface from ADR 0013. It does not cover durable
 recovery, cross-implementation fixtures, inviter-local join/outbox atomicity,
 joiner-local joined-state and KeyPackage-deletion atomicity, cross-device
 acknowledgement semantics, old-secret deletion, or fuzzing.
