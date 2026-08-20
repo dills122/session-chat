@@ -3,6 +3,17 @@
 version = 4
 
 [[package]]
+name = "admission-capability"
+version = "0.1.0"
+dependencies = [
+ "ed25519-dalek",
+ "session-crypto-hpke",
+ "session-crypto-mls",
+ "session-protocol",
+ "thiserror",
+]
+
+[[package]]
 name = "aead"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

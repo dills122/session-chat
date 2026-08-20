@@ -1,5 +1,6 @@
 [workspace]
 members = [
+  "crates/admission-capability",
   "crates/session-core",
   "crates/session-crypto",
   "crates/session-crypto-hpke",
