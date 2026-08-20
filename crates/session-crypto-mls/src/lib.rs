@@ -770,20 +770,26 @@ impl<C: MlsConfig> PreparedAddition<'_, C> {
             .inner
             .apply_pending_commit()
             .map_err(|_| MlsAdapterError::ProtocolRejected)?;
-        if self.group.epoch() != self.epoch_before + 1 || self.group.member_count() != 2 {
+        if self.group.epoch() != self.epoch_before + 1
+            || self.group.member_count() != 2
+            || !self.group.phase_one_invariants_hold()
+        {
+            self.group.inactive = true;
             return Err(MlsAdapterError::UnexpectedProviderOutput);
         }
+        let Some(welcome) = self.welcome.take() else {
+            self.group.inactive = true;
+            return Err(MlsAdapterError::UnexpectedProviderOutput);
+        };
+        let Some(commit) = self.commit.take() else {
+            self.group.inactive = true;
+            return Err(MlsAdapterError::UnexpectedProviderOutput);
+        };
         self.applied = true;
         Ok(CommittedAddition {
             reference: self.reference,
-            welcome: self
-                .welcome
-                .take()
-                .ok_or(MlsAdapterError::UnexpectedProviderOutput)?,
-            commit: self
-                .commit
-                .take()
-                .ok_or(MlsAdapterError::UnexpectedProviderOutput)?,
+            welcome,
+            commit,
         })
     }
 }
@@ -856,16 +862,19 @@ impl<C: MlsConfig> PreparedRemoval<'_, C> {
             .inner
             .apply_pending_commit()
             .map_err(|_| MlsAdapterError::ProtocolRejected)?;
-        if self.group.epoch() != self.epoch_before + 1 || self.group.member_count() != 1 {
+        if self.group.epoch() != self.epoch_before + 1
+            || self.group.member_count() != 1
+            || !self.group.phase_one_invariants_hold()
+        {
+            self.group.inactive = true;
             return Err(MlsAdapterError::UnexpectedProviderOutput);
         }
+        let Some(commit) = self.commit.take() else {
+            self.group.inactive = true;
+            return Err(MlsAdapterError::UnexpectedProviderOutput);
+        };
         self.applied = true;
-        Ok(CommittedRemoval {
-            commit: self
-                .commit
-                .take()
-                .ok_or(MlsAdapterError::UnexpectedProviderOutput)?,
-        })
+        Ok(CommittedRemoval { commit })
     }
 }
 
@@ -906,16 +915,17 @@ impl<C: MlsConfig> PreparedEpochUpdate<'_, C> {
             .map_err(|_| MlsAdapterError::ProtocolRejected)?;
         if self.group.epoch() != self.epoch_before + 1
             || self.group.member_count() != self.member_count_before
+            || !self.group.phase_one_invariants_hold()
         {
+            self.group.inactive = true;
             return Err(MlsAdapterError::UnexpectedProviderOutput);
         }
+        let Some(commit) = self.commit.take() else {
+            self.group.inactive = true;
+            return Err(MlsAdapterError::UnexpectedProviderOutput);
+        };
         self.applied = true;
-        Ok(CommittedEpochUpdate {
-            commit: self
-                .commit
-                .take()
-                .ok_or(MlsAdapterError::UnexpectedProviderOutput)?,
-        })
+        Ok(CommittedEpochUpdate { commit })
     }
 }
 

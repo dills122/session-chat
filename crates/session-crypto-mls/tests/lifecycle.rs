@@ -61,6 +61,12 @@ fn exact_validated_key_package_reaches_add_welcome_and_two_party_messages()
         .encrypt_application_message(b"hello bob")
         .expect("encrypt application message");
     let ciphertext_bytes = ciphertext.as_bytes().to_vec();
+    let mut trailing_ciphertext = ciphertext_bytes.clone();
+    trailing_ciphertext.push(0);
+    assert_eq!(
+        bob_group.process_message(MlsWireMessage::from_bytes(&trailing_ciphertext)?),
+        Err(MlsAdapterError::ProtocolRejected)
+    );
     let received = bob_group
         .process_message(ciphertext)
         .expect("decrypt application message");
@@ -212,6 +218,12 @@ fn update_and_reordered_or_temporarily_lost_messages_recover_safely() -> Result<
     let update = alice_group.prepare_epoch_update(NOW)?.apply()?;
     assert_eq!(alice_group.epoch(), 2);
     let update_bytes = update.commit().as_bytes().to_vec();
+    let mut trailing_update = update_bytes.clone();
+    trailing_update.push(0);
+    assert_eq!(
+        bob_group.process_message(MlsWireMessage::from_bytes(&trailing_update)?),
+        Err(MlsAdapterError::ProtocolRejected)
+    );
     let future_epoch_message = alice_group.encrypt_application_message(b"future epoch")?;
     assert_eq!(
         bob_group.process_message(future_epoch_message),
