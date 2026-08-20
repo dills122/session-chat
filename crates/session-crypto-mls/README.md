@@ -13,7 +13,8 @@ The adapter currently provides:
 
 - MLS 1.0 with the exact `CURVE25519_AES128` ciphersuite and pinned reduced
   `mls-rs`/AWS-LC feature graph from ADR 0012;
-- nonzero 32-byte session credential and group identifiers;
+- adapter-generated random 32-byte session credential identities and nonzero
+  32-byte group identifiers supplied by the caller;
 - a one-hour KeyPackage lifetime checked against caller-supplied time;
 - a bounded external KeyPackage validator that returns a private, non-`Clone`
   value owning the exact validated message, reference, credential identity,
@@ -49,9 +50,11 @@ create/prepare/apply cause no implicit group-state write and that an explicit
 provider write causes one write.
 
 All state is still process memory. The crate deliberately exposes no durable
-write API: a future storage adapter must atomically coordinate MLS state,
-joining-client KeyPackage deletion, invitation consumption, replay and approval
-state, and the encrypted Welcome outbox. Cross-implementation fixtures,
-crash/rollback recovery, old-secret deletion, platform coverage, fuzzing, and
-an independent review of the exact `mls-rs`/AWS-LC boundary remain release
-gates.
+write API. A future inviter adapter must atomically coordinate its MLS state,
+invitation consumption, replay and approval state, and encrypted Welcome
+outbox. Separately, the joining client must atomically persist joined group
+state and delete or consume its one-time KeyPackage. Remote acknowledgement
+must not gate or roll back the inviter's committed membership.
+Cross-implementation fixtures, crash/rollback recovery, old-secret deletion,
+platform coverage, fuzzing, and an independent review of the exact
+`mls-rs`/AWS-LC boundary remain release gates.

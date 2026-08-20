@@ -18,10 +18,12 @@ provider boundary. It is a source and applicability review, not a new
 cryptographic audit.
 
 The OpenMLS protocol finding map supports continuing evaluation, but the
-selected provider graph does not pass the repository dependency gate. No MLS
-crate or dependency is retained in the workspace. The published audit excluded
-cryptographic and storage providers, and its acknowledged S1-3 storage finding
-directly reinforces Session Chat's durable-transaction stop condition.
+selected OpenMLS provider graph does not pass the repository dependency gate.
+No OpenMLS crate or dependency is retained in the workspace; the separately
+reviewed `mls-rs` laboratory selected by ADR 0012 is retained instead. The
+published OpenMLS audit excluded cryptographic and storage providers, and its
+acknowledged S1-3 storage finding directly reinforces Session Chat's durable
+transaction stop condition.
 
 ## Evaluated dependency and feature boundary
 

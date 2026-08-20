@@ -1,24 +1,39 @@
 use session_crypto_mls::{
     IncomingMessage, MAX_APPLICATION_BYTES, MAX_MLS_MESSAGE_BYTES, MlsAdapterError, MlsWireMessage,
-    SessionCredentialId, SessionGroupId, WelcomeMessage, create_client,
-    create_key_package_validator,
+    SessionGroupId, WelcomeMessage, create_client, create_key_package_validator,
 };
 
 const NOW: u64 = 1_800_000_000;
-
-fn credential(byte: u8) -> SessionCredentialId {
-    SessionCredentialId::new([byte; 32]).expect("nonzero test credential")
-}
 
 fn group_id() -> SessionGroupId {
     SessionGroupId::new([0x77; 32]).expect("nonzero test group id")
 }
 
 #[test]
+fn clients_generate_fresh_nonzero_session_credential_identities() -> Result<(), MlsAdapterError> {
+    let alice = create_client()?;
+    let bob = create_client()?;
+
+    assert!(
+        alice
+            .credential_identity()
+            .as_bytes()
+            .iter()
+            .any(|byte| *byte != 0)
+    );
+    assert_ne!(
+        alice.credential_identity().as_bytes(),
+        bob.credential_identity().as_bytes()
+    );
+
+    Ok(())
+}
+
+#[test]
 fn exact_validated_key_package_reaches_add_welcome_and_two_party_messages()
 -> Result<(), MlsAdapterError> {
-    let alice = create_client(credential(0x11)).expect("create Alice");
-    let bob = create_client(credential(0x22)).expect("create Bob");
+    let alice = create_client().expect("create Alice");
+    let bob = create_client().expect("create Bob");
     let validator = create_key_package_validator();
 
     let bob_key_package = bob
@@ -29,7 +44,10 @@ fn exact_validated_key_package_reaches_add_welcome_and_two_party_messages()
         .expect("validate Bob KeyPackage");
     let expected_reference = *validated.key_package_reference();
 
-    assert_eq!(validated.credential_identity(), credential(0x22).as_bytes());
+    assert_eq!(
+        validated.credential_identity(),
+        bob.credential_identity().as_bytes()
+    );
     assert_eq!(validated.leaf_signature_key().len(), 32);
 
     let mut alice_group = alice.create_group(group_id(), NOW).expect("create group");
@@ -86,7 +104,7 @@ fn exact_validated_key_package_reaches_add_welcome_and_two_party_messages()
 #[test]
 fn malformed_expired_and_oversized_key_packages_fail_before_membership()
 -> Result<(), MlsAdapterError> {
-    let bob = create_client(credential(0x22))?;
+    let bob = create_client()?;
     let validator = create_key_package_validator();
     let key_package = bob.generate_key_package(NOW)?;
 
@@ -110,21 +128,12 @@ fn malformed_expired_and_oversized_key_packages_fail_before_membership()
 }
 
 #[test]
-fn abandoned_add_is_releasable_and_duplicate_identity_fails_closed() -> Result<(), MlsAdapterError>
-{
-    let alice = create_client(credential(0x11))?;
-    let duplicate_alice = create_client(credential(0x11))?;
+fn abandoned_add_is_releasable_and_expired_add_fails_closed() -> Result<(), MlsAdapterError> {
+    let alice = create_client()?;
     let validator = create_key_package_validator();
-    let key_package = duplicate_alice.generate_key_package(NOW)?;
-    let validated = validator.validate_key_package(key_package.as_bytes(), NOW)?;
     let mut group = alice.create_group(group_id(), NOW)?;
 
-    assert!(matches!(
-        group.prepare_add(validated, NOW),
-        Err(MlsAdapterError::RejectedKeyPackage)
-    ));
-
-    let bob = create_client(credential(0x22))?;
+    let bob = create_client()?;
     let bob_key_package = bob.generate_key_package(NOW)?;
     let validated = validator.validate_key_package(bob_key_package.as_bytes(), NOW)?;
     let prepared = group.prepare_add(validated, NOW)?;
@@ -143,7 +152,7 @@ fn abandoned_add_is_releasable_and_duplicate_identity_fails_closed() -> Result<(
     group.prepare_add(validated, NOW)?.apply()?;
     assert_eq!(group.member_count(), 2);
 
-    let carol = create_client(credential(0x33))?;
+    let carol = create_client()?;
     let carol_key_package = carol.generate_key_package(NOW)?;
     let carol = validator.validate_key_package(carol_key_package.as_bytes(), NOW)?;
     assert!(matches!(
@@ -156,8 +165,8 @@ fn abandoned_add_is_releasable_and_duplicate_identity_fails_closed() -> Result<(
 
 #[test]
 fn removal_advances_the_epoch_and_blocks_future_messages() -> Result<(), MlsAdapterError> {
-    let alice = create_client(credential(0x11))?;
-    let bob = create_client(credential(0x22))?;
+    let alice = create_client()?;
+    let bob = create_client()?;
     let validator = create_key_package_validator();
     let bob_key_package = bob.generate_key_package(NOW)?;
     let bob_admission = validator.validate_key_package(bob_key_package.as_bytes(), NOW)?;
@@ -190,8 +199,8 @@ fn removal_advances_the_epoch_and_blocks_future_messages() -> Result<(), MlsAdap
 #[test]
 fn update_and_reordered_or_temporarily_lost_messages_recover_safely() -> Result<(), MlsAdapterError>
 {
-    let alice = create_client(credential(0x11))?;
-    let bob = create_client(credential(0x22))?;
+    let alice = create_client()?;
+    let bob = create_client()?;
     let validator = create_key_package_validator();
     let bob_key_package = bob.generate_key_package(NOW)?;
     let bob_admission = validator.validate_key_package(bob_key_package.as_bytes(), NOW)?;
@@ -248,7 +257,7 @@ fn update_and_reordered_or_temporarily_lost_messages_recover_safely() -> Result<
 
 #[test]
 fn application_and_wire_bounds_fail_closed() -> Result<(), MlsAdapterError> {
-    let alice = create_client(credential(0x11))?;
+    let alice = create_client()?;
     let mut group = alice.create_group(group_id(), NOW)?;
 
     assert!(matches!(
@@ -291,7 +300,7 @@ fn otherwise_valid_key_package_with_leaf_extension_is_rejected() -> Result<(), M
         .expect("selected ciphersuite");
     let (secret, public) = provider.signature_key_generate().expect("signature key");
     let identity = SigningIdentity::new(
-        BasicCredential::new(credential(0x22).as_bytes().to_vec()).into_credential(),
+        BasicCredential::new(vec![0x22; 32]).into_credential(),
         public,
     );
     let extension_type = ExtensionType::from(0xF001);

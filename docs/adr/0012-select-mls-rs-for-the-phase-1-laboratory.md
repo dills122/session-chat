@@ -17,8 +17,10 @@ The [MLS implementation comparison](../research/MLS_IMPLEMENTATION_COMPARISON.md
 evaluated released OpenMLS and `mls-rs` graphs. `mls-rs` 0.56.0 with its AWS-LC
 provider 0.25.0 resolved without a known RustSec advisory in the selected graph,
 compiled on the pinned toolchain, and passed a disposable two-party ownership
-and storage-boundary experiment. Upstream labels the AWS-LC and OpenSSL
-providers stable and the RustCrypto provider experimental. Upstream also states
+and storage-boundary experiment. Upstream's provider table labels X.509 support,
+not overall provider maturity: it lists AWS-LC and OpenSSL X.509 support as
+stable and RustCrypto X.509 support as experimental. This laboratory disables
+X.509, so those labels are not selection evidence here. Upstream also states
 that `mls-rs` has not received a full independent third-party security audit.
 
 The selected `aws-lc-rs` and `aws-lc-sys` dependencies use ISC, and
@@ -70,13 +72,14 @@ slice. That slice must keep the MLS library behind a Session Chat adapter and:
 
 `mls-rs` separates commit construction, pending-commit application, and the
 explicit `Group::write_to_storage` call. This is useful but does not itself
-provide Session Chat's transaction. Its repository writes group state and epoch
-records together, while a joining client's KeyPackage deletion is a subsequent
-call through a separate repository trait. A future adapter must prove one
-recoverable application transaction across MLS state, KeyPackage deletion,
-invitation consumption, replay state, approval/result state, and the encrypted
-Welcome outbox. The isolated laboratory may not claim durability, rollback
-resistance, forward-secret deletion, or atomic delivery.
+provide either Session Chat transaction. The inviter must prove one recoverable
+local transaction across its MLS state, invitation consumption, replay state,
+approval/result state, and encrypted Welcome outbox. Separately, after
+processing the Welcome, the joining client must atomically persist its joined
+group state and delete or consume its one-time KeyPackage. A remote
+acknowledgement may trigger retry or status handling, but must not gate or roll
+back the inviter's committed membership. The isolated laboratory may not claim
+durability, rollback resistance, forward-secret deletion, or atomic delivery.
 
 ## Consequences and limits
 
@@ -92,7 +95,8 @@ resistance, forward-secret deletion, or atomic delivery.
   dependency update must repeat locked advisory, license, source, and API review.
 - The locked graph retains duplicate `syn` versions and build-target
   `getrandom` versions under the repository's warning policy; review them again
-  when the dependencies enter the workspace rather than treating the graph as minimal.
+  on every dependency update and before a production dependency claim rather
+  than treating the current graph as minimal.
 - AWS-LC's broader testing and partial formal-verification evidence does not
   transfer into a claim that the `mls-rs` protocol or provider adapter is audited.
 - No networked, durable, user-facing, production-security, or interoperability
@@ -121,7 +125,11 @@ native client platform matrix for the intended desktop and mobile direction.
 ### Use the mls-rs RustCrypto provider
 
 Rejected for the first laboratory even though its screened graph passed the
-current dependency policy. Upstream labels that provider experimental.
+current dependency policy. The retained screening used a materially broader
+default-feature graph, while AWS-LC had clearer native platform and packaging
+evidence for this increment. This is not a claim that RustCrypto is an
+experimental provider overall; upstream applies that label only to its X.509
+support.
 
 ### Implement a custom OpenMLS provider or MLS stack
 
@@ -134,7 +142,7 @@ required by the threat model.
 - Pin exact versions and feature flags in the workspace and retain `Cargo.lock`.
 - Stop on any advisory, unknown source, unreviewed license, unsupported target,
   KeyPackage substitution seam, parser-bound failure, or storage behavior that
-  cannot meet the cross-layer transaction.
+  cannot meet the applicable owner-local transaction and recovery contract.
 - Remove or supersede this selection if upstream maintenance stops, the required
   ciphersuite or RFC behavior regresses, or a better-audited implementation passes
   the same evidence packet.

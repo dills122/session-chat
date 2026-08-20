@@ -160,9 +160,11 @@ the selection is not inherited assurance for Session Chat. ADR 0011 and the
 rejected OpenMLS graph and its published audit context.
 
 The adapter uses upstream's BasicCredential provider only as an MLS credential
-format and independently enforces random session-scoped identities; it is not
-an authentication or admission claim. Because pinned `mls-rs` 0.56.0 exposes no
-public KeyPackage leaf accessor, the adapter re-decodes the already
+format. It generates each session-scoped identity through the selected AWS-LC
+ciphersuite provider and exposes that identity read-only for exact admission
+binding; this is not an authentication or admission claim. Because pinned
+`mls-rs` 0.56.0 exposes no public KeyPackage leaf accessor, the adapter
+re-decodes the already
 provider-validated KeyPackage through a private mirror of that exact TLS layout
 to enforce the closed leaf extension/capability policy. Review that maintenance
 seam and its negative test on every provider update.

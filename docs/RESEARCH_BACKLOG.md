@@ -25,8 +25,11 @@ foundational changes, an ADR.
   binding that admission must authenticate.
 - The `mls-rs` selection does not resolve durable cross-layer atomicity. It
   exposes an explicit group-state write, but joining-client KeyPackage deletion
-  uses a subsequent repository call. Session Chat must transact both with
-  invitation consumption, replay state, approval/result state, and Welcome work.
+  uses a subsequent repository call on the other client. Session Chat needs an
+  inviter-local transaction for MLS, invitation, replay, approval/result, and
+  Welcome-outbox state, plus a separate joiner-local transaction for joined
+  group state and one-time KeyPackage deletion. Remote acknowledgement must not
+  gate or roll back committed membership.
 - The May 2026 SRLabs audit left one Low-severity issue unresolved at
   publication. The
   [applicability map](research/OPENMLS_0_8_1_APPLICABILITY.md) records all eight

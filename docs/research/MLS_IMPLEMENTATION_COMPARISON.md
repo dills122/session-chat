@@ -47,17 +47,17 @@ message, and observe zero group-state writes until explicit persistence.
 This is sufficient to start the isolated laboratory. It is not sufficient for
 a durable or user-facing join path. `mls-rs` explicitly reports that it has not
 received a full independent third-party security audit, and its separate group
-state and KeyPackage repository calls still require a crash-injected
-cross-layer transaction design.
+state and KeyPackage repository calls still require separate crash-injected
+inviter and joiner transaction designs plus acknowledgement/retry semantics.
 
 ## Candidate comparison
 
 | Candidate | Exact screened boundary | Dependency result | API/platform result | Decision |
 | --- | --- | --- | --- | --- |
 | OpenMLS | `openmls` 0.8.1 + `openmls_rust_crypto` 0.5.1 | Fails: the current graph still contains RustSec-advised libcrux packages and an unmaintained transitive crate; the retained applicability map records the broader lock result | Prior disposable lifecycle was feasible; persistence had an acknowledged desynchronization risk | Do not integrate this release |
-| `mls-rs` + AWS-LC | `mls-rs` 0.56.0 + `mls-rs-crypto-awslc` 0.25.0; reduced Phase 1 features | Passes after explicit ISC/MIT-0 allowlist review; no advisory or source exception; 72 packages | Ownership/storage experiment passes; upstream labels provider stable; AWS-LC actively tests intended native desktop/mobile classes | Select for isolated laboratory |
-| `mls-rs` + OpenSSL | `mls-rs` 0.56.0 + `mls-rs-crypto-openssl` 0.21.0 with default `mls-rs` screening features | Passes current policy; 77 packages | Builds on review host and upstream labels provider stable; system/native OpenSSL packaging remains target-dependent | Retain as fallback |
-| `mls-rs` + RustCrypto | `mls-rs` 0.56.0 + `mls-rs-crypto-rustcrypto` 0.22.1 with default `mls-rs` screening features | Passes current policy; 118 packages | Builds on review host, but upstream labels provider experimental | Reject for first laboratory |
+| `mls-rs` + AWS-LC | `mls-rs` 0.56.0 + `mls-rs-crypto-awslc` 0.25.0; reduced Phase 1 features | Passes after explicit ISC/MIT-0 allowlist review; no advisory or source exception; 72 packages | Ownership/storage experiment passes; AWS-LC actively tests intended native desktop/mobile classes | Select for isolated laboratory |
+| `mls-rs` + OpenSSL | `mls-rs` 0.56.0 + `mls-rs-crypto-openssl` 0.21.0 with default `mls-rs` screening features | Passes current policy; 77 packages | Builds on review host; system/native OpenSSL packaging remains target-dependent | Retain as fallback |
+| `mls-rs` + RustCrypto | `mls-rs` 0.56.0 + `mls-rs-crypto-rustcrypto` 0.22.1 with default `mls-rs` screening features | Passes current policy; 118 packages | Builds on review host; retained screening used a broader default-feature graph and established no overall provider-maturity classification | Defer for first laboratory |
 | Cisco `mlspp` | Not dependency-resolved | Not evaluated | C++/FFI adds memory-safety, packaging, and toolchain boundaries | Not competitive for this Rust slice |
 
 Package counts include the disposable root. OpenSSL and RustCrypto counts are
@@ -70,9 +70,11 @@ graph at that time.
 - The published `mls-rs` 0.56.0 crate records source commit
   `8f1b43f447a792ff9307f1c2c7f54da63914870e`, which matches upstream tag
   `0.56.0`, and declares Rust 1.82.0 or newer.
-- Upstream describes AWS-LC and OpenSSL as stable providers, RustCrypto as
-  experimental, RFC 9420 conformance and interoperability tests as present,
-  and a full third-party security audit as absent.
+- Upstream's provider table describes X.509 support as stable for AWS-LC and
+  OpenSSL and experimental for RustCrypto; those labels do not characterize
+  overall provider maturity. Upstream also records RFC 9420 conformance and
+  interoperability tests as present and a full third-party security audit as
+  absent.
 - `ExternalClient::validate_key_package` validates version, ciphersuite,
   signature, identity, lifetime, and KeyPackage properties and returns the
   parsed KeyPackage.
@@ -166,8 +168,10 @@ dependency review would see when added.
 - No independent audit currently establishes the security of the exact
   `mls-rs` protocol/provider composition.
 - The experiment did not run cross-implementation MLS interoperability vectors.
-- A durable adapter has not proved atomic group state, KeyPackage deletion,
+- A durable inviter adapter has not proved its local atomic group state,
   invitation consumption, replay state, approval result, and Welcome outbox.
+- A durable joiner adapter has not proved local atomic joined-state persistence
+  and one-time KeyPackage deletion or the related acknowledgement/retry rules.
 - Crash recovery, stale snapshot rejection, old-secret deletion, schema
   migration, and backup semantics remain untested.
 - Linux, Windows, iOS, and Android builds were not reproduced by Session Chat.

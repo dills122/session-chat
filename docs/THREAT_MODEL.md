@@ -373,8 +373,9 @@ parsing, retained KeyPackage ownership through Add and Welcome targeting,
 two-member roster enforcement, explicit prepare/apply and abandoned-pending
 handling, replay, reordering, temporarily lost epoch commits, path updates,
 removal, and explicit-only group-state writes. It does not cover durable
-recovery, cross-implementation fixtures, joining-KeyPackage deletion atomicity,
-old-secret deletion, or fuzzing.
+recovery, cross-implementation fixtures, inviter-local join/outbox atomicity,
+joiner-local joined-state and KeyPackage-deletion atomicity, cross-device
+acknowledgement semantics, old-secret deletion, or fuzzing.
 
 Attacker story: a malicious delivery service withholds one Commit and later
 replays it after a subsequent epoch. The client must reject it without rolling

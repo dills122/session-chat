@@ -67,11 +67,6 @@ pub enum MlsAdapterError {
 pub struct SessionCredentialId([u8; SESSION_CREDENTIAL_ID_BYTES]);
 
 impl SessionCredentialId {
-    /// Accepts a fixed-length, nonzero session-scoped identifier.
-    pub fn new(bytes: [u8; SESSION_CREDENTIAL_ID_BYTES]) -> Result<Self, MlsAdapterError> {
-        nonzero(bytes).map(Self)
-    }
-
     /// Returns the public session-scoped credential identity bytes.
     #[must_use]
     pub const fn as_bytes(&self) -> &[u8; SESSION_CREDENTIAL_ID_BYTES] {
@@ -105,13 +100,13 @@ fn nonzero<const N: usize>(bytes: [u8; N]) -> Result<[u8; N], MlsAdapterError> {
 /// A client whose MLS state is isolated to in-memory provider repositories.
 pub struct SessionMlsClient<C: MlsConfig> {
     inner: Client<C>,
+    credential_identity: SessionCredentialId,
 }
 
-/// Creates a Phase 1 client with the selected suite and a one-hour KeyPackage lifetime.
-pub fn create_client(
+fn create_client_with_credential_identity(
     credential_identity: SessionCredentialId,
+    crypto: AwsLcCryptoProvider,
 ) -> Result<SessionMlsClient<impl MlsConfig>, MlsAdapterError> {
-    let crypto = AwsLcCryptoProvider::default();
     let cipher_suite = crypto
         .cipher_suite_provider(CIPHERSUITE)
         .ok_or(MlsAdapterError::UnexpectedProviderOutput)?;
@@ -128,7 +123,28 @@ pub fn create_client(
         .signing_identity(identity, secret, CIPHERSUITE)
         .build();
 
-    Ok(SessionMlsClient { inner })
+    Ok(SessionMlsClient {
+        inner,
+        credential_identity,
+    })
+}
+
+/// Creates a Phase 1 client with a fresh random session identity, the selected
+/// suite, and a one-hour KeyPackage lifetime.
+pub fn create_client() -> Result<SessionMlsClient<impl MlsConfig>, MlsAdapterError> {
+    let crypto = AwsLcCryptoProvider::default();
+    let cipher_suite = crypto
+        .cipher_suite_provider(CIPHERSUITE)
+        .ok_or(MlsAdapterError::UnexpectedProviderOutput)?;
+    let mut bytes = [0; SESSION_CREDENTIAL_ID_BYTES];
+    cipher_suite
+        .random_bytes(&mut bytes)
+        .map_err(|_| MlsAdapterError::ProtocolRejected)?;
+    if bytes.iter().all(|byte| *byte == 0) {
+        return Err(MlsAdapterError::UnexpectedProviderOutput);
+    }
+
+    create_client_with_credential_identity(SessionCredentialId(bytes), crypto)
 }
 
 /// Bounded serialized KeyPackage produced by a Session Chat client.
@@ -143,6 +159,12 @@ impl KeyPackageMessage {
 }
 
 impl<C: MlsConfig> SessionMlsClient<C> {
+    /// Returns this client's adapter-generated session-scoped credential identity.
+    #[must_use]
+    pub const fn credential_identity(&self) -> &SessionCredentialId {
+        &self.credential_identity
+    }
+
     /// Generates one one-shot KeyPackage using a caller-supplied clock value.
     pub fn generate_key_package(
         &self,
@@ -1048,7 +1070,36 @@ mod tests {
             .signing_identity(identity, secret, CIPHERSUITE)
             .build();
 
-        Ok(SessionMlsClient { inner })
+        Ok(SessionMlsClient {
+            inner,
+            credential_identity,
+        })
+    }
+
+    #[test]
+    fn duplicate_identity_still_fails_closed() -> Result<(), MlsAdapterError> {
+        const NOW: u64 = 1_800_000_000;
+        let credential_identity = SessionCredentialId([0x11; SESSION_CREDENTIAL_ID_BYTES]);
+        let alice = create_client_with_credential_identity(
+            credential_identity,
+            AwsLcCryptoProvider::default(),
+        )?;
+        let duplicate_alice = create_client_with_credential_identity(
+            credential_identity,
+            AwsLcCryptoProvider::default(),
+        )?;
+        let validator = create_key_package_validator();
+        let key_package = duplicate_alice.generate_key_package(NOW)?;
+        let validated = validator.validate_key_package(key_package.as_bytes(), NOW)?;
+        let mut group =
+            alice.create_group(SessionGroupId::new([0x77; SESSION_GROUP_ID_BYTES])?, NOW)?;
+
+        assert!(matches!(
+            group.prepare_add(validated, NOW),
+            Err(MlsAdapterError::RejectedKeyPackage)
+        ));
+
+        Ok(())
     }
 
     #[test]
@@ -1056,12 +1107,10 @@ mod tests {
         const NOW: u64 = 1_800_000_000;
         let storage = RecordingStorage::default();
         let alice = create_client_with_storage(
-            SessionCredentialId::new([0x11; SESSION_CREDENTIAL_ID_BYTES])?,
+            SessionCredentialId([0x11; SESSION_CREDENTIAL_ID_BYTES]),
             storage.clone(),
         )?;
-        let bob = create_client(SessionCredentialId::new(
-            [0x22; SESSION_CREDENTIAL_ID_BYTES],
-        )?)?;
+        let bob = create_client()?;
         let validator = create_key_package_validator();
         let bob_key_package = bob.generate_key_package(NOW)?;
         let validated = validator.validate_key_package(bob_key_package.as_bytes(), NOW)?;
@@ -1086,15 +1135,9 @@ mod tests {
     #[test]
     fn authenticated_commit_cannot_expand_a_phase_one_group() -> Result<(), MlsAdapterError> {
         const NOW: u64 = 1_800_000_000;
-        let alice = create_client(SessionCredentialId::new(
-            [0x11; SESSION_CREDENTIAL_ID_BYTES],
-        )?)?;
-        let bob = create_client(SessionCredentialId::new(
-            [0x22; SESSION_CREDENTIAL_ID_BYTES],
-        )?)?;
-        let carol = create_client(SessionCredentialId::new(
-            [0x33; SESSION_CREDENTIAL_ID_BYTES],
-        )?)?;
+        let alice = create_client()?;
+        let bob = create_client()?;
+        let carol = create_client()?;
         let validator = create_key_package_validator();
         let bob_key_package = bob.generate_key_package(NOW)?;
         let bob_validated = validator.validate_key_package(bob_key_package.as_bytes(), NOW)?;
