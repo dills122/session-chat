@@ -2,8 +2,9 @@
 
 //! Sealed-vault and opaque-inbox contracts plus deterministic conformance models.
 
-use std::error::Error;
+use std::{collections::BTreeMap, error::Error};
 
+use session_protocol::{MAX_ENVELOPE_CIPHERTEXT_BYTES, OpaqueEnvelope};
 use thiserror::Error;
 use zeroize::Zeroize;
 
@@ -11,6 +12,8 @@ use zeroize::Zeroize;
 pub const SESSION_ID_BYTES: usize = 32;
 /// Fixed byte length of one externally protected session data key.
 pub const SESSION_KEY_BYTES: usize = 32;
+/// Pre-parser outer bound for one canonical opaque-envelope encoding.
+pub const MAX_ENCODED_OPAQUE_ENVELOPE_BYTES: usize = MAX_ENVELOPE_CIPHERTEXT_BYTES + 64;
 
 /// Coarse failure from the storage and vault boundary.
 #[derive(Clone, Copy, Debug, Eq, Error, PartialEq)]
@@ -98,6 +101,42 @@ impl OpaqueInboxPolicy {
             maximum_envelopes,
             maximum_total_encoded_bytes,
         })
+    }
+}
+
+/// Result of storing one bounded canonical opaque envelope.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InboxAppendOutcome {
+    /// A new envelope generation was retained.
+    Stored,
+    /// The byte-identical envelope was already retained.
+    AlreadyStored,
+}
+
+struct OpaqueInboxRecord {
+    encoded: Vec<u8>,
+    expires_at_unix_seconds: u64,
+    insertion_generation: u64,
+}
+
+/// Linear local-import value released only to the exact open vault generation.
+///
+/// Import completion removes only the local sealed-inbox copy. It is not remote
+/// delivery acknowledgement authority. This type intentionally implements
+/// neither `Clone`, `Debug`, nor `Display` because it owns ciphertext bytes.
+pub struct PendingOpaqueImport {
+    session_id: SessionId,
+    open_generation: u64,
+    envelope_id: [u8; 16],
+    insertion_generation: u64,
+    envelope: OpaqueEnvelope,
+}
+
+impl PendingOpaqueImport {
+    /// Borrows the exact canonical envelope decoded after vault unlock.
+    #[must_use]
+    pub const fn envelope(&self) -> &OpaqueEnvelope {
+        &self.envelope
     }
 }
 
@@ -303,7 +342,7 @@ enum LifecycleState {
     },
     Open {
         session_id: SessionId,
-        _generation: u64,
+        generation: u64,
         idle_expires_at_unix_seconds: u64,
         _key: UnsealedSessionKey,
     },
@@ -319,11 +358,14 @@ enum LifecycleState {
 /// encrypted persistence, a platform vault, or a rollback-resistance claim.
 pub struct SessionVaultModel<C: VaultClock, P: SessionKeyProtector> {
     policy: VaultPolicy,
-    _inbox_policy: OpaqueInboxPolicy,
+    inbox_policy: OpaqueInboxPolicy,
     clock: C,
     protector: P,
     next_generation: u64,
+    next_inbox_generation: u64,
     state: LifecycleState,
+    inbox: BTreeMap<[u8; 16], OpaqueInboxRecord>,
+    inbox_total_encoded_bytes: usize,
 }
 
 impl<C: VaultClock, P: SessionKeyProtector> SessionVaultModel<C, P> {
@@ -337,11 +379,14 @@ impl<C: VaultClock, P: SessionKeyProtector> SessionVaultModel<C, P> {
     ) -> Self {
         Self {
             policy,
-            _inbox_policy: inbox_policy,
+            inbox_policy,
             clock,
             protector,
             next_generation: 0,
+            next_inbox_generation: 0,
             state: LifecycleState::Sealed,
+            inbox: BTreeMap::new(),
+            inbox_total_encoded_bytes: 0,
         }
     }
 
@@ -411,7 +456,7 @@ impl<C: VaultClock, P: SessionKeyProtector> SessionVaultModel<C, P> {
             .ok_or(VaultError::Rejected)?;
         self.state = LifecycleState::Open {
             session_id,
-            _generation: generation,
+            generation,
             idle_expires_at_unix_seconds,
             _key: key,
         };
@@ -512,6 +557,144 @@ impl<C: VaultClock, P: SessionKeyProtector> SessionVaultModel<C, P> {
         if expired {
             self.state = LifecycleState::Sealed;
         }
+        self.prune_expired_inbox(now);
+    }
+
+    /// Appends one bounded canonical opaque envelope in every vault state.
+    ///
+    /// This operation never opens the vault, reads a receive capability,
+    /// acknowledges remote delivery, or parses the MLS-protected ciphertext.
+    pub fn append_opaque(&mut self, encoded: &[u8]) -> Result<InboxAppendOutcome, VaultError> {
+        self.poll();
+        if encoded.is_empty() || encoded.len() > MAX_ENCODED_OPAQUE_ENVELOPE_BYTES {
+            return Err(VaultError::Rejected);
+        }
+        let envelope =
+            OpaqueEnvelope::decode_canonical(encoded).map_err(|_| VaultError::Rejected)?;
+        if envelope.envelope_id().iter().all(|byte| *byte == 0) {
+            return Err(VaultError::Rejected);
+        }
+        let now = self.clock.now_unix_seconds();
+        let lifetime = envelope
+            .expires_at_unix_seconds()
+            .checked_sub(now)
+            .ok_or(VaultError::Rejected)?;
+        if lifetime == 0 || lifetime > self.inbox_policy.maximum_lifetime_seconds {
+            return Err(VaultError::Rejected);
+        }
+        let envelope_id = *envelope.envelope_id();
+        if let Some(existing) = self.inbox.get(&envelope_id) {
+            return if existing.encoded == encoded {
+                Ok(InboxAppendOutcome::AlreadyStored)
+            } else {
+                Err(VaultError::Rejected)
+            };
+        }
+        if self.inbox.len() >= self.inbox_policy.maximum_envelopes {
+            return Err(VaultError::CapacityExceeded);
+        }
+        let next_total = self
+            .inbox_total_encoded_bytes
+            .checked_add(encoded.len())
+            .ok_or(VaultError::CapacityExceeded)?;
+        if next_total > self.inbox_policy.maximum_total_encoded_bytes {
+            return Err(VaultError::CapacityExceeded);
+        }
+        self.next_inbox_generation = self
+            .next_inbox_generation
+            .checked_add(1)
+            .ok_or(VaultError::CapacityExceeded)?;
+        self.inbox.insert(
+            envelope_id,
+            OpaqueInboxRecord {
+                encoded: encoded.to_vec(),
+                expires_at_unix_seconds: envelope.expires_at_unix_seconds(),
+                insertion_generation: self.next_inbox_generation,
+            },
+        );
+        self.inbox_total_encoded_bytes = next_total;
+        Ok(InboxAppendOutcome::Stored)
+    }
+
+    /// Decodes one retained canonical envelope only for the exact open session.
+    pub fn begin_opaque_import(
+        &mut self,
+        session_id: SessionId,
+    ) -> Result<Option<PendingOpaqueImport>, VaultError> {
+        self.poll();
+        let LifecycleState::Open {
+            session_id: selected,
+            generation,
+            ..
+        } = &self.state
+        else {
+            return Err(VaultError::Rejected);
+        };
+        if *selected != session_id {
+            return Err(VaultError::Rejected);
+        }
+        let Some((envelope_id, record)) = self.inbox.iter().next() else {
+            return Ok(None);
+        };
+        let envelope =
+            OpaqueEnvelope::decode_canonical(&record.encoded).map_err(|_| VaultError::Rejected)?;
+        Ok(Some(PendingOpaqueImport {
+            session_id,
+            open_generation: *generation,
+            envelope_id: *envelope_id,
+            insertion_generation: record.insertion_generation,
+            envelope,
+        }))
+    }
+
+    /// Removes one exact locally imported envelope while the same vault generation is open.
+    ///
+    /// Network acknowledgement remains a separate right-specific transport
+    /// operation and is deliberately absent from this model.
+    pub fn complete_opaque_import(
+        &mut self,
+        pending: PendingOpaqueImport,
+    ) -> Result<(), VaultError> {
+        self.poll();
+        let LifecycleState::Open {
+            session_id,
+            generation,
+            ..
+        } = &self.state
+        else {
+            return Err(VaultError::ReservationMismatch);
+        };
+        if *session_id != pending.session_id || *generation != pending.open_generation {
+            return Err(VaultError::ReservationMismatch);
+        }
+        let record = self
+            .inbox
+            .get(&pending.envelope_id)
+            .ok_or(VaultError::ReservationMismatch)?;
+        if record.insertion_generation != pending.insertion_generation
+            || record.expires_at_unix_seconds <= self.clock.now_unix_seconds()
+            || self.inbox_total_encoded_bytes < record.encoded.len()
+        {
+            return Err(VaultError::ReservationMismatch);
+        }
+        let encoded_length = record.encoded.len();
+        self.inbox
+            .remove(&pending.envelope_id)
+            .ok_or(VaultError::ReservationMismatch)?;
+        self.inbox_total_encoded_bytes -= encoded_length;
+        Ok(())
+    }
+
+    /// Returns the bounded retained envelope count, including no expired entries after polling.
+    #[must_use]
+    pub fn inbox_count(&self) -> usize {
+        self.inbox.len()
+    }
+
+    /// Returns the total canonical encoded bytes retained by the opaque inbox.
+    #[must_use]
+    pub const fn inbox_total_encoded_bytes(&self) -> usize {
+        self.inbox_total_encoded_bytes
     }
 
     fn next_transition_generation(&mut self) -> Result<u64, VaultError> {
@@ -520,5 +703,22 @@ impl<C: VaultClock, P: SessionKeyProtector> SessionVaultModel<C, P> {
             .checked_add(1)
             .ok_or(VaultError::Rejected)?;
         Ok(self.next_generation)
+    }
+
+    fn prune_expired_inbox(&mut self, now_unix_seconds: u64) {
+        let expired: Vec<_> = self
+            .inbox
+            .iter()
+            .filter_map(|(envelope_id, record)| {
+                (record.expires_at_unix_seconds <= now_unix_seconds).then_some(*envelope_id)
+            })
+            .collect();
+        for envelope_id in expired {
+            if let Some(record) = self.inbox.remove(&envelope_id) {
+                self.inbox_total_encoded_bytes = self
+                    .inbox_total_encoded_bytes
+                    .saturating_sub(record.encoded.len());
+            }
+        }
     }
 }
