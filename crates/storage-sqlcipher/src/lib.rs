@@ -113,6 +113,42 @@ pub struct InviterRecovery {
     pub welcome_pending: bool,
 }
 
+/// Secret-free recovery view for one joining-client transaction.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct JoinerRecovery {
+    /// Joined MLS group whose state committed with KeyPackage consumption.
+    pub group_id: [u8; 32],
+}
+
+/// Exact owner-local joiner transaction expected around the next MLS write.
+///
+/// This value binds the group snapshot to deletion of one exact one-time
+/// KeyPackage. It intentionally implements neither `Clone`, `Debug`, nor
+/// `Display`.
+pub struct JoinerTransaction {
+    transaction_id: [u8; 16],
+    group_id: [u8; 32],
+    key_package_reference: [u8; 32],
+}
+
+impl JoinerTransaction {
+    /// Accepts nonzero fixed identifiers for one joining-client transaction.
+    pub fn new(
+        transaction_id: [u8; 16],
+        group_id: [u8; 32],
+        key_package_reference: [u8; 32],
+    ) -> Result<Self, StoreError> {
+        if all_zero(&transaction_id) || all_zero(&group_id) || all_zero(&key_package_reference) {
+            return Err(StoreError::Rejected);
+        }
+        Ok(Self {
+            transaction_id,
+            group_id,
+            key_package_reference,
+        })
+    }
+}
+
 /// Complete inviter-owned application metadata staged for one MLS write.
 ///
 /// The MLS snapshot itself comes only from the configured `mls-rs` provider
@@ -186,9 +222,22 @@ struct StagedInviter {
     fault: PersistenceFault,
 }
 
+struct StagedJoiner {
+    transaction: JoinerTransaction,
+    fault: PersistenceFault,
+}
+
+struct PendingJoiner {
+    transaction: JoinerTransaction,
+    fault: PersistenceFault,
+    already_committed: bool,
+}
+
 struct StorageInner {
     connection: Connection,
     staged_inviter: Option<StagedInviter>,
+    staged_joiner: Option<StagedJoiner>,
+    pending_joiner: Option<PendingJoiner>,
 }
 
 /// Cloneable SQLCipher provider handle shared by the MLS and application layers.
@@ -252,7 +301,10 @@ impl SqlCipherStorage {
     ) -> Result<(), StoreError> {
         validate_inviter(&transaction, now_unix_seconds)?;
         let mut inner = self.lock()?;
-        if inner.staged_inviter.is_some() {
+        if inner.staged_inviter.is_some()
+            || inner.staged_joiner.is_some()
+            || inner.pending_joiner.is_some()
+        {
             return Err(StoreError::Conflict);
         }
         inner.staged_inviter = Some(StagedInviter {
@@ -260,6 +312,23 @@ impl SqlCipherStorage {
             now_unix_seconds,
             fault,
         });
+        Ok(())
+    }
+
+    /// Stages one exact joining-client transaction for the next MLS write.
+    pub fn stage_joiner(
+        &self,
+        transaction: JoinerTransaction,
+        fault: PersistenceFault,
+    ) -> Result<(), StoreError> {
+        let mut inner = self.lock()?;
+        if inner.staged_inviter.is_some()
+            || inner.staged_joiner.is_some()
+            || inner.pending_joiner.is_some()
+        {
+            return Err(StoreError::Conflict);
+        }
+        inner.staged_joiner = Some(StagedJoiner { transaction, fault });
         Ok(())
     }
 
@@ -308,6 +377,44 @@ impl SqlCipherStorage {
                 })
             })
             .transpose()
+    }
+
+    /// Recovers a committed joiner transaction without returning key material.
+    pub fn recover_joiner(
+        &self,
+        transaction_id: &[u8; 16],
+    ) -> Result<Option<JoinerRecovery>, StoreError> {
+        let inner = self.lock()?;
+        if inner.pending_joiner.is_some() {
+            return Err(StoreError::Rejected);
+        }
+        inner
+            .connection
+            .query_row(
+                "SELECT group_id FROM joiner_commits WHERE transaction_id = ?1",
+                params![transaction_id],
+                |row| row.get::<_, Vec<u8>>(0),
+            )
+            .optional()?
+            .map(|group_id| {
+                let group_id = group_id.try_into().map_err(|_| StoreError::Rejected)?;
+                Ok(JoinerRecovery { group_id })
+            })
+            .transpose()
+    }
+
+    /// Reports whether one exact one-time KeyPackage remains retained.
+    pub fn key_package_exists(&self, reference: &[u8; 32]) -> Result<bool, StoreError> {
+        Ok(self
+            .lock()?
+            .connection
+            .query_row(
+                "SELECT 1 FROM key_packages WHERE key_package_ref = ?1",
+                params![reference],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()?
+            .is_some())
     }
 
     /// Returns the active SQLCipher version, rejecting a plaintext SQLite build.
@@ -371,6 +478,8 @@ impl SqlCipherStorage {
             inner: Arc::new(Mutex::new(StorageInner {
                 connection,
                 staged_inviter: None,
+                staged_joiner: None,
+                pending_joiner: None,
             })),
         })
     }
@@ -420,14 +529,17 @@ impl GroupStateStorage for SqlCipherStorage {
     ) -> Result<(), Self::Error> {
         validate_mls_write(&state, &epoch_inserts, &epoch_updates)?;
         let mut inner = self.lock()?;
-        let staged = inner.staged_inviter.take().ok_or(StoreError::Rejected)?;
-        commit_inviter(
-            &mut inner.connection,
-            &staged,
-            &state,
-            &epoch_inserts,
-            &epoch_updates,
-        )
+        if let Some(staged) = inner.staged_inviter.take() {
+            return commit_inviter(
+                &mut inner.connection,
+                &staged,
+                &state,
+                &epoch_inserts,
+                &epoch_updates,
+            );
+        }
+        let staged = inner.staged_joiner.take().ok_or(StoreError::Rejected)?;
+        begin_joiner(&mut inner, staged, &state, &epoch_inserts, &epoch_updates)
     }
 
     fn max_epoch_id(&self, group_id: &[u8]) -> Result<Option<u64>, Self::Error> {
@@ -449,14 +561,46 @@ impl KeyPackageStorage for SqlCipherStorage {
         if id.len() != 32 {
             return Err(StoreError::Rejected);
         }
-        let changed = self.lock()?.connection.execute(
-            "DELETE FROM key_packages WHERE key_package_ref = ?1",
-            params![id],
-        )?;
-        if changed != 1 {
+        let mut inner = self.lock()?;
+        let pending = inner.pending_joiner.take().ok_or(StoreError::Rejected)?;
+        if id != pending.transaction.key_package_reference {
+            rollback(&inner.connection);
             return Err(StoreError::Rejected);
         }
-        Ok(())
+        if pending.already_committed {
+            return if key_package_exists_on(&inner.connection, id)? {
+                Err(StoreError::Conflict)
+            } else {
+                Ok(())
+            };
+        }
+        let changed = match inner.connection.execute(
+            "DELETE FROM key_packages WHERE key_package_ref = ?1",
+            params![id],
+        ) {
+            Ok(changed) => changed,
+            Err(_) => {
+                rollback(&inner.connection);
+                return Err(StoreError::Rejected);
+            }
+        };
+        if changed != 1 || pending.fault == PersistenceFault::BeforeCommit {
+            rollback(&inner.connection);
+            return if pending.fault == PersistenceFault::BeforeCommit {
+                Err(StoreError::InjectedFailure)
+            } else {
+                Err(StoreError::Rejected)
+            };
+        }
+        if inner.connection.execute_batch("COMMIT;").is_err() {
+            rollback(&inner.connection);
+            return Err(StoreError::Rejected);
+        }
+        if pending.fault == PersistenceFault::AfterCommit {
+            Err(StoreError::OutcomeUnknown)
+        } else {
+            Ok(())
+        }
     }
 
     fn insert(&mut self, id: Vec<u8>, pkg: KeyPackageData) -> Result<(), Self::Error> {
@@ -580,6 +724,12 @@ fn create_schema(connection: &Connection) -> Result<(), StoreError> {
              init_key BLOB NOT NULL CHECK(length(init_key) BETWEEN 1 AND 4096),
              leaf_key BLOB NOT NULL CHECK(length(leaf_key) BETWEEN 1 AND 4096),
              expires_at INTEGER NOT NULL CHECK(expires_at > 0)
+         ) STRICT;
+
+         CREATE TABLE joiner_commits (
+             transaction_id BLOB PRIMARY KEY CHECK(length(transaction_id) = 16),
+             group_id BLOB NOT NULL UNIQUE CHECK(length(group_id) = 32),
+             key_package_ref BLOB NOT NULL UNIQUE CHECK(length(key_package_ref) = 32)
          ) STRICT;
          COMMIT;",
     )?;
@@ -709,8 +859,87 @@ fn commit_inviter(
     }
 }
 
+fn begin_joiner(
+    inner: &mut StorageInner,
+    staged: StagedJoiner,
+    state: &GroupState,
+    epoch_inserts: &[EpochRecord],
+    epoch_updates: &[EpochRecord],
+) -> Result<(), StoreError> {
+    if state.id.as_slice() != staged.transaction.group_id {
+        return Err(StoreError::Rejected);
+    }
+    let existing = inner
+        .connection
+        .query_row(
+            "SELECT 1 FROM joiner_commits WHERE transaction_id = ?1",
+            params![staged.transaction.transaction_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()?
+        .is_some();
+    if existing {
+        let exact = inner
+            .connection
+            .query_row(
+                "SELECT 1 FROM joiner_commits j
+                 JOIN mls_groups g ON g.group_id = j.group_id
+                 WHERE j.transaction_id = ?1 AND j.group_id = ?2
+                   AND j.key_package_ref = ?3 AND g.state = ?4",
+                params![
+                    staged.transaction.transaction_id,
+                    staged.transaction.group_id,
+                    staged.transaction.key_package_reference,
+                    state.data.as_slice()
+                ],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()?
+            .is_some();
+        if !exact
+            || key_package_exists_on(&inner.connection, &staged.transaction.key_package_reference)?
+        {
+            return Err(StoreError::Conflict);
+        }
+        inner.pending_joiner = Some(PendingJoiner {
+            transaction: staged.transaction,
+            fault: staged.fault,
+            already_committed: true,
+        });
+        return Ok(());
+    }
+
+    inner.connection.execute_batch("BEGIN IMMEDIATE;")?;
+    let result = (|| {
+        if !key_package_exists_on(&inner.connection, &staged.transaction.key_package_reference)? {
+            return Err(StoreError::Rejected);
+        }
+        persist_mls(&inner.connection, state, epoch_inserts, epoch_updates)?;
+        inner.connection.execute(
+            "INSERT INTO joiner_commits(transaction_id, group_id, key_package_ref)
+             VALUES (?1, ?2, ?3)",
+            params![
+                staged.transaction.transaction_id,
+                staged.transaction.group_id,
+                staged.transaction.key_package_reference
+            ],
+        )?;
+        Ok(())
+    })();
+    if let Err(error) = result {
+        rollback(&inner.connection);
+        return Err(error);
+    }
+    inner.pending_joiner = Some(PendingJoiner {
+        transaction: staged.transaction,
+        fault: staged.fault,
+        already_committed: false,
+    });
+    Ok(())
+}
+
 fn persist_mls(
-    transaction: &rusqlite::Transaction<'_>,
+    transaction: &Connection,
     state: &GroupState,
     epoch_inserts: &[EpochRecord],
     epoch_updates: &[EpochRecord],
@@ -736,6 +965,21 @@ fn persist_mls(
         }
     }
     Ok(())
+}
+
+fn key_package_exists_on(connection: &Connection, reference: &[u8]) -> Result<bool, StoreError> {
+    Ok(connection
+        .query_row(
+            "SELECT 1 FROM key_packages WHERE key_package_ref = ?1",
+            params![reference],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()?
+        .is_some())
+}
+
+fn rollback(connection: &Connection) {
+    let _ = connection.execute_batch("ROLLBACK;");
 }
 
 fn validate_inviter(
