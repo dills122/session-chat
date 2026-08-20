@@ -11,3 +11,4 @@ node_modules/
 /.codex/skills/
 
 /target/
+/spikes/sqlcipher-inviter-store/target/

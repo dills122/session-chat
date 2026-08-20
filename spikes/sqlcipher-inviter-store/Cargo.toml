@@ -1,0 +1,20 @@
+[package]
+name = "sqlcipher-inviter-store-spike"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+rusqlite = { version = "=0.40.1", default-features = false, features = ["bundled-sqlcipher"] }
+thiserror = "=2.0.20"
+zeroize = { version = "=1.9.0", default-features = false, features = ["alloc"] }
+
+[workspace]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
