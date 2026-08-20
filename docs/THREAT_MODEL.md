@@ -20,11 +20,14 @@ replay reservation for one invitation generation. It retains the exact opened
 invitation signature, binds the admission to local v2 state, and consumes an
 explicit simulated approval decision before MLS preparation. Rejection and
 pre-commit failure release invitation and replay state; successful in-memory
-Add consumes the invitation. It does not perform human UI approval, mailbox
-operation, or rollback-resistant persistence. ADR 0014's implemented evidence is narrower than its accepted
-integrated capability-join and one-Welcome contract. A separate isolated crate
-now
-operates an in-memory two-party MLS 1.0 lifecycle behind the reduced-feature
+Add consumes the invitation. It does not perform human UI approval or
+rollback-resistant persistence. A separate local transport adapter implements
+bounded one-Welcome deposit, receive, and acknowledgement with independent
+provider-generated authorities, but it is not connected to the approved join
+output and provides no durability or network behavior. ADR 0014's implemented
+evidence is narrower than its accepted integrated capability-join and
+one-Welcome contract. A separate isolated crate now operates an in-memory
+two-party MLS 1.0 lifecycle behind the reduced-feature
 `mls-rs`/AWS-LC boundary selected by ADR 0012. It is not connected to admission,
 transport, or durable state, and upstream's missing full independent `mls-rs`
 audit remains a release risk rather than inherited assurance. The retired v1
@@ -370,13 +373,23 @@ fresh caller-supplied time before MLS mutation. Tests cover substitution,
 same-generation replay, expiry/reissue with reused request values, stale-release
 ABA, foreign-verifier reservation rejection, capacity preservation, delayed
 expiry, and unchanged state after rejection or abandonment.
+
+The separate local transport adapter generates independent deposit, receive,
+and acknowledgement authorities, stores only their domain-separated
+commitments, bounds mailbox count, lifetime, and envelope size, and accepts one
+logical envelope. Tests reject foreign or expired authority, changed competing
+deposits, and capacity violations without replacement or mutation; exact
+deposit and acknowledgement retries are idempotent. This evidence does not yet
+connect the approved MLS Welcome to the deposit endpoint and does not establish
+durability, rotation, networking, anonymity, or production transport behavior.
+
 The provider owns one complete invitation-v2 creation API covering every secret
 and random field; callers supply only issue and expiration times. The in-memory
 approval path applies MLS and then consumes invitation state before returning
 the committed outputs, but that sequencing is not crash-atomic. Remaining
-requirements include human approval UX, rights-confusion tests, competing
-deposits, durable replay/rollback protection, one Welcome outbox transaction,
-and crash-safe mutation ordering.
+requirements include human approval UX, approved-join delivery integration,
+durable replay/rollback protection, one Welcome outbox transaction, and
+crash-safe mutation ordering.
 
 Attacker story: Mallory captures a protected request and resubmits it after the
 invitation expires and is reissued with the same invitation and request IDs.
@@ -462,6 +475,11 @@ rights plus distinct acknowledgement and rotation authority, object and queue
 bounds, TTLs, quotas, idempotency, constant-shape errors where practical,
 capability rotation, no plaintext indexing, and logs that omit full identifiers
 and capabilities. Delivery identifiers never authorize acknowledgement.
+
+The implemented local one-use Welcome profile deliberately has no rotation
+operation. Its tested deposit, receive, and acknowledgement separation is local
+state-machine evidence only; reusable and network mailboxes still require
+explicit rotation, revocation, abuse controls, and metadata analysis.
 
 Attacker story: an unauthenticated sender floods a public request mailbox with
 maximum-sized objects. The service must bound per-invitation and global storage,

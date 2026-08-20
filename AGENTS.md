@@ -47,6 +47,8 @@ Current areas:
   and in-memory invitation/MLS coordination
 - `crates/session-crypto-mls`: isolated in-memory two-party MLS adapter with
   bounded exact KeyPackage ownership and explicit prepare/apply transitions
+- `crates/session-transport`: bounded local one-Welcome mailbox with distinct
+  deposit, receive, and acknowledgement authorities
 - `spikes/`: disposable feasibility code; production packages must not depend on it
 - `docs/`: canonical v2 product, architecture, threat-model, protocol, ADR, and legacy-evidence baseline
 - `scripts/`: tested repository and AI Central setup tooling
@@ -58,7 +60,8 @@ Planned v2 areas:
   transactional state persistence
 - later admission increments: human approval UX and durable atomic
   replay/result, invitation, membership, and Welcome-outbox state
-- `crates/session-transport` plus adapters: opaque envelope delivery
+- later `session-transport` increments: approved-join integration, durable
+  outbox delivery, and network-profile adapters
 - `apps/sessionctl`: headless protocol and conformance client
 
 When a change spans areas, update the shared contract first and preserve the

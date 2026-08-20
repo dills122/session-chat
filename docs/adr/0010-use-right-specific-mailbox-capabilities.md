@@ -1,6 +1,6 @@
 # ADR 0010: Use right-specific mailbox capabilities
 
-Status: accepted for transport and rendezvous interfaces
+Status: accepted; local deposit, receive, and acknowledgement adapter implemented
 
 Date: 2026-08-16
 
@@ -53,6 +53,20 @@ shared with senders; receive, acknowledgement, and rotation authority cannot.
 Adapters must not obtain mailbox rights from ambient global credentials. A
 transport profile selects routing and privacy behavior; it does not grant
 mailbox authority. Invitation publication remains outside this interface.
+
+## Implemented evidence
+
+`session-transport` implements the local one-use Welcome profile with three
+separately typed, provider-generated authorities. It stores domain-separated
+commitments rather than raw authority secrets, bounds mailbox count and
+lifetime, accepts one bounded opaque envelope, makes exact deposit and
+acknowledgement retries idempotent, and rejects foreign, expired, or competing
+authority without replacement. `DeliveryId` remains untrusted.
+
+The local profile deliberately exposes no rotation operation. It is not yet
+connected to approved join output and is not a durable, network, anonymous, or
+production transport. Reusable and network profiles must add separately typed
+rotation and revocation under their own schemas.
 
 ## Alternatives considered
 

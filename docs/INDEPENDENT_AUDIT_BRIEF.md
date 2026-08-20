@@ -51,13 +51,17 @@ The checked-in runtime consists of:
 - `session-crypto-mls`: an isolated, in-memory two-party MLS 1.0 adapter with
   bounded KeyPackage/Welcome/message inputs, exact KeyPackage ownership,
   Add/Welcome, application messages, path updates, removal, and explicit
-  prepare/apply stages; and
+  prepare/apply stages;
+- `session-transport`: a bounded, single-process local one-Welcome mailbox with
+  provider-generated, separate deposit, receive, and acknowledgement authority,
+  exact-retry idempotency, expiry, and coarse errors; and
 - a disposable Node.js sealed-post-office simulator used only to test boundary
   semantics such as schema rejection, right-specific authorization ordering,
   rotation, and capacity limits.
 
-There is no human approval UX, mailbox runtime, durable transaction, production transport,
-client vault, desktop shell, hosted realm, or headless end-to-end client. The
+There is no human approval UX, durable transaction, network or production
+transport, client vault, desktop shell, hosted realm, or headless end-to-end
+client. The
 HPKE adapter proves PSK possession only for its exact typed context; the
 capability adapter performs automated verification, explicit simulated
 approval, exact v2/replay reservation, and in-memory MLS coordination. The
@@ -71,9 +75,10 @@ ADR 0014 and `docs/specs/PROTECTED_CAPABILITY_JOIN_V1.md` accept an exact local
 HPKE capability-join and one-Welcome response contract. The canonical values
 and isolated HPKE proof operation are runtime inventory, as is bounded
 single-process replay-aware capability verification and approval-gated
-invitation/MLS sequencing. Human approval UX, durable replay, mailbox, and
-atomic cross-layer state transitions remain accepted-but-unimplemented
-contracts.
+invitation/MLS sequencing. The right-specific local mailbox is also runtime
+inventory, but is not connected to the approved join result. Human approval UX,
+durable replay, and atomic cross-layer state transitions remain
+accepted-but-unimplemented contracts.
 
 ```mermaid
 flowchart LR
@@ -86,7 +91,7 @@ flowchart LR
   C --> A["Implemented: simulated approval and in-memory invitation/MLS coordination"]
   R --> A
   A --> M
-  M -. future .-> T["Right-specific transport"]
+  M -. future integration .-> T["Implemented: local right-specific mailbox"]
   A -. future .-> V["Atomic durable state and sealed vault"]
   T -. proposed .-> H["Portable self-hosted realm"]
 ```
@@ -110,7 +115,8 @@ flowchart LR
 | Two-party MLS Add/Welcome, application messages, path updates, removal, replay/reordering, and delayed-Commit handling work in memory | Implemented and tested | `session-crypto-mls` lifecycle and hostile-member tests with exact pinned provider graph |
 | Product-level forward secrecy, post-compromise security, durable removal isolation, and interoperability | Accepted contract, unimplemented | Requires cross-implementation fixtures, durable state, deletion/rollback evidence, and independent boundary review |
 | Welcome delivery is idempotent and atomic with MLS, replay, approval, and invitation state | Accepted contract, unimplemented | Architecture transaction invariant; no durable store exists |
-| Deposit, receive, acknowledge, and rotate rights are non-interchangeable | Accepted contract, unimplemented | ADR 0010; ADR 0014 additionally defines one exact local response profile; Node simulator evidence does not establish a production transport |
+| Local deposit, receive, and acknowledge rights are non-interchangeable | Implemented and tested | `session-transport` uses separately typed provider-generated authorities, commitment checks, and hostile authority tests; it is not yet connected to approved joins |
+| Reusable or network mailbox rotation is a separate non-interchangeable right | Accepted contract, unimplemented | ADR 0010; the one-use local profile deliberately has no rotation operation, and Node simulator evidence does not establish production transport |
 | The Node simulator rejects unknown, cyclic, accessor-backed, symbol-keyed, deep, or oversized provider input before cloning or authorization | Implemented and tested | Retained non-production adversarial tests at directory and attestor entry points |
 | Client secrets are sealed when not in an active user-approved session | Proposed experiment | Session-scoped vault proposal with whole-store fallback; no dependency selected |
 | A realm can be replaced without giving its operator content or membership authority | Proposed experiment | Compose and signed-realm-descriptor proposal; no service exists |

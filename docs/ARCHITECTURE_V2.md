@@ -150,7 +150,7 @@ the chosen transport, but should not possess message keys or plaintext.
 
 ### Current Phase 1 evidence
 
-The active Rust laboratory now contains six narrow pieces of this architecture:
+The active Rust laboratory now contains seven narrow pieces of this architecture:
 
 - `session-protocol` encodes and strictly verifies deterministic signed
   secret-capability invitation v1/v2 layouts and owns ADR 0014's bounded
@@ -175,6 +175,9 @@ The active Rust laboratory now contains six narrow pieces of this architecture:
   bounded KeyPackage, Welcome, and message inputs and models an in-memory
   two-member Add, path-update, message, and removal lifecycle. It is the only
   current implementation of the provider-neutral message contract.
+- `session-transport` creates bounded local one-Welcome mailboxes with distinct
+  deposit, receive, and acknowledgement authorities, exact-retry idempotency,
+  expiry, and no ambient credentials.
 
 The invitation registry, replay verifier, and MLS adapter remain separate
 in-process state machines. The capability adapter now coordinates them through
@@ -183,8 +186,9 @@ reservations, abandonment also clears the MLS pending Commit, and successful
 in-memory Add consumes the invitation before returning its outputs. This is
 sequential in-memory coordination, not one persistent, cross-process,
 crash-atomic, or rollback-resistant transaction. Human approval UX, durable
-membership/replay state, Welcome outbox processing, mailbox operation, and
-transport operation do not exist.
+membership/replay state and Welcome outbox processing do not exist. The local
+mailbox operates separately and is not yet connected to the approved join
+output; no network transport exists.
 
 ADR 0014 accepts the local-only contract: a signed capability invitation v2,
 RFC 9180 PSK-protected join request, the invitation-scoped Ed25519 key as

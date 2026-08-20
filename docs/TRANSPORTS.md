@@ -172,14 +172,17 @@ is a closed fixed-array object containing only a local transport instance,
 mailbox, high-entropy deposit capability, profile, and expiration. It has no
 network route or rotation operation.
 
-The endpoint's canonical value type and hostile parser fixtures now exist in
-`session-protocol`; no mailbox operation exists. The accepted mailbox contract
-stores at most one bounded `OpaqueEnvelope`. An exact retry with the
+The endpoint's canonical value type and hostile parser fixtures exist in
+`session-protocol`. `session-transport` now implements the separate local
+deposit, receive, and acknowledgement operations in bounded in-memory state.
+The mailbox stores at most one bounded `OpaqueEnvelope`. An exact retry with the
 same envelope ID and bytes is idempotent; a different second envelope is
-rejected without replacement. Delivery identifiers remain untrusted and remote
-acknowledgement never gates or rolls back inviter membership. This is an
-accepted stateful contract, not a current transport implementation or evidence
-for a network profile.
+rejected without replacement. Acknowledgement deletes retained ciphertext while
+keeping one bounded commitment for exact-retry recognition. Delivery identifiers
+remain untrusted and remote acknowledgement never gates or rolls back inviter
+membership. The adapter is not yet connected to the approved join output. This
+is local protocol evidence, not durability, networking, anonymity, or a
+production profile.
 
 ## Transport acceptance tests
 

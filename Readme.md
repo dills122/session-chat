@@ -27,6 +27,8 @@ The Rust workspace currently contains:
   ownership-preserving invitation/MLS prepare/apply coordination
 - `session-crypto-mls`, with an isolated in-memory two-party MLS 1.0 adapter for
   bounded KeyPackage validation, Add/Welcome, messages, path updates, and removal
+- `session-transport`, with provider-generated, right-specific local Welcome
+  mailboxes, one-envelope idempotency, expiry, and bounded in-memory state
 
 The signing key authenticates the invitation bytes, not a GitHub identity or
 person. The capability invitation is a secret bearer object and must not be
@@ -40,9 +42,10 @@ within bounded in-memory state. The approval-gated path binds that value to the
 local v2 invitation reservation before MLS preparation. Explicit rejection,
 expiry, pre-commit failure, or abandonment releases both reservations; a
 successful in-memory Add consumes invitation state. This sequencing is not a
-durable transaction. Cross-layer atomic persistence, a Welcome outbox, mailbox
-behavior, networking, human UI approval, and a user interface remain
-unimplemented.
+durable transaction. Cross-layer atomic persistence, a Welcome outbox, durable
+or network mailbox behavior, human UI approval, and a user interface remain
+unimplemented. The local transport adapter is not yet connected to the approved
+join output and is not evidence for a network profile.
 
 ADR 0014 defines the exact local-only invitation-v2, HPKE capability-join, and
 one-Welcome response contract. Its canonical protocol value types are now

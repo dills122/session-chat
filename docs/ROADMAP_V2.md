@@ -66,9 +66,11 @@ and nonces within bounded in-memory generation state. It retains the exact
 opened invitation signature, reserves the matching local v2 record, consumes an
 explicit simulated approval decision, and permits only that approved value to
 enter MLS. Rejection, expiry, failed preparation, and abandonment release both
-reservations; successful in-memory Add consumes invitation state. Human approval
-UX, durable cross-layer state, mailbox behavior, the headless end-to-end flow,
-and transport work listed below remain outstanding.
+reservations; successful in-memory Add consumes invitation state. A separate
+bounded local transport adapter now models one-Welcome deposit, receive, and
+acknowledgement under independent authorities. Human approval UX, durable
+cross-layer state, approved-join delivery integration, the headless end-to-end
+flow, and network transport work listed below remain outstanding.
 
 Contract hardening rules to preserve before wiring HPKE and the isolated MLS
 laboratory into a join flow:

@@ -6,6 +6,7 @@ members = [
   "crates/session-crypto-hpke",
   "crates/session-crypto-mls",
   "crates/session-protocol",
+  "crates/session-transport",
 ]
 resolver = "3"
 
@@ -15,6 +16,7 @@ license = "MIT"
 
 [workspace.dependencies]
 ed25519-dalek = { version = "=3.0.0", default-features = false, features = ["fast", "zeroize"] }
+aws-lc-rs = { version = "=1.16.3", default-features = false, features = ["non-fips"] }
 minicbor = { version = "=2.3.0", features = ["std"] }
 mls-rs = { version = "=0.56.0", default-features = false, features = [
   "external_client",

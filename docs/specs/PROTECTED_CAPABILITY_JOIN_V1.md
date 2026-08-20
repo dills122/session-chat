@@ -22,9 +22,10 @@ provenance, provider-generated local v2 reservation, explicit simulated
 approval, and ownership-preserving MLS prepare/apply. Rejected, expired, failed,
 or abandoned work releases invitation and replay state without changing
 membership; successful in-memory Add consumes invitation state. Human approval
-UX, atomic durable membership state, mailbox behavior, outbox processing,
-hosted realm trust, a network transport, and a deployable client remain
-unimplemented.
+UX, atomic durable membership state, approved-join mailbox integration, outbox
+processing, hosted realm trust, a network transport, and a deployable client
+remain unimplemented. The separate local mailbox state machine is implemented
+with bounded right-specific evidence.
 
 ## Assumptions
 
@@ -362,9 +363,9 @@ docs/specs/                    # this normative contract
 docs/adr/                      # ADR 0014 decision rationale
 ```
 
-The right-specific memory transport is a subsequent increment under
-`crates/session-transport`; human approval UX, durable transaction/outbox work,
-and `sessionctl` remain later slices.
+The right-specific memory transport now exists under `crates/session-transport`
+but is not yet connected to the approved join output. Human approval UX,
+durable transaction/outbox work, and `sessionctl` remain later slices.
 
 ## Code style
 

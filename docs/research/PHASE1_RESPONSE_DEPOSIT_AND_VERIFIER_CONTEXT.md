@@ -1,7 +1,7 @@
 # Phase 1 response-deposit and verifier-context research packet
 
-Status: research complete; endpoint value adopted and implemented under ADR
-0014; mailbox behavior unimplemented
+Status: research complete; endpoint value and separate local mailbox behavior
+subsequently adopted and implemented under ADR 0014
 
 Reviewed: 2026-08-20
 
@@ -18,9 +18,10 @@ This packet closes two inputs left open by the HPKE join-request research. It
 proposes a local-memory-only Phase 1 profile, assigns the inner request's field
 positions, and defines the authority and retry lifecycle that a later transport
 slice should test. This packet itself is research; ADR 0014 later adopts the
-local wire contract. Neither document implements a transport, adds a network
-endpoint, defines a hosted realm, or claims that join admission and MLS
-membership are integrated.
+local wire contract, and `session-transport` now implements its separate local
+mailbox state machine. That adapter does not add a network endpoint, define a
+hosted realm, or connect join admission, MLS membership, and Welcome delivery
+into one integrated flow.
 
 The scope is deliberately smaller than a general `DepositEndpoint`. The first
 schema can express only a single-purpose local Welcome mailbox. A network,

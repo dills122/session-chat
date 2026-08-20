@@ -1,8 +1,8 @@
 # ADR 0014: Use HPKE PSK and a local Welcome deposit for Phase 1
 
-Status: accepted; canonical protocol values, one-shot HPKE, and bounded
-in-memory automated capability admission implemented; integrated stateful flow
-unimplemented
+Status: accepted; canonical protocol values, one-shot HPKE, bounded in-memory
+automated capability admission, and a separate local mailbox implemented;
+integrated stateful flow unimplemented
 
 Date: 2026-08-20
 
@@ -16,8 +16,8 @@ with bounded in-memory replay reservation. The verifier now retains the exact
 HPKE-opened invitation signature, binds that value to provider-generated local
 v2 state, consumes an explicit simulated approval decision, and permits only
 the approved one-shot value to enter MLS preparation. The laboratory does not
-yet commit durable cross-layer state or return a Welcome through a
-right-specific transport.
+yet commit durable cross-layer state or connect the approved Welcome to the
+separate right-specific local transport.
 
 ADR 0010 requires deposit, receive, acknowledgement, and rotation authority to
 remain separate. ADR 0008 requires the inviter's future durable membership
@@ -146,11 +146,18 @@ successful in-memory Add consumes the invitation before returning its outputs.
 This is not human UI approval, a durable membership transaction, durable replay
 protection, or a Welcome outbox.
 
+`session-transport` separately implements the local one-Welcome mailbox. It
+generates independent deposit, receive, and acknowledgement authorities,
+stores only domain-separated authority commitments, bounds mailbox count and
+lifetime, and retains exact-retry and rejection evidence. It deliberately has
+no rotation operation. This adapter is not yet connected to the approved join
+result and is not durability, networking, anonymity, or production evidence.
+
 ## Consequences and limits
 
-- The next slice can add deterministic right-specific in-memory transport while
-  preserving the approval-gated ownership chain, without claiming persistence
-  or a networked product.
+- The next slice can connect the approval-gated ownership chain to the existing
+  right-specific in-memory transport without claiming persistence or a
+  networked product.
 - Hosted realm, public rendezvous, direct, relay, mixnet, and private-network
   endpoints require new transport-specific schemas. Version 1 has no generic
   route escape hatch.

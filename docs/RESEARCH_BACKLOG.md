@@ -81,9 +81,10 @@ evidence required by ADR 0012.
   retained. The capability adapter now retains exact HPKE-opened invitation
   provenance, provider KeyPackage ownership, bounded request-ID/nonce replay,
   local v2 reservation, explicit simulated approval, and in-memory MLS/Add
-  coordination. Right-specific memory transport, human approval UX, and durable
-  replay/MLS/invitation/outbox state remain gates. The provider owns one complete
-  CSPRNG-backed invitation-v2 creation API.
+  coordination. A right-specific one-Welcome memory mailbox now has bounded
+  local evidence but is not connected to the approved join output. Human
+  approval UX and durable replay/MLS/invitation/outbox state remain gates. The
+  provider owns one complete CSPRNG-backed invitation-v2 creation API.
 - Implement durable transactional replay state, rollback protection,
   revocation, reservation recovery, and bounded-multi-use state machines.
 - Replace the retained in-memory approval/MLS/invitation sequencing with the

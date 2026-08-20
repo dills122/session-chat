@@ -155,9 +155,11 @@ one-shot HPKE operation has RFC and independent-provider evidence. Replay-safe
 automated capability admission, explicit simulated approval, exact v2
 reservation, failure release, and post-Add consumption now have retained
 in-memory evidence. Human approval UX, atomic durable membership/replay state,
-rollback protection, mailbox behavior, and transport adapters remain
-unimplemented. The current sequential apply/consume path is not a durability or
-crash-atomicity claim.
+rollback protection, and durable or network transport remain unimplemented at
+product level. A separate right-specific local one-Welcome
+mailbox now has bounded in-memory evidence but is not yet connected to the join
+output. The current sequential paths are not durability or crash-atomicity
+claims.
 
 ## Reference standards and projects
 
