@@ -55,11 +55,111 @@ impl SessionId {
     }
 }
 
+/// Named minimum protection required by one vault policy.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProtectionLevel {
+    /// Deterministic conformance tests may use an in-memory protector.
+    TestOnly,
+    /// The key is OS-protected, device-only, and excluded from migration/backup.
+    DeviceBound,
+    /// Device-bound protection additionally requires a fresh platform prompt.
+    FreshUserPresence,
+}
+
+/// Where a protector retains or wraps the vault key.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum KeyStorageProtection {
+    /// Plain fixture material retained only for deterministic tests.
+    TestOnly,
+    /// An operating-system credential or protected-data service.
+    OperatingSystem,
+    /// Hardware-backed protection demonstrated by the concrete adapter.
+    SecureHardware,
+}
+
+/// Factual device-binding behavior demonstrated by one adapter.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DeviceBinding {
+    /// Binding has not been established on this platform/configuration.
+    Unknown,
+    /// Access follows a user profile and may not be device-only.
+    UserProfile,
+    /// The protected value cannot migrate to another device through backup.
+    ThisDeviceOnly,
+}
+
+/// Factual user-presence behavior demonstrated by one adapter.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UserPresence {
+    /// No user-presence evidence is required for retrieval.
+    None,
+    /// Retrieval depends on an already-unlocked device or user session.
+    DeviceUnlock,
+    /// Retrieval requires a fresh platform-mediated prompt.
+    FreshPrompt,
+}
+
+/// Factual backup or migration behavior demonstrated by one adapter.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BackupExposure {
+    /// Backup behavior has not been established.
+    Unknown,
+    /// The protected value may roam, migrate, or enter a backup.
+    MayBackup,
+    /// The selected platform class excludes backup and device migration.
+    Excluded,
+}
+
+/// Factual protection dimensions reported by a reviewed concrete adapter.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ProtectorCapabilities {
+    key_storage: KeyStorageProtection,
+    device_binding: DeviceBinding,
+    user_presence: UserPresence,
+    backup_exposure: BackupExposure,
+}
+
+impl ProtectorCapabilities {
+    /// Records the exact behavior established for one adapter configuration.
+    #[must_use]
+    pub const fn new(
+        key_storage: KeyStorageProtection,
+        device_binding: DeviceBinding,
+        user_presence: UserPresence,
+        backup_exposure: BackupExposure,
+    ) -> Self {
+        Self {
+            key_storage,
+            device_binding,
+            user_presence,
+            backup_exposure,
+        }
+    }
+
+    /// Returns whether these facts satisfy one named minimum policy.
+    #[must_use]
+    pub const fn supports(self, level: ProtectionLevel) -> bool {
+        match level {
+            ProtectionLevel::TestOnly => true,
+            ProtectionLevel::DeviceBound => {
+                !matches!(self.key_storage, KeyStorageProtection::TestOnly)
+                    && matches!(self.device_binding, DeviceBinding::ThisDeviceOnly)
+                    && matches!(self.backup_exposure, BackupExposure::Excluded)
+            }
+            ProtectionLevel::FreshUserPresence => {
+                self.supports(ProtectionLevel::DeviceBound)
+                    && matches!(self.user_presence, UserPresence::FreshPrompt)
+            }
+        }
+    }
+}
+
 /// Unlock and idle bounds for the deterministic vault lifecycle.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct VaultPolicy {
     unlock_timeout_seconds: u64,
     idle_timeout_seconds: u64,
+    minimum_protection: ProtectionLevel,
 }
 
 impl VaultPolicy {
@@ -71,7 +171,25 @@ impl VaultPolicy {
         Ok(Self {
             unlock_timeout_seconds,
             idle_timeout_seconds,
+            minimum_protection: ProtectionLevel::TestOnly,
         })
+    }
+
+    /// Creates a lifecycle policy with an explicit minimum protector claim.
+    pub fn new_with_protection(
+        unlock_timeout_seconds: u64,
+        idle_timeout_seconds: u64,
+        minimum_protection: ProtectionLevel,
+    ) -> Result<Self, VaultError> {
+        let mut policy = Self::new(unlock_timeout_seconds, idle_timeout_seconds)?;
+        policy.minimum_protection = minimum_protection;
+        Ok(policy)
+    }
+
+    /// Returns the minimum evidence required before a key may be unsealed.
+    #[must_use]
+    pub const fn minimum_protection(self) -> ProtectionLevel {
+        self.minimum_protection
     }
 }
 
@@ -250,6 +368,9 @@ pub trait SessionKeyProtector {
     /// Provider-private error mapped to the coarse vault boundary.
     type Error: Error;
 
+    /// Reports factual, adapter-specific protection behavior.
+    fn capabilities(&self) -> ProtectorCapabilities;
+
     /// Requires the configured platform protection and returns one session key.
     fn unseal_session_key(
         &mut self,
@@ -302,6 +423,15 @@ impl DeterministicKeyProtector {
 
 impl SessionKeyProtector for DeterministicKeyProtector {
     type Error = DeterministicProtectorError;
+
+    fn capabilities(&self) -> ProtectorCapabilities {
+        ProtectorCapabilities::new(
+            KeyStorageProtection::TestOnly,
+            DeviceBinding::Unknown,
+            UserPresence::None,
+            BackupExposure::Unknown,
+        )
+    }
 
     fn unseal_session_key(
         &mut self,
@@ -446,6 +576,13 @@ impl<C: VaultClock, P: SessionKeyProtector> SessionVaultModel<C, P> {
         self.state = LifecycleState::Sealed;
         if expires_at_unix_seconds <= now {
             return Err(VaultError::Rejected);
+        }
+        if !self
+            .protector
+            .capabilities()
+            .supports(self.policy.minimum_protection)
+        {
+            return Err(VaultError::ProviderFailure);
         }
         let key = self
             .protector
