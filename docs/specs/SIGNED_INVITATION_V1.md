@@ -154,10 +154,11 @@ attacker input, wall-clock reads, network calls, or ambient global state are all
    invitation object type.
 9. All workspace gates pass with the lockfile.
 
-## Deferred questions
+## Follow-on decisions and deferred questions
 
-- HPKE suite, invitation encryption key, and encrypted join-request schema
-- Capability proof construction over the ADR 0009 KeyPackage binding
+- ADR 0014 now resolves the HPKE suite, invitation encryption key, protected
+  join-request schema, and capability proof construction for a new local-only
+  invitation v2 contract. It does not change or implement this v1 schema.
 - Persistent transactional replay state and rollback protection
 - Bounded-multi-use invitations and revocation
 - Targeted GitHub and credential invitation schemas

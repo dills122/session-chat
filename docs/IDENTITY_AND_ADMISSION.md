@@ -75,6 +75,14 @@ The inviter records the join-request replay identifier separately. A valid
 request reserves locally issued invitation state; only the successful durable
 membership transaction consumes it under ADR 0008.
 
+For the local secret-capability profile accepted by ADR 0014, the intended
+verifier is the exact invitation-scoped Ed25519 verifying key authenticated by
+the signed invitation. Successful RFC 9180 PSK opening proves possession of the
+high-entropy invitation capability for that exact context; it does not prove a
+person, device, DNS name, or realm identity and does not itself approve or add
+the member. Credential, GitHub, manual, and hosted-realm proofs may use new
+verifier-context and proof versions rather than overloading those 32 bytes.
+
 ## GitHub admission
 
 ### Recommended flow
@@ -183,6 +191,10 @@ A secret-capability invitation contains sufficient entropy to resist guessing
 and is distributed through a channel suitable to the participants' threat
 model. The capability permits a join request; it need not grant automatic MLS
 membership.
+
+ADR 0014 requires production creation to obtain the capability from a reviewed
+cryptographic generator. Fixed length and rejection of the reserved all-zero
+value are structural checks, not evidence of entropy.
 
 Recommended policy:
 

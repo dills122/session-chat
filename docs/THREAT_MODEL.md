@@ -7,11 +7,15 @@ Status: design baseline for the v2 architecture and protocol laboratory
 Session Chat is a privacy- and security-sensitive messaging project. The active
 repository contains a headless Rust protocol laboratory and design artifacts;
 it does not yet contain a deployable client or network service. The laboratory
-currently has a bounded opaque envelope, a canonical domain-separated Ed25519
-secret-capability invitation, exhaustive fixed-field rejection fixtures, and a
-bounded inviter-owned invitation reservation/consumption state machine. It
-does not yet encrypt join requests, prove capability possession, approve a
-member, or persist rollback-resistant state. A separate isolated crate now
+currently has a bounded opaque envelope, canonical domain-separated Ed25519
+secret-capability invitation v1/v2 layouts, bounded protected outer/inner join
+request and local deposit-endpoint value types, exhaustive fixed-field
+rejection fixtures, and a bounded inviter-owned invitation
+reservation/consumption state machine. It does not yet perform HPKE, prove
+capability possession, approve a member, run a mailbox, or persist
+rollback-resistant state. ADR 0014's parser and framing evidence is narrower
+than its accepted HPKE capability-join and one-Welcome response contract. A
+separate isolated crate now
 operates an in-memory two-party MLS 1.0 lifecycle behind the reduced-feature
 `mls-rs`/AWS-LC boundary selected by ADR 0012. It is not connected to admission,
 transport, or durable state, and upstream's missing full independent `mls-rs`
@@ -311,13 +315,49 @@ release edge from `Reserved` back to `Available` rather than a stored
 Descriptor validation is read-only and remote self-signed objects cannot create
 registry state. Reservation authority is bound to the exact signed local record,
 so it cannot cross an expiry/reissue boundary even if invitation and request IDs
-recur. Random generation quality, durable atomic consumption with MLS,
-rollback protection, deep-link leakage, fuzzing, HPKE, and admission proof
-implementation remain open.
+recur. Random generation quality, durable atomic consumption with MLS, rollback
+protection, deep-link leakage, fuzzing, and ADR 0014's HPKE and admission-proof
+implementation remain open. Invitation v2 itself now has an independent
+signature domain, exact fixture, closed suite/profile code points, and the same
+pre-parse size and canonical-decoding controls as v1.
 
 Attacker story: an attacker copies a public targeted invitation and submits a
 validly encoded join request for their own key. Correct behavior is a policy
 mismatch or explicit rejection, not membership.
+
+### Protected capability join and local Welcome response
+
+Relevant attacks include weak or leaked invitation capabilities, HPKE mode or
+suite downgrade, cross-protocol key reuse, wrong recipient keys, context/AAD
+substitution, replay across invitation generations, KeyPackage substitution,
+verifier confusion, parser amplification, capability logging, cross-right
+mailbox authorization, competing deposits, Welcome replacement, and retry
+amplification.
+
+ADR 0014 requires one exact RFC 9180 PSK suite, independent invitation-scoped
+HPKE/signature keys, typed and domain-separated contexts, fixed canonical
+schemas, complete cross-context equality before mutation, the exact ADR 0009
+KeyPackage tuple, coarse provider errors, high-entropy creation, and a closed
+local deposit endpoint. Deposit, receive, and acknowledgement authority remain
+separate. The mailbox admits one logical bounded envelope and treats only the
+same envelope ID and exact bytes as an idempotent retry.
+
+The canonical invitation-v2, protected outer/inner, exact outer AAD, and local
+deposit-endpoint value types are implemented and tested. Evidence includes
+exact fixtures, invitation-v1 separation, closed code points, malformed and
+non-preferred encoding rejection, fixed and variable bounds, structural time
+and endpoint-lifetime checks, and invalid/weak leaf-key rejection. This is not
+HPKE or capability-proof evidence. Remaining requirements include RFC and
+cross-provider HPKE fixtures, wrong-context rejection, CSPRNG-owned creation,
+same-ID expiry/reissue replay cases, rights-confusion tests, competing deposits,
+secret-free provider diagnostics, and proof that rejection through KeyPackage
+validation leaves all state unchanged.
+
+Attacker story: Mallory captures a protected request and resubmits it after the
+invitation expires and is reissued with the same invitation and request IDs.
+The fresh challenge, signing key, HPKE key/key ID, exact local record, and replay
+state must reject it before reservation. A stale request cannot use or replace
+the new Welcome mailbox.
 
 ### First-contact directory and sealed invitation mailboxes
 

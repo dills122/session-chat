@@ -56,11 +56,14 @@ messages, path updates, removal, adverse delivery cases, and explicit provider
 storage timing with the reduced-feature `mls-rs`/AWS-LC graph selected by ADR
 0012. The `session-crypto` crate now supplies the provider-neutral established-
 session message seam from ADR 0013; backend negotiation and active-state
-migration do not exist. Capability proof and approval, HPKE, durable cross-layer state, the
-headless flow, and transport work listed below remain outstanding.
+migration do not exist. ADR 0014's bounded canonical invitation-v2, protected
+outer/inner, exact AAD, and local deposit-endpoint value types now exist with
+exact and hostile fixtures. HPKE operations, capability verification, approval,
+durable cross-layer state, mailbox behavior, the headless flow, and transport
+work listed below remain outstanding.
 
-Contract hardening rules to preserve before HPKE or wiring the isolated MLS
-laboratory into a join flow:
+Contract hardening rules to preserve before implementing HPKE or wiring the
+isolated MLS laboratory into a join flow:
 
 - Descriptor validation is read-only and only local issuance creates lifecycle state.
 - Invitation reservation and consumption follow ADR 0008.
@@ -69,6 +72,9 @@ laboratory into a join flow:
 - The MLS integration obeys the selection and stop conditions in ADR 0012.
 - New sessions may select only a reviewed, compiled backend under ADR 0013;
   active sessions cannot silently switch implementations.
+- The local capability join uses only the exact versions, HPKE contexts,
+  verifier binding, closed response endpoint, and before-mutation ordering from
+  ADR 0014.
 
 The current MLS increment uses only isolated in-memory providers for
 deterministic protocol tests, as ADR 0012 specifies. It does not establish

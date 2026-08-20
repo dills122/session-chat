@@ -61,15 +61,30 @@ evidence required by ADR 0012.
   CBOR profile and exact wire fixtures.
 - **Signature decision:** ADR 0007 selects `ed25519-dalek` 3.0.0 strict Ed25519
   verification and the `session-chat/signed-invitation/v1` application domain
-  for the secret-capability descriptor. HPKE domain separation remains open.
-- **Implemented boundary:** version 1 is single-use, uses explicit issue and
-  expiration times, accepts realm-configured maximum lifetime and future skew,
-  and models the inviter-owned lifecycle in ADR 0008. Descriptor validation is
+  for the original descriptor. ADR 0014's separate v2 signature domain,
+  protected outer/inner layouts, and exact AAD are now implemented; the exact
+  HPKE `psk_id`, `info`, and operation remain unimplemented.
+- **Implemented boundary:** versions 1 and 2 are single-use signed descriptors;
+  v2 adds only the fixed protected-join context. Version 1 lifecycle state uses
+  explicit issue and expiration times, accepts realm-configured maximum
+  lifetime and future skew, and follows ADR 0008. Descriptor parsing is
   read-only; durable cross-layer transactions remain open.
-- Select the HPKE suite and encrypted join-request schema.
+- **Protected-join decision recorded:** the
+  [HPKE join-request packet](research/HPKE_JOIN_REQUEST_PROFILE.md) recommends
+  RFC 9180 PSK mode with X25519/HKDF-SHA256/AES-128-GCM through the already
+  pinned AWS-LC provider boundary. The companion
+  [response-deposit and verifier-context packet](research/PHASE1_RESPONSE_DEPOSIT_AND_VERIFIER_CONTEXT.md)
+  supplies the authority analysis. ADR 0014 and the
+  [protected capability join specification](specs/PROTECTED_CAPABILITY_JOIN_V1.md)
+  accept the exact local contract. Canonical value types and parser fixtures are
+  retained. HPKE vectors and operation, right-specific memory transport,
+  admission integration, and CSPRNG-owned creation remain gates.
 - Implement durable transactional replay state, rollback protection,
   revocation, reservation recovery, and bounded-multi-use state machines.
-- Define the capability-proof wire schema over the exact ADR 0009 binding.
+- Finalize the capability admission schema over the exact ADR 0009 binding. The
+  accepted contract specifies that successful HPKE PSK opening proves capability
+  possession, without a second raw capability or custom HMAC, while the
+  authenticated inner request carries the complete binding tuple.
 - Decide public, encrypted, and local-only fields for targeted GitHub and
   credential invitations. The current capability descriptor is a secret bearer
   object and is not publicly postable.

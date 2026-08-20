@@ -152,9 +152,10 @@ the chosen transport, but should not possess message keys or plaintext.
 
 The active Rust laboratory now contains four narrow pieces of this architecture:
 
-- `session-protocol` encodes and strictly verifies the deterministic signed
-  secret-capability invitation defined in ADR 0007, in addition to the opaque
-  envelope from ADR 0005.
+- `session-protocol` encodes and strictly verifies deterministic signed
+  secret-capability invitation v1/v2 layouts and owns ADR 0014's bounded
+  canonical protected outer/inner, exact AAD, and local deposit-endpoint value
+  types, in addition to the opaque envelope from ADR 0005.
 - `session-core` creates bounded inviter-owned invitation state, validates
   attacker-controlled descriptors without mutation, and models explicit
   reservation, release, and post-membership consumption in memory.
@@ -168,9 +169,16 @@ The active Rust laboratory now contains four narrow pieces of this architecture:
 The invitation registry and MLS adapter remain separate in-process state
 machines. Registry method names encode caller preconditions; they do not
 implement admission or prove that the separate MLS transition happened.
-Neither state machine is persistent, cross-process, or rollback-resistant. No
-join request, capability proof, approval, HPKE, durable orchestration, or
-transport operation exists yet.
+Neither state machine is persistent, cross-process, or rollback-resistant. The
+join-request wire values exist, but no capability proof, approval, HPKE
+operation, durable orchestration, mailbox operation, or transport operation
+exists yet.
+
+ADR 0014 accepts the local-only contract: a signed capability invitation v2,
+RFC 9180 PSK-protected join request, the invitation-scoped Ed25519 key as
+intended verifier, and a closed local one-Welcome deposit endpoint. Only the
+canonical value types and AAD derivation exist in code. Hosted verifier and
+network route meaning remain outside that schema.
 
 Every persisted or transmitted object should declare enough version and suite
 information to reject ambiguity:
@@ -208,7 +216,9 @@ requires the link itself to remain secret.
 
 ### Encrypted join request
 
-The join request contains:
+For the local capability profile, ADR 0014 and the
+[protected capability join specification](specs/PROTECTED_CAPABILITY_JOIN_V1.md)
+define a closed encrypted request containing:
 
 - Admission proof or capability proof
 - Join-request replay identifier
@@ -219,8 +229,16 @@ The join request contains:
   receive, acknowledgement, or rotation authority
 - Fresh nonce and expiration
 
-The entire request is encrypted to the invitation key before entering a
-rendezvous service or transport.
+The request uses RFC 9180 PSK mode with the secret invitation capability and an
+invitation-scoped X25519 recipient key. The exact signed invitation, visible
+outer header, HPKE contexts, inner request, KeyPackage tuple, verifier, protocol
+selection, and local response descriptor are cross-checked before mutation.
+The complete request is encrypted before entering a rendezvous service or
+transport.
+
+The accepted Phase 1 response endpoint has no URL, hostname, generic route,
+realm, receive, acknowledgement, or rotation field. Those require later
+transport-specific schemas rather than an extension to the local profile.
 
 ### Admission and MLS join
 

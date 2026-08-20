@@ -53,12 +53,31 @@ review, and interoperability evidence remain open gates.
 ### Pre-membership encryption
 
 - [RFC 9180: Hybrid Public Key Encryption](https://www.rfc-editor.org/rfc/rfc9180)
+- [`mls-rs-core` 0.27.0 HPKE provider API](https://docs.rs/mls-rs-core/0.27.0/mls_rs_core/crypto/trait.CipherSuiteProvider.html)
+- [`mls-rs-crypto-awslc` 0.25.0](https://docs.rs/mls-rs-crypto-awslc/0.25.0/mls_rs_crypto_awslc/)
+- [`hpke` 0.14.0](https://docs.rs/crate/hpke/0.14.0)
+- [`hpke-rs` advisories](https://rustsec.org/packages/hpke-rs.html)
+- [RFC 6750: OAuth 2.0 Bearer Token Usage](https://www.rfc-editor.org/rfc/rfc6750.html)
+- [RFC 8707: Resource Indicators for OAuth 2.0](https://www.rfc-editor.org/rfc/rfc8707.html)
+- [RFC 4086: Randomness Requirements for Security](https://www.rfc-editor.org/rfc/rfc4086.html)
 
-Relevance: HPKE is a candidate standard construction for encrypting a join
-request to an invitation key before the joiner is an MLS member.
+Relevance: HPKE supplies the accepted standard construction for the local
+capability join request before the joiner is an MLS member.
 
-Open questions: exact suite, key lifecycle, authenticated context, canonical
-encoding, and test vectors.
+Decision record: the
+[HPKE join-request packet](research/HPKE_JOIN_REQUEST_PROFILE.md) recommends
+RFC 9180 PSK mode with X25519/HKDF-SHA256/AES-128-GCM and the already pinned
+AWS-LC provider boundary. The companion
+[response-deposit and verifier-context packet](research/PHASE1_RESPONSE_DEPOSIT_AND_VERIFIER_CONTEXT.md)
+supplies the closed local one-Welcome descriptor, invitation-key verifier
+context, exact 21-field inner request, and right-specific analysis. Its bearer
+token and resource-audience guidance uses RFC 6750 and RFC 8707 by analogy only;
+it does not adopt OAuth. RFC 4086 supports the requirement that capabilities
+come from a reviewed CSPRNG rather than merely having the right length. ADR 0014
+and the [normative specification](specs/PROTECTED_CAPABILITY_JOIN_V1.md) accept
+the local contract without changing current wire behavior. Hosted realm
+context, implementation, key lifecycle, retained vectors, and durable replay
+remain open.
 
 ## Identity and credentials
 

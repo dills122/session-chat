@@ -3,13 +3,24 @@
 //! Versioned, bounded wire objects for Session Chat 2.0.
 
 mod invitation;
+mod protected_join;
 
 use minicbor::{Decoder, Encoder};
 use thiserror::Error;
 
 pub use invitation::{
-    AdmissionMode, CapabilityInvitationClaims, InvitationUsePolicy, MAX_SIGNED_INVITATION_BYTES,
-    SecretCapability, SignatureSuite, SignedCapabilityInvitation,
+    AdmissionMode, ApplicationProtocolVersion, CapabilityInvitationClaims,
+    CapabilityInvitationV2Claims, InvitationEncryptionSuite, InvitationUsePolicy,
+    JoinRequestSchemaVersion, MAX_SIGNED_INVITATION_BYTES, SecretCapability, SignatureSuite,
+    SignedCapabilityInvitation, SignedCapabilityInvitationV2, TransportProfile,
+};
+pub use protected_join::{
+    AdmissionProofVersion, CapabilityJoinRequest, CredentialType, DepositCapability,
+    InvitationJoinBinding, JoinRequestBinding, LocalWelcomeDepositEndpoint,
+    MAX_CAPABILITY_JOIN_REQUEST_BYTES, MAX_JOIN_KEY_PACKAGE_BYTES,
+    MAX_LOCAL_WELCOME_ENDPOINT_BYTES, MAX_PROTECTED_JOIN_CIPHERTEXT_BYTES,
+    MAX_PROTECTED_JOIN_REQUEST_BYTES, MlsCiphersuite, MlsKeyPackageBinding, MlsProtocolVersion,
+    NestedObjectType, ProtectedJoinRequest,
 };
 
 /// The only protocol version accepted by this implementation increment.
@@ -32,6 +43,8 @@ pub enum WireObjectType {
     OpaqueEnvelope = 1,
     /// A signed, single-use Phase 1 secret-capability invitation.
     SignedCapabilityInvitation = 2,
+    /// An HPKE-protected capability join request.
+    ProtectedJoinRequest = 3,
 }
 
 impl TryFrom<u16> for WireObjectType {
@@ -43,6 +56,7 @@ impl TryFrom<u16> for WireObjectType {
             value if value == Self::SignedCapabilityInvitation as u16 => {
                 Ok(Self::SignedCapabilityInvitation)
             }
+            value if value == Self::ProtectedJoinRequest as u16 => Ok(Self::ProtectedJoinRequest),
             unsupported => Err(WireError::UnsupportedObjectType(unsupported)),
         }
     }
@@ -233,6 +247,22 @@ pub enum WireError {
     #[error("unsupported invitation use policy {0}")]
     UnsupportedInvitationUsePolicy(u16),
 
+    /// The signed invitation declares an unsupported HPKE profile.
+    #[error("unsupported invitation encryption suite {0}")]
+    UnsupportedInvitationEncryptionSuite(u16),
+
+    /// The signed invitation declares an unsupported protected-request schema.
+    #[error("unsupported join request schema {0}")]
+    UnsupportedJoinRequestSchema(u16),
+
+    /// The signed invitation declares an unsupported application selection.
+    #[error("unsupported application protocol version {0}")]
+    UnsupportedApplicationProtocolVersion(u16),
+
+    /// The signed invitation declares an unsupported transport profile.
+    #[error("unsupported transport profile {0}")]
+    UnsupportedTransportProfile(u16),
+
     /// An invitation identifier used the reserved all-zero value.
     #[error("invitation id must not be all zero")]
     ZeroInvitationId,
@@ -244,6 +274,103 @@ pub enum WireError {
     /// A secret capability used the reserved all-zero value.
     #[error("secret capability must not be all zero")]
     ZeroSecretCapability,
+
+    /// An invitation HPKE key identifier used the reserved all-zero value.
+    #[error("invitation encryption key id must not be all zero")]
+    ZeroInvitationKeyId,
+
+    /// An invitation HPKE public key used the reserved all-zero value.
+    #[error("invitation HPKE public key must not be all zero")]
+    ZeroHpkePublicKey,
+
+    /// An invitation HPKE key identifier did not have its fixed size.
+    #[error("invitation encryption key id has invalid length {0}")]
+    InvalidInvitationKeyIdLength(usize),
+
+    /// An invitation HPKE public key did not have its fixed size.
+    #[error("invitation HPKE public key has invalid length {0}")]
+    InvalidHpkePublicKeyLength(usize),
+
+    #[error("HPKE encapsulated key has invalid length {0}")]
+    InvalidHpkeEncapsulatedKeyLength(usize),
+
+    #[error("protected join ciphertext must not be empty")]
+    EmptyProtectedJoinCiphertext,
+
+    #[error("protected join ciphertext size {actual} exceeds maximum {maximum}")]
+    ProtectedJoinCiphertextTooLarge { actual: usize, maximum: usize },
+
+    #[error("unsupported admission proof version {0}")]
+    UnsupportedAdmissionProofVersion(u16),
+
+    #[error("unsupported MLS protocol version {0}")]
+    UnsupportedMlsProtocolVersion(u16),
+
+    #[error("unsupported MLS ciphersuite {0}")]
+    UnsupportedMlsCiphersuite(u16),
+
+    #[error("unsupported credential type {0}")]
+    UnsupportedCredentialType(u16),
+
+    #[error("transport instance id has invalid length {0}")]
+    InvalidTransportInstanceIdLength(usize),
+
+    #[error("mailbox id has invalid length {0}")]
+    InvalidMailboxIdLength(usize),
+
+    #[error("deposit capability has invalid length {0}")]
+    InvalidDepositCapabilityLength(usize),
+
+    #[error("transport instance id must not be all zero")]
+    ZeroTransportInstanceId,
+
+    #[error("mailbox id must not be all zero")]
+    ZeroMailboxId,
+
+    #[error("deposit capability must not be all zero")]
+    ZeroDepositCapability,
+
+    #[error("join request id has invalid length {0}")]
+    InvalidJoinRequestIdLength(usize),
+
+    #[error("join request nonce has invalid length {0}")]
+    InvalidRequestNonceLength(usize),
+
+    #[error("KeyPackage reference has invalid length {0}")]
+    InvalidKeyPackageReferenceLength(usize),
+
+    #[error("credential identity has invalid length {0}")]
+    InvalidCredentialIdentityLength(usize),
+
+    #[error("leaf signature key has invalid length {0}")]
+    InvalidLeafSignatureKeyLength(usize),
+
+    #[error("join request id must not be all zero")]
+    ZeroJoinRequestId,
+
+    #[error("join request nonce must not be all zero")]
+    ZeroRequestNonce,
+
+    #[error("credential identity must not be all zero")]
+    ZeroCredentialIdentity,
+
+    #[error("leaf signature key must not be all zero")]
+    ZeroLeafSignatureKey,
+
+    #[error("invalid MLS leaf signature key")]
+    InvalidLeafSignatureKey,
+
+    #[error("KeyPackage must not be empty")]
+    EmptyKeyPackage,
+
+    #[error("KeyPackage size {actual} exceeds maximum {maximum}")]
+    KeyPackageTooLarge { actual: usize, maximum: usize },
+
+    #[error("join request expiration {expires_at} must be later than issue time {issued_at}")]
+    InvalidJoinRequestTimeRange { issued_at: u64, expires_at: u64 },
+
+    #[error("response endpoint must not outlive the join request")]
+    ResponseEndpointOutlivesRequest,
 
     /// The invitation expiration was not strictly later than its issue time.
     #[error("invitation expiration {expires_at} must be later than issue time {issued_at}")]

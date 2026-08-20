@@ -57,6 +57,19 @@ all.
 - [Provider-neutral message interface decision](adr/0013-use-a-provider-neutral-message-session-interface.md)
   keeps established-session message handling independent of the selected MLS
   backend while prohibiting arbitrary plugins and silent active-session swaps.
+- [Protected capability join decision](adr/0014-use-hpke-psk-and-a-local-welcome-deposit-for-phase-1.md)
+  selects the exact local Phase 1 HPKE PSK profile, capability verifier, closed
+  join schemas, and one-Welcome response authority without claiming an
+  implementation or hosted transport.
+- [Protected capability join specification](specs/PROTECTED_CAPABILITY_JOIN_V1.md)
+  assigns the fixed-array layouts, code points, cryptographic contexts, parsing
+  order, mailbox lifecycle, and retained-evidence gates for ADR 0014.
+- [HPKE and capability join-request research](research/HPKE_JOIN_REQUEST_PROFILE.md)
+  records the bounded RFC 9180 PSK comparison and provider evidence behind ADR
+  0014.
+- [Phase 1 response-deposit and verifier-context research](research/PHASE1_RESPONSE_DEPOSIT_AND_VERIFIER_CONTEXT.md)
+  records the verifier and authority analysis behind ADR 0014's local
+  one-Welcome endpoint and 21-field inner request.
 - [Superseded OpenMLS decision](adr/0011-select-openmls-for-the-phase-1-laboratory.md)
   retains the bounded OpenMLS evaluation and its dependency blocker.
 - [MLS implementation comparison](research/MLS_IMPLEMENTATION_COMPARISON.md)
@@ -126,9 +139,14 @@ or migrate active MLS state.
 
 The invitation's self-contained key proves descriptor integrity only. The MLS
 laboratory is not connected to the invitation lifecycle or an admission proof.
-HPKE, capability proof and approval, atomic durable state, rollback protection,
-and transport adapters remain unimplemented. Calling the explicit reservation
-or consumption methods is not proof that those caller preconditions exist yet.
+ADR 0014 now defines the HPKE capability-proof and local response contracts.
+Their bounded canonical invitation-v2, protected outer/inner, exact AAD, and
+deposit-endpoint value types are implemented with retained fixtures. HPKE
+operations, capability verification, approval, atomic durable state, rollback
+protection, mailbox behavior, and transport adapters remain unimplemented.
+Calling the explicit
+reservation or consumption methods is not proof that those caller
+preconditions exist yet.
 
 ## Reference standards and projects
 
