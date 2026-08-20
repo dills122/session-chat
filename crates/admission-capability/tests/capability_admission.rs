@@ -5,7 +5,9 @@ use ed25519_dalek::SigningKey;
 use session_crypto_hpke::{
     AwsLcInvitationJoinProtector, InvitationJoinProtector, OpenedCapabilityJoinRequest,
 };
-use session_crypto_mls::{KeyPackageReference, create_client, create_key_package_validator};
+use session_crypto_mls::{
+    KeyPackageReference, SessionGroupId, create_client, create_key_package_validator,
+};
 use session_protocol::{
     CapabilityInvitationClaims, CapabilityInvitationV2Claims, CapabilityJoinRequest,
     DepositCapability, InvitationJoinBinding, JoinRequestBinding, LocalWelcomeDepositEndpoint,
@@ -18,6 +20,10 @@ const CHALLENGE: [u8; 32] = [0x22; 32];
 const KEY_ID: [u8; 16] = [0x33; 16];
 const REQUEST_ID: [u8; 16] = [0x44; 16];
 const NONCE: [u8; 32] = [0x55; 32];
+
+fn group_id() -> SessionGroupId {
+    SessionGroupId::new([0xaa; 32]).expect("nonzero group identifier")
+}
 
 #[derive(Clone, Copy)]
 struct FixtureOptions {
@@ -184,6 +190,138 @@ fn zero_lifetime_or_capacity_policy_is_rejected() {
         CapabilityAdmissionPolicy::new(3_600, 5, 0),
         Err(CapabilityAdmissionError::InvalidPolicy)
     ));
+}
+
+#[test]
+fn verified_admission_is_consumed_directly_into_mls_prepare_and_apply() {
+    let fixture = opened_fixture(FixtureOptions::default());
+    let policy = CapabilityAdmissionPolicy::new(3_600, 5, 8).expect("valid policy");
+    let mut verifier = CapabilityAdmissionVerifier::new(policy);
+    let verified = verifier
+        .verify_and_reserve(fixture.opened, NOW + 1)
+        .expect("verify admission");
+    let alice = create_client().expect("create inviter");
+    let mut group = alice.create_group(group_id(), NOW).expect("create group");
+
+    let prepared = verifier
+        .prepare_add(verified, &mut group, NOW + 1)
+        .expect("prepare exact owned KeyPackage");
+    assert_eq!(
+        prepared.key_package_reference(),
+        &fixture.key_package_reference
+    );
+    assert_eq!(prepared.current_group_epoch(), 0);
+    let committed = prepared.apply().expect("apply prepared Add");
+
+    assert_eq!(
+        committed.key_package_reference(),
+        &fixture.key_package_reference
+    );
+    assert_eq!(group.epoch(), 1);
+    assert_eq!(group.member_count(), 2);
+    assert_eq!(verifier.pending_count(), 1);
+}
+
+#[test]
+fn abandoning_prepared_add_clears_mls_pending_state_and_replay_reservation() {
+    let policy = CapabilityAdmissionPolicy::new(3_600, 5, 8).expect("valid policy");
+    let mut verifier = CapabilityAdmissionVerifier::new(policy);
+    let alice = create_client().expect("create inviter");
+    let mut group = alice.create_group(group_id(), NOW).expect("create group");
+    let verified = verifier
+        .verify_and_reserve(opened_fixture(FixtureOptions::default()).opened, NOW + 1)
+        .expect("verify admission");
+
+    drop(
+        verifier
+            .prepare_add(verified, &mut group, NOW + 1)
+            .expect("prepare Add"),
+    );
+
+    assert_eq!(group.epoch(), 0);
+    assert_eq!(group.member_count(), 1);
+    assert_eq!(verifier.pending_count(), 0);
+    let replacement = verifier
+        .verify_and_reserve(opened_fixture(FixtureOptions::default()).opened, NOW + 1)
+        .expect("released request values can be retried");
+    verifier.release(replacement).expect("release replacement");
+}
+
+#[test]
+fn failed_mls_prepare_releases_replay_without_changing_membership() {
+    let alice = create_client().expect("create inviter");
+    let bob = create_client().expect("create existing peer");
+    let bob_key_package = bob.generate_key_package(NOW).expect("generate KeyPackage");
+    let validated = create_key_package_validator()
+        .validate_key_package(bob_key_package.as_bytes(), NOW)
+        .expect("validate existing peer");
+    let mut group = alice.create_group(group_id(), NOW).expect("create group");
+    group
+        .prepare_add(validated, NOW)
+        .expect("prepare existing peer")
+        .apply()
+        .expect("apply existing peer");
+
+    let policy = CapabilityAdmissionPolicy::new(3_600, 5, 8).expect("valid policy");
+    let mut verifier = CapabilityAdmissionVerifier::new(policy);
+    let verified = verifier
+        .verify_and_reserve(opened_fixture(FixtureOptions::default()).opened, NOW + 1)
+        .expect("verify admission");
+
+    assert!(matches!(
+        verifier.prepare_add(verified, &mut group, NOW + 1),
+        Err(CapabilityAdmissionError::Rejected)
+    ));
+    assert_eq!(group.epoch(), 1);
+    assert_eq!(group.member_count(), 2);
+    assert_eq!(verifier.pending_count(), 0);
+}
+
+#[test]
+fn request_expiry_before_mls_prepare_releases_replay_and_leaves_group_unchanged() {
+    let policy = CapabilityAdmissionPolicy::new(3_600, 5, 8).expect("valid policy");
+    let mut verifier = CapabilityAdmissionVerifier::new(policy);
+    let verified = verifier
+        .verify_and_reserve(
+            opened_fixture(FixtureOptions {
+                request_expires_at: NOW + 10,
+                ..FixtureOptions::default()
+            })
+            .opened,
+            NOW + 1,
+        )
+        .expect("request is initially valid");
+    let alice = create_client().expect("create inviter");
+    let mut group = alice.create_group(group_id(), NOW).expect("create group");
+
+    assert!(matches!(
+        verifier.prepare_add(verified, &mut group, NOW + 10),
+        Err(CapabilityAdmissionError::Rejected)
+    ));
+    assert_eq!(group.epoch(), 0);
+    assert_eq!(group.member_count(), 1);
+    assert_eq!(verifier.pending_count(), 0);
+}
+
+#[test]
+fn another_verifier_cannot_consume_a_foreign_replay_reservation() {
+    let policy = CapabilityAdmissionPolicy::new(3_600, 5, 8).expect("valid policy");
+    let mut owning_verifier = CapabilityAdmissionVerifier::new(policy);
+    let verified = owning_verifier
+        .verify_and_reserve(opened_fixture(FixtureOptions::default()).opened, NOW + 1)
+        .expect("owning verifier reserves request");
+    let mut foreign_verifier = CapabilityAdmissionVerifier::new(policy);
+    let alice = create_client().expect("create inviter");
+    let mut group = alice.create_group(group_id(), NOW).expect("create group");
+
+    assert!(matches!(
+        foreign_verifier.prepare_add(verified, &mut group, NOW + 1),
+        Err(CapabilityAdmissionError::ReservationMismatch)
+    ));
+    assert_eq!(group.epoch(), 0);
+    assert_eq!(group.member_count(), 1);
+    assert_eq!(owning_verifier.pending_count(), 1);
+    assert_eq!(foreign_verifier.pending_count(), 0);
 }
 
 #[test]

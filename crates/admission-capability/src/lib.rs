@@ -3,7 +3,10 @@
 //! Capability admission for the local protected-join profile.
 
 use session_crypto_hpke::OpenedCapabilityJoinRequest;
-use session_crypto_mls::{KeyPackageReference, ValidatedKeyPackage, create_key_package_validator};
+use session_crypto_mls::{
+    CommittedAddition, KeyPackageReference, PreparedAddition, SessionMlsConfig, SessionMlsGroup,
+    ValidatedKeyPackage, create_key_package_validator,
+};
 use thiserror::Error;
 
 const IDENTIFIER_BYTES: usize = 16;
@@ -55,12 +58,20 @@ pub enum CapabilityAdmissionError {
     ReservationMismatch,
 }
 
-#[derive(Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 struct ReplayGeneration {
     invitation_id: [u8; IDENTIFIER_BYTES],
     join_challenge: [u8; FIXED_KEY_BYTES],
     invitation_key_id: [u8; IDENTIFIER_BYTES],
     intended_verifier: [u8; FIXED_KEY_BYTES],
+}
+
+#[derive(Clone, Eq, PartialEq)]
+struct ReplayReservation {
+    generation: ReplayGeneration,
+    join_request_id: [u8; IDENTIFIER_BYTES],
+    request_nonce: [u8; FIXED_KEY_BYTES],
+    reservation_id: u64,
 }
 
 struct PendingReplay {
@@ -149,6 +160,12 @@ impl CapabilityAdmissionVerifier {
         let next_reservation_id = reservation_id
             .checked_add(1)
             .ok_or(CapabilityAdmissionError::CapacityExceeded)?;
+        let reservation = ReplayReservation {
+            generation: generation.clone(),
+            join_request_id,
+            request_nonce,
+            reservation_id,
+        };
         self.pending
             .retain(|entry| entry.expires_at_unix_seconds > now_unix_seconds);
         self.pending.push(PendingReplay {
@@ -163,7 +180,7 @@ impl CapabilityAdmissionVerifier {
         Ok(VerifiedCapabilityAdmission {
             opened,
             validated,
-            reservation_id,
+            reservation,
         })
     }
 
@@ -178,19 +195,65 @@ impl CapabilityAdmissionVerifier {
         &mut self,
         verified: VerifiedCapabilityAdmission,
     ) -> Result<(), CapabilityAdmissionError> {
-        let request = verified.opened.request();
-        let position = self.pending.iter().position(|entry| {
-            entry.reservation_id == verified.reservation_id
-                && entry.generation.invitation_id == *request.invitation_id()
-                && entry.generation.join_challenge == *request.join_challenge()
-                && entry.generation.invitation_key_id == *request.invitation_key_id()
-                && entry.generation.intended_verifier == *request.intended_verifier()
-                && entry.join_request_id == *request.join_request_id()
-                && entry.request_nonce == *request.request_nonce()
-        });
-        let position = position.ok_or(CapabilityAdmissionError::ReservationMismatch)?;
+        self.remove_reservation(&verified.reservation)
+    }
+
+    /// Moves the exact admitted KeyPackage directly into MLS Add preparation.
+    ///
+    /// A rejected preparation releases the replay reservation. Dropping the
+    /// returned value clears the pending MLS Commit and releases replay state.
+    /// A successful apply retains replay state until request expiry.
+    pub fn prepare_add<'verifier, 'group, C: SessionMlsConfig>(
+        &'verifier mut self,
+        verified: VerifiedCapabilityAdmission,
+        group: &'group mut SessionMlsGroup<C>,
+        now_unix_seconds: u64,
+    ) -> Result<PreparedCapabilityAddition<'verifier, 'group, C>, CapabilityAdmissionError> {
+        let reservation = verified.reservation.clone();
+        if self.reservation_position(&reservation).is_none() {
+            return Err(CapabilityAdmissionError::ReservationMismatch);
+        }
+        if verified.opened.request().expires_at_unix_seconds() <= now_unix_seconds {
+            self.remove_reservation(&reservation)?;
+            return Err(CapabilityAdmissionError::Rejected);
+        }
+        let VerifiedCapabilityAdmission {
+            opened: _,
+            validated,
+            reservation: _,
+        } = verified;
+        match group.prepare_add(validated, now_unix_seconds) {
+            Ok(inner) => Ok(PreparedCapabilityAddition {
+                verifier: self,
+                inner: Some(inner),
+                reservation,
+                preserve_replay: false,
+            }),
+            Err(_) => {
+                self.remove_reservation(&reservation)?;
+                Err(CapabilityAdmissionError::Rejected)
+            }
+        }
+    }
+
+    fn remove_reservation(
+        &mut self,
+        reservation: &ReplayReservation,
+    ) -> Result<(), CapabilityAdmissionError> {
+        let position = self
+            .reservation_position(reservation)
+            .ok_or(CapabilityAdmissionError::ReservationMismatch)?;
         self.pending.remove(position);
         Ok(())
+    }
+
+    fn reservation_position(&self, reservation: &ReplayReservation) -> Option<usize> {
+        self.pending.iter().position(|entry| {
+            entry.reservation_id == reservation.reservation_id
+                && entry.generation == reservation.generation
+                && entry.join_request_id == reservation.join_request_id
+                && entry.request_nonce == reservation.request_nonce
+        })
     }
 }
 
@@ -198,7 +261,7 @@ impl CapabilityAdmissionVerifier {
 pub struct VerifiedCapabilityAdmission {
     opened: OpenedCapabilityJoinRequest,
     validated: ValidatedKeyPackage,
-    reservation_id: u64,
+    reservation: ReplayReservation,
 }
 
 impl VerifiedCapabilityAdmission {
@@ -218,5 +281,54 @@ impl VerifiedCapabilityAdmission {
     #[must_use]
     pub const fn key_package_reference(&self) -> &KeyPackageReference {
         self.validated.key_package_reference()
+    }
+}
+
+/// Pending MLS Add that keeps admission replay state and provider state coupled.
+pub struct PreparedCapabilityAddition<'verifier, 'group, C: SessionMlsConfig> {
+    verifier: &'verifier mut CapabilityAdmissionVerifier,
+    inner: Option<PreparedAddition<'group, C>>,
+    reservation: ReplayReservation,
+    preserve_replay: bool,
+}
+
+impl<C: SessionMlsConfig> PreparedCapabilityAddition<'_, '_, C> {
+    /// Returns the exact admitted KeyPackage reference targeted by the Welcome.
+    #[must_use]
+    pub fn key_package_reference(&self) -> &KeyPackageReference {
+        self.inner
+            .as_ref()
+            .expect("prepared addition exists until apply")
+            .key_package_reference()
+    }
+
+    /// Observes that preparation has not advanced the group epoch.
+    #[must_use]
+    pub fn current_group_epoch(&self) -> u64 {
+        self.inner
+            .as_ref()
+            .expect("prepared addition exists until apply")
+            .current_group_epoch()
+    }
+
+    /// Applies the pending Add and keeps its replay reservation through expiry.
+    pub fn apply(mut self) -> Result<CommittedAddition, CapabilityAdmissionError> {
+        let inner = self
+            .inner
+            .take()
+            .ok_or(CapabilityAdmissionError::Rejected)?;
+        self.preserve_replay = true;
+        inner
+            .apply()
+            .map_err(|_| CapabilityAdmissionError::Rejected)
+    }
+}
+
+impl<C: SessionMlsConfig> Drop for PreparedCapabilityAddition<'_, '_, C> {
+    fn drop(&mut self) {
+        if !self.preserve_replay {
+            drop(self.inner.take());
+            let _ = self.verifier.remove_reservation(&self.reservation);
+        }
     }
 }

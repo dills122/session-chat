@@ -25,6 +25,8 @@ use session_crypto::{
 };
 use thiserror::Error;
 
+/// Opaque configuration bound used by ownership-preserving integration wrappers.
+pub use mls_rs::client_builder::MlsConfig as SessionMlsConfig;
 pub use session_crypto::{
     MAX_APPLICATION_MESSAGE_BYTES as MAX_APPLICATION_BYTES,
     MAX_PROTECTED_MESSAGE_BYTES as MAX_MLS_MESSAGE_BYTES,
