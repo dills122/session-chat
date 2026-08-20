@@ -10,7 +10,9 @@ allow = [
   "BSD-1-Clause",
   "BSD-3-Clause",
   "BlueOak-1.0.0",
+  "ISC",
   "MIT",
+  "MIT-0",
   "Unicode-3.0",
 ]
 confidence-threshold = 0.8

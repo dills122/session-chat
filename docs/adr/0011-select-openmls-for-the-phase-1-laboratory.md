@@ -1,8 +1,12 @@
 # ADR 0011: Select OpenMLS for the Phase 1 laboratory
 
-Status: accepted for evaluation; integration blocked by dependency policy
+Status: superseded by ADR 0012
 
 Date: 2026-08-16
+
+ADR 0012 supersedes the implementation and provider selection in this record.
+This record remains the retained explanation of why OpenMLS 0.8.1 was evaluated
+and rejected under the repository dependency policy.
 
 ## Context
 

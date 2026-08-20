@@ -40,6 +40,8 @@ Current areas:
 - `crates/session-protocol`: versioned wire objects and canonical serialization
 - `crates/session-core`: bounded inviter-owned invitation lifecycle state; descriptor
   validation is read-only and consumption follows successful membership
+- `crates/session-crypto-mls`: isolated in-memory two-party MLS adapter with
+  bounded exact KeyPackage ownership and explicit prepare/apply transitions
 - `spikes/`: disposable feasibility code; production packages must not depend on it
 - `docs/`: canonical v2 product, architecture, threat-model, protocol, ADR, and legacy-evidence baseline
 - `scripts/`: tested repository and AI Central setup tooling
@@ -47,7 +49,8 @@ Current areas:
 Planned v2 areas:
 
 - later `session-core` increments: join, approval, membership, and session state machines
-- `crates/session-crypto-mls`: MLS integration and protected state persistence
+- later `session-crypto-mls` increments: admission orchestration and protected
+  transactional state persistence
 - `crates/session-admission` plus adapters: admission policy and verified key binding
 - `crates/session-transport` plus adapters: opaque envelope delivery
 - `apps/sessionctl`: headless protocol and conformance client

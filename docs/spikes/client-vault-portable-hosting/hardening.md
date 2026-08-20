@@ -30,7 +30,7 @@ capability state.
 
 | Opportunity | Evidence | Options | Recommendation | Proposal |
 | --- | --- | --- | --- | --- |
-| Seal client secret state outside active use | Local-storage threat boundary, OpenMLS persistence, and platform unlock semantics (`V001`–`V008`) | Whole-store wrapping; session-scoped sealed vault; portable recovery wrapper | Spike the session-scoped sealed vault; retain whole-store wrapping as fallback and defer recovery | [Client state vault](proposals/client-state-vault.md) |
+| Seal client secret state outside active use | Local-storage threat boundary, MLS persistence, and platform unlock semantics (`V001`–`V008`) | Whole-store wrapping; session-scoped sealed vault; portable recovery wrapper | Spike the session-scoped sealed vault; retain whole-store wrapping as fallback and defer recovery | [Client state vault](proposals/client-state-vault.md) |
 | Make realms replaceable without content trust | Realm/transport contracts and portable deployment primitives (`H001`–`H010`) | Compose appliance; signed portable appliance; split operators | Build toward a signed portable appliance in two increments; defer split operation | [Portable realm hosting](proposals/portable-realm-hosting.md) |
 
 ## Recommendation Summary

@@ -1,12 +1,16 @@
 # OpenMLS 0.8.1 audit and provider applicability
 
-Status: provider integration blocked by dependency policy
+Status: provider integration rejected; selection superseded by ADR 0012
 
 Reviewed: 2026-08-17
 
+ADR 0012 selects a different released MLS implementation for the isolated
+laboratory. This map remains the retained evidence for rejecting the OpenMLS
+0.8.1 provider graph and is not a current implementation plan.
+
 ## Scope and conclusion
 
-ADR 0011 permits exact OpenMLS 0.8.1 and `openmls_rust_crypto` 0.5.1 only for
+ADR 0011 permitted exact OpenMLS 0.8.1 and `openmls_rust_crypto` 0.5.1 only for
 an isolated, in-memory two-person laboratory. This review maps the eight
 findings in the May 2026 SRLabs report to the exact signed OpenMLS tag at
 commit `47dbedecad0c1fd8eb5368d582250ebfcc1e1ce6` and reviews the selected
@@ -14,10 +18,12 @@ provider boundary. It is a source and applicability review, not a new
 cryptographic audit.
 
 The OpenMLS protocol finding map supports continuing evaluation, but the
-selected provider graph does not pass the repository dependency gate. No MLS
-crate or dependency is retained in the workspace. The published audit excluded
-cryptographic and storage providers, and its acknowledged S1-3 storage finding
-directly reinforces Session Chat's durable-transaction stop condition.
+selected OpenMLS provider graph does not pass the repository dependency gate.
+No OpenMLS crate or dependency is retained in the workspace; the separately
+reviewed `mls-rs` laboratory selected by ADR 0012 is retained instead. The
+published OpenMLS audit excluded cryptographic and storage providers, and its
+acknowledged S1-3 storage finding directly reinforces Session Chat's durable
+transaction stop condition.
 
 ## Evaluated dependency and feature boundary
 
