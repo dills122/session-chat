@@ -32,7 +32,11 @@ delivers the encrypted Welcome through that mailbox. This provides no durable
 outbox or network behavior. A separate bounded, fault-injectable model exercises
 all-or-nothing inviter state, ambiguous-result recovery, and Welcome-outbox
 leasing semantics without providing storage or connecting to that sequential
-join path. The MLS crate operates an in-memory two-party MLS 1.0 lifecycle
+join path. A separate deterministic memory transport uses right-specific
+authorities and bounded explicit drop, duplicate, hold/release, retry, expiry,
+and capacity behavior for headless tests. It accepts structurally opaque bytes
+but neither encrypts them nor provides a network or privacy property. The MLS
+crate operates an in-memory two-party MLS 1.0 lifecycle
 behind the reduced-feature `mls-rs`/AWS-LC boundary selected by ADR 0012. It has
 no durable state, and upstream's missing full independent `mls-rs` audit remains
 a release risk rather than inherited assurance. The retired v1

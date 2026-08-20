@@ -57,7 +57,10 @@ The checked-in runtime consists of:
   prepare/apply stages;
 - `session-transport`: a bounded, single-process local one-Welcome mailbox with
   provider-generated, separate deposit, receive, and acknowledgement authority,
-  exact-retry idempotency, expiry, and coarse errors; and
+  exact-retry idempotency, expiry, coarse errors, and a provider-neutral
+  right-specific opaque-envelope trait;
+- `transport-memory`: a bounded deterministic test adapter for explicit drop,
+  duplicate, hold/release reordering, retry, and acknowledgement behavior; and
 - a disposable Node.js sealed-post-office simulator used only to test boundary
   semantics such as schema rejection, right-specific authorization ordering,
   rotation, and capacity limits.
@@ -91,6 +94,7 @@ flowchart LR
   I --> R["Implemented: in-memory lifecycle"]
   E["Implemented: bounded opaque envelope"]
   M["Implemented: isolated in-memory MLS lifecycle"]
+  D["Implemented: deterministic opaque-envelope transport"]
   N["Non-production Node boundary simulator"]
   C --> O["Implemented: display-only approval context"]
   O --> A["Implemented: simulated approval and in-memory invitation/MLS coordination"]
@@ -98,6 +102,7 @@ flowchart LR
   A --> M
   M --> T["Implemented: local right-specific Welcome delivery"]
   E --> T
+  E --> D
   A -. future .-> V["Atomic durable state and sealed vault"]
   T -. proposed .-> H["Portable self-hosted realm"]
 ```
@@ -124,6 +129,7 @@ flowchart LR
 | Approved in-memory join returns the exact deposit endpoint beside the encrypted MLS Welcome | Implemented and tested | The endpoint moves from the HPKE-authenticated request through approval and MLS apply; expiry is checked before reservation and MLS mutation, while local delivery and non-rollback after delivery failure are retained integration evidence |
 | Welcome outbox delivery is atomic with MLS, replay, approval, and invitation state | Accepted contract, unimplemented | Architecture transaction invariant; no durable store or outbox exists |
 | Local deposit, receive, and acknowledge rights are non-interchangeable | Implemented and tested | `session-transport` uses separately typed provider-generated authorities, commitment checks, hostile authority tests, and an approved-join integration test |
+| Deterministic memory delivery models loss, duplication, reordering, replay, retry, expiry, and bounded capacity | Implemented and tested | `transport-memory` fault-plan and hostile-authority tests over `OpaqueEnvelope`; this is neither encryption nor a network/privacy claim |
 | Reusable or network mailbox rotation is a separate non-interchangeable right | Accepted contract, unimplemented | ADR 0010; the one-use local profile deliberately has no rotation operation, and Node simulator evidence does not establish production transport |
 | The Node simulator rejects unknown, cyclic, accessor-backed, symbol-keyed, deep, or oversized provider input before cloning or authorization | Implemented and tested | Retained non-production adversarial tests at directory and attestor entry points |
 | Client secrets are sealed when not in an active user-approved session | Proposed experiment | Session-scoped vault proposal with whole-store fallback; no dependency selected |

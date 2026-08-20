@@ -50,7 +50,10 @@ Current areas:
 - `crates/session-crypto-mls`: isolated in-memory two-party MLS adapter with
   bounded exact KeyPackage ownership and explicit prepare/apply transitions
 - `crates/session-transport`: bounded local one-Welcome mailbox with distinct
-  deposit, receive, and acknowledgement authorities
+  deposit, receive, and acknowledgement authorities plus the provider-neutral
+  right-specific opaque-envelope transport trait
+- `crates/transport-memory`: bounded deterministic delivery-fault adapter for
+  opaque-envelope headless and conformance tests; not a network transport
 - `crates/session-inviter-transaction`: bounded, fault-injectable conformance
   model for inviter-local atomic join and Welcome-outbox recovery semantics;
   not a durable storage implementation

@@ -973,6 +973,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "transport-memory"
+version = "0.1.0"
+dependencies = [
+ "aws-lc-rs",
+ "session-protocol",
+ "session-transport",
+ "thiserror",
+ "zeroize",
+]
+
+[[package]]
 name = "typenum"
 version = "1.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

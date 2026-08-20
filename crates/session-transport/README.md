@@ -3,6 +3,12 @@
 `session-transport` implements ADR 0010's first right-specific delivery adapter:
 a bounded, single-process local Welcome mailbox for Phase 1 protocol tests.
 
+It also defines the provider-neutral `EnvelopeTransport` trait. Associated
+deposit, receive, and acknowledgement types keep the authority distinctions in
+the type system rather than erasing them into generic credentials. Reviewed
+adapters are selected at composition time; the trait does not load code or
+grant ambient authority.
+
 `LocalMemoryWelcomeTransport` creates fresh mailbox identifiers and independent
 deposit, receive, and acknowledgement authorities with AWS-LC's CSPRNG. Only
 the existing `LocalWelcomeDepositEndpoint` is sender-facing. Joiner-retained

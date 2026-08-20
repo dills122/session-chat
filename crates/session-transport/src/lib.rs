@@ -2,7 +2,7 @@
 
 //! Right-specific transport contracts and deterministic local adapters.
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, error::Error};
 
 use aws_lc_rs::{constant_time, digest, rand};
 use session_protocol::{DepositCapability, LocalWelcomeDepositEndpoint, OpaqueEnvelope};
@@ -59,6 +59,19 @@ pub enum LocalTransportError {
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct DeliveryId([u8; IDENTIFIER_BYTES]);
 
+impl DeliveryId {
+    /// Creates an untrusted identifier from provider-generated nonzero bytes.
+    pub fn from_provider_bytes(bytes: [u8; IDENTIFIER_BYTES]) -> Option<Self> {
+        (!bytes.iter().all(|byte| *byte == 0)).then_some(Self(bytes))
+    }
+
+    /// Borrows the untrusted identifier bytes.
+    #[must_use]
+    pub const fn as_bytes(&self) -> &[u8; IDENTIFIER_BYTES] {
+        &self.0
+    }
+}
+
 /// One received opaque envelope paired with its untrusted delivery identifier.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ReceivedEnvelope {
@@ -67,6 +80,15 @@ pub struct ReceivedEnvelope {
 }
 
 impl ReceivedEnvelope {
+    /// Pairs an untrusted delivery identifier with one bounded opaque envelope.
+    #[must_use]
+    pub const fn new(delivery_id: DeliveryId, envelope: OpaqueEnvelope) -> Self {
+        Self {
+            delivery_id,
+            envelope,
+        }
+    }
+
     /// Returns the identifier used only to select a delivery for acknowledgement.
     #[must_use]
     pub const fn delivery_id(&self) -> &DeliveryId {
@@ -78,6 +100,46 @@ impl ReceivedEnvelope {
     pub const fn envelope(&self) -> &OpaqueEnvelope {
         &self.envelope
     }
+}
+
+/// Provider-neutral operations over right-specific opaque-envelope mailboxes.
+///
+/// Associated authority types prevent a receive or acknowledgement capability
+/// from being supplied to a deposit operation. Implementations remain selected
+/// from the compiled, reviewed allowlist; this trait does not permit dynamic or
+/// network-loaded transport code.
+pub trait EnvelopeTransport {
+    /// Sender-facing deposit endpoint for this transport profile.
+    type DepositEndpoint;
+    /// Receiver-only read authority for this transport profile.
+    type ReceiveCapability;
+    /// Receiver-only acknowledgement authority for this transport profile.
+    type AcknowledgementCapability;
+    /// Coarse adapter failure that exposes no capability bytes or plaintext.
+    type Error: Error;
+
+    /// Accepts one already bounded opaque envelope for delivery.
+    fn deposit(
+        &mut self,
+        endpoint: &Self::DepositEndpoint,
+        envelope: OpaqueEnvelope,
+        now_unix_seconds: u64,
+    ) -> Result<DeliveryId, Self::Error>;
+
+    /// Reads at most one retained opaque envelope.
+    fn receive(
+        &mut self,
+        authority: &Self::ReceiveCapability,
+        now_unix_seconds: u64,
+    ) -> Result<Option<ReceivedEnvelope>, Self::Error>;
+
+    /// Deletes or records acknowledgement of one selected delivery.
+    fn acknowledge(
+        &mut self,
+        authority: &Self::AcknowledgementCapability,
+        delivery_id: DeliveryId,
+        now_unix_seconds: u64,
+    ) -> Result<(), Self::Error>;
 }
 
 /// Joiner-only authority for reading one local Welcome mailbox.
@@ -371,6 +433,39 @@ impl LocalMemoryWelcomeTransport {
     #[must_use]
     pub fn mailbox_count(&self) -> usize {
         self.mailboxes.len()
+    }
+}
+
+impl EnvelopeTransport for LocalMemoryWelcomeTransport {
+    type DepositEndpoint = LocalWelcomeDepositEndpoint;
+    type ReceiveCapability = LocalWelcomeReceiveCapability;
+    type AcknowledgementCapability = LocalWelcomeAcknowledgementCapability;
+    type Error = LocalTransportError;
+
+    fn deposit(
+        &mut self,
+        endpoint: &Self::DepositEndpoint,
+        envelope: OpaqueEnvelope,
+        now_unix_seconds: u64,
+    ) -> Result<DeliveryId, Self::Error> {
+        Self::deposit(self, endpoint, envelope, now_unix_seconds)
+    }
+
+    fn receive(
+        &mut self,
+        authority: &Self::ReceiveCapability,
+        now_unix_seconds: u64,
+    ) -> Result<Option<ReceivedEnvelope>, Self::Error> {
+        Self::receive(self, authority, now_unix_seconds)
+    }
+
+    fn acknowledge(
+        &mut self,
+        authority: &Self::AcknowledgementCapability,
+        delivery_id: DeliveryId,
+        now_unix_seconds: u64,
+    ) -> Result<(), Self::Error> {
+        Self::acknowledge(self, authority, delivery_id, now_unix_seconds)
     }
 }
 

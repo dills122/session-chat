@@ -150,7 +150,7 @@ the chosen transport, but should not possess message keys or plaintext.
 
 ### Current Phase 1 evidence
 
-The active Rust laboratory now contains nine narrow pieces of this architecture:
+The active Rust laboratory now contains ten narrow pieces of this architecture:
 
 - `session-protocol` encodes and strictly verifies deterministic signed
   secret-capability invitation v1/v2 layouts and owns ADR 0014's bounded
@@ -180,7 +180,11 @@ The active Rust laboratory now contains nine narrow pieces of this architecture:
   current implementation of the provider-neutral message contract.
 - `session-transport` creates bounded local one-Welcome mailboxes with distinct
   deposit, receive, and acknowledgement authorities, exact-retry idempotency,
-  expiry, and no ambient credentials.
+  expiry, and no ambient credentials. It also defines the provider-neutral
+  right-specific opaque-envelope transport trait.
+- `transport-memory` implements that trait with bounded deterministic drop,
+  hold/release, duplication, reordering, retry, and acknowledgement controls
+  for headless tests. It is not a network transport.
 - `session-inviter-transaction` is a bounded, fault-injectable conformance model
   for all-or-nothing invitation/replay/approval/MLS-snapshot/Welcome-outbox
   visibility, exact retry recovery, and delivery leasing. It is not storage.

@@ -176,6 +176,10 @@ claiming disk durability. A right-specific local one-Welcome mailbox now has
 bounded in-memory evidence, and the committed approved-join result carries its
 exact deposit-only endpoint beside the encrypted MLS Welcome. The current
 sequential delivery path is not a durability or crash-atomicity claim.
+The separate `transport-memory` adapter now implements the right-specific
+opaque-envelope trait with bounded deterministic loss, duplication, reordering,
+retry, expiry, and acknowledgement controls for headless tests. It is not a
+network, encryption, or privacy implementation.
 
 ## Reference standards and projects
 

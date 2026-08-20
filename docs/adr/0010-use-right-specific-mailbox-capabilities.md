@@ -1,6 +1,6 @@
 # ADR 0010: Use right-specific mailbox capabilities
 
-Status: accepted; local deposit, receive, and acknowledgement adapter implemented
+Status: accepted; local Welcome and deterministic memory adapters implemented
 
 Date: 2026-08-16
 
@@ -68,6 +68,13 @@ approved-join result carries only its authenticated deposit endpoint; receive
 and acknowledgement authority remain with the joiner. This is not a durable,
 network, anonymous, or production transport. Reusable and network profiles must
 add separately typed rotation and revocation under their own schemas.
+
+`session-transport` now retains the provider-neutral trait with associated
+right-specific types. `transport-memory` implements it for bounded headless
+tests using provider-generated capability secrets and retained commitments. Its
+explicit delivery plan models drop, hold/release reordering, duplicates, exact
+retry, and acknowledgement without claiming networking or privacy. The fault
+controls are adapter-specific test inputs, not part of the production trait.
 
 ## Alternatives considered
 

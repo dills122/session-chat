@@ -30,7 +30,10 @@ The Rust workspace currently contains:
 - `session-crypto-mls`, with an isolated in-memory two-party MLS 1.0 adapter for
   bounded KeyPackage validation, Add/Welcome, messages, path updates, and removal
 - `session-transport`, with provider-generated, right-specific local Welcome
-  mailboxes, one-envelope idempotency, expiry, and bounded in-memory state
+  mailboxes, one-envelope idempotency, expiry, bounded in-memory state, and the
+  provider-neutral right-specific opaque-envelope transport contract
+- `transport-memory`, with bounded deterministic drop, hold, duplicate,
+  reordering, retry, and acknowledgement controls for headless protocol tests
 - `session-inviter-transaction`, with a bounded fault-injectable conformance
   model for atomic invitation/replay/approval/MLS-snapshot/Welcome-outbox state
 

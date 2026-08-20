@@ -78,6 +78,11 @@ processing, integration of that transaction with MLS/admission/transport, the
 headless end-to-end flow, and network transport work listed below remain
 outstanding.
 
+The provider-neutral right-specific transport trait and its separate
+`transport-memory` adapter now retain deterministic drop, duplicate,
+hold/release reordering, exact-retry, expiry, authority, and capacity evidence.
+This completes the Phase 1 memory-transport test control, not network delivery.
+
 The implementation-free `session-admission` crate now supplies the
 provider-neutral, non-authorizing approval context and decision from ADR 0015.
 It deliberately does not generalize provider proof verification or the exact
