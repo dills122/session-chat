@@ -11,5 +11,9 @@ mls-rs.workspace = true
 mls-rs-crypto-awslc.workspace = true
 thiserror.workspace = true
 
+[dev-dependencies]
+mls-rs-core.workspace = true
+zeroize.workspace = true
+
 [lints]
 workspace = true

@@ -4,18 +4,19 @@
 
 use std::time::Duration;
 
+use mls_rs::mls_rs_codec::{self, MlsDecode, MlsEncode};
 use mls_rs::{
-    CipherSuite, CipherSuiteProvider, Client, CryptoProvider, Group, MlsMessage, ProtocolVersion,
-    WireFormat,
+    CipherSuite, CipherSuiteProvider, Client, CryptoProvider, ExtensionList, Group, MlsMessage,
+    ProtocolVersion, WireFormat,
     client_builder::MlsConfig,
+    crypto::HpkePublicKey,
     extension::ExtensionType,
     external_client::{ExternalClient, builder::MlsConfig as ExternalMlsConfig},
-    group::{CommitEffect, ReceivedMessage},
+    group::{CommitEffect, LeafNode, ReceivedMessage},
     identity::{
         SigningIdentity,
         basic::{BasicCredential, BasicIdentityProvider},
     },
-    mls_rs_codec::MlsDecode,
 };
 use mls_rs_crypto_awslc::AwsLcCryptoProvider;
 use thiserror::Error;
@@ -251,6 +252,17 @@ pub struct KeyPackageValidator<C: ExternalMlsConfig> {
     crypto: AwsLcCryptoProvider,
 }
 
+#[derive(MlsDecode)]
+struct KeyPackagePolicyView {
+    version: ProtocolVersion,
+    cipher_suite: CipherSuite,
+    hpke_init_key: HpkePublicKey,
+    leaf_node: LeafNode,
+    extensions: ExtensionList,
+    #[mls_codec(with = "mls_rs::mls_rs_codec::byte_vec")]
+    signature: Vec<u8>,
+}
+
 /// Creates the external validation boundary used before admission.
 #[must_use]
 pub fn create_key_package_validator() -> KeyPackageValidator<impl ExternalMlsConfig> {
@@ -295,6 +307,32 @@ impl<C: ExternalMlsConfig> KeyPackageValidator<C> {
         {
             return Err(MlsAdapterError::RejectedKeyPackage);
         }
+
+        // mls-rs 0.56.0 does not expose the KeyPackage leaf through its public
+        // accessor API. Re-decode the provider-validated KeyPackage with the
+        // exact pinned TLS layout solely to enforce the closed Phase 1 leaf
+        // extension/capability policy. Cryptographic validation remains above.
+        let encoded_key_package = key_package
+            .mls_encode_to_vec()
+            .map_err(|_| MlsAdapterError::RejectedKeyPackage)?;
+        let mut remaining = encoded_key_package.as_slice();
+        let policy_view = KeyPackagePolicyView::mls_decode(&mut remaining)
+            .map_err(|_| MlsAdapterError::RejectedKeyPackage)?;
+        if !remaining.is_empty()
+            || policy_view.version != key_package.version()
+            || policy_view.cipher_suite != key_package.cipher_suite()
+            || policy_view.leaf_node.signing_identity != *key_package.signing_identity()
+            || !policy_view.extensions.is_empty()
+            || !policy_view.leaf_node.extensions.is_empty()
+            || !policy_view.leaf_node.capabilities.extensions().is_empty()
+            || !policy_view.leaf_node.capabilities.proposals().is_empty()
+            || policy_view.leaf_node.capabilities.protocol_versions() != [ProtocolVersion::MLS_10]
+            || policy_view.leaf_node.capabilities.credentials()
+                != [BasicCredential::credential_type()]
+        {
+            return Err(MlsAdapterError::RejectedKeyPackage);
+        }
+        let _ = (policy_view.hpke_init_key, policy_view.signature);
 
         let signing_identity = key_package.signing_identity();
         let credential_identity: [u8; SESSION_CREDENTIAL_ID_BYTES] = signing_identity
@@ -370,6 +408,7 @@ pub enum IncomingMessage {
 pub struct SessionMlsGroup<C: MlsConfig> {
     inner: Group<C>,
     group_id: SessionGroupId,
+    inactive: bool,
 }
 
 impl<C: MlsConfig> SessionMlsGroup<C> {
@@ -380,20 +419,55 @@ impl<C: MlsConfig> SessionMlsGroup<C> {
             .map_err(|_| MlsAdapterError::UnexpectedProviderOutput)?;
         let group_id =
             SessionGroupId::new(group_id).map_err(|_| MlsAdapterError::UnexpectedProviderOutput)?;
-        if inner.protocol_version() != ProtocolVersion::MLS_10
-            || inner.cipher_suite() != CIPHERSUITE
-            || inner.roster().members_iter().any(|member| {
-                !member.extensions().is_empty()
-                    || member
-                        .signing_identity()
-                        .credential
-                        .as_basic()
-                        .is_none_or(|credential| credential.identifier().len() != 32)
-            })
-        {
+        let group = Self {
+            inner,
+            group_id,
+            inactive: false,
+        };
+        if !group.phase_one_invariants_hold() {
             return Err(MlsAdapterError::UnexpectedProviderOutput);
         }
-        Ok(Self { inner, group_id })
+        Ok(group)
+    }
+
+    fn phase_one_invariants_hold(&self) -> bool {
+        if self.inner.protocol_version() != ProtocolVersion::MLS_10
+            || self.inner.cipher_suite() != CIPHERSUITE
+            || self.inner.group_id() != self.group_id.as_bytes()
+        {
+            return false;
+        }
+
+        let members = self.inner.roster().members();
+        if !(1..=2).contains(&members.len()) {
+            return false;
+        }
+        let mut identities = Vec::with_capacity(members.len());
+        for member in members {
+            let capabilities = member.capabilities();
+            let Some(credential) = member.signing_identity().credential.as_basic() else {
+                return false;
+            };
+            let Ok(identity) =
+                <[u8; SESSION_CREDENTIAL_ID_BYTES]>::try_from(credential.identifier())
+            else {
+                return false;
+            };
+            if identity.iter().all(|byte| *byte == 0)
+                || identities.contains(&identity)
+                || member.signing_identity().signature_key.as_ref().len() != 32
+                || !member.extensions().is_empty()
+                || capabilities.protocol_versions() != [ProtocolVersion::MLS_10]
+                || !capabilities.cipher_suites().contains(&CIPHERSUITE)
+                || !capabilities.extensions().is_empty()
+                || !capabilities.proposals().is_empty()
+                || capabilities.credentials() != [BasicCredential::credential_type()]
+            {
+                return false;
+            }
+            identities.push(identity);
+        }
+        true
     }
 
     /// Returns the MLS epoch held by this in-memory instance.
@@ -458,8 +532,20 @@ impl<C: MlsConfig> SessionMlsGroup<C> {
             return Err(MlsAdapterError::UnexpectedProviderOutput);
         }
 
-        let welcome = WelcomeMessage::from_provider(welcome)?;
-        let commit = MlsWireMessage::from_provider(&output.commit_message)?;
+        let welcome = match WelcomeMessage::from_provider(welcome) {
+            Ok(welcome) => welcome,
+            Err(error) => {
+                self.inner.clear_pending_commit();
+                return Err(error);
+            }
+        };
+        let commit = match MlsWireMessage::from_provider(&output.commit_message) {
+            Ok(commit) => commit,
+            Err(error) => {
+                self.inner.clear_pending_commit();
+                return Err(error);
+            }
+        };
         Ok(PreparedAddition {
             group: self,
             epoch_before,
@@ -470,11 +556,93 @@ impl<C: MlsConfig> SessionMlsGroup<C> {
         })
     }
 
+    /// Prepares removal of the only peer without applying the pending epoch.
+    pub fn prepare_remove_peer(
+        &mut self,
+        now_unix_seconds: u64,
+    ) -> Result<PreparedRemoval<'_, C>, MlsAdapterError> {
+        if self.member_count() != 2 {
+            return Err(MlsAdapterError::ProtocolRejected);
+        }
+        let local_index = self.inner.current_member_index();
+        let peer_index = self
+            .inner
+            .roster()
+            .members_iter()
+            .find(|member| member.index() != local_index)
+            .map(|member| member.index())
+            .ok_or(MlsAdapterError::UnexpectedProviderOutput)?;
+        let epoch_before = self.epoch();
+        let output = self
+            .inner
+            .commit_builder()
+            .remove_member(peer_index)
+            .map(|builder| builder.commit_time(now_unix_seconds.into()))
+            .and_then(|builder| builder.build())
+            .map_err(|_| MlsAdapterError::ProtocolRejected)?;
+        if !output.welcome_messages.is_empty() {
+            self.inner.clear_pending_commit();
+            return Err(MlsAdapterError::UnexpectedProviderOutput);
+        }
+        let commit = match MlsWireMessage::from_provider(&output.commit_message) {
+            Ok(commit) => commit,
+            Err(error) => {
+                self.inner.clear_pending_commit();
+                return Err(error);
+            }
+        };
+        Ok(PreparedRemoval {
+            group: self,
+            epoch_before,
+            commit: Some(commit),
+            applied: false,
+        })
+    }
+
+    /// Prepares an empty Commit with a path update without advancing the epoch.
+    pub fn prepare_epoch_update(
+        &mut self,
+        now_unix_seconds: u64,
+    ) -> Result<PreparedEpochUpdate<'_, C>, MlsAdapterError> {
+        if self.inactive || !(1..=2).contains(&self.member_count()) {
+            return Err(MlsAdapterError::ProtocolRejected);
+        }
+        let epoch_before = self.epoch();
+        let member_count_before = self.member_count();
+        let output = self
+            .inner
+            .commit_builder()
+            .commit_time(now_unix_seconds.into())
+            .build()
+            .map_err(|_| MlsAdapterError::ProtocolRejected)?;
+        if !output.contains_update_path || !output.welcome_messages.is_empty() {
+            self.inner.clear_pending_commit();
+            return Err(MlsAdapterError::UnexpectedProviderOutput);
+        }
+        let commit = match MlsWireMessage::from_provider(&output.commit_message) {
+            Ok(commit) => commit,
+            Err(error) => {
+                self.inner.clear_pending_commit();
+                return Err(error);
+            }
+        };
+        Ok(PreparedEpochUpdate {
+            group: self,
+            epoch_before,
+            member_count_before,
+            commit: Some(commit),
+            applied: false,
+        })
+    }
+
     /// Encrypts one bounded application message for the current epoch.
     pub fn encrypt_application_message(
         &mut self,
         plaintext: &[u8],
     ) -> Result<MlsWireMessage, MlsAdapterError> {
+        if self.inactive {
+            return Err(MlsAdapterError::ProtocolRejected);
+        }
         if plaintext.len() > MAX_APPLICATION_BYTES {
             return Err(MlsAdapterError::InputTooLarge);
         }
@@ -490,6 +658,9 @@ impl<C: MlsConfig> SessionMlsGroup<C> {
         &mut self,
         message: MlsWireMessage,
     ) -> Result<IncomingMessage, MlsAdapterError> {
+        if self.inactive {
+            return Err(MlsAdapterError::ProtocolRejected);
+        }
         let message = decode_exact(&message.0).map_err(|_| MlsAdapterError::ProtocolRejected)?;
         match self
             .inner
@@ -505,8 +676,17 @@ impl<C: MlsConfig> SessionMlsGroup<C> {
                 Ok(IncomingMessage::Application(application.data().to_vec()))
             }
             ReceivedMessage::Commit(commit) => match commit.effect {
-                CommitEffect::NewEpoch(_) => Ok(IncomingMessage::EpochAdvanced),
-                CommitEffect::Removed { .. } => Ok(IncomingMessage::Removed),
+                CommitEffect::NewEpoch(_) => {
+                    if !self.phase_one_invariants_hold() {
+                        self.inactive = true;
+                        return Err(MlsAdapterError::ProtocolRejected);
+                    }
+                    Ok(IncomingMessage::EpochAdvanced)
+                }
+                CommitEffect::Removed { .. } => {
+                    self.inactive = true;
+                    Ok(IncomingMessage::Removed)
+                }
                 CommitEffect::ReInit(_) => Err(MlsAdapterError::ProtocolRejected),
             },
             _ => Err(MlsAdapterError::ProtocolRejected),
@@ -530,6 +710,20 @@ impl MlsWireMessage {
 pub struct WelcomeMessage(Vec<u8>);
 
 impl WelcomeMessage {
+    /// Copies untrusted bytes only after enforcing the outer Welcome bound.
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, MlsAdapterError> {
+        if bytes.len() > MAX_MLS_MESSAGE_BYTES {
+            return Err(MlsAdapterError::InputTooLarge);
+        }
+        Ok(Self(bytes.to_vec()))
+    }
+
+    /// Borrows the opaque TLS-serialized Welcome.
+    #[must_use]
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0
+    }
+
     fn from_provider(message: &MlsMessage) -> Result<Self, MlsAdapterError> {
         let bytes = message
             .to_bytes()
@@ -622,9 +816,303 @@ impl CommittedAddition {
         &self.commit
     }
 
+    /// Borrows the one-shot Welcome output for transport serialization.
+    #[must_use]
+    pub const fn welcome(&self) -> &WelcomeMessage {
+        &self.welcome
+    }
+
     /// Consumes the result into the one-shot Welcome value.
     #[must_use]
     pub fn into_welcome(self) -> WelcomeMessage {
         self.welcome
+    }
+}
+
+/// Pending peer removal whose group state has not yet advanced.
+pub struct PreparedRemoval<'a, C: MlsConfig> {
+    group: &'a mut SessionMlsGroup<C>,
+    epoch_before: u64,
+    commit: Option<MlsWireMessage>,
+    applied: bool,
+}
+
+impl<C: MlsConfig> PreparedRemoval<'_, C> {
+    /// Returns the epoch before applying the pending removal.
+    #[must_use]
+    pub const fn epoch_before(&self) -> u64 {
+        self.epoch_before
+    }
+
+    /// Observes that prepare did not advance the current group epoch.
+    #[must_use]
+    pub fn current_group_epoch(&self) -> u64 {
+        self.group.epoch()
+    }
+
+    /// Applies the pending removal in memory and returns its Commit.
+    pub fn apply(mut self) -> Result<CommittedRemoval, MlsAdapterError> {
+        self.group
+            .inner
+            .apply_pending_commit()
+            .map_err(|_| MlsAdapterError::ProtocolRejected)?;
+        if self.group.epoch() != self.epoch_before + 1 || self.group.member_count() != 1 {
+            return Err(MlsAdapterError::UnexpectedProviderOutput);
+        }
+        self.applied = true;
+        Ok(CommittedRemoval {
+            commit: self
+                .commit
+                .take()
+                .ok_or(MlsAdapterError::UnexpectedProviderOutput)?,
+        })
+    }
+}
+
+impl<C: MlsConfig> Drop for PreparedRemoval<'_, C> {
+    fn drop(&mut self) {
+        if !self.applied {
+            self.group.inner.clear_pending_commit();
+        }
+    }
+}
+
+/// Applied in-memory peer removal and its opaque Commit output.
+pub struct CommittedRemoval {
+    commit: MlsWireMessage,
+}
+
+/// Pending path update whose group state has not yet advanced.
+pub struct PreparedEpochUpdate<'a, C: MlsConfig> {
+    group: &'a mut SessionMlsGroup<C>,
+    epoch_before: u64,
+    member_count_before: usize,
+    commit: Option<MlsWireMessage>,
+    applied: bool,
+}
+
+impl<C: MlsConfig> PreparedEpochUpdate<'_, C> {
+    /// Returns the epoch before applying the pending path update.
+    #[must_use]
+    pub const fn epoch_before(&self) -> u64 {
+        self.epoch_before
+    }
+
+    /// Applies the pending path update in memory and returns its Commit.
+    pub fn apply(mut self) -> Result<CommittedEpochUpdate, MlsAdapterError> {
+        self.group
+            .inner
+            .apply_pending_commit()
+            .map_err(|_| MlsAdapterError::ProtocolRejected)?;
+        if self.group.epoch() != self.epoch_before + 1
+            || self.group.member_count() != self.member_count_before
+        {
+            return Err(MlsAdapterError::UnexpectedProviderOutput);
+        }
+        self.applied = true;
+        Ok(CommittedEpochUpdate {
+            commit: self
+                .commit
+                .take()
+                .ok_or(MlsAdapterError::UnexpectedProviderOutput)?,
+        })
+    }
+}
+
+impl<C: MlsConfig> Drop for PreparedEpochUpdate<'_, C> {
+    fn drop(&mut self) {
+        if !self.applied {
+            self.group.inner.clear_pending_commit();
+        }
+    }
+}
+
+/// Applied in-memory path update and its opaque Commit output.
+pub struct CommittedEpochUpdate {
+    commit: MlsWireMessage,
+}
+
+impl CommittedEpochUpdate {
+    /// Borrows the Commit for durable outbox staging or test delivery.
+    #[must_use]
+    pub const fn commit(&self) -> &MlsWireMessage {
+        &self.commit
+    }
+
+    /// Consumes the result into the opaque Commit.
+    #[must_use]
+    pub fn into_commit(self) -> MlsWireMessage {
+        self.commit
+    }
+}
+
+impl CommittedRemoval {
+    /// Borrows the Commit for durable outbox staging or test delivery.
+    #[must_use]
+    pub const fn commit(&self) -> &MlsWireMessage {
+        &self.commit
+    }
+
+    /// Consumes the result into the opaque Commit.
+    #[must_use]
+    pub fn into_commit(self) -> MlsWireMessage {
+        self.commit
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        convert::Infallible,
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        },
+    };
+
+    use mls_rs_core::group::{EpochRecord, GroupState, GroupStateStorage};
+    use zeroize::Zeroizing;
+
+    use super::*;
+
+    #[derive(Clone, Default)]
+    struct RecordingStorage {
+        writes: Arc<AtomicUsize>,
+    }
+
+    impl RecordingStorage {
+        fn write_count(&self) -> usize {
+            self.writes.load(Ordering::SeqCst)
+        }
+    }
+
+    impl GroupStateStorage for RecordingStorage {
+        type Error = Infallible;
+
+        fn state(&self, _group_id: &[u8]) -> Result<Option<Zeroizing<Vec<u8>>>, Self::Error> {
+            Ok(None)
+        }
+
+        fn epoch(
+            &self,
+            _group_id: &[u8],
+            _epoch_id: u64,
+        ) -> Result<Option<Zeroizing<Vec<u8>>>, Self::Error> {
+            Ok(None)
+        }
+
+        fn write(
+            &mut self,
+            _state: GroupState,
+            _epoch_inserts: Vec<EpochRecord>,
+            _epoch_updates: Vec<EpochRecord>,
+        ) -> Result<(), Self::Error> {
+            self.writes.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+
+        fn max_epoch_id(&self, _group_id: &[u8]) -> Result<Option<u64>, Self::Error> {
+            Ok(None)
+        }
+    }
+
+    fn create_client_with_storage(
+        credential_identity: SessionCredentialId,
+        storage: RecordingStorage,
+    ) -> Result<SessionMlsClient<impl MlsConfig>, MlsAdapterError> {
+        let crypto = AwsLcCryptoProvider::default();
+        let cipher_suite = crypto
+            .cipher_suite_provider(CIPHERSUITE)
+            .ok_or(MlsAdapterError::UnexpectedProviderOutput)?;
+        let (secret, public) = cipher_suite
+            .signature_key_generate()
+            .map_err(|_| MlsAdapterError::ProtocolRejected)?;
+        let credential = BasicCredential::new(credential_identity.0.to_vec());
+        let identity = SigningIdentity::new(credential.into_credential(), public);
+        let inner = Client::builder()
+            .identity_provider(BasicIdentityProvider)
+            .crypto_provider(crypto)
+            .protocol_version(ProtocolVersion::MLS_10)
+            .key_package_lifetime(KEY_PACKAGE_LIFETIME)
+            .group_state_storage(storage)
+            .signing_identity(identity, secret, CIPHERSUITE)
+            .build();
+
+        Ok(SessionMlsClient { inner })
+    }
+
+    #[test]
+    fn provider_persists_only_after_an_explicit_group_write() -> Result<(), MlsAdapterError> {
+        const NOW: u64 = 1_800_000_000;
+        let storage = RecordingStorage::default();
+        let alice = create_client_with_storage(
+            SessionCredentialId::new([0x11; SESSION_CREDENTIAL_ID_BYTES])?,
+            storage.clone(),
+        )?;
+        let bob = create_client(SessionCredentialId::new(
+            [0x22; SESSION_CREDENTIAL_ID_BYTES],
+        )?)?;
+        let validator = create_key_package_validator();
+        let bob_key_package = bob.generate_key_package(NOW)?;
+        let validated = validator.validate_key_package(bob_key_package.as_bytes(), NOW)?;
+
+        let mut alice_group =
+            alice.create_group(SessionGroupId::new([0x77; SESSION_GROUP_ID_BYTES])?, NOW)?;
+        assert_eq!(storage.write_count(), 0);
+        let prepared = alice_group.prepare_add(validated, NOW)?;
+        assert_eq!(storage.write_count(), 0);
+        prepared.apply()?;
+        assert_eq!(storage.write_count(), 0);
+
+        alice_group
+            .inner
+            .write_to_storage()
+            .map_err(|_| MlsAdapterError::ProtocolRejected)?;
+        assert_eq!(storage.write_count(), 1);
+
+        Ok(())
+    }
+
+    #[test]
+    fn authenticated_commit_cannot_expand_a_phase_one_group() -> Result<(), MlsAdapterError> {
+        const NOW: u64 = 1_800_000_000;
+        let alice = create_client(SessionCredentialId::new(
+            [0x11; SESSION_CREDENTIAL_ID_BYTES],
+        )?)?;
+        let bob = create_client(SessionCredentialId::new(
+            [0x22; SESSION_CREDENTIAL_ID_BYTES],
+        )?)?;
+        let carol = create_client(SessionCredentialId::new(
+            [0x33; SESSION_CREDENTIAL_ID_BYTES],
+        )?)?;
+        let validator = create_key_package_validator();
+        let bob_key_package = bob.generate_key_package(NOW)?;
+        let bob_validated = validator.validate_key_package(bob_key_package.as_bytes(), NOW)?;
+        let mut alice_group =
+            alice.create_group(SessionGroupId::new([0x77; SESSION_GROUP_ID_BYTES])?, NOW)?;
+        let addition = alice_group.prepare_add(bob_validated, NOW)?.apply()?;
+        let mut bob_group = bob.join_group(addition.into_welcome(), NOW)?;
+
+        let carol_key_package = carol.generate_key_package(NOW)?;
+        let carol_validated = validator.validate_key_package(carol_key_package.as_bytes(), NOW)?;
+        let output = bob_group
+            .inner
+            .commit_builder()
+            .add_member(carol_validated.message)
+            .map(|builder| builder.commit_time(NOW.into()))
+            .and_then(|builder| builder.build())
+            .map_err(|_| MlsAdapterError::ProtocolRejected)?;
+        let commit = MlsWireMessage::from_provider(&output.commit_message)?;
+
+        assert_eq!(
+            alice_group.process_message(commit),
+            Err(MlsAdapterError::ProtocolRejected)
+        );
+        assert!(matches!(
+            alice_group.encrypt_application_message(b"must stay poisoned"),
+            Err(MlsAdapterError::ProtocolRejected)
+        ));
+
+        Ok(())
     }
 }
