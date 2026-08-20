@@ -75,6 +75,25 @@ The inviter records the join-request replay identifier separately. A valid
 request reserves locally issued invitation state; only the successful durable
 membership transaction consumes it under ADR 0008.
 
+The current `admission-capability` laboratory accepts HPKE-authenticated
+provenance, retains the exact signed-invitation signature, validates and owns
+the exact provider KeyPackage, compares the reference/credential/leaf tuple,
+and reserves both request ID and nonce in bounded in-memory state. It binds that
+value to the exact local v2 invitation reservation and consumes an explicit
+simulated `Approve` or `Reject` decision. Only the approved one-shot value can
+enter MLS preparation. Rejection, expiry, failed preparation, or abandonment
+releases invitation and replay reservations; success applies MLS then consumes
+the invitation. This is not human UI evidence and does not persist replay, MLS,
+approval, or invitation state atomically.
+
+For the local secret-capability profile accepted by ADR 0014, the intended
+verifier is the exact invitation-scoped Ed25519 verifying key authenticated by
+the signed invitation. Successful RFC 9180 PSK opening proves possession of the
+high-entropy invitation capability for that exact context; it does not prove a
+person, device, DNS name, or realm identity and does not itself approve or add
+the member. Credential, GitHub, manual, and hosted-realm proofs may use new
+verifier-context and proof versions rather than overloading those 32 bytes.
+
 ## GitHub admission
 
 ### Recommended flow
@@ -184,6 +203,10 @@ and is distributed through a channel suitable to the participants' threat
 model. The capability permits a join request; it need not grant automatic MLS
 membership.
 
+ADR 0014 requires production creation to obtain the capability from a reviewed
+cryptographic generator. Fixed length and rejection of the reserved all-zero
+value are structural checks, not evidence of entropy.
+
 Recommended policy:
 
 ```text
@@ -255,6 +278,13 @@ full admission context and the exact parsed KeyPackage that produced these
 values. No API exposes a path to reconstruct, substitute, or separately pair a
 KeyPackage after verification, and no membership API accepts an additional
 KeyPackage or invitation/request context beside this value.
+
+The inviter-owned registry supports provider-generated invitation v2 issue,
+read-only descriptor validation, reservation, release, and consumption. The
+capability adapter connects those transitions to its exact admission value and
+simulated approval decision in memory. The future durable implementation must
+still make approval/result, replay, MLS, invitation consumption, and Welcome
+outbox state one recoverable transaction.
 
 The UI must retain the difference between a provider attestation, an
 issuer-signed credential, capability possession, and manual approval.

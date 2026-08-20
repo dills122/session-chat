@@ -56,10 +56,29 @@ messages, path updates, removal, adverse delivery cases, and explicit provider
 storage timing with the reduced-feature `mls-rs`/AWS-LC graph selected by ADR
 0012. The `session-crypto` crate now supplies the provider-neutral established-
 session message seam from ADR 0013; backend negotiation and active-state
-migration do not exist. Capability proof and approval, HPKE, durable cross-layer state, the
-headless flow, and transport work listed below remain outstanding.
+migration do not exist. ADR 0014's bounded canonical invitation-v2, protected
+outer/inner, exact AAD, and local deposit-endpoint value types now exist. The
+provider-neutral HPKE adapter adds fixed one-shot AWS-LC seal/open, RFC 9180
+known-answer evidence, independent-provider opening, and hostile context
+rejection. The capability-admission adapter now retains HPKE proof provenance,
+independently validates and owns the exact KeyPackage, and reserves request IDs
+and nonces within bounded in-memory generation state. It retains the exact
+opened invitation signature, reserves the matching local v2 record, consumes an
+explicit simulated approval decision, and permits only that approved value to
+enter MLS. Rejection, expiry, failed preparation, and abandonment release both
+reservations; successful in-memory Add consumes invitation state. A separate
+bounded local transport adapter now models one-Welcome deposit, receive, and
+acknowledgement under independent authorities. The approved in-memory join
+result now carries its exact deposit endpoint beside the MLS outputs, with
+retained local Welcome-delivery evidence. A separate bounded conformance model
+now exercises the accepted inviter transaction's atomic visibility, exact retry,
+ambiguous-result recovery, and Welcome-outbox leasing semantics under injected
+memory-model faults. Human approval UX, durable cross-layer state and outbox
+processing, integration of that transaction with MLS/admission/transport, the
+headless end-to-end flow, and network transport work listed below remain
+outstanding.
 
-Contract hardening rules to preserve before HPKE or wiring the isolated MLS
+Contract hardening rules to preserve before wiring HPKE and the isolated MLS
 laboratory into a join flow:
 
 - Descriptor validation is read-only and only local issuance creates lifecycle state.
@@ -69,6 +88,9 @@ laboratory into a join flow:
 - The MLS integration obeys the selection and stop conditions in ADR 0012.
 - New sessions may select only a reviewed, compiled backend under ADR 0013;
   active sessions cannot silently switch implementations.
+- The local capability join uses only the exact versions, HPKE contexts,
+  verifier binding, closed response endpoint, and before-mutation ordering from
+  ADR 0014.
 
 The current MLS increment uses only isolated in-memory providers for
 deterministic protocol tests, as ADR 0012 specifies. It does not establish
@@ -89,7 +111,9 @@ Create a Rust workspace containing:
 - `session-admission`
 - `admission-capability`
 - `session-crypto`
+- `session-crypto-hpke`
 - `session-crypto-mls`
+- `session-inviter-transaction`
 - `session-transport`
 - Deterministic in-memory transport
 - `sessionctl` headless client

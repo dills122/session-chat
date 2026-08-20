@@ -7,15 +7,32 @@ Status: design baseline for the v2 architecture and protocol laboratory
 Session Chat is a privacy- and security-sensitive messaging project. The active
 repository contains a headless Rust protocol laboratory and design artifacts;
 it does not yet contain a deployable client or network service. The laboratory
-currently has a bounded opaque envelope, a canonical domain-separated Ed25519
-secret-capability invitation, exhaustive fixed-field rejection fixtures, and a
-bounded inviter-owned invitation reservation/consumption state machine. It
-does not yet encrypt join requests, prove capability possession, approve a
-member, or persist rollback-resistant state. A separate isolated crate now
-operates an in-memory two-party MLS 1.0 lifecycle behind the reduced-feature
-`mls-rs`/AWS-LC boundary selected by ADR 0012. It is not connected to admission,
-transport, or durable state, and upstream's missing full independent `mls-rs`
-audit remains a release risk rather than inherited assurance. The retired v1
+currently has a bounded opaque envelope, canonical domain-separated Ed25519
+secret-capability invitation v1/v2 layouts, bounded protected outer/inner join
+request and local deposit-endpoint value types, a provider-neutral one-shot HPKE
+PSK adapter with RFC/cross-provider evidence, exhaustive hostile fixtures, and
+a bounded inviter-owned invitation v1/v2 reservation/consumption state machine.
+Local v2 state can be created only from the provider-generated invitation
+wrapper; validating a remotely supplied descriptor remains read-only. The
+capability-admission adapter accepts only proven HPKE opens, owns the exact
+provider-validated KeyPackage, and performs bounded in-memory request-ID/nonce
+replay reservation for one invitation generation. It retains the exact opened
+invitation signature, binds the admission to local v2 state, and consumes an
+explicit simulated approval decision before MLS preparation. Rejection and
+pre-commit failure release invitation and replay state; successful in-memory
+Add consumes the invitation. It does not perform human UI approval or
+rollback-resistant persistence. A local transport adapter implements
+bounded one-Welcome deposit, receive, and acknowledgement with independent
+provider-generated authorities. The approved in-memory join result carries only
+the authenticated deposit endpoint beside its MLS outputs, and a retained test
+delivers the encrypted Welcome through that mailbox. This provides no durable
+outbox or network behavior. A separate bounded, fault-injectable model exercises
+all-or-nothing inviter state, ambiguous-result recovery, and Welcome-outbox
+leasing semantics without providing storage or connecting to that sequential
+join path. The MLS crate operates an in-memory two-party MLS 1.0 lifecycle
+behind the reduced-feature `mls-rs`/AWS-LC boundary selected by ADR 0012. It has
+no durable state, and upstream's missing full independent `mls-rs` audit remains
+a release risk rather than inherited assurance. The retired v1
 Angular/NestJS application used a server-readable, server-authoritative model.
 The proposed v2 product replaces it with client-owned MLS sessions, encrypted
 pre-membership rendezvous, optional external admission evidence, and pluggable
@@ -305,19 +322,91 @@ Current evidence covers the canonical fixed-field encoding, exact size bounds,
 explicit version/suite/mode/use-policy allowlists, application-domain-separated
 strict Ed25519 verification, structural nonzero identifiers/challenges/
 capabilities, configurable time policy, exhaustive per-field malformed fixtures,
-and the inviter-owned `Available -> Reserved -> Consumed` lifecycle, with a
+and the inviter-owned v1/v2 `Available -> Reserved -> Consumed` lifecycle, with a
 release edge from `Reserved` back to `Available` rather than a stored
 `Released` state.
 Descriptor validation is read-only and remote self-signed objects cannot create
-registry state. Reservation authority is bound to the exact signed local record,
+registry state. V2 issuance accepts only the provider-generated complete
+invitation wrapper. Reservation authority is bound to the schema and exact
+signed local record,
 so it cannot cross an expiry/reissue boundary even if invitation and request IDs
-recur. Random generation quality, durable atomic consumption with MLS,
-rollback protection, deep-link leakage, fuzzing, HPKE, and admission proof
-implementation remain open.
+recur. Random generation quality, durable atomic consumption with MLS, rollback
+protection, deep-link leakage, fuzzing, and ADR 0014's cross-state admission
+integration remain open. Invitation v2 itself now has an independent
+signature domain, exact fixture, closed suite/profile code points, and the same
+pre-parse size and canonical-decoding controls as v1.
 
 Attacker story: an attacker copies a public targeted invitation and submits a
 validly encoded join request for their own key. Correct behavior is a policy
 mismatch or explicit rejection, not membership.
+
+### Protected capability join and local Welcome response
+
+Relevant attacks include weak or leaked invitation capabilities, HPKE mode or
+suite downgrade, cross-protocol key reuse, wrong recipient keys, context/AAD
+substitution, replay across invitation generations, KeyPackage substitution,
+verifier confusion, parser amplification, capability logging, cross-right
+mailbox authorization, competing deposits, Welcome replacement, and retry
+amplification.
+
+ADR 0014 requires one exact RFC 9180 PSK suite, independent invitation-scoped
+HPKE/signature keys, typed and domain-separated contexts, fixed canonical
+schemas, complete cross-context equality before mutation, the exact ADR 0009
+KeyPackage tuple, coarse provider errors, high-entropy creation, and a closed
+local deposit endpoint. Deposit, receive, and acknowledgement authority remain
+separate. The mailbox admits one logical bounded envelope and treats only the
+same envelope ID and exact bytes as an idempotent retry.
+
+The canonical invitation-v2, protected outer/inner, exact outer AAD, local
+deposit-endpoint values, and one-shot HPKE operation are implemented and
+tested. Evidence includes exact fixtures, the official RFC PSK vector,
+independent-provider opening of AWS-LC output, wrong-key/context and tampering
+rejection, closed code points, strict bounds, structural time/lifetime checks,
+and coarse secret-free public failures. The capability-admission adapter accepts
+only HPKE-opened provenance, retains the exact invitation signature, enforces
+current time and request lifetime, independently validates and owns the exact
+provider KeyPackage, compares the reference/credential/leaf tuple before
+mutation, and reserves both request ID and nonce in bounded in-memory state. It
+binds that value to exact local v2 state and requires an explicit simulated
+approval token before MLS preparation. Rejected, expired, failed, or dropped
+preparation releases invitation and replay reservations while leaving
+membership unchanged. Apply rechecks request and invitation expiry using a
+fresh caller-supplied time before MLS mutation, and independently rechecks the
+shorter-lived response endpoint. Tests cover substitution,
+same-generation replay, expiry/reissue with reused request values, stale-release
+ABA, foreign-verifier reservation rejection, capacity preservation, delayed
+expiry, and unchanged state after rejection or abandonment.
+
+The separate local transport adapter generates independent deposit, receive,
+and acknowledgement authorities, stores only their domain-separated
+commitments, bounds mailbox count, lifetime, and envelope size, and accepts one
+logical envelope. Tests reject foreign or expired authority, changed competing
+deposits, and capacity violations without replacement or mutation; exact
+deposit and acknowledgement retries are idempotent. The committed approved-join
+result carries only the authenticated deposit endpoint alongside its MLS
+outputs; a retained integration test deposits the exact encrypted Welcome and
+proves later delivery failure does not roll back membership. Expired endpoints
+fail before replay reservation or MLS mutation. This evidence does not establish
+durability, outbox atomicity, rotation, networking, anonymity, or production
+transport behavior.
+
+The provider owns one complete invitation-v2 creation API covering every secret
+and random field; callers supply only issue and expiration times. The in-memory
+approval path applies MLS and then consumes invitation state before returning
+the committed outputs, but that sequencing is not crash-atomic. A separate
+conformance model tests the accepted inviter transaction's all-or-nothing
+components, exact retries, stale-generation rejection, ambiguous commit
+recovery, and bounded outbox leases over in-memory records. It is not durable
+and is not wired to MLS, admission, or transport. Remaining requirements include
+human approval UX, a real shared MLS/Session Chat storage transaction, durable
+replay and rollback protection, vault-backed confidentiality, and crash-safe
+mutation ordering.
+
+Attacker story: Mallory captures a protected request and resubmits it after the
+invitation expires and is reissued with the same invitation and request IDs.
+The fresh challenge, signing key, HPKE key/key ID, exact local record, and replay
+state must reject it before reservation. A stale request cannot use or replace
+the new Welcome mailbox.
 
 ### First-contact directory and sealed invitation mailboxes
 
@@ -376,10 +465,12 @@ parsing, retained KeyPackage ownership through Add and Welcome targeting,
 two-member roster enforcement, explicit prepare/apply and abandoned-pending
 handling, replay, reordering, temporarily lost epoch commits, path updates,
 removal, explicit-only group-state writes, and the provider-neutral established-
-session message interface from ADR 0013. It does not cover durable
-recovery, cross-implementation fixtures, inviter-local join/outbox atomicity,
-joiner-local joined-state and KeyPackage-deletion atomicity, cross-device
-acknowledgement semantics, old-secret deletion, or fuzzing.
+session message interface from ADR 0013. The separate inviter-transaction model
+covers only the application-level all-or-nothing and recovery semantics over
+bounded memory records. Current evidence does not cover durable recovery,
+cross-implementation fixtures, a real inviter-local MLS/join/outbox storage
+transaction, joiner-local joined-state and KeyPackage-deletion atomicity,
+cross-device acknowledgement semantics, old-secret deletion, or fuzzing.
 
 Attacker story: a malicious delivery service withholds one Commit and later
 replays it after a subsequent epoch. The client must reject it without rolling
@@ -397,6 +488,11 @@ rights plus distinct acknowledgement and rotation authority, object and queue
 bounds, TTLs, quotas, idempotency, constant-shape errors where practical,
 capability rotation, no plaintext indexing, and logs that omit full identifiers
 and capabilities. Delivery identifiers never authorize acknowledgement.
+
+The implemented local one-use Welcome profile deliberately has no rotation
+operation. Its tested deposit, receive, and acknowledgement separation is local
+state-machine evidence only; reusable and network mailboxes still require
+explicit rotation, revocation, abuse controls, and metadata analysis.
 
 Attacker story: an unauthenticated sender floods a public request mailbox with
 maximum-sized objects. The service must bound per-invitation and global storage,

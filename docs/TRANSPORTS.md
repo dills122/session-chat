@@ -162,6 +162,29 @@ The service enforces:
 Mailbox identifiers should rotate between invitation, admission response, and
 ongoing delivery contexts to reduce correlation.
 
+### Local Phase 1 Welcome mailbox
+
+ADR 0014 accepts a narrower local-only response profile for deterministic
+laboratory work. The joiner creates separate deposit, receive, and
+acknowledgement capabilities, sends only the deposit endpoint inside the
+HPKE-protected join request, and retains the other rights locally. The endpoint
+is a closed fixed-array object containing only a local transport instance,
+mailbox, high-entropy deposit capability, profile, and expiration. It has no
+network route or rotation operation.
+
+The endpoint's canonical value type and hostile parser fixtures exist in
+`session-protocol`. `session-transport` now implements the separate local
+deposit, receive, and acknowledgement operations in bounded in-memory state.
+The mailbox stores at most one bounded `OpaqueEnvelope`. An exact retry with the
+same envelope ID and bytes is idempotent; a different second envelope is
+rejected without replacement. Acknowledgement deletes retained ciphertext while
+keeping one bounded commitment for exact-retry recognition. Delivery identifiers
+remain untrusted and remote acknowledgement never gates or rolls back inviter
+membership. The committed in-memory approved-join result carries the exact
+authenticated deposit endpoint beside its MLS outputs, and retained integration
+evidence deposits that encrypted Welcome. This is local protocol evidence, not
+durability, outbox atomicity, networking, anonymity, or a production profile.
+
 ## Transport acceptance tests
 
 All production transports:

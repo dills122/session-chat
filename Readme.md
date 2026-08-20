@@ -12,21 +12,54 @@ The design principle is: **publish the door, not the key**.
 
 The Rust workspace currently contains:
 
-- `session-protocol`, with a bounded opaque envelope and a canonical,
-  domain-separated Ed25519 signed capability invitation
+- `session-protocol`, with a bounded opaque envelope, canonical v1/v2
+  domain-separated Ed25519 capability invitations, and bounded canonical
+  protected-join outer, inner, AAD, and local deposit-endpoint value types
 - `session-core`, with configurable expiration checks and a bounded inviter-owned
-  availability, reservation, release, and post-membership consumption lifecycle
+  v1/v2 availability, reservation, release, and post-membership consumption lifecycle
+- `session-crypto-hpke`, with provider-neutral one-shot RFC 9180 PSK join
+  protection, an AWS-LC implementation, an RFC known-answer vector, and an
+  independent-provider interoperability test, plus provider-owned creation of
+  every random invitation-v2 field
+- `admission-capability`, with HPKE-proof provenance, exact provider-validated
+  KeyPackage ownership, bounded in-memory request-ID/nonce replay reservation,
+  exact v2 invitation binding, explicit simulated approval, and
+  ownership-preserving invitation/MLS prepare/apply coordination
 - `session-crypto-mls`, with an isolated in-memory two-party MLS 1.0 adapter for
   bounded KeyPackage validation, Add/Welcome, messages, path updates, and removal
+- `session-transport`, with provider-generated, right-specific local Welcome
+  mailboxes, one-envelope idempotency, expiry, and bounded in-memory state
+- `session-inviter-transaction`, with a bounded fault-injectable conformance
+  model for atomic invitation/replay/approval/MLS-snapshot/Welcome-outbox state
 
 The signing key authenticates the invitation bytes, not a GitHub identity or
 person. The capability invitation is a secret bearer object and must not be
-posted publicly or placed in a transport envelope. The MLS adapter is not wired
-to invitations or admission and has no durable storage or network path.
-Encrypted joins, capability proofs, admission approval, cross-layer atomic
-persistence, networking, and a user interface remain unimplemented. The core
-transition names encode caller preconditions; they do not prove admission or
-MLS membership has occurred.
+posted publicly or placed in a transport envelope. The MLS adapter has no
+durable storage or network path; the capability adapter coordinates it only
+through the in-memory approval-gated path described below.
+The protected-join and capability-admission adapters prove possession for one
+exact typed HPKE context, preserve the exact signed-invitation instance,
+independently validate and own the exact KeyPackage, and reserve replay values
+within bounded in-memory state. The approval-gated path binds that value to the
+local v2 invitation reservation before MLS preparation. Explicit rejection,
+expiry, pre-commit failure, or abandonment releases both reservations; a
+successful in-memory Add consumes invitation state. This sequencing is not a
+durable transaction. A separate conformance model now proves the required
+atomic visibility, ambiguous-commit recovery, and resumable Welcome-outbox
+semantics over bounded memory records. A durable adapter, real cross-layer
+persistence, durable or network mailbox behavior, human UI approval, and a user
+interface remain unimplemented. The in-memory approved-join result now carries
+only the exact authenticated deposit endpoint beside its MLS outputs, and a
+retained test delivers the encrypted Welcome through the local adapter. This
+sequential path is not evidence for a durable outbox or network profile.
+
+ADR 0014 defines the exact local-only invitation-v2, HPKE capability-join, and
+one-Welcome response contract. Its canonical protocol value types are now
+implemented and tested, its one-shot HPKE operation has RFC and cross-provider
+evidence, and its capability-admission boundary now retains explicit simulated
+approval plus in-memory invitation/MLS/Welcome-delivery coordination. Human
+approval UX, durable atomic replay/membership/outbox state, and network behavior
+remain accepted design boundaries rather than runtime or production claims.
 
 ```sh
 cargo fetch --locked

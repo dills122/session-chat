@@ -1,0 +1,20 @@
+[package]
+name = "admission-capability"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+session-core = { version = "=0.1.0", path = "../session-core" }
+session-crypto-hpke = { version = "=0.1.0", path = "../session-crypto-hpke" }
+session-crypto-mls = { version = "=0.1.0", path = "../session-crypto-mls" }
+session-protocol = { version = "=0.1.0", path = "../session-protocol" }
+thiserror.workspace = true
+
+[dev-dependencies]
+ed25519-dalek.workspace = true
+session-transport = { version = "=0.1.0", path = "../session-transport" }
+
+[lints]
+workspace = true

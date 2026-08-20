@@ -99,3 +99,19 @@ external identity, capability, realm-policy, or human-approval rules.
   linear value through the Add operation.
 - Session-scoped MLS identity remains independent from external identity evidence.
 - Join-request schemas and fixtures must carry this complete binding explicitly.
+
+## Implemented evidence
+
+The in-memory `admission-capability` adapter accepts only a request with private
+HPKE-open provenance, independently validates its exact KeyPackage through the
+pinned MLS provider, compares the canonical reference, `BasicCredential`
+identity, and leaf signature key, and returns a private, non-`Clone`, non-`Debug`
+one-shot value owning that parsed provider object. Substitution and rejection
+tests retain unchanged replay state. The verifier retains the exact HPKE-opened
+invitation signature, reserves matching local v2 state, and permits only an
+explicitly approved one-shot value to enter MLS preparation. Rejected, expired,
+failed, or abandoned work releases invitation and replay state without changing
+membership; successful in-memory Add consumes the invitation. The approval is a
+simulated API input, not human UI evidence, and atomic invitation/replay/MLS/
+Welcome-outbox persistence remains unimplemented, so the complete durable
+product transaction is not yet satisfied.

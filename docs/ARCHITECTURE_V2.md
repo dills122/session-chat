@@ -150,27 +150,58 @@ the chosen transport, but should not possess message keys or plaintext.
 
 ### Current Phase 1 evidence
 
-The active Rust laboratory now contains four narrow pieces of this architecture:
+The active Rust laboratory now contains eight narrow pieces of this architecture:
 
-- `session-protocol` encodes and strictly verifies the deterministic signed
-  secret-capability invitation defined in ADR 0007, in addition to the opaque
-  envelope from ADR 0005.
-- `session-core` creates bounded inviter-owned invitation state, validates
-  attacker-controlled descriptors without mutation, and models explicit
-  reservation, release, and post-membership consumption in memory.
+- `session-protocol` encodes and strictly verifies deterministic signed
+  secret-capability invitation v1/v2 layouts and owns ADR 0014's bounded
+  canonical protected outer/inner, exact AAD, and local deposit-endpoint value
+  types, in addition to the opaque envelope from ADR 0005.
+- `session-core` creates bounded inviter-owned invitation-v1/v2 state, accepts
+  v2 local issuance only from the provider-generated wrapper, validates remote
+  descriptors without mutation, and models explicit reservation, release, and
+  post-membership consumption in memory.
 - `session-crypto` defines the provider-neutral, object-safe message-session
   contract for bounded protected bytes, redacted events, and coarse errors.
+- `session-crypto-hpke` defines the separate provider-neutral one-shot join
+  protection boundary. Its AWS-LC implementation owns fresh invitation X25519
+  key generation and exact typed PSK-mode seal/open contexts.
+- `admission-capability` accepts only HPKE-opened requests, independently
+  validates and owns the exact provider KeyPackage, compares the ADR 0009 tuple,
+  retains bounded in-memory request-ID/nonce replay reservations, binds the
+  exact HPKE-opened invitation signature to local v2 state, consumes an explicit
+  simulated approval decision, and permits only that approved one-shot value to
+  enter MLS prepare/apply.
 - `session-crypto-mls` isolates the pinned `mls-rs`/AWS-LC provider behind
   bounded KeyPackage, Welcome, and message inputs and models an in-memory
   two-member Add, path-update, message, and removal lifecycle. It is the only
   current implementation of the provider-neutral message contract.
+- `session-transport` creates bounded local one-Welcome mailboxes with distinct
+  deposit, receive, and acknowledgement authorities, exact-retry idempotency,
+  expiry, and no ambient credentials.
+- `session-inviter-transaction` is a bounded, fault-injectable conformance model
+  for all-or-nothing invitation/replay/approval/MLS-snapshot/Welcome-outbox
+  visibility, exact retry recovery, and delivery leasing. It is not storage.
 
-The invitation registry and MLS adapter remain separate in-process state
-machines. Registry method names encode caller preconditions; they do not
-implement admission or prove that the separate MLS transition happened.
-Neither state machine is persistent, cross-process, or rollback-resistant. No
-join request, capability proof, approval, HPKE, durable orchestration, or
-transport operation exists yet.
+The invitation registry, replay verifier, and MLS adapter remain separate
+in-process state machines. The capability adapter now coordinates them through
+an approval-gated one-shot API: rejection and pre-commit failure release both
+reservations, abandonment also clears the MLS pending Commit, and successful
+in-memory Add consumes the invitation before returning its outputs. This is
+sequential in-memory coordination, not one persistent, cross-process,
+crash-atomic, or rollback-resistant transaction. Human approval UX, durable
+membership/replay state and durable Welcome outbox processing do not exist. The
+separate conformance model exercises the required atomic visibility and
+ambiguous-result recovery semantics over memory records without connecting to
+the sequential join path. The in-memory committed join result now carries the
+exact authenticated deposit-only endpoint beside its MLS Welcome, and retained
+integration evidence delivers that Welcome through the local mailbox. No
+network transport exists.
+
+ADR 0014 accepts the local-only contract: a signed capability invitation v2,
+RFC 9180 PSK-protected join request, the invitation-scoped Ed25519 key as
+intended verifier, and a closed local one-Welcome deposit endpoint. The
+canonical value types, AAD derivation, and one-shot HPKE operation exist in
+code. Hosted verifier and network route meaning remain outside that schema.
 
 Every persisted or transmitted object should declare enough version and suite
 information to reject ambiguity:
@@ -208,7 +239,9 @@ requires the link itself to remain secret.
 
 ### Encrypted join request
 
-The join request contains:
+For the local capability profile, ADR 0014 and the
+[protected capability join specification](specs/PROTECTED_CAPABILITY_JOIN_V1.md)
+define a closed encrypted request containing:
 
 - Admission proof or capability proof
 - Join-request replay identifier
@@ -219,8 +252,17 @@ The join request contains:
   receive, acknowledgement, or rotation authority
 - Fresh nonce and expiration
 
-The entire request is encrypted to the invitation key before entering a
-rendezvous service or transport.
+The request uses RFC 9180 PSK mode with the secret invitation capability and an
+invitation-scoped X25519 recipient key. The exact signed invitation, visible
+outer header, HPKE contexts, inner request, KeyPackage tuple, verifier, protocol
+selection, and local response descriptor are cross-checked before mutation.
+The current adapter can encrypt the complete request. No rendezvous service or
+transport is connected, so repository evidence does not yet establish that all
+future transmitted requests pass through this boundary.
+
+The accepted Phase 1 response endpoint has no URL, hostname, generic route,
+realm, receive, acknowledgement, or rotation field. Those require later
+transport-specific schemas rather than an extension to the local profile.
 
 ### Admission and MLS join
 
