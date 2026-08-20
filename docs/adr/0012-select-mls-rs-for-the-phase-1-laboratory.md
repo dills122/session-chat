@@ -1,6 +1,6 @@
 # ADR 0012: Select mls-rs for the Phase 1 laboratory
 
-Status: accepted for isolated evaluation; implementation unstarted
+Status: accepted; isolated in-memory lifecycle implemented
 
 Date: 2026-08-19
 
@@ -80,6 +80,11 @@ resistance, forward-secret deletion, or atomic delivery.
 
 ## Consequences and limits
 
+- `session-crypto-mls` now retains the selected exact graph behind a Session
+  Chat adapter. Its in-memory tests cover exact KeyPackage ownership,
+  Add/Welcome targeting, application messages, path updates, removal,
+  replay/reordering/delayed-Commit cases, hostile third-member rejection, and
+  explicit provider storage timing.
 - The isolated MLS lifecycle is unblocked from the known OpenMLS dependency issue.
 - AWS-LC introduces native C and assembly build inputs. CI must build the exact
   graph on each supported native target before a client-platform claim.
@@ -91,7 +96,11 @@ resistance, forward-secret deletion, or atomic delivery.
 - AWS-LC's broader testing and partial formal-verification evidence does not
   transfer into a claim that the `mls-rs` protocol or provider adapter is audited.
 - No networked, durable, user-facing, production-security, or interoperability
-  claim follows from this decision or the disposable experiment.
+  claim follows from this decision or the retained laboratory.
+- The adapter mirrors the pinned 0.56.0 KeyPackage TLS layout after provider
+  validation solely to enforce a closed leaf extension/capability policy,
+  because that release exposes no public leaf accessor. A dependency update
+  must re-review this compatibility seam before it can pass.
 - A full independent review of the exact protocol/provider boundary remains a
   release gate. The missing third-party `mls-rs` audit must be stated to external reviewers.
 
@@ -135,6 +144,7 @@ required by the threat model.
 ## Primary sources and retained evidence
 
 - [`mls-rs` 0.56.0 tagged source](https://github.com/awslabs/mls-rs/tree/0.56.0)
+- [`session-crypto-mls` retained boundary](../../crates/session-crypto-mls/README.md)
 - [`mls-rs` security notice and provider status](https://github.com/awslabs/mls-rs/tree/0.56.0#security-notice)
 - [`mls-rs` 0.56.0 manifest](https://github.com/awslabs/mls-rs/blob/0.56.0/mls-rs/Cargo.toml)
 - [`mls-rs` KeyPackage and reference implementation](https://github.com/awslabs/mls-rs/blob/0.56.0/mls-rs/src/key_package/mod.rs)

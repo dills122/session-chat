@@ -3,7 +3,8 @@
 `session-core` owns invitation, join, approval, membership, and session state
 machines for the Session Chat 2.0 protocol laboratory. Only the first
 inviter-owned invitation-lifecycle increment exists today; admission proof,
-MLS, persistence, and transport state remain unimplemented.
+MLS orchestration, persistence, and transport state remain unimplemented in
+this crate.
 
 ## Capability invitation lifecycle
 

@@ -16,13 +16,17 @@ The Rust workspace currently contains:
   domain-separated Ed25519 signed capability invitation
 - `session-core`, with configurable expiration checks and a bounded inviter-owned
   availability, reservation, release, and post-membership consumption lifecycle
+- `session-crypto-mls`, with an isolated in-memory two-party MLS 1.0 adapter for
+  bounded KeyPackage validation, Add/Welcome, messages, path updates, and removal
 
 The signing key authenticates the invitation bytes, not a GitHub identity or
 person. The capability invitation is a secret bearer object and must not be
-posted publicly or placed in a transport envelope. Encrypted joins, capability
-proofs, admission approval, MLS, durable persistence, networking, and a user
-interface remain unimplemented. The current transition names encode caller
-preconditions; they do not prove admission or MLS has occurred.
+posted publicly or placed in a transport envelope. The MLS adapter is not wired
+to invitations or admission and has no durable storage or network path.
+Encrypted joins, capability proofs, admission approval, cross-layer atomic
+persistence, networking, and a user interface remain unimplemented. The core
+transition names encode caller preconditions; they do not prove admission or
+MLS membership has occurred.
 
 ```sh
 cargo fetch --locked

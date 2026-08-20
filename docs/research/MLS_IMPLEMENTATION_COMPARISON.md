@@ -1,6 +1,6 @@
 # MLS implementation and provider comparison
 
-Status: decision complete; isolated implementation not yet started
+Status: decision complete; isolated implementation retained
 
 Reviewed: 2026-08-19
 
@@ -125,8 +125,11 @@ cargo-deny --manifest-path <temporary>/Cargo.toml \
 The disposable experiment covered exact validated-message equality, canonical
 reference matching, Add, Welcome targeting, application encryption/decryption,
 and explicit storage timing. Its temporary source and lock are intentionally
-not repository artifacts. The first laboratory must retain equivalent code and
-tests; these observations do not support an implemented-feature claim.
+not repository artifacts. The retained `session-crypto-mls` crate and tests now
+reproduce and extend that evidence with bounded parsing, path update, removal,
+replay, reordering, delayed Commit, abandoned pending Commit, and hostile
+third-member cases. These observations support only the isolated in-memory
+laboratory claim.
 
 The selected graph still contains `mls-rs-identity-x509` because the AWS-LC
 provider depends on it unconditionally, even though the `mls-rs` X.509 feature
@@ -162,20 +165,21 @@ dependency review would see when added.
 
 - No independent audit currently establishes the security of the exact
   `mls-rs` protocol/provider composition.
-- The API experiment source was disposable; equivalent ownership and storage
-  tests must be retained in the first implementation slice.
 - The experiment did not run cross-implementation MLS interoperability vectors.
 - A durable adapter has not proved atomic group state, KeyPackage deletion,
   invitation consumption, replay state, approval result, and Welcome outbox.
 - Crash recovery, stale snapshot rejection, old-secret deletion, schema
   migration, and backup semantics remain untested.
 - Linux, Windows, iOS, and Android builds were not reproduced by Session Chat.
-- Parser bounds and hostile MLS object tests have not been implemented.
-- The exact RNG failure and clock injection contract remains open.
+- Parser bounds and hostile MLS object tests are retained for the adapter's
+  KeyPackage, Welcome, Commit/application wire, and application plaintext
+  boundaries; fuzzing and cross-implementation parser evidence remain open.
+- The laboratory accepts explicit clock values for KeyPackage and Commit tests;
+  production clock sourcing and exact RNG failure handling remain open.
 
-The next implementation gate is the isolated `session-crypto-mls` lifecycle
-with no durability or product claim. Before any networked or durable join path,
-the transaction/storage call trace and cross-implementation fixtures must pass.
+The next implementation gate is admission-to-MLS orchestration plus the durable
+transaction/storage call trace and cross-implementation fixtures. No networked
+or durable join path may precede that evidence.
 
 ## Primary source index
 

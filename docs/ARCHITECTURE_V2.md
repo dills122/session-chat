@@ -150,7 +150,7 @@ the chosen transport, but should not possess message keys or plaintext.
 
 ### Current Phase 1 evidence
 
-The active Rust laboratory now contains two narrow pieces of this architecture:
+The active Rust laboratory now contains three narrow pieces of this architecture:
 
 - `session-protocol` encodes and strictly verifies the deterministic signed
   secret-capability invitation defined in ADR 0007, in addition to the opaque
@@ -158,11 +158,16 @@ The active Rust laboratory now contains two narrow pieces of this architecture:
 - `session-core` creates bounded inviter-owned invitation state, validates
   attacker-controlled descriptors without mutation, and models explicit
   reservation, release, and post-membership consumption in memory.
+- `session-crypto-mls` isolates the pinned `mls-rs`/AWS-LC provider behind
+  bounded KeyPackage, Welcome, and message inputs and models an in-memory
+  two-member Add, path-update, message, and removal lifecycle.
 
-The registry is atomic only within one mutable in-process state machine. Its
-method names encode caller preconditions but do not implement admission or MLS.
-It is not persistent, cross-process, or rollback-resistant. No join request,
-capability proof, approval, HPKE, MLS, or transport operation exists yet.
+The invitation registry and MLS adapter remain separate in-process state
+machines. Registry method names encode caller preconditions; they do not
+implement admission or prove that the separate MLS transition happened.
+Neither state machine is persistent, cross-process, or rollback-resistant. No
+join request, capability proof, approval, HPKE, durable orchestration, or
+transport operation exists yet.
 
 Every persisted or transmitted object should declare enough version and suite
 information to reject ambiguity:

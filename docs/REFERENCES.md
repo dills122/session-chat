@@ -40,7 +40,8 @@ separates the Authentication Service from the Delivery Service, matching the
 proposed identity/admission and transport split.
 
 Decision: ADR 0012 selects exact `mls-rs` 0.56.0 and its AWS-LC 0.25.0 provider
-for a bounded Phase 1 spike; ADR 0009 defines the initial
+for the bounded in-memory Phase 1 laboratory now retained under
+`session-crypto-mls`; ADR 0009 defines the still-unimplemented initial
 credential/KeyPackage binding. The
 [comparison](research/MLS_IMPLEMENTATION_COMPARISON.md) records exact graph and
 API evidence. ADR 0011 and the

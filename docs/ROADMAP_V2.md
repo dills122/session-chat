@@ -50,13 +50,15 @@ Implementation status: in progress. Retained increments now establish the Rust
 workspace, bounded deterministic-CBOR opaque envelope, canonical
 domain-separated Ed25519 secret-capability invitation, exhaustive field-boundary
 fixtures, and a bounded inviter-owned invitation reservation/consumption state
-machine. Capability proof and approval, HPKE, MLS, durable state, the headless
-flow, and transport work listed below remain outstanding. ADR 0012 now selects
-a reduced-feature `mls-rs`/AWS-LC graph that had no matched RustSec advisory in
-the 2026-08-19 screening for the isolated MLS laboratory; no MLS dependency or
-behavior is implemented yet.
+machine. The isolated `session-crypto-mls` increment now retains bounded exact
+KeyPackage validation, a two-member Add/Welcome lifecycle, application
+messages, path updates, removal, adverse delivery cases, and explicit provider
+storage timing with the reduced-feature `mls-rs`/AWS-LC graph selected by ADR
+0012. Capability proof and approval, HPKE, durable cross-layer state, the
+headless flow, and transport work listed below remain outstanding.
 
-Contract hardening gate before HPKE or the isolated MLS laboratory:
+Contract hardening rules to preserve before HPKE or wiring the isolated MLS
+laboratory into a join flow:
 
 - Descriptor validation is read-only and only local issuance creates lifecycle state.
 - Invitation reservation and consumption follow ADR 0008.
@@ -64,9 +66,11 @@ Contract hardening gate before HPKE or the isolated MLS laboratory:
 - Transport interfaces use the distinct authorities from ADR 0010.
 - The MLS integration obeys the selection and stop conditions in ADR 0012.
 
-The first MLS increment may use only isolated in-memory providers for
-deterministic protocol tests, as ADR 0012 specifies. Before any networked or
-user-facing join path is enabled, one durable transaction must own reservation
+The current MLS increment uses only isolated in-memory providers for
+deterministic protocol tests, as ADR 0012 specifies. It does not establish
+cross-implementation interoperability, durable recovery, or a product security
+property. Before any networked or user-facing join path is enabled, one durable
+transaction must own reservation
 recovery, request replay state, the MLS membership transition, invitation
 consumption, approval/result state, and the encrypted Welcome outbox job with
 an idempotency key. Dropped or abandoned

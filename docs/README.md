@@ -110,10 +110,15 @@ tree. Phase 1 now implements the bounded opaque envelope, the canonical signed
 secret-capability invitation from ADR 0007, and the bounded inviter-owned
 `Available -> Reserved -> Consumed` lifecycle from ADR 0008. Releasing a
 reservation returns it from `Reserved` to `Available`; it is not a terminal
-stored state.
+stored state. The separate `session-crypto-mls` crate now retains an isolated,
+in-memory two-party MLS 1.0 lifecycle: bounded exact KeyPackage validation,
+Add/Welcome, encrypted application messages, path updates, removal, replay and
+reordering rejection/recovery evidence, and explicit-only provider storage
+writes.
 
-The invitation's self-contained key proves descriptor integrity only. HPKE,
-capability proof and approval, MLS, atomic durable state, rollback protection,
+The invitation's self-contained key proves descriptor integrity only. The MLS
+laboratory is not connected to the invitation lifecycle or an admission proof.
+HPKE, capability proof and approval, atomic durable state, rollback protection,
 and transport adapters remain unimplemented. Calling the explicit reservation
 or consumption methods is not proof that those caller preconditions exist yet.
 

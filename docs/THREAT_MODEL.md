@@ -11,11 +11,12 @@ currently has a bounded opaque envelope, a canonical domain-separated Ed25519
 secret-capability invitation, exhaustive fixed-field rejection fixtures, and a
 bounded inviter-owned invitation reservation/consumption state machine. It
 does not yet encrypt join requests, prove capability possession, approve a
-member, operate MLS, or persist rollback-resistant state. The retired v1
+member, or persist rollback-resistant state. A separate isolated crate now
+operates an in-memory two-party MLS 1.0 lifecycle behind the reduced-feature
+`mls-rs`/AWS-LC boundary selected by ADR 0012. It is not connected to admission,
+transport, or durable state, and upstream's missing full independent `mls-rs`
+audit remains a release risk rather than inherited assurance. The retired v1
 Angular/NestJS application used a server-readable, server-authoritative model.
-ADR 0012 selects a reduced-feature `mls-rs`/AWS-LC boundary for a future
-isolated laboratory; neither dependency is present, and upstream's missing full
-independent `mls-rs` audit remains a release risk rather than inherited assurance.
 The proposed v2 product replaces it with client-owned MLS sessions, encrypted
 pre-membership rendezvous, optional external admission evidence, and pluggable
 delivery transports.
@@ -367,6 +368,14 @@ encapsulation, persistent monotonic state, transactionally stored epoch changes,
 idempotent delivery processing, explicit pending-Commit handling, known-answer
 and interoperability tests, fuzzing, and safe failure on unrecoverable state.
 
+Current isolated evidence covers bounded exact KeyPackage/Welcome/message
+parsing, retained KeyPackage ownership through Add and Welcome targeting,
+two-member roster enforcement, explicit prepare/apply and abandoned-pending
+handling, replay, reordering, temporarily lost epoch commits, path updates,
+removal, and explicit-only group-state writes. It does not cover durable
+recovery, cross-implementation fixtures, joining-KeyPackage deletion atomicity,
+old-secret deletion, or fuzzing.
+
 Attacker story: a malicious delivery service withholds one Commit and later
 replays it after a subsequent epoch. The client must reject it without rolling
 back or corrupting group state.
@@ -558,7 +567,7 @@ necessary attacker control is absent from real deployments, only test tooling
 is affected, data is already public, or independent cryptographic verification
 prevents the claimed outcome.
 
-Provenance: living repository threat model updated with ADRs 0008-0011 and the
-inviter-owned invitation lifecycle. Git history is the authoritative reviewed
-version boundary; do not copy a commit hash forward without re-reviewing the
-document against that commit.
+Provenance: living repository threat model updated with ADRs 0008-0012, the
+inviter-owned invitation lifecycle, and the isolated MLS lifecycle. Git history
+is the authoritative reviewed version boundary; do not copy a commit hash
+forward without re-reviewing the document against that commit.

@@ -39,13 +39,18 @@ foundational changes, an ADR.
   the protocol adapter, and the Session Chat storage adapter as separate scopes.
 - Confirm how KeyPackages, Welcome messages, epoch state, and pending Commits
   are stored and recovered.
-- Prototype removal, key update, out-of-order delivery, and lost Commit cases.
+- **Isolated evidence retained:** `session-crypto-mls` now covers removal, a
+  path update, out-of-order application delivery, a temporarily lost epoch
+  Commit, abandoned pending Commits, and explicit-only group-state writes.
+  Durable recovery, joining-KeyPackage deletion, and cross-layer atomicity are
+  still open.
 
 Immediate gate: retain the isolated ADR 0012 laboratory with exact KeyPackage
 ownership, two-party lifecycle, removal, reordered/lost message, and
-interoperability fixtures. Before a durable or networked path, add the
-transactional storage, crash, rollback, deletion, and pending-Commit evidence
-required by ADR 0012.
+interoperability fixtures. The lifecycle portion is implemented; independent
+cross-implementation fixtures remain open. Before a durable or networked path,
+add the transactional storage, crash, rollback, deletion, and pending-Commit
+evidence required by ADR 0012.
 
 ### P0: invitation protocol
 
