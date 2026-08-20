@@ -57,13 +57,15 @@ storage timing with the reduced-feature `mls-rs`/AWS-LC graph selected by ADR
 0012. The `session-crypto` crate now supplies the provider-neutral established-
 session message seam from ADR 0013; backend negotiation and active-state
 migration do not exist. ADR 0014's bounded canonical invitation-v2, protected
-outer/inner, exact AAD, and local deposit-endpoint value types now exist with
-exact and hostile fixtures. HPKE operations, capability verification, approval,
-durable cross-layer state, mailbox behavior, the headless flow, and transport
-work listed below remain outstanding.
+outer/inner, exact AAD, and local deposit-endpoint value types now exist. The
+provider-neutral HPKE adapter adds fixed one-shot AWS-LC seal/open, RFC 9180
+known-answer evidence, independent-provider opening, and hostile context
+rejection. Replay-checked capability admission, approval, durable cross-layer
+state, mailbox behavior, the headless flow, and transport work listed below
+remain outstanding.
 
-Contract hardening rules to preserve before implementing HPKE or wiring the
-isolated MLS laboratory into a join flow:
+Contract hardening rules to preserve before wiring HPKE and the isolated MLS
+laboratory into a join flow:
 
 - Descriptor validation is read-only and only local issuance creates lifecycle state.
 - Invitation reservation and consumption follow ADR 0008.
@@ -95,6 +97,7 @@ Create a Rust workspace containing:
 - `session-admission`
 - `admission-capability`
 - `session-crypto`
+- `session-crypto-hpke`
 - `session-crypto-mls`
 - `session-transport`
 - Deterministic in-memory transport

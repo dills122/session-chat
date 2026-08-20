@@ -40,6 +40,8 @@ Current areas:
 - `crates/session-protocol`: versioned wire objects and canonical serialization
 - `crates/session-core`: bounded inviter-owned invitation lifecycle state; descriptor
   validation is read-only and consumption follows successful membership
+- `crates/session-crypto-hpke`: provider-neutral one-shot capability join
+  protection with a pinned AWS-LC implementation and fixed typed contexts
 - `crates/session-crypto-mls`: isolated in-memory two-party MLS adapter with
   bounded exact KeyPackage ownership and explicit prepare/apply transitions
 - `spikes/`: disposable feasibility code; production packages must not depend on it

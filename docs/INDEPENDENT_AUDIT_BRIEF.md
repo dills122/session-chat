@@ -41,6 +41,8 @@ The checked-in runtime consists of:
   request framing, exact outer AAD, and a deposit-only local endpoint value;
 - `session-core`: an inviter-owned, in-memory invitation registry with
   issue/expiry, reservation, release, and consumption transitions;
+- `session-crypto-hpke`: a provider-neutral one-shot RFC 9180 PSK join adapter
+  with a pinned AWS-LC implementation, typed contexts, and coarse errors;
 - `session-crypto-mls`: an isolated, in-memory two-party MLS 1.0 adapter with
   bounded KeyPackage/Welcome/message inputs, exact KeyPackage ownership,
   Add/Welcome, application messages, path updates, removal, and explicit
@@ -49,24 +51,26 @@ The checked-in runtime consists of:
   semantics such as schema rejection, right-specific authorization ordering,
   rotation, and capacity limits.
 
-There is no HPKE operation, capability-proof verifier, admission-to-MLS
+There is no replay-aware capability admission state machine, admission-to-MLS
 orchestration, mailbox runtime, durable transaction, production transport,
 client vault, desktop shell, hosted realm, or headless end-to-end client. The
-join-request types only parse and frame canonical bytes. The isolated MLS
-adapter uses exact `mls-rs` 0.56.0 and AWS-LC 0.25.0 dependencies, but exposes
-no durable or network path. The superseded OpenMLS selection remains blocked by
-repository dependency policy. The Node simulator's custom
+HPKE adapter proves PSK possession only for its exact typed context. The
+isolated MLS adapter uses exact `mls-rs` 0.56.0 and AWS-LC 0.25.0 dependencies,
+but exposes no durable or network path. The superseded OpenMLS selection remains
+blocked by repository dependency policy. The Node simulator's custom
 composition of platform crypto and placeholder address control is explicitly
 non-production.
 
 ADR 0014 and `docs/specs/PROTECTED_CAPABILITY_JOIN_V1.md` accept an exact local
-HPKE capability-join and one-Welcome response contract. The canonical value
-types are now runtime inventory; the HPKE, proof, mailbox, and state transitions
-remain accepted-but-unimplemented contracts.
+HPKE capability-join and one-Welcome response contract. The canonical values
+and isolated HPKE proof operation are runtime inventory; replay policy,
+admission, mailbox, and state transitions remain accepted-but-unimplemented
+contracts.
 
 ```mermaid
 flowchart LR
-  I["Implemented: canonical invitation v1/v2 and join framing"] --> R["Implemented: in-memory lifecycle"]
+  I["Implemented: canonical invitation v1/v2 and join framing"] --> P["Implemented: one-shot HPKE PSK operation"]
+  I --> R["Implemented: in-memory lifecycle"]
   E["Implemented: bounded opaque envelope"]
   M["Implemented: isolated in-memory MLS lifecycle"]
   N["Non-production Node boundary simulator"]
@@ -89,7 +93,7 @@ flowchart LR
 | Invitation state is durable or rollback resistant | Accepted contract, unimplemented | ADR 0008 and the roadmap require a later cross-layer transaction |
 | Isolated MLS validation owns the exact KeyPackage, credential identity, leaf key, and reference through Add/Welcome | Implemented and tested | Private non-`Clone` adapter value and retained lifecycle tests; this is not admission |
 | Admission owns that exact validated MLS value after proof and approval | Accepted contract, unimplemented | ADR 0009; no admission crate or proof verifier exists |
-| Capability possession is HPKE-protected and bound to the exact local join context | Accepted contract, unimplemented | ADR 0014 and the protected-capability-join specification; framing exists, but no HPKE runtime or proof verifier exists |
+| Capability possession is HPKE-protected and bound to the exact local join context | Implemented and tested | Typed one-shot AWS-LC adapter, official RFC PSK vector, independent-provider opening, wrong-key/context and tampering rejection; this is not replay-aware admission |
 | Two-party MLS Add/Welcome, application messages, path updates, removal, replay/reordering, and delayed-Commit handling work in memory | Implemented and tested | `session-crypto-mls` lifecycle and hostile-member tests with exact pinned provider graph |
 | Product-level forward secrecy, post-compromise security, durable removal isolation, and interoperability | Accepted contract, unimplemented | Requires cross-implementation fixtures, durable state, deletion/rollback evidence, and independent boundary review |
 | Welcome delivery is idempotent and atomic with MLS, replay, approval, and invitation state | Accepted contract, unimplemented | Architecture transaction invariant; no durable store exists |
@@ -260,8 +264,8 @@ High-value questions for the current review include:
 The canonical invitation-v2 and protected-request parser increment from ADR
 0014 now preserves invitation-v1 bytes, rejects malformed and unknown
 representations before provider or state work, and retains exact fixtures. The
-recommended next bounded feature is the provider-neutral HPKE operation with
-RFC 9180 and cross-provider evidence. The following admission increment must
+provider-neutral HPKE operation now has RFC 9180 and cross-provider evidence.
+The following admission increment must
 consume the exact validated KeyPackage value already proven by the isolated MLS
 adapter; it may not accept a replacement byte string or digest at the Add seam.
 Keep integration in memory until the cross-layer durable transaction and
@@ -269,14 +273,15 @@ Welcome outbox design has crash/rollback evidence.
 
 The next evidence-producing research or implementation tasks are:
 
-1. Retain RFC 9180 known-answer and cross-provider fixtures for ADR 0014.
+1. Design and retain the linear capability-admission ownership and
+   before-mutation rejection matrix.
 2. Complete the `mls-rs` group-state/KeyPackage repository call trace and cross-layer
    crash/rollback model.
 3. Parser fuzzing and invitation/admission state-machine property-test plan.
 4. RNG and clock-source contracts for expiry, replay, and deterministic tests.
 
-Then implement, in order: the provider-neutral HPKE operation; the canonical
-capability proof and linear admission contract; right-specific adverse
+Then implement, in order: the canonical capability proof and linear admission
+contract; right-specific adverse
 in-memory transport; the headless in-memory flow; and
 only then durable persistence and a networked/client vertical slice.
 

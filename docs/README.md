@@ -141,9 +141,10 @@ The invitation's self-contained key proves descriptor integrity only. The MLS
 laboratory is not connected to the invitation lifecycle or an admission proof.
 ADR 0014 now defines the HPKE capability-proof and local response contracts.
 Their bounded canonical invitation-v2, protected outer/inner, exact AAD, and
-deposit-endpoint value types are implemented with retained fixtures. HPKE
-operations, capability verification, approval, atomic durable state, rollback
-protection, mailbox behavior, and transport adapters remain unimplemented.
+deposit-endpoint value types are implemented with retained fixtures. The
+one-shot HPKE operation has RFC and independent-provider evidence. Replay-safe
+admission, approval, atomic durable state, rollback protection, mailbox
+behavior, and transport adapters remain unimplemented.
 Calling the explicit
 reservation or consumption methods is not proof that those caller
 preconditions exist yet.

@@ -150,7 +150,7 @@ the chosen transport, but should not possess message keys or plaintext.
 
 ### Current Phase 1 evidence
 
-The active Rust laboratory now contains four narrow pieces of this architecture:
+The active Rust laboratory now contains five narrow pieces of this architecture:
 
 - `session-protocol` encodes and strictly verifies deterministic signed
   secret-capability invitation v1/v2 layouts and owns ADR 0014's bounded
@@ -161,6 +161,9 @@ The active Rust laboratory now contains four narrow pieces of this architecture:
   reservation, release, and post-membership consumption in memory.
 - `session-crypto` defines the provider-neutral, object-safe message-session
   contract for bounded protected bytes, redacted events, and coarse errors.
+- `session-crypto-hpke` defines the separate provider-neutral one-shot join
+  protection boundary. Its AWS-LC implementation owns fresh invitation X25519
+  key generation and exact typed PSK-mode seal/open contexts.
 - `session-crypto-mls` isolates the pinned `mls-rs`/AWS-LC provider behind
   bounded KeyPackage, Welcome, and message inputs and models an in-memory
   two-member Add, path-update, message, and removal lifecycle. It is the only
@@ -170,15 +173,15 @@ The invitation registry and MLS adapter remain separate in-process state
 machines. Registry method names encode caller preconditions; they do not
 implement admission or prove that the separate MLS transition happened.
 Neither state machine is persistent, cross-process, or rollback-resistant. The
-join-request wire values exist, but no capability proof, approval, HPKE
-operation, durable orchestration, mailbox operation, or transport operation
-exists yet.
+join-request values and HPKE operation exist, but no replay-checked capability
+admission, approval, durable orchestration, mailbox operation, or transport
+operation exists yet.
 
 ADR 0014 accepts the local-only contract: a signed capability invitation v2,
 RFC 9180 PSK-protected join request, the invitation-scoped Ed25519 key as
-intended verifier, and a closed local one-Welcome deposit endpoint. Only the
-canonical value types and AAD derivation exist in code. Hosted verifier and
-network route meaning remain outside that schema.
+intended verifier, and a closed local one-Welcome deposit endpoint. The
+canonical value types, AAD derivation, and one-shot HPKE operation exist in
+code. Hosted verifier and network route meaning remain outside that schema.
 
 Every persisted or transmitted object should declare enough version and suite
 information to reject ambiguity:
@@ -233,8 +236,9 @@ The request uses RFC 9180 PSK mode with the secret invitation capability and an
 invitation-scoped X25519 recipient key. The exact signed invitation, visible
 outer header, HPKE contexts, inner request, KeyPackage tuple, verifier, protocol
 selection, and local response descriptor are cross-checked before mutation.
-The complete request is encrypted before entering a rendezvous service or
-transport.
+The current adapter can encrypt the complete request. No rendezvous service or
+transport is connected, so repository evidence does not yet establish that all
+future transmitted requests pass through this boundary.
 
 The accepted Phase 1 response endpoint has no URL, hostname, generic route,
 realm, receive, acknowledgement, or rotation field. Those require later

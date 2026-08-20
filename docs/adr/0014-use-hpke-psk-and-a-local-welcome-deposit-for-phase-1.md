@@ -1,17 +1,18 @@
 # ADR 0014: Use HPKE PSK and a local Welcome deposit for Phase 1
 
-Status: accepted; canonical protocol value types implemented, HPKE and stateful
-integration unimplemented
+Status: accepted; canonical protocol values and one-shot HPKE implemented,
+stateful integration unimplemented
 
 Date: 2026-08-20
 
 ## Context
 
 The Phase 1 laboratory has an authenticated secret-capability invitation, an
-inviter-owned reservation lifecycle, exact MLS KeyPackage validation, and an
-isolated two-party MLS lifecycle. It does not yet protect a join request before
-the joiner is an MLS member, prove capability possession over the ADR 0009
-binding, or return a Welcome through a right-specific transport.
+inviter-owned reservation lifecycle, exact MLS KeyPackage validation, an
+isolated two-party MLS lifecycle, and now the selected one-shot protected join
+operation. It does not yet turn that successful HPKE open into a replay-checked,
+approved admission owning the exact ADR 0009 value, or return a Welcome through
+a right-specific transport.
 
 ADR 0010 requires deposit, receive, acknowledgement, and rotation authority to
 remain separate. ADR 0008 requires the inviter's future durable membership
@@ -33,8 +34,10 @@ mailbox.
 Adopt the exact local-only contract in
 [`PROTECTED_CAPABILITY_JOIN_V1.md`](../specs/PROTECTED_CAPABILITY_JOIN_V1.md).
 This is a protocol decision. The fixed canonical value types and AAD derivation
-are now retained in `session-protocol`; that parser evidence is not an HPKE,
-admission, transport, or production-security claim.
+are retained in `session-protocol`. `session-crypto-hpke` now implements the
+provider-neutral one-shot operation with the pinned AWS-LC provider; that
+cryptographic evidence is not admission, replay, transport, or
+production-security evidence.
 
 ### Invitation and HPKE profile
 
@@ -52,7 +55,10 @@ admission, transport, or production-security claim.
   key pair, and signature key even if an invitation ID is deliberately reused.
 - The adapter constructs the exact `psk_id`, `info`, and AAD from typed values.
   Callers cannot supply arbitrary HPKE mode, suite, domain, `info`, or AAD.
-- The first implementation may reuse the already selected
+- The public operation is one-shot. Internally, sealing creates the reviewed
+  provider context first so the generated encapsulated key can be included in
+  the exact AAD, seals once, and drops the context. Opening mirrors that order.
+- The first implementation reuses the already selected
   `mls-rs-crypto-awslc` provider behind a private one-shot join-protection
   boundary. Provider types and cloneable provider secrets do not cross that
   boundary. No new cryptographic primitive is implemented locally.
@@ -110,11 +116,21 @@ The later MLS Add, inviter-local durable transaction, Welcome outbox, and
 joiner-local joined-state/KeyPackage-deletion transaction remain governed by
 ADRs 0008, 0009, and 0012. This ADR does not make those steps atomic.
 
+### Implemented evidence
+
+`session-crypto-hpke` retains the official RFC 9180 PSK known-answer vector,
+opens an AWS-LC-produced request with an independent dev-only HPKE
+implementation, and rejects wrong keys, changed signed context, mismatched
+inner bindings, and tampered encapsulation/ciphertext/AAD fields through one
+coarse public error. Its fresh invitation X25519 key generation is provider
+owned. Bearer-capability generation and the other random invitation fields are
+not yet owned by one production invitation-creation API.
+
 ## Consequences and limits
 
-- The next slice can implement exact protocol value types and a deterministic
-  in-memory transport without a network, GUI, persistence layer, approval
-  flow, or connected MLS membership transition.
+- The next slice can implement the one-shot capability admission boundary and
+  deterministic in-memory transport without a network, GUI, persistence layer,
+  approval flow, or connected MLS membership transition.
 - Hosted realm, public rendezvous, direct, relay, mixnet, and private-network
   endpoints require new transport-specific schemas. Version 1 has no generic
   route escape hatch.
@@ -126,7 +142,7 @@ ADRs 0008, 0009, and 0012. This ADR does not make those steps atomic.
   network authorization remains a future research question.
 - A committed membership transition is not rolled back because Welcome deposit,
   receipt, or acknowledgement fails. Exact outbox retry is the recovery path.
-- There is still no integrated join, durable replay protection, outbox,
+- There is still no integrated admission/join, durable replay protection, outbox,
   deployable client, network service, hosted trust, forward-secret deletion, or
   production-security claim.
 

@@ -62,8 +62,8 @@ evidence required by ADR 0012.
 - **Signature decision:** ADR 0007 selects `ed25519-dalek` 3.0.0 strict Ed25519
   verification and the `session-chat/signed-invitation/v1` application domain
   for the original descriptor. ADR 0014's separate v2 signature domain,
-  protected outer/inner layouts, and exact AAD are now implemented; the exact
-  HPKE `psk_id`, `info`, and operation remain unimplemented.
+  protected outer/inner layouts, exact AAD, typed `psk_id`/`info`, and one-shot
+  HPKE operation are now implemented.
 - **Implemented boundary:** versions 1 and 2 are single-use signed descriptors;
   v2 adds only the fixed protected-join context. Version 1 lifecycle state uses
   explicit issue and expiration times, accepts realm-configured maximum
@@ -76,9 +76,11 @@ evidence required by ADR 0012.
   [response-deposit and verifier-context packet](research/PHASE1_RESPONSE_DEPOSIT_AND_VERIFIER_CONTEXT.md)
   supplies the authority analysis. ADR 0014 and the
   [protected capability join specification](specs/PROTECTED_CAPABILITY_JOIN_V1.md)
-  accept the exact local contract. Canonical value types and parser fixtures are
-  retained. HPKE vectors and operation, right-specific memory transport,
-  admission integration, and CSPRNG-owned creation remain gates.
+  accept the exact local contract. Canonical value types, RFC/cross-provider
+  HPKE evidence, wrong-context rejection, and the one-shot operation are
+  retained. Right-specific memory transport, replay-checked admission
+  integration, and one CSPRNG-owned API for all invitation creation remain
+  gates.
 - Implement durable transactional replay state, rollback protection,
   revocation, reservation recovery, and bounded-multi-use state machines.
 - Finalize the capability admission schema over the exact ADR 0009 binding. The

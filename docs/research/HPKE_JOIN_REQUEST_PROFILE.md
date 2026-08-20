@@ -1,7 +1,6 @@
 # HPKE and capability join-request research packet
 
-Status: research complete; framing adopted and implemented under ADR 0014;
-HPKE operation unimplemented
+Status: research complete; framing and one-shot HPKE implemented under ADR 0014
 
 Reviewed: 2026-08-19
 
@@ -16,15 +15,15 @@ MLS member?
 This packet is deliberately narrower than a complete network join protocol. It
 compares released Rust implementations, reproduces a one-shot PSK flow, and
 drafts the cryptographic wrapper and admission binding. This packet itself is
-research; ADR 0014 later adopts the local contract. Neither document adds a
-dependency, implements admission, defines a production rendezvous descriptor,
-or claims that a networked join path exists.
+research; ADR 0014 later adopts the local contract. The retained implementation
+now adds the selected dependency boundary and isolated operation, but it does
+not implement admission, define a production rendezvous descriptor, or claim
+that a networked join path exists.
 
-The protocol crate now retains invitation v2 with an HPKE recipient public key,
-while preserving invitation-v1 bytes and signature domain unchanged. The core
-and MLS adapter remain separate in-memory state machines and expose no encrypted
-join-request operation. The provider-neutral HPKE operation remains the next
-implementation boundary.
+The protocol crate retains invitation v2 with an HPKE recipient public key
+while preserving invitation-v1 bytes and signature domain unchanged.
+`session-crypto-hpke` now provides the provider-neutral operation; core and MLS
+remain separate in-memory state machines with no admission orchestration.
 
 ## Executive conclusion
 
@@ -56,9 +55,10 @@ plus a custom HMAC. PSK mode already standardizes proof of high-entropy shared-
 secret possession in the HPKE key schedule.
 
 ADR 0014 accepts this recommendation for the local Phase 1 contract. The
-normative specification assigns the exact schemas and code points. Adoption is
-not implementation: retained fixtures, a CSPRNG-owned invitation-creation API,
-and the negative evidence listed below remain required.
+normative specification assigns the exact schemas and code points. The one-shot
+implementation retains RFC/cross-provider and negative-context evidence; a
+CSPRNG-owned invitation-creation API and stateful admission evidence remain
+required.
 
 ## Method and source index
 
@@ -411,9 +411,9 @@ AWS-LC provider can implement the proposed suite. The direct API, negative
 context checks, dated advisory scan, and two-provider interoperability exercise
 support that conclusion.
 
-Confidence is medium in the complete proposed wire profile. The companion
-packet now makes the Phase 1 local response descriptor and invitation-key
-verifier context exact, but neither schema is adopted or implemented. Hosted
+Confidence is medium in the complete integrated profile. The companion packet
+makes the Phase 1 local response descriptor and invitation-key verifier context
+exact, and the wire/HPKE portions are implemented. Hosted
 realm/verifier identity, durable key deletion, and the cross-layer transaction
 remain unspecified or unimplemented. Upstream `mls-rs` has not received a full
 independent third-party security audit, and this research did not audit AWS-LC
@@ -426,13 +426,14 @@ this packet.
 ## Adopted decision and next gate
 
 ADR 0014 accepts the mode, suite, provider seam, binding constructions, and
-local schemas. The next implementation slice remains local and bounded:
+local schemas. Steps 1 and 2 below are now retained; the next implementation
+slice remains local and bounded:
 
-1. implement the exact version 2 invitation, version 1 protected-request,
+1. retain the exact version 2 invitation, version 1 protected-request,
    21-item inner request, and typed local response-descriptor schemas;
-2. add provider-neutral join-protection types with an AWS-LC implementation;
-3. add CSPRNG-owned invitation creation and retained RFC/cross-provider
-   fixtures; and
+2. retain provider-neutral join-protection types with an AWS-LC implementation;
+3. add CSPRNG-owned invitation creation; RFC/cross-provider fixtures are now
+   retained; and
 4. connect decryption to read-only validation only, leaving durable admission,
    reservation, MLS membership, Welcome outbox publication, and network
    transport for subsequent explicit slices.
