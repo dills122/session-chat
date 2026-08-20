@@ -1,0 +1,18 @@
+[package]
+name = "storage-sqlcipher"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+mls-rs-core.workspace = true
+rusqlite.workspace = true
+thiserror.workspace = true
+zeroize.workspace = true
+
+[dev-dependencies]
+session-crypto-mls = { version = "=0.1.0", path = "../session-crypto-mls" }
+
+[lints]
+workspace = true
