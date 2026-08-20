@@ -78,8 +78,13 @@ processing, integration of that transaction with MLS/admission/transport, the
 headless end-to-end flow, and network transport work listed below remain
 outstanding.
 
-Contract hardening rules to preserve before wiring HPKE and the isolated MLS
-laboratory into a join flow:
+The implementation-free `session-admission` crate now supplies the
+provider-neutral, non-authorizing approval context and decision from ADR 0015.
+It deliberately does not generalize provider proof verification or the exact
+one-shot membership authority.
+
+Contract hardening rules preserved by the current in-memory flow and required
+for the remaining headless and durable composition:
 
 - Descriptor validation is read-only and only local issuance creates lifecycle state.
 - Invitation reservation and consumption follow ADR 0008.

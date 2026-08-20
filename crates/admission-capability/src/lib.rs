@@ -2,6 +2,7 @@
 
 //! Capability admission for the local protected-join profile.
 
+use session_admission::{AdmissionMethod, ApprovalContext, PendingAdmission};
 use session_core::{InvitationRegistry, InvitationReservation, ValidatedCapabilityInvitationV2};
 use session_crypto_hpke::OpenedCapabilityJoinRequest;
 use session_crypto_mls::{
@@ -10,6 +11,9 @@ use session_crypto_mls::{
 };
 use session_protocol::LocalWelcomeDepositEndpoint;
 use thiserror::Error;
+
+/// Backward-compatible name for the shared provider-neutral approval decision.
+pub use session_admission::ApprovalDecision as ManualApprovalDecision;
 
 const IDENTIFIER_BYTES: usize = 16;
 const FIXED_KEY_BYTES: usize = 32;
@@ -226,6 +230,19 @@ impl CapabilityAdmissionVerifier {
             self.remove_reservation(&verified.reservation)?;
             return Err(CapabilityAdmissionError::Rejected);
         }
+        let approval_context = match ApprovalContext::new(
+            AdmissionMethod::SecretCapability,
+            *verified.invitation_id(),
+            *verified.join_request_id(),
+            *verified.key_package_reference(),
+            request.expires_at_unix_seconds(),
+        ) {
+            Ok(context) => context,
+            Err(_) => {
+                self.remove_reservation(&verified.reservation)?;
+                return Err(CapabilityAdmissionError::Rejected);
+            }
+        };
         let invitation_reservation = match registry.reserve_v2_after_admission(
             invitation,
             *verified.join_request_id(),
@@ -240,6 +257,7 @@ impl CapabilityAdmissionVerifier {
         Ok(PendingCapabilityApproval {
             verified,
             invitation_reservation,
+            approval_context,
         })
     }
 
@@ -413,15 +431,6 @@ impl VerifiedCapabilityAdmission {
     }
 }
 
-/// Explicit simulated manual-approval input for the Phase 1 headless flow.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ManualApprovalDecision {
-    /// Continue with the exact reserved admission value.
-    Approve,
-    /// Release both invitation and replay reservations.
-    Reject,
-}
-
 /// Result of consuming one pending approval value.
 #[must_use]
 pub enum CapabilityApprovalOutcome {
@@ -436,6 +445,7 @@ pub enum CapabilityApprovalOutcome {
 pub struct PendingCapabilityApproval {
     verified: VerifiedCapabilityAdmission,
     invitation_reservation: InvitationReservation,
+    approval_context: ApprovalContext,
 }
 
 impl PendingCapabilityApproval {
@@ -449,6 +459,12 @@ impl PendingCapabilityApproval {
     #[must_use]
     pub const fn join_request_id(&self) -> &[u8; IDENTIFIER_BYTES] {
         self.verified.join_request_id()
+    }
+}
+
+impl PendingAdmission for PendingCapabilityApproval {
+    fn approval_context(&self) -> ApprovalContext {
+        self.approval_context
     }
 }
 

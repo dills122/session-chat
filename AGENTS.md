@@ -40,6 +40,8 @@ Current areas:
 - `crates/session-protocol`: versioned wire objects and canonical serialization
 - `crates/session-core`: bounded inviter-owned invitation lifecycle state; descriptor
   validation is read-only and consumption follows successful membership
+- `crates/session-admission`: provider-neutral, non-authorizing approval context
+  and decision contract; concrete providers retain proof and membership authority
 - `crates/session-crypto-hpke`: provider-neutral one-shot capability join
   protection with a pinned AWS-LC implementation and fixed typed contexts
 - `crates/admission-capability`: automated capability-proof verification, exact

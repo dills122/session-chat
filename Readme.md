@@ -17,13 +17,15 @@ The Rust workspace currently contains:
   protected-join outer, inner, AAD, and local deposit-endpoint value types
 - `session-core`, with configurable expiration checks and a bounded inviter-owned
   v1/v2 availability, reservation, release, and post-membership consumption lifecycle
+- `session-admission`, with an object-safe, provider-neutral approval context
+  that exposes no proof, bearer capability, parsed KeyPackage, or membership authority
 - `session-crypto-hpke`, with provider-neutral one-shot RFC 9180 PSK join
   protection, an AWS-LC implementation, an RFC known-answer vector, and an
   independent-provider interoperability test, plus provider-owned creation of
   every random invitation-v2 field
 - `admission-capability`, with HPKE-proof provenance, exact provider-validated
   KeyPackage ownership, bounded in-memory request-ID/nonce replay reservation,
-  exact v2 invitation binding, explicit simulated approval, and
+  exact v2 invitation binding, the shared non-authorizing approval seam, and
   ownership-preserving invitation/MLS prepare/apply coordination
 - `session-crypto-mls`, with an isolated in-memory two-party MLS 1.0 adapter for
   bounded KeyPackage validation, Add/Welcome, messages, path updates, and removal

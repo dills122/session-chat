@@ -44,10 +44,13 @@ The checked-in runtime consists of:
   issuance accepts only the provider-generated complete invitation wrapper;
 - `session-crypto-hpke`: a provider-neutral one-shot RFC 9180 PSK join adapter
   with a pinned AWS-LC implementation, typed contexts, and coarse errors;
+- `session-admission`: a provider-neutral, display-only approval context and
+  decision contract with no proof, bearer, reservation, or membership authority;
 - `admission-capability`: an in-memory capability verifier and simulated
   approval coordinator that retains exact HPKE-opened invitation provenance,
   owns the exact provider KeyPackage, reserves request-ID/nonce and local v2
-  state, and permits only an approved one-shot value to enter MLS;
+  state, implements the shared observation seam, and permits only its original
+  approved one-shot value to enter MLS;
 - `session-crypto-mls`: an isolated, in-memory two-party MLS 1.0 adapter with
   bounded KeyPackage/Welcome/message inputs, exact KeyPackage ownership,
   Add/Welcome, application messages, path updates, removal, and explicit
@@ -89,7 +92,8 @@ flowchart LR
   E["Implemented: bounded opaque envelope"]
   M["Implemented: isolated in-memory MLS lifecycle"]
   N["Non-production Node boundary simulator"]
-  C --> A["Implemented: simulated approval and in-memory invitation/MLS coordination"]
+  C --> O["Implemented: display-only approval context"]
+  O --> A["Implemented: simulated approval and in-memory invitation/MLS coordination"]
   R --> A
   A --> M
   M --> T["Implemented: local right-specific Welcome delivery"]
@@ -110,6 +114,7 @@ flowchart LR
 | Invitation state is durable or rollback resistant | Accepted contract, unimplemented | ADR 0008 and the roadmap require a later cross-layer transaction |
 | Isolated MLS validation owns the exact KeyPackage, credential identity, leaf key, and reference through Add/Welcome | Implemented and tested | Private non-`Clone` adapter value and retained lifecycle tests; this is not admission |
 | Automated capability verification owns the exact validated MLS value after HPKE proof | Implemented and tested | Private non-cloneable proof/provider object retains exact invitation signature; exact tuple and verifier-owned reservation checks reject substitution and foreign authority |
+| Pending approval has a provider-neutral observation and decision seam | Implemented and tested | ADR 0015 and `session-admission` expose only redacted, non-authorizing context; the capability provider retains exact proof, KeyPackage, and reservations |
 | Explicit approval gates exact v2 invitation, replay, and MLS Add sequencing | Implemented and tested in memory | One-shot simulated `Approve`/`Reject`; direct verified-to-MLS API removed; rejection, expiry, failed prepare, and abandonment release both reservations; success consumes invitation after Add |
 | Approval, invitation state, replay state, MLS Add, and Welcome outbox form one durable product transaction | Accepted contract, unimplemented | ADRs 0008/0009/0012; current apply/consume coordination is sequential and in memory, with no durable store or outbox |
 | Capability possession is HPKE-protected and bound to the exact local join context | Implemented and tested | Typed one-shot AWS-LC adapter, official RFC PSK vector, independent-provider opening, wrong-key/context and tampering rejection |

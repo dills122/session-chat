@@ -6,6 +6,7 @@ license.workspace = true
 publish = false
 
 [dependencies]
+session-admission = { version = "=0.1.0", path = "../session-admission" }
 session-core = { version = "=0.1.0", path = "../session-core" }
 session-crypto-hpke = { version = "=0.1.0", path = "../session-crypto-hpke" }
 session-crypto-mls = { version = "=0.1.0", path = "../session-crypto-mls" }

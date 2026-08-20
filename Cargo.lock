@@ -7,6 +7,7 @@ name = "admission-capability"
 version = "0.1.0"
 dependencies = [
  "ed25519-dalek",
+ "session-admission",
  "session-core",
  "session-crypto-hpke",
  "session-crypto-mls",
@@ -807,6 +808,10 @@ dependencies = [
  "quote",
  "syn 3.0.3",
 ]
+
+[[package]]
+name = "session-admission"
+version = "0.1.0"
 
 [[package]]
 name = "session-core"

@@ -61,6 +61,9 @@ all.
   selects the exact local Phase 1 HPKE PSK profile, capability verifier, closed
   join schemas, and one-Welcome response authority without claiming an
   implementation or hosted transport.
+- [Provider-neutral approval-context decision](adr/0015-use-a-provider-neutral-approval-context.md)
+  gives headless and later UI composition one display-only decision seam while
+  concrete providers retain exact proof, reservation, and KeyPackage authority.
 - [Protected capability join specification](specs/PROTECTED_CAPABILITY_JOIN_V1.md)
   assigns the fixed-array layouts, code points, cryptographic contexts, parsing
   order, mailbox lifecycle, and retained-evidence gates for ADR 0014.
@@ -142,13 +145,18 @@ object-safe application message seam, and `session-crypto-mls` is its only
 current implementation. This defines where a future client can select a
 reviewed backend for a new session; it does not yet provide backend negotiation
 or migrate active MLS state.
+The implementation-free `session-admission` crate now defines an object-safe,
+display-only approval context and shared decision. It exposes no proof, bearer
+capability, parsed KeyPackage, reservation, or membership authority.
 
 The `admission-capability` crate accepts only an HPKE-authenticated request,
 retains the exact signed-invitation provenance, independently validates and owns
 its exact provider KeyPackage, verifies the ADR 0009 tuple, and reserves the
 request ID and nonce in bounded in-memory state. It now binds that value to the
 exact local v2 invitation, consumes an explicit simulated approval decision,
-and permits only the approved one-shot value to reach MLS preparation.
+and permits only the approved one-shot value to reach MLS preparation. Its
+pending value implements the shared approval observation seam without releasing
+the provider-owned evidence or exact KeyPackage.
 
 The invitation's self-contained key proves descriptor integrity only. The
 registry accepts provider-generated invitation v2 and models its bounded

@@ -18,7 +18,10 @@ capability-admission adapter accepts only proven HPKE opens, owns the exact
 provider-validated KeyPackage, and performs bounded in-memory request-ID/nonce
 replay reservation for one invitation generation. It retains the exact opened
 invitation signature, binds the admission to local v2 state, and consumes an
-explicit simulated approval decision before MLS preparation. Rejection and
+explicit simulated approval decision before MLS preparation. Its pending value
+implements a provider-neutral, display-only approval context while retaining
+the exact provider evidence, KeyPackage, and reservation authorities. Copying
+that context or its decision grants no membership authority. Rejection and
 pre-commit failure release invitation and replay state; successful in-memory
 Add consumes the invitation. It does not perform human UI approval or
 rollback-resistant persistence. A local transport adapter implements

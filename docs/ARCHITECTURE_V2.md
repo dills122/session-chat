@@ -150,7 +150,7 @@ the chosen transport, but should not possess message keys or plaintext.
 
 ### Current Phase 1 evidence
 
-The active Rust laboratory now contains eight narrow pieces of this architecture:
+The active Rust laboratory now contains nine narrow pieces of this architecture:
 
 - `session-protocol` encodes and strictly verifies deterministic signed
   secret-capability invitation v1/v2 layouts and owns ADR 0014's bounded
@@ -160,6 +160,9 @@ The active Rust laboratory now contains eight narrow pieces of this architecture
   v2 local issuance only from the provider-generated wrapper, validates remote
   descriptors without mutation, and models explicit reservation, release, and
   post-membership consumption in memory.
+- `session-admission` defines the object-safe, provider-neutral approval
+  observation and decision contract. Its context is display-only and carries no
+  proof, bearer capability, parsed KeyPackage, reservation, or membership authority.
 - `session-crypto` defines the provider-neutral, object-safe message-session
   contract for bounded protected bytes, redacted events, and coarse errors.
 - `session-crypto-hpke` defines the separate provider-neutral one-shot join
@@ -169,8 +172,8 @@ The active Rust laboratory now contains eight narrow pieces of this architecture
   validates and owns the exact provider KeyPackage, compares the ADR 0009 tuple,
   retains bounded in-memory request-ID/nonce replay reservations, binds the
   exact HPKE-opened invitation signature to local v2 state, consumes an explicit
-  simulated approval decision, and permits only that approved one-shot value to
-  enter MLS prepare/apply.
+  simulated approval decision through the shared seam, and permits only that
+  provider-owned approved one-shot value to enter MLS prepare/apply.
 - `session-crypto-mls` isolates the pinned `mls-rs`/AWS-LC provider behind
   bounded KeyPackage, Welcome, and message inputs and models an in-memory
   two-member Add, path-update, message, and removal lifecycle. It is the only
