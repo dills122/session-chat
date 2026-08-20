@@ -139,3 +139,79 @@ fn lost_commit_response_recovers_complete_join_and_exact_retry() {
         Err(StoreError::Conflict)
     );
 }
+
+#[test]
+fn closed_database_hides_plaintext_and_detects_page_tampering() {
+    let database = TestDatabase(temporary_database("artifact"));
+    let tampered = TestDatabase(temporary_database("tampered"));
+    let mut store = SqlCipherStore::create(&database.0, key()).expect("store created");
+    store
+        .seed_reservation(&reservation(), NOW)
+        .expect("reservation stored");
+    let commit = JoinCommit::new(
+        [44; 16],
+        [1; 16],
+        [2; 64],
+        [3; 16],
+        [45; 32],
+        b"group-marker-4D4E".to_vec(),
+        7,
+        8,
+        b"approval-marker-7A7B".to_vec(),
+        b"mls-state-marker-8C8D".to_vec(),
+        b"welcome-marker-9E9F".to_vec(),
+        b"endpoint-marker-A0A1".to_vec(),
+        NOW + 120,
+    );
+    store
+        .commit_join(&commit, NOW, CommitFault::None)
+        .expect("join commits");
+    drop(store);
+
+    let bytes = std::fs::read(&database.0).expect("closed database readable");
+    for marker in [
+        b"approval-marker-7A7B".as_slice(),
+        b"mls-state-marker-8C8D".as_slice(),
+        b"welcome-marker-9E9F".as_slice(),
+        b"endpoint-marker-A0A1".as_slice(),
+        b"SQLite format 3".as_slice(),
+    ] {
+        assert!(!bytes.windows(marker.len()).any(|window| window == marker));
+    }
+    assert!(!database.0.with_extension("sqlite3-journal").exists());
+    assert!(!database.0.with_extension("sqlite3-wal").exists());
+    assert!(!database.0.with_extension("sqlite3-shm").exists());
+
+    let mut corrupted = bytes;
+    let middle = corrupted.len() / 2;
+    corrupted[middle] ^= 0x80;
+    std::fs::write(&tampered.0, corrupted).expect("tampered copy written");
+    match SqlCipherStore::open(&tampered.0, key()) {
+        Err(_) => {}
+        Ok(opened) => assert!(!opened.integrity_check().unwrap_or(false)),
+    }
+}
+
+#[test]
+fn abrupt_process_exit_before_commit_recovers_the_old_complete_state() {
+    let database = TestDatabase(temporary_database("process-exit"));
+    let helper = env!("CARGO_BIN_EXE_sqlcipher-crash-writer");
+    let status = std::process::Command::new(helper)
+        .arg(&database.0)
+        .status()
+        .expect("crash writer starts");
+    assert_eq!(status.code(), Some(86));
+
+    let reopened = SqlCipherStore::open(&database.0, key()).expect("store recovers after exit");
+    assert_eq!(
+        reopened.invitation_state(&[1; 16]).expect("state query"),
+        Some(InvitationState::Reserved)
+    );
+    assert!(
+        reopened
+            .recover(&[4; 16])
+            .expect("recovery query")
+            .is_none()
+    );
+    assert!(reopened.integrity_check().expect("integrity check"));
+}

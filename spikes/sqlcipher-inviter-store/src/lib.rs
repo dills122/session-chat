@@ -140,6 +140,8 @@ pub enum CommitFault {
     None,
     /// Return after all writes but before SQL commit.
     BeforeCommit,
+    /// Terminate the spike process after writes and before SQL commit.
+    ExitBeforeCommit,
     /// SQL commit succeeds but its result is reported as unknown.
     AfterCommit,
 }
@@ -368,6 +370,9 @@ impl SqlCipherStore {
         }
         if fault == CommitFault::BeforeCommit {
             return Err(StoreError::InjectedFailure);
+        }
+        if fault == CommitFault::ExitBeforeCommit {
+            std::process::exit(86);
         }
         transaction.commit()?;
         if fault == CommitFault::AfterCommit {
