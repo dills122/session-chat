@@ -12,6 +12,11 @@ in-flight operation. The first concrete adapter uses the pinned AWS-LC-backed
 `mls-rs` provider. Its invitation private-key wrapper is non-`Clone`,
 non-`Debug`, and zeroizes on drop.
 
+Successful open returns a privately constructed, non-`Clone`, non-`Debug`
+`OpenedCapabilityJoinRequest`. The later admission boundary can therefore
+require proof that the request passed this exact cryptographic operation instead
+of accepting an ordinary locally constructed request value.
+
 Retained evidence includes:
 
 - the official RFC 9180 PSK known-answer vector for X25519, HKDF-SHA256, and

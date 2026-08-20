@@ -131,7 +131,10 @@ fn generated_key_seals_and_opens_one_exact_capability_request() {
         .expect("matching request opens");
 
     assert_eq!(
-        opened.encode_canonical().expect("opened request encodes"),
+        opened
+            .request()
+            .encode_canonical()
+            .expect("opened request encodes"),
         expected
     );
     assert_eq!(protected.invitation_id(), signed.invitation_id());

@@ -67,6 +67,22 @@ pub struct GeneratedInvitationHpkeKey {
     public_key: [u8; HPKE_KEY_BYTES],
 }
 
+/// A canonically decoded request authenticated by one successful HPKE PSK open.
+///
+/// Construction is restricted to [`InvitationJoinProtector`]
+/// implementations. The value is intentionally non-`Clone` and non-`Debug` so
+/// downstream admission can require cryptographic provenance without accepting
+/// a separately constructed [`CapabilityJoinRequest`].
+pub struct OpenedCapabilityJoinRequest(CapabilityJoinRequest);
+
+impl OpenedCapabilityJoinRequest {
+    /// Borrows the exact canonical request recovered from HPKE plaintext.
+    #[must_use]
+    pub const fn request(&self) -> &CapabilityJoinRequest {
+        &self.0
+    }
+}
+
 impl GeneratedInvitationHpkeKey {
     /// Returns the exact X25519 public key for signed invitation v2.
     #[must_use]
@@ -99,7 +115,7 @@ pub trait InvitationJoinProtector {
         private_key: &InvitationHpkePrivateKey,
         invitation: &SignedCapabilityInvitationV2,
         protected: &ProtectedJoinRequest,
-    ) -> Result<CapabilityJoinRequest, JoinProtectionError>;
+    ) -> Result<OpenedCapabilityJoinRequest, JoinProtectionError>;
 }
 
 /// AWS-LC implementation of the fixed RFC 9180 PSK profile from ADR 0014.
@@ -174,7 +190,7 @@ impl InvitationJoinProtector for AwsLcInvitationJoinProtector {
         private_key: &InvitationHpkePrivateKey,
         invitation: &SignedCapabilityInvitationV2,
         protected: &ProtectedJoinRequest,
-    ) -> Result<CapabilityJoinRequest, JoinProtectionError> {
+    ) -> Result<OpenedCapabilityJoinRequest, JoinProtectionError> {
         if protected.invitation_id() != invitation.invitation_id()
             || protected.invitation_key_id() != invitation.invitation_key_id()
         {
@@ -205,7 +221,7 @@ impl InvitationJoinProtector for AwsLcInvitationJoinProtector {
         let request = CapabilityJoinRequest::decode_canonical(&plaintext)
             .map_err(|_| JoinProtectionError::Rejected)?;
         validate_inner_context(invitation, &request)?;
-        Ok(request)
+        Ok(OpenedCapabilityJoinRequest(request))
     }
 }
 
