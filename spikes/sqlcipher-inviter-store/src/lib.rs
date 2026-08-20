@@ -2,11 +2,15 @@
 
 //! Disposable SQLCipher compatibility experiment for inviter-owned state.
 
-use std::path::Path;
+use std::{path::Path, sync::Mutex};
 
+use mls_rs_core::{
+    error::IntoAnyError,
+    group::{EpochRecord, GroupState, GroupStateStorage},
+};
 use rusqlite::{Connection, OpenFlags, OptionalExtension, TransactionBehavior, params};
 use thiserror::Error;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 /// Exact raw key released only while the client vault is unsealed.
 pub struct VaultKey([u8; 32]);
@@ -205,6 +209,12 @@ impl From<rusqlite::Error> for StoreError {
     }
 }
 
+impl IntoAnyError for StoreError {
+    fn into_dyn_error(self) -> Result<Box<dyn std::error::Error + Send + Sync>, Self> {
+        Ok(Box::new(self))
+    }
+}
+
 /// Keyed SQLCipher connection owned only while the vault is unsealed.
 pub struct SqlCipherStore {
     connection: Connection,
@@ -265,7 +275,24 @@ impl SqlCipherStore {
         now_unix_seconds: u64,
         fault: CommitFault,
     ) -> Result<CommitOutcome, StoreError> {
+        self.commit_join_internal(commit, now_unix_seconds, fault, None, &[], &[])
+    }
+
+    fn commit_join_internal(
+        &mut self,
+        commit: &JoinCommit,
+        now_unix_seconds: u64,
+        fault: CommitFault,
+        group_state: Option<&GroupState>,
+        epoch_inserts: &[EpochRecord],
+        epoch_updates: &[EpochRecord],
+    ) -> Result<CommitOutcome, StoreError> {
         validate_join_commit(commit, now_unix_seconds)?;
+        if let Some(state) = group_state {
+            validate_mls_write(commit, state, epoch_inserts, epoch_updates)?;
+        } else if !epoch_inserts.is_empty() || !epoch_updates.is_empty() {
+            return Err(StoreError::Rejected);
+        }
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -295,6 +322,10 @@ impl SqlCipherStore {
             .is_some();
         if !reservation_matches {
             return Err(StoreError::Rejected);
+        }
+
+        if let Some(state) = group_state {
+            persist_mls_write(&transaction, state, epoch_inserts, epoch_updates)?;
         }
 
         transaction.execute(
@@ -397,6 +428,48 @@ impl SqlCipherStore {
             .transpose()
     }
 
+    fn mls_state(&self, group_id: &[u8]) -> Result<Option<Zeroizing<Vec<u8>>>, StoreError> {
+        self.connection
+            .query_row(
+                "SELECT state FROM mls_groups WHERE group_id = ?1",
+                params![group_id],
+                |row| row.get::<_, Vec<u8>>(0),
+            )
+            .optional()
+            .map(|value| value.map(Zeroizing::new))
+            .map_err(Into::into)
+    }
+
+    fn mls_epoch(
+        &self,
+        group_id: &[u8],
+        epoch_id: u64,
+    ) -> Result<Option<Zeroizing<Vec<u8>>>, StoreError> {
+        if epoch_id > i64::MAX as u64 {
+            return Err(StoreError::Rejected);
+        }
+        self.connection
+            .query_row(
+                "SELECT data FROM mls_epochs WHERE group_id = ?1 AND epoch_id = ?2",
+                params![group_id, epoch_id as i64],
+                |row| row.get::<_, Vec<u8>>(0),
+            )
+            .optional()
+            .map(|value| value.map(Zeroizing::new))
+            .map_err(Into::into)
+    }
+
+    fn maximum_mls_epoch(&self, group_id: &[u8]) -> Result<Option<u64>, StoreError> {
+        let value = self.connection.query_row(
+            "SELECT max(epoch_id) FROM mls_epochs WHERE group_id = ?1",
+            params![group_id],
+            |row| row.get::<_, Option<i64>>(0),
+        )?;
+        value
+            .map(|epoch| u64::try_from(epoch).map_err(|_| StoreError::Rejected))
+            .transpose()
+    }
+
     fn open_internal(path: &Path, key: VaultKey, create: bool) -> Result<Self, StoreError> {
         let mut flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX;
         if create {
@@ -457,6 +530,18 @@ impl SqlCipherStore {
                      outbox_expires_at INTEGER NOT NULL CHECK(outbox_expires_at > 0),
                      outbox_state INTEGER NOT NULL CHECK(outbox_state = 1),
                      delivery_attempts INTEGER NOT NULL CHECK(delivery_attempts >= 0)
+                 ) STRICT;
+
+                 CREATE TABLE IF NOT EXISTS mls_groups (
+                     group_id BLOB PRIMARY KEY CHECK(length(group_id) BETWEEN 1 AND 255),
+                     state BLOB NOT NULL CHECK(length(state) BETWEEN 1 AND 2097152)
+                 ) STRICT;
+
+                 CREATE TABLE IF NOT EXISTS mls_epochs (
+                     group_id BLOB NOT NULL REFERENCES mls_groups(group_id),
+                     epoch_id INTEGER NOT NULL CHECK(epoch_id >= 0),
+                     data BLOB NOT NULL CHECK(length(data) BETWEEN 1 AND 2097152),
+                     PRIMARY KEY(group_id, epoch_id)
                  ) STRICT;",
             )?;
         }
@@ -464,8 +549,166 @@ impl SqlCipherStore {
     }
 }
 
+struct StagedJoin {
+    commit: JoinCommit,
+    now_unix_seconds: u64,
+    fault: CommitFault,
+}
+
+/// Exact `mls-rs` storage hook coupled to one staged inviter transaction.
+pub struct MlsTransactionalStorage {
+    store: Mutex<SqlCipherStore>,
+    staged: Option<StagedJoin>,
+}
+
+impl MlsTransactionalStorage {
+    /// Wraps one keyed database connection as an MLS storage provider.
+    #[must_use]
+    pub fn new(store: SqlCipherStore) -> Self {
+        Self {
+            store: Mutex::new(store),
+            staged: None,
+        }
+    }
+
+    /// Stages one exact inviter commit for the next MLS storage write.
+    pub fn stage_join(
+        &mut self,
+        commit: JoinCommit,
+        now_unix_seconds: u64,
+        fault: CommitFault,
+    ) -> Result<(), StoreError> {
+        if self.staged.is_some() {
+            return Err(StoreError::Conflict);
+        }
+        validate_join_commit(&commit, now_unix_seconds)?;
+        self.staged = Some(StagedJoin {
+            commit,
+            now_unix_seconds,
+            fault,
+        });
+        Ok(())
+    }
+
+    /// Recovers a staged transaction's secret-free durable result.
+    pub fn recover(&self, transaction_id: &[u8; 16]) -> Result<Option<RecoveryView>, StoreError> {
+        self.store
+            .lock()
+            .map_err(|_| StoreError::Rejected)?
+            .recover(transaction_id)
+    }
+
+    /// Returns the durable invitation state.
+    pub fn invitation_state(
+        &self,
+        invitation_id: &[u8; 16],
+    ) -> Result<Option<InvitationState>, StoreError> {
+        self.store
+            .lock()
+            .map_err(|_| StoreError::Rejected)?
+            .invitation_state(invitation_id)
+    }
+}
+
+impl GroupStateStorage for MlsTransactionalStorage {
+    type Error = StoreError;
+
+    fn state(&self, group_id: &[u8]) -> Result<Option<Zeroizing<Vec<u8>>>, Self::Error> {
+        self.store
+            .lock()
+            .map_err(|_| StoreError::Rejected)?
+            .mls_state(group_id)
+    }
+
+    fn epoch(
+        &self,
+        group_id: &[u8],
+        epoch_id: u64,
+    ) -> Result<Option<Zeroizing<Vec<u8>>>, Self::Error> {
+        self.store
+            .lock()
+            .map_err(|_| StoreError::Rejected)?
+            .mls_epoch(group_id, epoch_id)
+    }
+
+    fn write(
+        &mut self,
+        state: GroupState,
+        epoch_inserts: Vec<EpochRecord>,
+        epoch_updates: Vec<EpochRecord>,
+    ) -> Result<(), Self::Error> {
+        let staged = self.staged.take().ok_or(StoreError::Rejected)?;
+        let store = self.store.get_mut().map_err(|_| StoreError::Rejected)?;
+        store
+            .commit_join_internal(
+                &staged.commit,
+                staged.now_unix_seconds,
+                staged.fault,
+                Some(&state),
+                &epoch_inserts,
+                &epoch_updates,
+            )
+            .map(|_| ())
+    }
+
+    fn max_epoch_id(&self, group_id: &[u8]) -> Result<Option<u64>, Self::Error> {
+        self.store
+            .lock()
+            .map_err(|_| StoreError::Rejected)?
+            .maximum_mls_epoch(group_id)
+    }
+}
+
 fn all_zero(bytes: &[u8]) -> bool {
     bytes.iter().all(|byte| *byte == 0)
+}
+
+fn validate_mls_write(
+    commit: &JoinCommit,
+    state: &GroupState,
+    epoch_inserts: &[EpochRecord],
+    epoch_updates: &[EpochRecord],
+) -> Result<(), StoreError> {
+    if state.id != commit.group_id
+        || state.data.as_slice() != commit.mls_state
+        || epoch_inserts.len() > 64
+        || epoch_updates.len() > 64
+        || epoch_inserts.iter().chain(epoch_updates).any(|epoch| {
+            epoch.id > i64::MAX as u64 || epoch.data.is_empty() || epoch.data.len() > 2_097_152
+        })
+    {
+        return Err(StoreError::Rejected);
+    }
+    Ok(())
+}
+
+fn persist_mls_write(
+    transaction: &rusqlite::Transaction<'_>,
+    state: &GroupState,
+    epoch_inserts: &[EpochRecord],
+    epoch_updates: &[EpochRecord],
+) -> Result<(), StoreError> {
+    transaction.execute(
+        "INSERT INTO mls_groups(group_id, state) VALUES (?1, ?2)
+         ON CONFLICT(group_id) DO UPDATE SET state = excluded.state",
+        params![state.id, state.data.as_slice()],
+    )?;
+    for epoch in epoch_inserts {
+        transaction.execute(
+            "INSERT INTO mls_epochs(group_id, epoch_id, data) VALUES (?1, ?2, ?3)",
+            params![state.id, epoch.id as i64, epoch.data.as_slice()],
+        )?;
+    }
+    for epoch in epoch_updates {
+        let changed = transaction.execute(
+            "UPDATE mls_epochs SET data = ?3 WHERE group_id = ?1 AND epoch_id = ?2",
+            params![state.id, epoch.id as i64, epoch.data.as_slice()],
+        )?;
+        if changed != 1 {
+            return Err(StoreError::Rejected);
+        }
+    }
+    Ok(())
 }
 
 struct StoredJoin {
