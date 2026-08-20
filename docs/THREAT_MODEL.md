@@ -472,7 +472,11 @@ parsing, retained KeyPackage ownership through Add and Welcome targeting,
 two-member roster enforcement, explicit prepare/apply and abandoned-pending
 handling, replay, reordering, temporarily lost epoch commits, path updates,
 removal, explicit-only group-state writes, and the provider-neutral established-
-session message interface from ADR 0013. The separate inviter-transaction model
+session message interface from ADR 0013. The headless `sessionctl` acceptance
+flow now composes fresh capability admission, Welcome delivery, bidirectional
+protected messages, path update, removal, and post-removal rejection across the
+local adapters. It adds integration evidence, not persistence or networking.
+The separate inviter-transaction model
 covers only the application-level all-or-nothing and recovery semantics over
 bounded memory records. Current evidence does not cover durable recovery,
 cross-implementation fixtures, a real inviter-local MLS/join/outbox storage

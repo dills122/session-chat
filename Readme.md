@@ -36,6 +36,9 @@ The Rust workspace currently contains:
   reordering, retry, and acknowledgement controls for headless protocol tests
 - `session-inviter-transaction`, with a bounded fault-injectable conformance
   model for atomic invitation/replay/approval/MLS-snapshot/Welcome-outbox state
+- `sessionctl`, with a headless Alice/Bob conformance flow covering protected
+  join, explicit approval, Welcome delivery, bidirectional MLS messages, path
+  update, removal, and post-removal rejection over the in-memory adapters
 
 The signing key authenticates the invitation bytes, not a GitHub identity or
 person. The capability invitation is a secret bearer object and must not be
@@ -52,11 +55,15 @@ successful in-memory Add consumes invitation state. This sequencing is not a
 durable transaction. A separate conformance model now proves the required
 atomic visibility, ambiguous-commit recovery, and resumable Welcome-outbox
 semantics over bounded memory records. A durable adapter, real cross-layer
-persistence, durable or network mailbox behavior, human UI approval, and a user
-interface remain unimplemented. The in-memory approved-join result now carries
+persistence, durable or network mailbox behavior, human approval UX, and a
+user-facing chat interface remain unimplemented. The in-memory approved-join result now carries
 only the exact authenticated deposit endpoint beside its MLS outputs, and a
 retained test delivers the encrypted Welcome through the local adapter. This
 sequential path is not evidence for a durable outbox or network profile.
+The `sessionctl` binary composes those present pieces into one executable
+two-client flow and prints only coarse milestones. It is retained integration
+evidence, not a deployable client, human approval UX, durable vault, hosted
+realm, or production transport.
 
 ADR 0014 defines the exact local-only invitation-v2, HPKE capability-join, and
 one-Welcome response contract. Its canonical protocol value types are now
@@ -73,6 +80,7 @@ cargo clippy --workspace --all-targets --all-features --locked --offline -- -D w
 cargo test --workspace --all-features --locked --offline
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps --locked --offline
 cargo deny --all-features --locked check
+cargo run -p sessionctl --locked --offline
 ```
 
 The retained JavaScript research and repository tooling have no third-party
@@ -86,6 +94,7 @@ node scripts/check-repository.mjs
 
 ## Repository map
 
+- `apps/` contains headless composition and conformance clients.
 - `crates/` contains retained Rust protocol code.
 - `docs/` contains the product definition, architecture, threat model, roadmap,
   research, ADRs, and legacy evidence.

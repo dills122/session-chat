@@ -180,6 +180,11 @@ The separate `transport-memory` adapter now implements the right-specific
 opaque-envelope trait with bounded deterministic loss, duplication, reordering,
 retry, expiry, and acknowledgement controls for headless tests. It is not a
 network, encryption, or privacy implementation.
+The `sessionctl` binary now composes the implemented local boundaries into one
+fresh two-client run covering protected capability admission, explicit
+simulated approval, Welcome delivery, bidirectional MLS application messages,
+path update, removal, and post-removal rejection. It prints only coarse
+milestones and is neither a durable nor networked client.
 
 ## Reference standards and projects
 

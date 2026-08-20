@@ -1,5 +1,6 @@
 [workspace]
 members = [
+  "apps/sessionctl",
   "crates/admission-capability",
   "crates/session-admission",
   "crates/session-core",

@@ -60,14 +60,16 @@ The checked-in runtime consists of:
   exact-retry idempotency, expiry, coarse errors, and a provider-neutral
   right-specific opaque-envelope trait;
 - `transport-memory`: a bounded deterministic test adapter for explicit drop,
-  duplicate, hold/release reordering, retry, and acknowledgement behavior; and
+  duplicate, hold/release reordering, retry, and acknowledgement behavior;
+- `sessionctl`: a headless two-client composition covering protected capability
+  join, simulated approval, local Welcome delivery, bidirectional MLS messages,
+  path update, removal, and post-removal rejection; and
 - a disposable Node.js sealed-post-office simulator used only to test boundary
   semantics such as schema rejection, right-specific authorization ordering,
   rotation, and capacity limits.
 
 There is no human approval UX, durable transaction, network or production
-transport, client vault, desktop shell, hosted realm, or headless end-to-end
-client. The
+transport, client vault, desktop shell, or hosted realm. The
 HPKE adapter proves PSK possession only for its exact typed context; the
 capability adapter performs automated verification, explicit simulated
 approval, exact v2/replay reservation, and in-memory MLS coordination. The
@@ -130,6 +132,7 @@ flowchart LR
 | Welcome outbox delivery is atomic with MLS, replay, approval, and invitation state | Accepted contract, unimplemented | Architecture transaction invariant; no durable store or outbox exists |
 | Local deposit, receive, and acknowledge rights are non-interchangeable | Implemented and tested | `session-transport` uses separately typed provider-generated authorities, commitment checks, hostile authority tests, and an approved-join integration test |
 | Deterministic memory delivery models loss, duplication, reordering, replay, retry, expiry, and bounded capacity | Implemented and tested | `transport-memory` fault-plan and hostile-authority tests over `OpaqueEnvelope`; this is neither encryption nor a network/privacy claim |
+| One headless two-client flow composes protected join through removal | Implemented and tested in memory | `sessionctl` creates fresh Alice/Bob state, explicitly approves the exact capability request, delivers the MLS Welcome and protected traffic through local adapters, updates the epoch, removes Bob, and observes post-removal rejection; no durability, network, hosting, or UX claim |
 | Reusable or network mailbox rotation is a separate non-interchangeable right | Accepted contract, unimplemented | ADR 0010; the one-use local profile deliberately has no rotation operation, and Node simulator evidence does not establish production transport |
 | The Node simulator rejects unknown, cyclic, accessor-backed, symbol-keyed, deep, or oversized provider input before cloning or authorization | Implemented and tested | Retained non-production adversarial tests at directory and attestor entry points |
 | Client secrets are sealed when not in an active user-approved session | Proposed experiment | Session-scoped vault proposal with whole-store fallback; no dependency selected |

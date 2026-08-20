@@ -74,8 +74,8 @@ retained local Welcome-delivery evidence. A separate bounded conformance model
 now exercises the accepted inviter transaction's atomic visibility, exact retry,
 ambiguous-result recovery, and Welcome-outbox leasing semantics under injected
 memory-model faults. Human approval UX, durable cross-layer state and outbox
-processing, integration of that transaction with MLS/admission/transport, the
-headless end-to-end flow, and network transport work listed below remain
+processing, integration of that transaction with MLS/admission/transport, and
+network transport work listed below remain
 outstanding.
 
 The provider-neutral right-specific transport trait and its separate
@@ -87,6 +87,14 @@ The implementation-free `session-admission` crate now supplies the
 provider-neutral, non-authorizing approval context and decision from ADR 0015.
 It deliberately does not generalize provider proof verification or the exact
 one-shot membership authority.
+
+The `sessionctl` binary now completes the headless in-memory Phase 1
+composition: a fresh Alice/Bob capability invitation and protected request,
+explicit simulated approval, exact MLS Add and Welcome delivery, bidirectional
+application messages, path update, removal, and post-removal rejection. Its
+retained test and coarse CLI output satisfy the no-GUI/no-network laboratory
+acceptance path. Durable state, human approval, and a network profile remain
+separate gates.
 
 Contract hardening rules preserved by the current in-memory flow and required
 for the remaining headless and durable composition:

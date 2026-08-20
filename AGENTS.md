@@ -57,6 +57,8 @@ Current areas:
 - `crates/session-inviter-transaction`: bounded, fault-injectable conformance
   model for inviter-local atomic join and Welcome-outbox recovery semantics;
   not a durable storage implementation
+- `apps/sessionctl`: headless two-client Phase 1 composition and conformance
+  flow over the local adapters; not a networked or durable client
 - `spikes/`: disposable feasibility code; production packages must not depend on it
 - `docs/`: canonical v2 product, architecture, threat-model, protocol, ADR, and legacy-evidence baseline
 - `scripts/`: tested repository and AI Central setup tooling
@@ -70,7 +72,6 @@ Planned v2 areas:
   replay/result, invitation, membership, and Welcome-outbox state
 - later `session-transport` increments: durable outbox delivery and
   network-profile adapters
-- `apps/sessionctl`: headless protocol and conformance client
 
 When a change spans areas, update the shared contract first and preserve the
 dependency direction described in `docs/ARCHITECTURE_V2.md`.
