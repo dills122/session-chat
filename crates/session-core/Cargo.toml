@@ -8,6 +8,7 @@ readme = "README.md"
 
 [dependencies]
 ed25519-dalek.workspace = true
+session-crypto-hpke = { version = "=0.1.0", path = "../session-crypto-hpke" }
 session-protocol = { version = "=0.1.0", path = "../session-protocol" }
 thiserror.workspace = true
 

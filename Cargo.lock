@@ -811,6 +811,7 @@ name = "session-core"
 version = "0.1.0"
 dependencies = [
  "ed25519-dalek",
+ "session-crypto-hpke",
  "session-protocol",
  "thiserror",
 ]

@@ -5,7 +5,10 @@
 use std::collections::BTreeMap;
 
 use ed25519_dalek::SigningKey;
-use session_protocol::{CapabilityInvitationClaims, SignedCapabilityInvitation, WireError};
+use session_crypto_hpke::{GeneratedCapabilityInvitationV2, InvitationHpkePrivateKey};
+use session_protocol::{
+    CapabilityInvitationClaims, SignedCapabilityInvitation, SignedCapabilityInvitationV2, WireError,
+};
 use thiserror::Error;
 
 const INVITATION_ID_BYTES: usize = 16;
@@ -87,6 +90,36 @@ impl IssuedCapabilityInvitation {
     }
 }
 
+/// A provider-generated version 2 invitation retained by the local registry.
+///
+/// This secret-bearing value is intentionally non-`Clone` and non-`Debug`.
+pub struct IssuedCapabilityInvitationV2(GeneratedCapabilityInvitationV2);
+
+impl IssuedCapabilityInvitationV2 {
+    /// Returns the locally issued invitation identifier.
+    #[must_use]
+    pub const fn invitation_id(&self) -> &[u8; INVITATION_ID_BYTES] {
+        self.0.invitation().invitation_id()
+    }
+
+    /// Encodes the secret-bearing descriptor for deliberate publication.
+    pub fn encode_canonical(&self) -> Result<Vec<u8>, WireError> {
+        self.0.invitation().encode_canonical()
+    }
+
+    /// Borrows the signed version 2 protocol object.
+    #[must_use]
+    pub const fn invitation(&self) -> &SignedCapabilityInvitationV2 {
+        self.0.invitation()
+    }
+
+    /// Borrows the invitation-owned private key for protected request opening.
+    #[must_use]
+    pub const fn private_key(&self) -> &InvitationHpkePrivateKey {
+        self.0.private_key()
+    }
+}
+
 /// An authenticated and time-valid descriptor that has not changed lifecycle state.
 ///
 /// Validation alone does not prove local issuance, capability possession,
@@ -115,17 +148,51 @@ impl ValidatedCapabilityInvitation {
     }
 }
 
+/// An authenticated, time-valid version 2 descriptor with no lifecycle mutation.
+///
+/// This secret-bearing value intentionally does not implement `Debug` or `Clone`.
+pub struct ValidatedCapabilityInvitationV2(SignedCapabilityInvitationV2);
+
+impl ValidatedCapabilityInvitationV2 {
+    /// Returns the authenticated invitation identifier.
+    #[must_use]
+    pub const fn invitation_id(&self) -> &[u8; INVITATION_ID_BYTES] {
+        self.0.invitation_id()
+    }
+
+    /// Returns the descriptor's absolute expiration time.
+    #[must_use]
+    pub const fn expires_at_unix_seconds(&self) -> u64 {
+        self.0.expires_at_unix_seconds()
+    }
+
+    /// Borrows the verified version 2 protocol object.
+    #[must_use]
+    pub const fn invitation(&self) -> &SignedCapabilityInvitationV2 {
+        &self.0
+    }
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum InvitationSchema {
+    V1,
+    V2,
+}
+
 /// Opaque authority to complete or release one invitation reservation.
 ///
-/// Construction is restricted to `InvitationRegistry::reserve_after_admission`.
+/// Construction is restricted to the version-specific `InvitationRegistry`
+/// reservation methods.
 #[derive(Eq, PartialEq)]
 pub struct InvitationReservation {
     invitation_id: [u8; INVITATION_ID_BYTES],
     join_request_id: [u8; JOIN_REQUEST_ID_BYTES],
     record_signature: [u8; 64],
+    schema: InvitationSchema,
 }
 
 struct InvitationRecord {
+    schema: InvitationSchema,
     expires_at_unix_seconds: u64,
     inviter_verifying_key: [u8; 32],
     signature: [u8; 64],
@@ -134,7 +201,15 @@ struct InvitationRecord {
 
 impl InvitationRecord {
     fn matches(&self, invitation: &SignedCapabilityInvitation) -> bool {
-        self.expires_at_unix_seconds == invitation.expires_at_unix_seconds()
+        self.schema == InvitationSchema::V1
+            && self.expires_at_unix_seconds == invitation.expires_at_unix_seconds()
+            && self.inviter_verifying_key == *invitation.inviter_verifying_key()
+            && self.signature == *invitation.signature()
+    }
+
+    fn matches_v2(&self, invitation: &SignedCapabilityInvitationV2) -> bool {
+        self.schema == InvitationSchema::V2
+            && self.expires_at_unix_seconds == invitation.expires_at_unix_seconds()
             && self.inviter_verifying_key == *invitation.inviter_verifying_key()
             && self.signature == *invitation.signature()
     }
@@ -167,41 +242,46 @@ impl InvitationRegistry {
         now_unix_seconds: u64,
     ) -> Result<IssuedCapabilityInvitation, InvitationLifecycleError> {
         let invitation = SignedCapabilityInvitation::sign(claims, signing_key)?;
-        self.validate_time(&invitation, now_unix_seconds)?;
-
-        let invitation_id = *invitation.invitation_id();
-        if self
-            .records
-            .get(&invitation_id)
-            .is_some_and(|record| record.expires_at_unix_seconds > now_unix_seconds)
-        {
-            return Err(InvitationLifecycleError::DuplicateInvitationId);
-        }
-
-        let live_count = self
-            .records
-            .values()
-            .filter(|record| record.expires_at_unix_seconds > now_unix_seconds)
-            .count();
-        if live_count >= self.policy.maximum_live_invitations {
-            return Err(InvitationLifecycleError::CapacityExceeded {
-                maximum: self.policy.maximum_live_invitations,
-            });
-        }
-
-        self.records
-            .retain(|_, record| record.expires_at_unix_seconds > now_unix_seconds);
-        self.records.insert(
-            invitation_id,
-            InvitationRecord {
-                expires_at_unix_seconds: invitation.expires_at_unix_seconds(),
-                inviter_verifying_key: *invitation.inviter_verifying_key(),
-                signature: *invitation.signature(),
-                lifecycle: StoredInvitationLifecycle::Available,
-            },
-        );
+        self.validate_time_values(
+            invitation.issued_at_unix_seconds(),
+            invitation.expires_at_unix_seconds(),
+            now_unix_seconds,
+        )?;
+        self.insert_record(
+            *invitation.invitation_id(),
+            invitation.expires_at_unix_seconds(),
+            *invitation.inviter_verifying_key(),
+            *invitation.signature(),
+            InvitationSchema::V1,
+            now_unix_seconds,
+        )?;
 
         Ok(IssuedCapabilityInvitation(invitation))
+    }
+
+    /// Records one complete provider-generated version 2 invitation.
+    ///
+    /// There is intentionally no caller-constructed claims overload for v2.
+    pub fn issue_v2(
+        &mut self,
+        generated: GeneratedCapabilityInvitationV2,
+        now_unix_seconds: u64,
+    ) -> Result<IssuedCapabilityInvitationV2, InvitationLifecycleError> {
+        let invitation = generated.invitation();
+        self.validate_time_values(
+            invitation.issued_at_unix_seconds(),
+            invitation.expires_at_unix_seconds(),
+            now_unix_seconds,
+        )?;
+        self.insert_record(
+            *invitation.invitation_id(),
+            invitation.expires_at_unix_seconds(),
+            *invitation.inviter_verifying_key(),
+            *invitation.signature(),
+            InvitationSchema::V2,
+            now_unix_seconds,
+        )?;
+        Ok(IssuedCapabilityInvitationV2(generated))
     }
 
     /// Authenticates and time-validates an attacker-controlled descriptor.
@@ -214,8 +294,29 @@ impl InvitationRegistry {
         now_unix_seconds: u64,
     ) -> Result<ValidatedCapabilityInvitation, InvitationLifecycleError> {
         let invitation = SignedCapabilityInvitation::decode_and_verify(encoded_invitation)?;
-        self.validate_time(&invitation, now_unix_seconds)?;
+        self.validate_time_values(
+            invitation.issued_at_unix_seconds(),
+            invitation.expires_at_unix_seconds(),
+            now_unix_seconds,
+        )?;
         Ok(ValidatedCapabilityInvitation(invitation))
+    }
+
+    /// Authenticates and time-validates an attacker-controlled v2 descriptor.
+    ///
+    /// This operation is read-only and cannot create inviter-owned state.
+    pub fn validate_descriptor_v2(
+        &self,
+        encoded_invitation: &[u8],
+        now_unix_seconds: u64,
+    ) -> Result<ValidatedCapabilityInvitationV2, InvitationLifecycleError> {
+        let invitation = SignedCapabilityInvitationV2::decode_and_verify(encoded_invitation)?;
+        self.validate_time_values(
+            invitation.issued_at_unix_seconds(),
+            invitation.expires_at_unix_seconds(),
+            now_unix_seconds,
+        )?;
+        Ok(ValidatedCapabilityInvitationV2(invitation))
     }
 
     /// Reserves a locally issued invitation for one validated admission request.
@@ -232,7 +333,11 @@ impl InvitationRegistry {
         if join_request_id.iter().all(|byte| *byte == 0) {
             return Err(InvitationLifecycleError::ZeroJoinRequestId);
         }
-        self.validate_time(invitation.invitation(), now_unix_seconds)?;
+        self.validate_time_values(
+            invitation.invitation().issued_at_unix_seconds(),
+            invitation.invitation().expires_at_unix_seconds(),
+            now_unix_seconds,
+        )?;
 
         let invitation_id = *invitation.invitation_id();
         let record = self
@@ -250,6 +355,47 @@ impl InvitationRegistry {
                     invitation_id,
                     join_request_id,
                     record_signature: record.signature,
+                    schema: InvitationSchema::V1,
+                })
+            }
+            StoredInvitationLifecycle::Reserved { .. } => {
+                Err(InvitationLifecycleError::AlreadyReserved)
+            }
+            StoredInvitationLifecycle::Consumed => Err(InvitationLifecycleError::AlreadyConsumed),
+        }
+    }
+
+    /// Reserves a locally issued v2 invitation after all automated checks.
+    pub fn reserve_v2_after_admission(
+        &mut self,
+        invitation: &ValidatedCapabilityInvitationV2,
+        join_request_id: [u8; JOIN_REQUEST_ID_BYTES],
+        now_unix_seconds: u64,
+    ) -> Result<InvitationReservation, InvitationLifecycleError> {
+        if join_request_id.iter().all(|byte| *byte == 0) {
+            return Err(InvitationLifecycleError::ZeroJoinRequestId);
+        }
+        self.validate_time_values(
+            invitation.invitation().issued_at_unix_seconds(),
+            invitation.invitation().expires_at_unix_seconds(),
+            now_unix_seconds,
+        )?;
+        let invitation_id = *invitation.invitation_id();
+        let record = self
+            .records
+            .get_mut(&invitation_id)
+            .ok_or(InvitationLifecycleError::UnknownInvitation)?;
+        if !record.matches_v2(invitation.invitation()) {
+            return Err(InvitationLifecycleError::DescriptorMismatch);
+        }
+        match record.lifecycle {
+            StoredInvitationLifecycle::Available => {
+                record.lifecycle = StoredInvitationLifecycle::Reserved { join_request_id };
+                Ok(InvitationReservation {
+                    invitation_id,
+                    join_request_id,
+                    record_signature: record.signature,
+                    schema: InvitationSchema::V2,
                 })
             }
             StoredInvitationLifecycle::Reserved { .. } => {
@@ -266,7 +412,7 @@ impl InvitationRegistry {
         now_unix_seconds: u64,
     ) -> Result<(), InvitationLifecycleError> {
         let record = self.current_record_mut(reservation.invitation_id, now_unix_seconds)?;
-        if record.signature != reservation.record_signature {
+        if record.schema != reservation.schema || record.signature != reservation.record_signature {
             return Err(InvitationLifecycleError::ReservationMismatch);
         }
         match record.lifecycle {
@@ -296,7 +442,7 @@ impl InvitationRegistry {
         now_unix_seconds: u64,
     ) -> Result<(), InvitationLifecycleError> {
         let record = self.current_record_mut(reservation.invitation_id, now_unix_seconds)?;
-        if record.signature != reservation.record_signature {
+        if record.schema != reservation.schema || record.signature != reservation.record_signature {
             return Err(InvitationLifecycleError::ReservationMismatch);
         }
         match record.lifecycle {
@@ -353,30 +499,71 @@ impl InvitationRegistry {
         Ok(record)
     }
 
-    fn validate_time(
+    #[allow(clippy::too_many_arguments)]
+    fn insert_record(
+        &mut self,
+        invitation_id: [u8; INVITATION_ID_BYTES],
+        expires_at_unix_seconds: u64,
+        inviter_verifying_key: [u8; 32],
+        signature: [u8; 64],
+        schema: InvitationSchema,
+        now_unix_seconds: u64,
+    ) -> Result<(), InvitationLifecycleError> {
+        if self
+            .records
+            .get(&invitation_id)
+            .is_some_and(|record| record.expires_at_unix_seconds > now_unix_seconds)
+        {
+            return Err(InvitationLifecycleError::DuplicateInvitationId);
+        }
+        let live_count = self
+            .records
+            .values()
+            .filter(|record| record.expires_at_unix_seconds > now_unix_seconds)
+            .count();
+        if live_count >= self.policy.maximum_live_invitations {
+            return Err(InvitationLifecycleError::CapacityExceeded {
+                maximum: self.policy.maximum_live_invitations,
+            });
+        }
+        self.records
+            .retain(|_, record| record.expires_at_unix_seconds > now_unix_seconds);
+        self.records.insert(
+            invitation_id,
+            InvitationRecord {
+                schema,
+                expires_at_unix_seconds,
+                inviter_verifying_key,
+                signature,
+                lifecycle: StoredInvitationLifecycle::Available,
+            },
+        );
+        Ok(())
+    }
+
+    fn validate_time_values(
         &self,
-        invitation: &SignedCapabilityInvitation,
+        issued_at_unix_seconds: u64,
+        expires_at_unix_seconds: u64,
         now_unix_seconds: u64,
     ) -> Result<(), InvitationLifecycleError> {
         let latest_allowed =
             now_unix_seconds.saturating_add(self.policy.maximum_future_skew_seconds);
-        if invitation.issued_at_unix_seconds() > latest_allowed {
+        if issued_at_unix_seconds > latest_allowed {
             return Err(InvitationLifecycleError::IssuedTooFarInFuture {
-                issued_at: invitation.issued_at_unix_seconds(),
+                issued_at: issued_at_unix_seconds,
                 latest_allowed,
             });
         }
 
-        if invitation.expires_at_unix_seconds() <= now_unix_seconds {
+        if expires_at_unix_seconds <= now_unix_seconds {
             return Err(InvitationLifecycleError::Expired {
-                expires_at: invitation.expires_at_unix_seconds(),
+                expires_at: expires_at_unix_seconds,
                 now: now_unix_seconds,
             });
         }
 
-        let lifetime = invitation
-            .expires_at_unix_seconds()
-            .saturating_sub(invitation.issued_at_unix_seconds());
+        let lifetime = expires_at_unix_seconds.saturating_sub(issued_at_unix_seconds);
         if lifetime > self.policy.maximum_lifetime_seconds {
             return Err(InvitationLifecycleError::LifetimeExceedsPolicy {
                 actual_seconds: lifetime,

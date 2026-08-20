@@ -81,13 +81,15 @@ evidence required by ADR 0012.
   retained. The separate capability adapter now retains HPKE proof provenance,
   exact provider KeyPackage ownership, and bounded in-memory request-ID/nonce
   replay reservation. Right-specific memory transport, manual approval,
-  v2 invitation orchestration and durable replay/MLS state remain gates. The
+  cross-state v2 invitation/admission orchestration, and durable replay/MLS
+  state remain gates. The
   provider now owns one complete CSPRNG-backed invitation-v2 creation API, and
   the exact admitted provider object moves directly through MLS prepare/apply.
 - Implement durable transactional replay state, rollback protection,
   revocation, reservation recovery, and bounded-multi-use state machines.
 - Integrate the implemented automated capability-admission/MLS handoff with
-  manual approval and v2 invitation reservation/consumption without
+  the separate v2 invitation reservation/consumption lifecycle and manual
+  approval without
   reconstructing or substituting its owned ADR 0009 KeyPackage. Successful HPKE
   PSK opening proves capability possession without a second raw capability or
   custom HMAC; it is not itself approval or a durable membership transaction.

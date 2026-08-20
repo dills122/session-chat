@@ -11,12 +11,15 @@ currently has a bounded opaque envelope, canonical domain-separated Ed25519
 secret-capability invitation v1/v2 layouts, bounded protected outer/inner join
 request and local deposit-endpoint value types, a provider-neutral one-shot HPKE
 PSK adapter with RFC/cross-provider evidence, exhaustive hostile fixtures, and
-a bounded inviter-owned invitation reservation/consumption state machine. The
+a bounded inviter-owned invitation v1/v2 reservation/consumption state machine.
+Local v2 state can be created only from the provider-generated invitation
+wrapper; validating a remotely supplied descriptor remains read-only. The
 capability-admission adapter accepts only proven HPKE opens, owns the exact
 provider-validated KeyPackage, and performs bounded in-memory request-ID/nonce
 replay reservation for one invitation generation. It moves that same object
 directly through MLS prepare/apply and couples abandoned preparation to replay
-release. It does not perform manual approval, invitation orchestration, mailbox
+release. It does not perform manual approval, cross-state
+invitation/admission orchestration, mailbox
 operation, or rollback-resistant persistence. ADR 0014's implemented evidence is narrower than its accepted
 integrated capability-join and one-Welcome contract. A separate isolated crate
 now
@@ -313,15 +316,17 @@ Current evidence covers the canonical fixed-field encoding, exact size bounds,
 explicit version/suite/mode/use-policy allowlists, application-domain-separated
 strict Ed25519 verification, structural nonzero identifiers/challenges/
 capabilities, configurable time policy, exhaustive per-field malformed fixtures,
-and the inviter-owned `Available -> Reserved -> Consumed` lifecycle, with a
+and the inviter-owned v1/v2 `Available -> Reserved -> Consumed` lifecycle, with a
 release edge from `Reserved` back to `Available` rather than a stored
 `Released` state.
 Descriptor validation is read-only and remote self-signed objects cannot create
-registry state. Reservation authority is bound to the exact signed local record,
+registry state. V2 issuance accepts only the provider-generated complete
+invitation wrapper. Reservation authority is bound to the schema and exact
+signed local record,
 so it cannot cross an expiry/reissue boundary even if invitation and request IDs
 recur. Random generation quality, durable atomic consumption with MLS, rollback
-protection, deep-link leakage, fuzzing, and ADR 0014's admission integration
-remain open. Invitation v2 itself now has an independent
+protection, deep-link leakage, fuzzing, and ADR 0014's cross-state admission
+integration remain open. Invitation v2 itself now has an independent
 signature domain, exact fixture, closed suite/profile code points, and the same
 pre-parse size and canonical-decoding controls as v1.
 
@@ -363,7 +368,8 @@ ABA, foreign-verifier reservation rejection, capacity preservation, delayed
 expiry, and unchanged state after rejection or abandonment.
 The provider now owns one complete invitation-v2 creation API covering every
 secret and random field; callers supply only issue and expiration times.
-Remaining requirements include manual approval and invitation orchestration,
+Remaining requirements include manual approval and cross-state
+invitation/admission orchestration,
 rights-confusion tests, competing deposits, durable replay/rollback protection,
 and crash-safe mutation ordering.
 

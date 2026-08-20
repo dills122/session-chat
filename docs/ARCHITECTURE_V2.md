@@ -156,9 +156,10 @@ The active Rust laboratory now contains six narrow pieces of this architecture:
   secret-capability invitation v1/v2 layouts and owns ADR 0014's bounded
   canonical protected outer/inner, exact AAD, and local deposit-endpoint value
   types, in addition to the opaque envelope from ADR 0005.
-- `session-core` creates bounded inviter-owned invitation state, validates
-  attacker-controlled descriptors without mutation, and models explicit
-  reservation, release, and post-membership consumption in memory.
+- `session-core` creates bounded inviter-owned invitation-v1/v2 state, accepts
+  v2 local issuance only from the provider-generated wrapper, validates remote
+  descriptors without mutation, and models explicit reservation, release, and
+  post-membership consumption in memory.
 - `session-crypto` defines the provider-neutral, object-safe message-session
   contract for bounded protected bytes, redacted events, and coarse errors.
 - `session-crypto-hpke` defines the separate provider-neutral one-shot join
@@ -177,9 +178,9 @@ The invitation registry and MLS adapter remain separate in-process state
 machines. Registry method names encode caller preconditions; they do not
 implement admission or prove that the separate MLS transition happened.
 None of these state machines is persistent, cross-process, or rollback-resistant.
-Automated replay-checked capability admission exists, but manual approval,
-invitation-lifecycle orchestration, durable cross-layer membership/replay state,
-mailbox operation, and transport operation do not.
+Automated replay-checked capability admission and v2 invitation lifecycle state
+exist separately, but manual approval, cross-state orchestration, durable
+membership/replay state, mailbox operation, and transport operation do not.
 
 ADR 0014 accepts the local-only contract: a signed capability invitation v2,
 RFC 9180 PSK-protected join request, the invitation-scoped Ed25519 key as

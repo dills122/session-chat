@@ -16,7 +16,7 @@ The Rust workspace currently contains:
   domain-separated Ed25519 capability invitations, and bounded canonical
   protected-join outer, inner, AAD, and local deposit-endpoint value types
 - `session-core`, with configurable expiration checks and a bounded inviter-owned
-  availability, reservation, release, and post-membership consumption lifecycle
+  v1/v2 availability, reservation, release, and post-membership consumption lifecycle
 - `session-crypto-hpke`, with provider-neutral one-shot RFC 9180 PSK join
   protection, an AWS-LC implementation, an RFC known-answer vector, and an
   independent-provider interoperability test, plus provider-owned creation of
@@ -35,8 +35,8 @@ The protected-join and capability-admission adapters prove possession for one
 exact typed HPKE context, independently validate and own the exact KeyPackage,
 and reserve replay values within bounded in-memory state. That exact provider
 object can move directly into the isolated MLS prepare/apply boundary. The
-adapters do not perform manual approval, reserve or consume invitation state,
-or provide durable replay protection. Cross-layer atomic persistence, mailbox
+adapters are not yet orchestrated with the v2 invitation lifecycle or manual
+approval and do not provide durable replay protection. Cross-layer atomic persistence, mailbox
 behavior, networking, and a user interface remain unimplemented. The core
 transition names encode caller preconditions; they do not prove admission or
 MLS membership has occurred.

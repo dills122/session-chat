@@ -20,9 +20,10 @@ request-lifetime checks, exact provider KeyPackage ownership, tuple comparison,
 bounded in-memory request-ID/nonce reservation, and direct ownership-preserving
 MLS prepare/apply. Rejected, expired, or abandoned preparation releases replay
 state without changing membership. This specification does not implement manual
-approval, invitation reservation/consumption, atomic durable membership state,
-mailbox behavior, outbox processing, hosted realm trust, a network transport,
-or a deployable client.
+approval or cross-state orchestration. The separate registry supports
+provider-generated v2 reservation/release/consumption, but atomic durable
+membership state, mailbox behavior, outbox processing, hosted realm trust, a
+network transport, and a deployable client remain unimplemented.
 
 ## Assumptions
 

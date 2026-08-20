@@ -66,7 +66,9 @@ and nonces within bounded in-memory generation state. It moves that exact value
 directly through the isolated MLS prepare/apply boundary and releases replay on
 rejected, expired, or abandoned preparation. Manual approval, invitation
 orchestration, durable cross-layer state, mailbox behavior, the headless flow,
-and transport work listed below remain outstanding.
+and transport work listed below remain outstanding. The inviter registry now
+accepts only provider-generated v2 issuance and models v2 reservation, release,
+and post-membership consumption separately from those admission/MLS states.
 
 Contract hardening rules to preserve before wiring HPKE and the isolated MLS
 laboratory into a join flow:

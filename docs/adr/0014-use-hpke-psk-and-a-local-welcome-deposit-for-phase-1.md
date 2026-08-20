@@ -13,9 +13,10 @@ inviter-owned reservation lifecycle, exact MLS KeyPackage validation, an
 isolated two-party MLS lifecycle, the selected one-shot protected join
 operation, and an automated capability verifier owning the exact ADR 0009 value
 with bounded in-memory replay reservation and a direct MLS prepare/apply seam.
-It does not yet perform manual approval, reserve or consume invitation state,
-commit durable cross-layer state, or return a Welcome through a right-specific
-transport.
+The inviter registry separately supports provider-generated v2 reservation,
+release, and post-membership consumption. The laboratory does not yet connect
+those states through manual approval, commit durable cross-layer state, or
+return a Welcome through a right-specific transport.
 
 ADR 0010 requires deposit, receive, acknowledgement, and rotation authority to
 remain separate. ADR 0008 requires the inviter's future durable membership
@@ -139,9 +140,10 @@ request ID and nonce to the invitation generation and uses a monotonic
 reservation ID to prevent stale-release ABA. This is automated proof
 verification. The same non-reconstructed provider object moves into MLS
 prepare/apply; rejected, expired, or abandoned preparation releases replay
-state without changing membership. This is not human approval, invitation
-reservation/consumption, a durable membership transaction, or durable replay
-protection.
+state without changing membership. The separate inviter registry now accepts
+only provider-generated v2 local issuance and models its reservation lifecycle.
+This is not human approval, cross-state orchestration, a durable membership
+transaction, or durable replay protection.
 
 ## Consequences and limits
 

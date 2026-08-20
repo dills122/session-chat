@@ -144,16 +144,18 @@ in bounded in-memory state for one invitation generation. It can move that
 owned value directly through MLS prepare/apply; rejected, expired, or abandoned
 preparation leaves membership unchanged and releases replay state.
 
-The invitation's self-contained key proves descriptor integrity only. The MLS
-laboratory is not connected to the invitation lifecycle or an admission proof.
+The invitation's self-contained key proves descriptor integrity only. The
+registry now accepts provider-generated invitation v2 and models its bounded
+reservation lifecycle, but that state machine is not connected to automated
+admission or MLS.
 ADR 0014 now defines the HPKE capability-proof and local response contracts.
 Their bounded canonical invitation-v2, protected outer/inner, exact AAD, and
 deposit-endpoint value types are implemented with retained fixtures. The
 one-shot HPKE operation has RFC and independent-provider evidence. Replay-safe
-automated capability admission now has retained evidence. Manual approval,
-invitation reservation/consumption, atomic durable membership and replay state,
-rollback protection, mailbox behavior, and transport adapters remain
-unimplemented.
+automated capability admission and the separate v2 lifecycle now have retained
+evidence. Manual approval, cross-state orchestration, atomic durable membership
+and replay state, rollback protection, mailbox behavior, and transport adapters
+remain unimplemented.
 Calling the explicit
 reservation or consumption methods is not proof that those caller
 preconditions exist yet.

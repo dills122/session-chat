@@ -278,6 +278,11 @@ values. No API exposes a path to reconstruct, substitute, or separately pair a
 KeyPackage after verification, and no membership API accepts an additional
 KeyPackage or invitation/request context beside this value.
 
+The inviter-owned registry separately supports provider-generated invitation
+v2 issue, read-only descriptor validation, reservation, release, and
+consumption. It is not yet connected to this admission value or to manual
+approval as one cross-state operation.
+
 The UI must retain the difference between a provider attestation, an
 issuer-signed credential, capability possession, and manual approval.
 
