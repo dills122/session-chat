@@ -150,7 +150,7 @@ the chosen transport, but should not possess message keys or plaintext.
 
 ### Current Phase 1 evidence
 
-The active Rust laboratory now contains five narrow pieces of this architecture:
+The active Rust laboratory now contains six narrow pieces of this architecture:
 
 - `session-protocol` encodes and strictly verifies deterministic signed
   secret-capability invitation v1/v2 layouts and owns ADR 0014's bounded
@@ -164,6 +164,9 @@ The active Rust laboratory now contains five narrow pieces of this architecture:
 - `session-crypto-hpke` defines the separate provider-neutral one-shot join
   protection boundary. Its AWS-LC implementation owns fresh invitation X25519
   key generation and exact typed PSK-mode seal/open contexts.
+- `admission-capability` accepts only HPKE-opened requests, independently
+  validates and owns the exact provider KeyPackage, compares the ADR 0009 tuple,
+  and retains bounded in-memory request-ID/nonce replay reservations.
 - `session-crypto-mls` isolates the pinned `mls-rs`/AWS-LC provider behind
   bounded KeyPackage, Welcome, and message inputs and models an in-memory
   two-member Add, path-update, message, and removal lifecycle. It is the only
@@ -172,10 +175,10 @@ The active Rust laboratory now contains five narrow pieces of this architecture:
 The invitation registry and MLS adapter remain separate in-process state
 machines. Registry method names encode caller preconditions; they do not
 implement admission or prove that the separate MLS transition happened.
-Neither state machine is persistent, cross-process, or rollback-resistant. The
-join-request values and HPKE operation exist, but no replay-checked capability
-admission, approval, durable orchestration, mailbox operation, or transport
-operation exists yet.
+None of these state machines is persistent, cross-process, or rollback-resistant.
+Automated replay-checked capability admission exists, but manual approval,
+invitation-lifecycle orchestration, direct consumption into MLS Add, durable
+orchestration, mailbox operation, and transport operation do not.
 
 ADR 0014 accepts the local-only contract: a signed capability invitation v2,
 RFC 9180 PSK-protected join request, the invitation-scoped Ed25519 key as

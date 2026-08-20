@@ -60,9 +60,11 @@ migration do not exist. ADR 0014's bounded canonical invitation-v2, protected
 outer/inner, exact AAD, and local deposit-endpoint value types now exist. The
 provider-neutral HPKE adapter adds fixed one-shot AWS-LC seal/open, RFC 9180
 known-answer evidence, independent-provider opening, and hostile context
-rejection. Replay-checked capability admission, approval, durable cross-layer
-state, mailbox behavior, the headless flow, and transport work listed below
-remain outstanding.
+rejection. The capability-admission adapter now retains HPKE proof provenance,
+independently validates and owns the exact KeyPackage, and reserves request IDs
+and nonces within bounded in-memory generation state. Manual approval,
+invitation/MLS orchestration, durable cross-layer state, mailbox behavior, the
+headless flow, and transport work listed below remain outstanding.
 
 Contract hardening rules to preserve before wiring HPKE and the isolated MLS
 laboratory into a join flow:

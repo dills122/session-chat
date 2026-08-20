@@ -42,6 +42,8 @@ Current areas:
   validation is read-only and consumption follows successful membership
 - `crates/session-crypto-hpke`: provider-neutral one-shot capability join
   protection with a pinned AWS-LC implementation and fixed typed contexts
+- `crates/admission-capability`: automated capability-proof verification, exact
+  KeyPackage ownership, and bounded in-memory replay reservation
 - `crates/session-crypto-mls`: isolated in-memory two-party MLS adapter with
   bounded exact KeyPackage ownership and explicit prepare/apply transitions
 - `spikes/`: disposable feasibility code; production packages must not depend on it
@@ -53,7 +55,8 @@ Planned v2 areas:
 - later `session-core` increments: join, approval, membership, and session state machines
 - later `session-crypto-mls` increments: admission orchestration and protected
   transactional state persistence
-- `crates/session-admission` plus adapters: admission policy and verified key binding
+- later admission increments: manual approval, invitation orchestration, direct
+  MLS consumption, and durable replay/result state
 - `crates/session-transport` plus adapters: opaque envelope delivery
 - `apps/sessionctl`: headless protocol and conformance client
 

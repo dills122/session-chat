@@ -12,11 +12,13 @@ secret-capability invitation v1/v2 layouts, bounded protected outer/inner join
 request and local deposit-endpoint value types, a provider-neutral one-shot HPKE
 PSK adapter with RFC/cross-provider evidence, exhaustive hostile fixtures, and
 a bounded inviter-owned invitation reservation/consumption state machine. The
-adapter proves capability possession for one exact cryptographic context but
-does not perform replay policy, admission approval, mailbox operation, or
-rollback-resistant persistence. ADR 0014's implemented evidence is narrower
-than its accepted integrated capability-join and one-Welcome contract. A
-separate isolated crate now
+capability-admission adapter accepts only proven HPKE opens, owns the exact
+provider-validated KeyPackage, and performs bounded in-memory request-ID/nonce
+replay reservation for one invitation generation. It does not perform manual
+approval, invitation/MLS orchestration, mailbox operation, or rollback-resistant
+persistence. ADR 0014's implemented evidence is narrower than its accepted
+integrated capability-join and one-Welcome contract. A separate isolated crate
+now
 operates an in-memory two-party MLS 1.0 lifecycle behind the reduced-feature
 `mls-rs`/AWS-LC boundary selected by ADR 0012. It is not connected to admission,
 transport, or durable state, and upstream's missing full independent `mls-rs`
@@ -348,13 +350,17 @@ deposit-endpoint values, and one-shot HPKE operation are implemented and
 tested. Evidence includes exact fixtures, the official RFC PSK vector,
 independent-provider opening of AWS-LC output, wrong-key/context and tampering
 rejection, closed code points, strict bounds, structural time/lifetime checks,
-and coarse secret-free public failures. This proves the isolated cryptographic
-operation, not current-time enforcement, replay-safe admission, KeyPackage
-ownership across admission, or mutation ordering. Remaining requirements
-include one CSPRNG-owned API for every invitation secret/random field,
-same-generation and expiry/reissue replay cases through admission,
-rights-confusion tests, competing deposits, and proof that rejection through
-KeyPackage validation leaves all state unchanged.
+and coarse secret-free public failures. The separate capability-admission
+adapter accepts only HPKE-opened provenance, enforces current time and request
+lifetime, independently validates and owns the exact provider KeyPackage,
+compares the reference/credential/leaf tuple before mutation, and reserves both
+request ID and nonce in bounded in-memory state. Tests cover substitution,
+same-generation replay, expiry/reissue with reused request values, stale-release
+ABA, capacity preservation, and unchanged replay state after rejection.
+Remaining requirements include one CSPRNG-owned API for every invitation
+secret/random field, manual approval and invitation/MLS orchestration,
+rights-confusion tests, competing deposits, durable replay/rollback protection,
+and crash-safe mutation ordering.
 
 Attacker story: Mallory captures a protected request and resubmits it after the
 invitation expires and is reissued with the same invitation and request IDs.

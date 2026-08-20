@@ -75,6 +75,13 @@ The inviter records the join-request replay identifier separately. A valid
 request reserves locally issued invitation state; only the successful durable
 membership transaction consumes it under ADR 0008.
 
+The current `admission-capability` laboratory implements only the automated
+front of this contract: it accepts HPKE-authenticated provenance, validates and
+owns the exact provider KeyPackage, compares the reference/credential/leaf
+tuple, and reserves both request ID and nonce in bounded in-memory state for
+one invitation generation. It does not perform policy or human approval,
+reserve invitation state, invoke MLS Add, or persist replay state.
+
 For the local secret-capability profile accepted by ADR 0014, the intended
 verifier is the exact invitation-scoped Ed25519 verifying key authenticated by
 the signed invitation. Successful RFC 9180 PSK opening proves possession of the

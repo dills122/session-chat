@@ -1,7 +1,8 @@
 # ADR 0014: Use HPKE PSK and a local Welcome deposit for Phase 1
 
-Status: accepted; canonical protocol values and one-shot HPKE implemented,
-stateful integration unimplemented
+Status: accepted; canonical protocol values, one-shot HPKE, and bounded
+in-memory automated capability admission implemented; integrated stateful flow
+unimplemented
 
 Date: 2026-08-20
 
@@ -9,10 +10,11 @@ Date: 2026-08-20
 
 The Phase 1 laboratory has an authenticated secret-capability invitation, an
 inviter-owned reservation lifecycle, exact MLS KeyPackage validation, an
-isolated two-party MLS lifecycle, and now the selected one-shot protected join
-operation. It does not yet turn that successful HPKE open into a replay-checked,
-approved admission owning the exact ADR 0009 value, or return a Welcome through
-a right-specific transport.
+isolated two-party MLS lifecycle, the selected one-shot protected join
+operation, and an automated capability verifier owning the exact ADR 0009 value
+with bounded in-memory replay reservation. It does not yet perform manual
+approval, reserve invitation state, consume that value into MLS Add, or return
+a Welcome through a right-specific transport.
 
 ADR 0010 requires deposit, receive, acknowledgement, and rotation authority to
 remain separate. ADR 0008 requires the inviter's future durable membership
@@ -126,11 +128,20 @@ coarse public error. Its fresh invitation X25519 key generation is provider
 owned. Bearer-capability generation and the other random invitation fields are
 not yet owned by one production invitation-creation API.
 
+`admission-capability` accepts only the private successful-open wrapper,
+independently validates the exact KeyPackage through the MLS provider, compares
+the canonical reference, credential identity, and leaf signature key, and owns
+the parsed provider value. Its bounded in-memory replay reservation binds both
+request ID and nonce to the invitation generation and uses a monotonic
+reservation ID to prevent stale-release ABA. This is automated proof
+verification, not human approval, invitation reservation, MLS membership, or
+durable replay protection.
+
 ## Consequences and limits
 
-- The next slice can implement the one-shot capability admission boundary and
-  deterministic in-memory transport without a network, GUI, persistence layer,
-  approval flow, or connected MLS membership transition.
+- The next slice can connect the one-shot capability admission value to manual
+  approval and the invitation/MLS state machines, or add deterministic in-memory
+  transport, without claiming persistence or a networked product.
 - Hosted realm, public rendezvous, direct, relay, mixnet, and private-network
   endpoints require new transport-specific schemas. Version 1 has no generic
   route escape hatch.

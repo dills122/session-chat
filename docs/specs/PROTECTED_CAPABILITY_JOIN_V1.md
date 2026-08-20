@@ -1,7 +1,8 @@
 # Spec: Protected capability join v1
 
-Status: accepted contract under ADR 0014; canonical protocol values and
-one-shot HPKE implemented, stateful behavior unimplemented
+Status: accepted contract under ADR 0014; canonical protocol values, one-shot
+HPKE, and bounded in-memory automated admission implemented; integrated
+stateful behavior unimplemented
 
 ## Objective
 
@@ -14,10 +15,12 @@ authority required to deposit the resulting Welcome.
 The retained protocol crate implements the four canonical value types, strict
 decoders, exact fixtures, and outer AAD derivation. `session-crypto-hpke`
 implements provider-owned invitation X25519 key generation and the exact
-one-shot seal/open operation. This specification does not implement
-current-time or replay policy, admission approval, invitation reservation, MLS
-membership, mailbox behavior, durable state, outbox processing, hosted realm
-trust, a network transport, or a deployable client.
+one-shot seal/open operation. `admission-capability` implements current-time and
+request-lifetime checks, exact provider KeyPackage ownership, tuple comparison,
+and bounded in-memory request-ID/nonce reservation. This specification does not
+implement manual approval, invitation reservation, MLS membership, mailbox
+behavior, durable state, outbox processing, hosted realm trust, a network
+transport, or a deployable client.
 
 ## Assumptions
 
@@ -349,13 +352,14 @@ admission, MLS, mailbox, and outbox state unchanged.
 crates/session-protocol/       # canonical invitation v2, outer, inner, endpoint types
 crates/session-protocol/tests/ # exact fixtures and hostile decoding matrix
 crates/session-crypto-hpke/    # provider-neutral one-shot HPKE adapter
+crates/admission-capability/   # exact KeyPackage ownership and replay reservation
 docs/specs/                    # this normative contract
 docs/adr/                      # ADR 0014 decision rationale
 ```
 
 The right-specific memory transport is a subsequent increment under
-`crates/session-transport`; admission orchestration, MLS wiring, durability,
-and `sessionctl` remain later slices.
+`crates/session-transport`; manual approval, invitation/MLS orchestration,
+durability, and `sessionctl` remain later slices.
 
 ## Code style
 

@@ -78,15 +78,18 @@ evidence required by ADR 0012.
   [protected capability join specification](specs/PROTECTED_CAPABILITY_JOIN_V1.md)
   accept the exact local contract. Canonical value types, RFC/cross-provider
   HPKE evidence, wrong-context rejection, and the one-shot operation are
-  retained. Right-specific memory transport, replay-checked admission
-  integration, and one CSPRNG-owned API for all invitation creation remain
-  gates.
+  retained. The separate capability adapter now retains HPKE proof provenance,
+  exact provider KeyPackage ownership, and bounded in-memory request-ID/nonce
+  replay reservation. Right-specific memory transport, manual approval,
+  invitation/MLS orchestration, durable replay, and one CSPRNG-owned API for all
+  invitation creation remain gates.
 - Implement durable transactional replay state, rollback protection,
   revocation, reservation recovery, and bounded-multi-use state machines.
-- Finalize the capability admission schema over the exact ADR 0009 binding. The
-  accepted contract specifies that successful HPKE PSK opening proves capability
-  possession, without a second raw capability or custom HMAC, while the
-  authenticated inner request carries the complete binding tuple.
+- Integrate the implemented automated capability-admission value with manual
+  approval, invitation reservation, and direct MLS Add without reconstructing
+  or substituting its owned ADR 0009 KeyPackage. Successful HPKE PSK opening
+  proves capability possession without a second raw capability or custom HMAC;
+  it is not itself approval or membership.
 - Decide public, encrypted, and local-only fields for targeted GitHub and
   credential invitations. The current capability descriptor is a secret bearer
   object and is not publicly postable.
