@@ -139,6 +139,7 @@ fn generated_key_seals_and_opens_one_exact_capability_request() {
     );
     assert_eq!(protected.invitation_id(), signed.invitation_id());
     assert_eq!(protected.invitation_key_id(), signed.invitation_key_id());
+    assert_eq!(opened.invitation_signature(), signed.signature());
 }
 
 #[test]

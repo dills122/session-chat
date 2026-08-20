@@ -78,21 +78,19 @@ evidence required by ADR 0012.
   [protected capability join specification](specs/PROTECTED_CAPABILITY_JOIN_V1.md)
   accept the exact local contract. Canonical value types, RFC/cross-provider
   HPKE evidence, wrong-context rejection, and the one-shot operation are
-  retained. The separate capability adapter now retains HPKE proof provenance,
-  exact provider KeyPackage ownership, and bounded in-memory request-ID/nonce
-  replay reservation. Right-specific memory transport, manual approval,
-  cross-state v2 invitation/admission orchestration, and durable replay/MLS
-  state remain gates. The
-  provider now owns one complete CSPRNG-backed invitation-v2 creation API, and
-  the exact admitted provider object moves directly through MLS prepare/apply.
+  retained. The capability adapter now retains exact HPKE-opened invitation
+  provenance, provider KeyPackage ownership, bounded request-ID/nonce replay,
+  local v2 reservation, explicit simulated approval, and in-memory MLS/Add
+  coordination. Right-specific memory transport, human approval UX, and durable
+  replay/MLS/invitation/outbox state remain gates. The provider owns one complete
+  CSPRNG-backed invitation-v2 creation API.
 - Implement durable transactional replay state, rollback protection,
   revocation, reservation recovery, and bounded-multi-use state machines.
-- Integrate the implemented automated capability-admission/MLS handoff with
-  the separate v2 invitation reservation/consumption lifecycle and manual
-  approval without
-  reconstructing or substituting its owned ADR 0009 KeyPackage. Successful HPKE
-  PSK opening proves capability possession without a second raw capability or
-  custom HMAC; it is not itself approval or a durable membership transaction.
+- Replace the retained in-memory approval/MLS/invitation sequencing with the
+  durable ADR 0008 transaction without reconstructing or substituting its owned
+  ADR 0009 KeyPackage. Successful HPKE PSK opening proves capability possession
+  without a second raw capability or custom HMAC; the explicit simulated
+  approval input is not human UI evidence or a durable membership transaction.
 - Decide public, encrypted, and local-only fields for targeted GitHub and
   credential invitations. The current capability descriptor is a secret bearer
   object and is not publicly postable.

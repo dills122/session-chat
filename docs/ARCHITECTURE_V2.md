@@ -167,20 +167,24 @@ The active Rust laboratory now contains six narrow pieces of this architecture:
   key generation and exact typed PSK-mode seal/open contexts.
 - `admission-capability` accepts only HPKE-opened requests, independently
   validates and owns the exact provider KeyPackage, compares the ADR 0009 tuple,
-  retains bounded in-memory request-ID/nonce replay reservations, and moves the
-  owned provider object directly into MLS prepare/apply.
+  retains bounded in-memory request-ID/nonce replay reservations, binds the
+  exact HPKE-opened invitation signature to local v2 state, consumes an explicit
+  simulated approval decision, and permits only that approved one-shot value to
+  enter MLS prepare/apply.
 - `session-crypto-mls` isolates the pinned `mls-rs`/AWS-LC provider behind
   bounded KeyPackage, Welcome, and message inputs and models an in-memory
   two-member Add, path-update, message, and removal lifecycle. It is the only
   current implementation of the provider-neutral message contract.
 
-The invitation registry and MLS adapter remain separate in-process state
-machines. Registry method names encode caller preconditions; they do not
-implement admission or prove that the separate MLS transition happened.
-None of these state machines is persistent, cross-process, or rollback-resistant.
-Automated replay-checked capability admission and v2 invitation lifecycle state
-exist separately, but manual approval, cross-state orchestration, durable
-membership/replay state, mailbox operation, and transport operation do not.
+The invitation registry, replay verifier, and MLS adapter remain separate
+in-process state machines. The capability adapter now coordinates them through
+an approval-gated one-shot API: rejection and pre-commit failure release both
+reservations, abandonment also clears the MLS pending Commit, and successful
+in-memory Add consumes the invitation before returning its outputs. This is
+sequential in-memory coordination, not one persistent, cross-process,
+crash-atomic, or rollback-resistant transaction. Human approval UX, durable
+membership/replay state, Welcome outbox processing, mailbox operation, and
+transport operation do not exist.
 
 ADR 0014 accepts the local-only contract: a signed capability invitation v2,
 RFC 9180 PSK-protected join request, the invitation-scoped Ed25519 key as

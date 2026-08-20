@@ -98,13 +98,22 @@ impl GeneratedCapabilityInvitationV2 {
 /// implementations. The value is intentionally non-`Clone` and non-`Debug` so
 /// downstream admission can require cryptographic provenance without accepting
 /// a separately constructed [`CapabilityJoinRequest`].
-pub struct OpenedCapabilityJoinRequest(CapabilityJoinRequest);
+pub struct OpenedCapabilityJoinRequest {
+    request: CapabilityJoinRequest,
+    invitation_signature: [u8; 64],
+}
 
 impl OpenedCapabilityJoinRequest {
     /// Borrows the exact canonical request recovered from HPKE plaintext.
     #[must_use]
     pub const fn request(&self) -> &CapabilityJoinRequest {
-        &self.0
+        &self.request
+    }
+
+    /// Returns the exact signed invitation instance used for this HPKE open.
+    #[must_use]
+    pub const fn invitation_signature(&self) -> &[u8; 64] {
+        &self.invitation_signature
     }
 }
 
@@ -304,7 +313,10 @@ impl InvitationJoinProtector for AwsLcInvitationJoinProtector {
         let request = CapabilityJoinRequest::decode_canonical(&plaintext)
             .map_err(|_| JoinProtectionError::Rejected)?;
         validate_inner_context(invitation, &request)?;
-        Ok(OpenedCapabilityJoinRequest(request))
+        Ok(OpenedCapabilityJoinRequest {
+            request,
+            invitation_signature: *invitation.signature(),
+        })
     }
 }
 

@@ -44,10 +44,10 @@ The checked-in runtime consists of:
   issuance accepts only the provider-generated complete invitation wrapper;
 - `session-crypto-hpke`: a provider-neutral one-shot RFC 9180 PSK join adapter
   with a pinned AWS-LC implementation, typed contexts, and coarse errors;
-- `admission-capability`: an in-memory automated capability verifier that
-  accepts HPKE-open provenance, validates and owns the exact provider
-  KeyPackage, and reserves request-ID/nonce replay values within one invitation
-  generation, then moves that object directly through MLS prepare/apply;
+- `admission-capability`: an in-memory capability verifier and simulated
+  approval coordinator that retains exact HPKE-opened invitation provenance,
+  owns the exact provider KeyPackage, reserves request-ID/nonce and local v2
+  state, and permits only an approved one-shot value to enter MLS;
 - `session-crypto-mls`: an isolated, in-memory two-party MLS 1.0 adapter with
   bounded KeyPackage/Welcome/message inputs, exact KeyPackage ownership,
   Add/Welcome, application messages, path updates, removal, and explicit
@@ -56,12 +56,11 @@ The checked-in runtime consists of:
   semantics such as schema rejection, right-specific authorization ordering,
   rotation, and capacity limits.
 
-There is no manual approval or cross-state v2 invitation/admission orchestration, mailbox
-runtime, durable transaction, production transport,
+There is no human approval UX, mailbox runtime, durable transaction, production transport,
 client vault, desktop shell, hosted realm, or headless end-to-end client. The
 HPKE adapter proves PSK possession only for its exact typed context; the
-capability adapter performs automated in-memory verification, replay
-reservation, and the direct MLS prepare/apply handoff. The
+capability adapter performs automated verification, explicit simulated
+approval, exact v2/replay reservation, and in-memory MLS coordination. The
 isolated MLS adapter uses exact `mls-rs` 0.56.0 and AWS-LC 0.25.0 dependencies,
 but exposes no durable or network path. The superseded OpenMLS selection remains
 blocked by repository dependency policy. The Node simulator's custom
@@ -71,24 +70,24 @@ non-production.
 ADR 0014 and `docs/specs/PROTECTED_CAPABILITY_JOIN_V1.md` accept an exact local
 HPKE capability-join and one-Welcome response contract. The canonical values
 and isolated HPKE proof operation are runtime inventory, as is bounded
-single-process replay-aware capability verification. Approval,
-invitation/MLS orchestration, durable replay, mailbox, and cross-layer state
-transitions remain accepted-but-unimplemented contracts.
+single-process replay-aware capability verification and approval-gated
+invitation/MLS sequencing. Human approval UX, durable replay, mailbox, and
+atomic cross-layer state transitions remain accepted-but-unimplemented
+contracts.
 
 ```mermaid
 flowchart LR
   I["Implemented: canonical invitation v1/v2 and join framing"] --> P["Implemented: one-shot HPKE PSK operation"]
-  P --> C["Implemented: automated capability verification, replay reservation, and MLS handoff"]
+  P --> C["Implemented: automated capability verification and replay reservation"]
   I --> R["Implemented: in-memory lifecycle"]
   E["Implemented: bounded opaque envelope"]
   M["Implemented: isolated in-memory MLS lifecycle"]
   N["Non-production Node boundary simulator"]
-  C --> M
-  C -. future approval/orchestration .-> A["Approved invitation and admission transaction"]
-  R -. future orchestration .-> A
-  A -. future orchestration .-> M
+  C --> A["Implemented: simulated approval and in-memory invitation/MLS coordination"]
+  R --> A
+  A --> M
   M -. future .-> T["Right-specific transport"]
-  M -. future .-> V["Atomic durable state and sealed vault"]
+  A -. future .-> V["Atomic durable state and sealed vault"]
   T -. proposed .-> H["Portable self-hosted realm"]
 ```
 
@@ -103,8 +102,9 @@ flowchart LR
 | Invitation v1/v2 reservation is tied to the schema and exact record instance, including expiry/reissue with reused invitation and request IDs | Implemented and tested | Shared bounded registry, provider-only local v2 issuance, `InvitationReservation.record_signature`, and stale release/consume regression tests |
 | Invitation state is durable or rollback resistant | Accepted contract, unimplemented | ADR 0008 and the roadmap require a later cross-layer transaction |
 | Isolated MLS validation owns the exact KeyPackage, credential identity, leaf key, and reference through Add/Welcome | Implemented and tested | Private non-`Clone` adapter value and retained lifecycle tests; this is not admission |
-| Automated capability verification owns the exact validated MLS value after HPKE proof and moves it directly into MLS prepare/apply | Implemented and tested | Private non-cloneable proof provenance/provider object; exact tuple and verifier-owned reservation checks; rejected, expired, foreign, and abandoned prepare leave membership unchanged |
-| Approval, invitation state, replay state, and MLS Add form one product transaction | Accepted contract, unimplemented | ADRs 0008/0009/0012; separate in-memory v2 invitation lifecycle and direct Add seams exist, but manual approval, cross-state orchestration, and durable atomicity do not |
+| Automated capability verification owns the exact validated MLS value after HPKE proof | Implemented and tested | Private non-cloneable proof/provider object retains exact invitation signature; exact tuple and verifier-owned reservation checks reject substitution and foreign authority |
+| Explicit approval gates exact v2 invitation, replay, and MLS Add sequencing | Implemented and tested in memory | One-shot simulated `Approve`/`Reject`; direct verified-to-MLS API removed; rejection, expiry, failed prepare, and abandonment release both reservations; success consumes invitation after Add |
+| Approval, invitation state, replay state, MLS Add, and Welcome outbox form one durable product transaction | Accepted contract, unimplemented | ADRs 0008/0009/0012; current apply/consume coordination is sequential and in memory, with no durable store or outbox |
 | Capability possession is HPKE-protected and bound to the exact local join context | Implemented and tested | Typed one-shot AWS-LC adapter, official RFC PSK vector, independent-provider opening, wrong-key/context and tampering rejection |
 | Request ID and nonce are replay-reserved within one invitation generation | Implemented and tested | Bounded in-memory reservations cover same-generation replay, expiry/reissue independence, stale-release ABA, and capacity preservation; not durable or rollback resistant |
 | Two-party MLS Add/Welcome, application messages, path updates, removal, replay/reordering, and delayed-Commit handling work in memory | Implemented and tested | `session-crypto-mls` lifecycle and hostile-member tests with exact pinned provider graph |
@@ -278,20 +278,18 @@ The canonical invitation-v2 and protected-request parser increment from ADR
 0014 now preserves invitation-v1 bytes, rejects malformed and unknown
 representations before provider or state work, and retains exact fixtures. The
 provider-neutral HPKE operation now has RFC 9180 and cross-provider evidence.
-The automated admission increment now owns the exact validated KeyPackage value
-already proven by the isolated MLS adapter and moves it directly through the
-Add prepare/apply seam; it does not accept a replacement byte string or digest.
-The following integration increment must connect explicit approval to the
-separate v2 invitation state without weakening that ownership chain.
-Keep integration in memory until the cross-layer durable transaction and
-Welcome outbox design has crash/rollback evidence.
+The admission increment now owns the exact validated KeyPackage value, retains
+the exact HPKE-opened invitation signature, binds it to local v2 state, consumes
+an explicit simulated approval decision, and permits only that one-shot value
+to enter Add preparation. It does not accept a replacement byte string or
+digest. The integration remains in memory until the cross-layer durable
+transaction and Welcome outbox design has crash/rollback evidence.
 
 The next evidence-producing research or implementation tasks are:
 
-1. Design and retain the approval and cross-state v2 invitation-orchestration seam,
-   preserving the existing ownership and before-mutation rejection matrix.
-2. Complete the `mls-rs` group-state/KeyPackage repository call trace and cross-layer
+1. Complete the `mls-rs` group-state/KeyPackage repository call trace and cross-layer
    crash/rollback model.
+2. Design the durable approval/result, replay, invitation, MLS, and Welcome-outbox transaction.
 3. Parser fuzzing and invitation/admission state-machine property-test plan.
 4. RNG and clock-source contracts for expiry, replay, and deterministic tests.
 

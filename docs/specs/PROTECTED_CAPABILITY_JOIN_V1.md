@@ -17,13 +17,14 @@ decoders, exact fixtures, and outer AAD derivation. `session-crypto-hpke`
 implements provider-owned invitation X25519 key generation and the exact
 one-shot seal/open operation. `admission-capability` implements current-time and
 request-lifetime checks, exact provider KeyPackage ownership, tuple comparison,
-bounded in-memory request-ID/nonce reservation, and direct ownership-preserving
-MLS prepare/apply. Rejected, expired, or abandoned preparation releases replay
-state without changing membership. This specification does not implement manual
-approval or cross-state orchestration. The separate registry supports
-provider-generated v2 reservation/release/consumption, but atomic durable
-membership state, mailbox behavior, outbox processing, hosted realm trust, a
-network transport, and a deployable client remain unimplemented.
+bounded in-memory request-ID/nonce reservation, exact signed-invitation
+provenance, provider-generated local v2 reservation, explicit simulated
+approval, and ownership-preserving MLS prepare/apply. Rejected, expired, failed,
+or abandoned work releases invitation and replay state without changing
+membership; successful in-memory Add consumes invitation state. Human approval
+UX, atomic durable membership state, mailbox behavior, outbox processing,
+hosted realm trust, a network transport, and a deployable client remain
+unimplemented.
 
 ## Assumptions
 
@@ -341,7 +342,8 @@ The inviter performs, without mutation through step 7:
 6. compare every outer, signed, HPKE, and inner binding exactly;
 7. enforce replay policy and validate the exact KeyPackage/ADR 0009 tuple;
 8. produce the one-shot admission value and only then reserve the invitation;
-9. after approval, consume that value directly into MLS Add; and
+9. consume an explicit approval decision, prepare/apply that exact value in MLS,
+   and consume the invitation after successful in-memory Add; and
 10. later commit and deliver under the separate ADR 0008/0012 transaction and
     outbox contracts.
 
@@ -355,14 +357,14 @@ admission, MLS, mailbox, and outbox state unchanged.
 crates/session-protocol/       # canonical invitation v2, outer, inner, endpoint types
 crates/session-protocol/tests/ # exact fixtures and hostile decoding matrix
 crates/session-crypto-hpke/    # provider-neutral one-shot HPKE adapter
-crates/admission-capability/   # exact ownership, replay reservation, MLS prepare/apply
+crates/admission-capability/   # exact approval-gated invitation/replay/MLS coordination
 docs/specs/                    # this normative contract
 docs/adr/                      # ADR 0014 decision rationale
 ```
 
 The right-specific memory transport is a subsequent increment under
-`crates/session-transport`; manual approval, v2 invitation orchestration,
-durability, and `sessionctl` remain later slices.
+`crates/session-transport`; human approval UX, durable transaction/outbox work,
+and `sessionctl` remain later slices.
 
 ## Code style
 

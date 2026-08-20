@@ -12,11 +12,12 @@ The Phase 1 laboratory has an authenticated secret-capability invitation, an
 inviter-owned reservation lifecycle, exact MLS KeyPackage validation, an
 isolated two-party MLS lifecycle, the selected one-shot protected join
 operation, and an automated capability verifier owning the exact ADR 0009 value
-with bounded in-memory replay reservation and a direct MLS prepare/apply seam.
-The inviter registry separately supports provider-generated v2 reservation,
-release, and post-membership consumption. The laboratory does not yet connect
-those states through manual approval, commit durable cross-layer state, or
-return a Welcome through a right-specific transport.
+with bounded in-memory replay reservation. The verifier now retains the exact
+HPKE-opened invitation signature, binds that value to provider-generated local
+v2 state, consumes an explicit simulated approval decision, and permits only
+the approved one-shot value to enter MLS preparation. The laboratory does not
+yet commit durable cross-layer state or return a Welcome through a
+right-specific transport.
 
 ADR 0010 requires deposit, receive, acknowledgement, and rotation authority to
 remain separate. ADR 0008 requires the inviter's future durable membership
@@ -137,19 +138,19 @@ independently validates the exact KeyPackage through the MLS provider, compares
 the canonical reference, credential identity, and leaf signature key, and owns
 the parsed provider value. Its bounded in-memory replay reservation binds both
 request ID and nonce to the invitation generation and uses a monotonic
-reservation ID to prevent stale-release ABA. This is automated proof
-verification. The same non-reconstructed provider object moves into MLS
-prepare/apply; rejected, expired, or abandoned preparation releases replay
-state without changing membership. The separate inviter registry now accepts
-only provider-generated v2 local issuance and models its reservation lifecycle.
-This is not human approval, cross-state orchestration, a durable membership
-transaction, or durable replay protection.
+reservation ID to prevent stale-release ABA. The same non-reconstructed provider
+object and exact invitation signature move through local v2 reservation,
+explicit simulated approval, and MLS preparation. Rejected, expired, failed, or
+abandoned work releases invitation and replay state without changing membership;
+successful in-memory Add consumes the invitation before returning its outputs.
+This is not human UI approval, a durable membership transaction, durable replay
+protection, or a Welcome outbox.
 
 ## Consequences and limits
 
-- The next slice can connect manual approval and the v2 invitation lifecycle to
-  the existing admission/MLS seam, or add deterministic in-memory transport,
-  without claiming persistence or a networked product.
+- The next slice can add deterministic right-specific in-memory transport while
+  preserving the approval-gated ownership chain, without claiming persistence
+  or a networked product.
 - Hosted realm, public rendezvous, direct, relay, mixnet, and private-network
   endpoints require new transport-specific schemas. Version 1 has no generic
   route escape hatch.
@@ -161,8 +162,8 @@ transaction, or durable replay protection.
   network authorization remains a future research question.
 - A committed membership transition is not rolled back because Welcome deposit,
   receipt, or acknowledgement fails. Exact outbox retry is the recovery path.
-- There is still no approved invitation-to-admission join transaction, durable
-  replay protection, outbox,
+- There is still no durable approved invitation-to-admission transaction,
+  durable replay protection, outbox,
   deployable client, network service, hosted trust, forward-secret deletion, or
   production-security claim.
 

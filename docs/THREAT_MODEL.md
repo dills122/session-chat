@@ -16,10 +16,11 @@ Local v2 state can be created only from the provider-generated invitation
 wrapper; validating a remotely supplied descriptor remains read-only. The
 capability-admission adapter accepts only proven HPKE opens, owns the exact
 provider-validated KeyPackage, and performs bounded in-memory request-ID/nonce
-replay reservation for one invitation generation. It moves that same object
-directly through MLS prepare/apply and couples abandoned preparation to replay
-release. It does not perform manual approval, cross-state
-invitation/admission orchestration, mailbox
+replay reservation for one invitation generation. It retains the exact opened
+invitation signature, binds the admission to local v2 state, and consumes an
+explicit simulated approval decision before MLS preparation. Rejection and
+pre-commit failure release invitation and replay state; successful in-memory
+Add consumes the invitation. It does not perform human UI approval, mailbox
 operation, or rollback-resistant persistence. ADR 0014's implemented evidence is narrower than its accepted
 integrated capability-join and one-Welcome contract. A separate isolated crate
 now
@@ -356,21 +357,25 @@ deposit-endpoint values, and one-shot HPKE operation are implemented and
 tested. Evidence includes exact fixtures, the official RFC PSK vector,
 independent-provider opening of AWS-LC output, wrong-key/context and tampering
 rejection, closed code points, strict bounds, structural time/lifetime checks,
-and coarse secret-free public failures. The separate capability-admission
-adapter accepts only HPKE-opened provenance, enforces current time and request
-lifetime, independently validates and owns the exact provider KeyPackage,
-compares the reference/credential/leaf tuple before mutation, and reserves both
-request ID and nonce in bounded in-memory state. The owned value moves directly
-through MLS prepare/apply; rejected, expired, or dropped preparation releases
-replay state while leaving membership unchanged. Tests cover substitution,
+and coarse secret-free public failures. The capability-admission adapter accepts
+only HPKE-opened provenance, retains the exact invitation signature, enforces
+current time and request lifetime, independently validates and owns the exact
+provider KeyPackage, compares the reference/credential/leaf tuple before
+mutation, and reserves both request ID and nonce in bounded in-memory state. It
+binds that value to exact local v2 state and requires an explicit simulated
+approval token before MLS preparation. Rejected, expired, failed, or dropped
+preparation releases invitation and replay reservations while leaving
+membership unchanged. Apply rechecks request and invitation expiry using a
+fresh caller-supplied time before MLS mutation. Tests cover substitution,
 same-generation replay, expiry/reissue with reused request values, stale-release
 ABA, foreign-verifier reservation rejection, capacity preservation, delayed
 expiry, and unchanged state after rejection or abandonment.
-The provider now owns one complete invitation-v2 creation API covering every
-secret and random field; callers supply only issue and expiration times.
-Remaining requirements include manual approval and cross-state
-invitation/admission orchestration,
-rights-confusion tests, competing deposits, durable replay/rollback protection,
+The provider owns one complete invitation-v2 creation API covering every secret
+and random field; callers supply only issue and expiration times. The in-memory
+approval path applies MLS and then consumes invitation state before returning
+the committed outputs, but that sequencing is not crash-atomic. Remaining
+requirements include human approval UX, rights-confusion tests, competing
+deposits, durable replay/rollback protection, one Welcome outbox transaction,
 and crash-safe mutation ordering.
 
 Attacker story: Mallory captures a protected request and resubmits it after the

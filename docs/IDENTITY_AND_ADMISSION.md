@@ -75,15 +75,16 @@ The inviter records the join-request replay identifier separately. A valid
 request reserves locally issued invitation state; only the successful durable
 membership transaction consumes it under ADR 0008.
 
-The current `admission-capability` laboratory implements only the automated
-front of this contract: it accepts HPKE-authenticated provenance, validates and
-owns the exact provider KeyPackage, compares the reference/credential/leaf
-tuple, and reserves both request ID and nonce in bounded in-memory state for
-one invitation generation. The verifier moves the same owned provider object
-directly through MLS prepare/apply; rejection, expiry, or abandonment releases
-the replay reservation without changing membership. It does not perform policy
-or human approval, reserve/consume invitation state, or persist replay and MLS
-state atomically.
+The current `admission-capability` laboratory accepts HPKE-authenticated
+provenance, retains the exact signed-invitation signature, validates and owns
+the exact provider KeyPackage, compares the reference/credential/leaf tuple,
+and reserves both request ID and nonce in bounded in-memory state. It binds that
+value to the exact local v2 invitation reservation and consumes an explicit
+simulated `Approve` or `Reject` decision. Only the approved one-shot value can
+enter MLS preparation. Rejection, expiry, failed preparation, or abandonment
+releases invitation and replay reservations; success applies MLS then consumes
+the invitation. This is not human UI evidence and does not persist replay, MLS,
+approval, or invitation state atomically.
 
 For the local secret-capability profile accepted by ADR 0014, the intended
 verifier is the exact invitation-scoped Ed25519 verifying key authenticated by
@@ -278,10 +279,12 @@ values. No API exposes a path to reconstruct, substitute, or separately pair a
 KeyPackage after verification, and no membership API accepts an additional
 KeyPackage or invitation/request context beside this value.
 
-The inviter-owned registry separately supports provider-generated invitation
-v2 issue, read-only descriptor validation, reservation, release, and
-consumption. It is not yet connected to this admission value or to manual
-approval as one cross-state operation.
+The inviter-owned registry supports provider-generated invitation v2 issue,
+read-only descriptor validation, reservation, release, and consumption. The
+capability adapter connects those transitions to its exact admission value and
+simulated approval decision in memory. The future durable implementation must
+still make approval/result, replay, MLS, invitation consumption, and Welcome
+outbox state one recoverable transaction.
 
 The UI must retain the difference between a provider attestation, an
 issuer-signed credential, capability possession, and manual approval.

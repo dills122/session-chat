@@ -23,31 +23,34 @@ The Rust workspace currently contains:
   every random invitation-v2 field
 - `admission-capability`, with HPKE-proof provenance, exact provider-validated
   KeyPackage ownership, bounded in-memory request-ID/nonce replay reservation,
-  and direct ownership-preserving MLS prepare/apply
+  exact v2 invitation binding, explicit simulated approval, and
+  ownership-preserving invitation/MLS prepare/apply coordination
 - `session-crypto-mls`, with an isolated in-memory two-party MLS 1.0 adapter for
   bounded KeyPackage validation, Add/Welcome, messages, path updates, and removal
 
 The signing key authenticates the invitation bytes, not a GitHub identity or
 person. The capability invitation is a secret bearer object and must not be
-posted publicly or placed in a transport envelope. The MLS adapter is not wired
-to invitations or admission and has no durable storage or network path.
+posted publicly or placed in a transport envelope. The MLS adapter has no
+durable storage or network path; the capability adapter coordinates it only
+through the in-memory approval-gated path described below.
 The protected-join and capability-admission adapters prove possession for one
-exact typed HPKE context, independently validate and own the exact KeyPackage,
-and reserve replay values within bounded in-memory state. That exact provider
-object can move directly into the isolated MLS prepare/apply boundary. The
-adapters are not yet orchestrated with the v2 invitation lifecycle or manual
-approval and do not provide durable replay protection. Cross-layer atomic persistence, mailbox
-behavior, networking, and a user interface remain unimplemented. The core
-transition names encode caller preconditions; they do not prove admission or
-MLS membership has occurred.
+exact typed HPKE context, preserve the exact signed-invitation instance,
+independently validate and own the exact KeyPackage, and reserve replay values
+within bounded in-memory state. The approval-gated path binds that value to the
+local v2 invitation reservation before MLS preparation. Explicit rejection,
+expiry, pre-commit failure, or abandonment releases both reservations; a
+successful in-memory Add consumes invitation state. This sequencing is not a
+durable transaction. Cross-layer atomic persistence, a Welcome outbox, mailbox
+behavior, networking, human UI approval, and a user interface remain
+unimplemented.
 
 ADR 0014 defines the exact local-only invitation-v2, HPKE capability-join, and
 one-Welcome response contract. Its canonical protocol value types are now
 implemented and tested, its one-shot HPKE operation has RFC and cross-provider
-evidence, and its automated capability-admission boundary is retained in
-memory. Approval, invitation/MLS orchestration, durable replay, mailbox, and
-network behavior remain accepted design boundaries rather than runtime or
-production claims.
+evidence, and its capability-admission boundary now retains explicit simulated
+approval plus in-memory invitation/MLS coordination. Human approval UX,
+durable atomic replay/membership state, mailbox, and network behavior remain
+accepted design boundaries rather than runtime or production claims.
 
 ```sh
 cargo fetch --locked

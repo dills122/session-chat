@@ -2,6 +2,7 @@
 
 //! Capability admission for the local protected-join profile.
 
+use session_core::{InvitationRegistry, InvitationReservation, ValidatedCapabilityInvitationV2};
 use session_crypto_hpke::OpenedCapabilityJoinRequest;
 use session_crypto_mls::{
     CommittedAddition, KeyPackageReference, PreparedAddition, SessionMlsConfig, SessionMlsGroup,
@@ -198,38 +199,135 @@ impl CapabilityAdmissionVerifier {
         self.remove_reservation(&verified.reservation)
     }
 
-    /// Moves the exact admitted KeyPackage directly into MLS Add preparation.
+    /// Binds automated admission to the exact locally issued v2 invitation.
     ///
-    /// A rejected preparation releases the replay reservation. Dropping the
-    /// returned value clears the pending MLS Commit and releases replay state.
-    /// A successful apply retains replay state until request expiry.
-    pub fn prepare_add<'verifier, 'group, C: SessionMlsConfig>(
-        &'verifier mut self,
+    /// Any binding or registry failure releases the verifier-owned replay
+    /// reservation before returning a coarse rejection.
+    pub fn reserve_v2_for_approval(
+        &mut self,
+        registry: &mut InvitationRegistry,
+        invitation: &ValidatedCapabilityInvitationV2,
         verified: VerifiedCapabilityAdmission,
-        group: &'group mut SessionMlsGroup<C>,
         now_unix_seconds: u64,
-    ) -> Result<PreparedCapabilityAddition<'verifier, 'group, C>, CapabilityAdmissionError> {
-        let reservation = verified.reservation.clone();
-        if self.reservation_position(&reservation).is_none() {
+    ) -> Result<PendingCapabilityApproval, CapabilityAdmissionError> {
+        if self.reservation_position(&verified.reservation).is_none() {
             return Err(CapabilityAdmissionError::ReservationMismatch);
         }
-        if verified.opened.request().expires_at_unix_seconds() <= now_unix_seconds {
-            self.remove_reservation(&reservation)?;
+        let request = verified.opened.request();
+        let signed = invitation.invitation();
+        if request.invitation_id() != signed.invitation_id()
+            || request.join_challenge() != signed.join_challenge()
+            || request.invitation_key_id() != signed.invitation_key_id()
+            || request.intended_verifier() != signed.inviter_verifying_key()
+            || verified.opened.invitation_signature() != signed.signature()
+        {
+            self.remove_reservation(&verified.reservation)?;
+            return Err(CapabilityAdmissionError::Rejected);
+        }
+        let invitation_reservation = match registry.reserve_v2_after_admission(
+            invitation,
+            *verified.join_request_id(),
+            now_unix_seconds,
+        ) {
+            Ok(reservation) => reservation,
+            Err(_) => {
+                self.remove_reservation(&verified.reservation)?;
+                return Err(CapabilityAdmissionError::Rejected);
+            }
+        };
+        Ok(PendingCapabilityApproval {
+            verified,
+            invitation_reservation,
+        })
+    }
+
+    /// Applies one explicit simulated manual-approval decision.
+    ///
+    /// Rejection releases both state machines. Approval produces the only value
+    /// accepted by the cross-state MLS preparation API.
+    pub fn decide_v2(
+        &mut self,
+        registry: &mut InvitationRegistry,
+        pending: PendingCapabilityApproval,
+        decision: ManualApprovalDecision,
+        now_unix_seconds: u64,
+    ) -> Result<CapabilityApprovalOutcome, CapabilityAdmissionError> {
+        if self
+            .reservation_position(&pending.verified.reservation)
+            .is_none()
+        {
+            return Err(CapabilityAdmissionError::ReservationMismatch);
+        }
+        match decision {
+            ManualApprovalDecision::Reject => {
+                self.release_pending(registry, pending, now_unix_seconds)?;
+                Ok(CapabilityApprovalOutcome::Rejected)
+            }
+            ManualApprovalDecision::Approve => {
+                if pending.verified.opened.request().expires_at_unix_seconds() <= now_unix_seconds
+                    || registry
+                        .validate_reservation(&pending.invitation_reservation, now_unix_seconds)
+                        .is_err()
+                {
+                    let _ = self.release_pending(registry, pending, now_unix_seconds);
+                    return Err(CapabilityAdmissionError::Rejected);
+                }
+                Ok(CapabilityApprovalOutcome::Approved(Box::new(
+                    ApprovedCapabilityAdmission {
+                        verified: pending.verified,
+                        invitation_reservation: pending.invitation_reservation,
+                    },
+                )))
+            }
+        }
+    }
+
+    /// Prepares MLS Add from the exact explicitly approved cross-state value.
+    pub fn prepare_approved_add<'verifier, 'registry, 'group, C: SessionMlsConfig>(
+        &'verifier mut self,
+        registry: &'registry mut InvitationRegistry,
+        approved: Box<ApprovedCapabilityAdmission>,
+        group: &'group mut SessionMlsGroup<C>,
+        now_unix_seconds: u64,
+    ) -> Result<
+        PreparedApprovedCapabilityAddition<'verifier, 'registry, 'group, C>,
+        CapabilityAdmissionError,
+    > {
+        let ApprovedCapabilityAdmission {
+            verified,
+            invitation_reservation,
+        } = *approved;
+        if self.reservation_position(&verified.reservation).is_none() {
+            return Err(CapabilityAdmissionError::ReservationMismatch);
+        }
+        let request_expires_at_unix_seconds = verified.opened.request().expires_at_unix_seconds();
+        if verified.opened.request().expires_at_unix_seconds() <= now_unix_seconds
+            || registry
+                .validate_reservation(&invitation_reservation, now_unix_seconds)
+                .is_err()
+        {
+            let _ = registry.release(invitation_reservation, now_unix_seconds);
+            let _ = self.remove_reservation(&verified.reservation);
             return Err(CapabilityAdmissionError::Rejected);
         }
         let VerifiedCapabilityAdmission {
             opened: _,
             validated,
-            reservation: _,
+            reservation,
         } = verified;
         match group.prepare_add(validated, now_unix_seconds) {
-            Ok(inner) => Ok(PreparedCapabilityAddition {
+            Ok(inner) => Ok(PreparedApprovedCapabilityAddition {
                 verifier: self,
+                registry,
                 inner: Some(inner),
-                reservation,
-                preserve_replay: false,
+                replay_reservation: reservation,
+                invitation_reservation: Some(invitation_reservation),
+                now_unix_seconds,
+                request_expires_at_unix_seconds,
+                preserve_states: false,
             }),
             Err(_) => {
+                let _ = registry.release(invitation_reservation, now_unix_seconds);
                 self.remove_reservation(&reservation)?;
                 Err(CapabilityAdmissionError::Rejected)
             }
@@ -254,6 +352,20 @@ impl CapabilityAdmissionVerifier {
                 && entry.join_request_id == reservation.join_request_id
                 && entry.request_nonce == reservation.request_nonce
         })
+    }
+
+    fn release_pending(
+        &mut self,
+        registry: &mut InvitationRegistry,
+        pending: PendingCapabilityApproval,
+        now_unix_seconds: u64,
+    ) -> Result<(), CapabilityAdmissionError> {
+        let invitation_result = registry.release(pending.invitation_reservation, now_unix_seconds);
+        let replay_result = self.remove_reservation(&pending.verified.reservation);
+        if invitation_result.is_err() || replay_result.is_err() {
+            return Err(CapabilityAdmissionError::ReservationMismatch);
+        }
+        Ok(())
     }
 }
 
@@ -284,15 +396,73 @@ impl VerifiedCapabilityAdmission {
     }
 }
 
-/// Pending MLS Add that keeps admission replay state and provider state coupled.
-pub struct PreparedCapabilityAddition<'verifier, 'group, C: SessionMlsConfig> {
-    verifier: &'verifier mut CapabilityAdmissionVerifier,
-    inner: Option<PreparedAddition<'group, C>>,
-    reservation: ReplayReservation,
-    preserve_replay: bool,
+/// Explicit simulated manual-approval input for the Phase 1 headless flow.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ManualApprovalDecision {
+    /// Continue with the exact reserved admission value.
+    Approve,
+    /// Release both invitation and replay reservations.
+    Reject,
 }
 
-impl<C: SessionMlsConfig> PreparedCapabilityAddition<'_, '_, C> {
+/// Result of consuming one pending approval value.
+#[must_use]
+pub enum CapabilityApprovalOutcome {
+    /// Exact admission authority that may enter MLS preparation once.
+    Approved(Box<ApprovedCapabilityAdmission>),
+    /// The request was rejected and both reservations were released.
+    Rejected,
+}
+
+/// Exact automated admission plus inviter-owned invitation reservation awaiting approval.
+#[must_use]
+pub struct PendingCapabilityApproval {
+    verified: VerifiedCapabilityAdmission,
+    invitation_reservation: InvitationReservation,
+}
+
+impl PendingCapabilityApproval {
+    /// Returns the exact invitation identifier awaiting approval.
+    #[must_use]
+    pub const fn invitation_id(&self) -> &[u8; IDENTIFIER_BYTES] {
+        self.verified.invitation_id()
+    }
+
+    /// Returns the exact request identifier awaiting approval.
+    #[must_use]
+    pub const fn join_request_id(&self) -> &[u8; IDENTIFIER_BYTES] {
+        self.verified.join_request_id()
+    }
+}
+
+/// One-shot approved authority for the exact invitation, request, and KeyPackage.
+#[must_use]
+pub struct ApprovedCapabilityAdmission {
+    verified: VerifiedCapabilityAdmission,
+    invitation_reservation: InvitationReservation,
+}
+
+impl ApprovedCapabilityAdmission {
+    /// Returns the exact KeyPackage reference authorized for MLS Add.
+    #[must_use]
+    pub const fn key_package_reference(&self) -> &KeyPackageReference {
+        self.verified.key_package_reference()
+    }
+}
+
+/// Pending approved MLS Add coupled to invitation and replay reservations.
+pub struct PreparedApprovedCapabilityAddition<'verifier, 'registry, 'group, C: SessionMlsConfig> {
+    verifier: &'verifier mut CapabilityAdmissionVerifier,
+    registry: &'registry mut InvitationRegistry,
+    inner: Option<PreparedAddition<'group, C>>,
+    replay_reservation: ReplayReservation,
+    invitation_reservation: Option<InvitationReservation>,
+    now_unix_seconds: u64,
+    request_expires_at_unix_seconds: u64,
+    preserve_states: bool,
+}
+
+impl<C: SessionMlsConfig> PreparedApprovedCapabilityAddition<'_, '_, '_, C> {
     /// Returns the exact admitted KeyPackage reference targeted by the Welcome.
     #[must_use]
     pub fn key_package_reference(&self) -> &KeyPackageReference {
@@ -311,24 +481,52 @@ impl<C: SessionMlsConfig> PreparedCapabilityAddition<'_, '_, C> {
             .current_group_epoch()
     }
 
-    /// Applies the pending Add and keeps its replay reservation through expiry.
-    pub fn apply(mut self) -> Result<CommittedAddition, CapabilityAdmissionError> {
+    /// Applies MLS Add and consumes the exact invitation reservation in memory.
+    ///
+    /// Durable implementations must replace this sequencing with ADR 0008's
+    /// recoverable transaction before exposing any network Welcome.
+    pub fn apply(
+        mut self,
+        now_unix_seconds: u64,
+    ) -> Result<CommittedAddition, CapabilityAdmissionError> {
+        self.now_unix_seconds = now_unix_seconds;
+        if self.request_expires_at_unix_seconds <= now_unix_seconds {
+            return Err(CapabilityAdmissionError::Rejected);
+        }
+        let invitation_reservation = self
+            .invitation_reservation
+            .as_ref()
+            .ok_or(CapabilityAdmissionError::Rejected)?;
+        self.registry
+            .validate_reservation(invitation_reservation, now_unix_seconds)
+            .map_err(|_| CapabilityAdmissionError::Rejected)?;
         let inner = self
             .inner
             .take()
             .ok_or(CapabilityAdmissionError::Rejected)?;
-        self.preserve_replay = true;
-        inner
+        self.preserve_states = true;
+        let committed = inner
             .apply()
-            .map_err(|_| CapabilityAdmissionError::Rejected)
+            .map_err(|_| CapabilityAdmissionError::Rejected)?;
+        let invitation_reservation = self
+            .invitation_reservation
+            .take()
+            .ok_or(CapabilityAdmissionError::Rejected)?;
+        self.registry
+            .consume_after_membership(invitation_reservation, now_unix_seconds)
+            .map_err(|_| CapabilityAdmissionError::Rejected)?;
+        Ok(committed)
     }
 }
 
-impl<C: SessionMlsConfig> Drop for PreparedCapabilityAddition<'_, '_, C> {
+impl<C: SessionMlsConfig> Drop for PreparedApprovedCapabilityAddition<'_, '_, '_, C> {
     fn drop(&mut self) {
-        if !self.preserve_replay {
+        if !self.preserve_states {
             drop(self.inner.take());
-            let _ = self.verifier.remove_reservation(&self.reservation);
+            if let Some(reservation) = self.invitation_reservation.take() {
+                let _ = self.registry.release(reservation, self.now_unix_seconds);
+            }
+            let _ = self.verifier.remove_reservation(&self.replay_reservation);
         }
     }
 }

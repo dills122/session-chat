@@ -138,27 +138,26 @@ reviewed backend for a new session; it does not yet provide backend negotiation
 or migrate active MLS state.
 
 The `admission-capability` crate accepts only an HPKE-authenticated request,
-independently validates and owns its exact provider KeyPackage, verifies the
-ADR 0009 reference/credential/leaf tuple, and reserves the request ID and nonce
-in bounded in-memory state for one invitation generation. It can move that
-owned value directly through MLS prepare/apply; rejected, expired, or abandoned
-preparation leaves membership unchanged and releases replay state.
+retains the exact signed-invitation provenance, independently validates and owns
+its exact provider KeyPackage, verifies the ADR 0009 tuple, and reserves the
+request ID and nonce in bounded in-memory state. It now binds that value to the
+exact local v2 invitation, consumes an explicit simulated approval decision,
+and permits only the approved one-shot value to reach MLS preparation.
 
 The invitation's self-contained key proves descriptor integrity only. The
-registry now accepts provider-generated invitation v2 and models its bounded
-reservation lifecycle, but that state machine is not connected to automated
-admission or MLS.
+registry accepts provider-generated invitation v2 and models its bounded
+reservation lifecycle. The approval-gated in-memory path now connects it to
+automated admission and MLS sequencing.
 ADR 0014 now defines the HPKE capability-proof and local response contracts.
 Their bounded canonical invitation-v2, protected outer/inner, exact AAD, and
 deposit-endpoint value types are implemented with retained fixtures. The
 one-shot HPKE operation has RFC and independent-provider evidence. Replay-safe
-automated capability admission and the separate v2 lifecycle now have retained
-evidence. Manual approval, cross-state orchestration, atomic durable membership
-and replay state, rollback protection, mailbox behavior, and transport adapters
-remain unimplemented.
-Calling the explicit
-reservation or consumption methods is not proof that those caller
-preconditions exist yet.
+automated capability admission, explicit simulated approval, exact v2
+reservation, failure release, and post-Add consumption now have retained
+in-memory evidence. Human approval UX, atomic durable membership/replay state,
+rollback protection, mailbox behavior, and transport adapters remain
+unimplemented. The current sequential apply/consume path is not a durability or
+crash-atomicity claim.
 
 ## Reference standards and projects
 

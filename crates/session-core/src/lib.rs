@@ -460,6 +460,41 @@ impl InvitationRegistry {
         }
     }
 
+    /// Revalidates that an opaque reservation still owns the exact live record.
+    ///
+    /// This read-only preflight does not consume or release the reservation.
+    pub fn validate_reservation(
+        &self,
+        reservation: &InvitationReservation,
+        now_unix_seconds: u64,
+    ) -> Result<(), InvitationLifecycleError> {
+        let record = self
+            .records
+            .get(&reservation.invitation_id)
+            .ok_or(InvitationLifecycleError::UnknownInvitation)?;
+        if record.expires_at_unix_seconds <= now_unix_seconds {
+            return Err(InvitationLifecycleError::Expired {
+                expires_at: record.expires_at_unix_seconds,
+                now: now_unix_seconds,
+            });
+        }
+        if record.schema != reservation.schema || record.signature != reservation.record_signature {
+            return Err(InvitationLifecycleError::ReservationMismatch);
+        }
+        match record.lifecycle {
+            StoredInvitationLifecycle::Reserved { join_request_id }
+                if join_request_id == reservation.join_request_id =>
+            {
+                Ok(())
+            }
+            StoredInvitationLifecycle::Reserved { .. } => {
+                Err(InvitationLifecycleError::ReservationMismatch)
+            }
+            StoredInvitationLifecycle::Available => Err(InvitationLifecycleError::NotReserved),
+            StoredInvitationLifecycle::Consumed => Err(InvitationLifecycleError::AlreadyConsumed),
+        }
+    }
+
     /// Returns a non-secret lifecycle view for a retained local invitation.
     #[must_use]
     pub fn lifecycle(
