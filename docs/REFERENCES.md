@@ -1,6 +1,6 @@
 # Reference ledger
 
-Last reviewed: 2026-08-17
+Last reviewed: 2026-08-19
 
 This is a research starting point, not a dependency manifest. Standards and
 project maturity must be rechecked when an implementation decision is made.
@@ -25,6 +25,9 @@ channel that delivered the invitation.
 
 - [RFC 9420: The Messaging Layer Security Protocol](https://www.rfc-editor.org/rfc/rfc9420)
 - [RFC 9750: The Messaging Layer Security Architecture](https://www.rfc-editor.org/rfc/rfc9750)
+- [`mls-rs` 0.56.0 tagged source](https://github.com/awslabs/mls-rs/tree/0.56.0)
+- [`mls-rs` security notice and provider status](https://github.com/awslabs/mls-rs/tree/0.56.0#security-notice)
+- [AWS-LC platform and safety documentation](https://github.com/aws/aws-lc)
 - [OpenMLS 0.8.1 signed release](https://github.com/openmls/openmls/releases/tag/openmls-v0.8.1)
 - [OpenMLS 0.8.1 immutable changelog](https://github.com/openmls/openmls/blob/openmls-v0.8.1/CHANGELOG.md#081-2026-02-13)
 - [OpenMLS persistence documentation](https://book.openmls.tech/user_manual/persistence.html)
@@ -36,15 +39,15 @@ changes, forward secrecy, and post-compromise security. Its architecture
 separates the Authentication Service from the Delivery Service, matching the
 proposed identity/admission and transport split.
 
-Decision: ADR 0011 selects exact OpenMLS 0.8.1 and its Rust crypto provider for
-a bounded Phase 1 spike; ADR 0009 defines the initial credential/KeyPackage
-binding. The [applicability map](research/OPENMLS_0_8_1_APPLICABILITY.md)
-records the exact tagged-source and provider review and the dependency-policy
-blocker discovered before integration. Durable cross-layer transactions, crash
-recovery, concurrent Commit handling, storage migration, and interoperability
-evidence remain open gates.
-The SRLabs audit excluded cryptographic and storage providers, so it is not
-evidence for `openmls_rust_crypto` or the future Session Chat storage adapter.
+Decision: ADR 0012 selects exact `mls-rs` 0.56.0 and its AWS-LC 0.25.0 provider
+for a bounded Phase 1 spike; ADR 0009 defines the initial
+credential/KeyPackage binding. The
+[comparison](research/MLS_IMPLEMENTATION_COMPARISON.md) records exact graph and
+API evidence. ADR 0011 and the
+[OpenMLS applicability map](research/OPENMLS_0_8_1_APPLICABILITY.md) retain the
+rejected OpenMLS evidence. Durable cross-layer transactions, crash recovery,
+concurrent Commit handling, storage migration, independent protocol/provider
+review, and interoperability evidence remain open gates.
 
 ### Pre-membership encryption
 

@@ -24,9 +24,9 @@ atomicity, rollback resistance, deletion, or a narrow UI boundary.
 ## Evidence
 
 I inspected the current architecture, threat model, storage backlog, and MLS
-persistence decision, then compared them with current platform and storage
-documentation. The evidence most influential to the design is that OpenMLS
-continuously persists sensitive state and relies on its storage provider to
+persistence decisions, then compared them with current platform and storage
+documentation. The evidence most influential to the design is that an MLS
+implementation persists sensitive state and relies on its storage adapter to
 delete obsolete values, while platform secret stores expose materially different
 unlock semantics.
 
@@ -34,7 +34,7 @@ unlock semantics.
 | --- | --- | --- |
 | `V001` | [Local storage boundary](../../../THREAT_MODEL.md) | Keychains and secure hardware reduce at-rest exposure but cannot protect a compromised unlocked endpoint; backups, swap, crashes, and retention remain in scope. |
 | `V002` | [Client ownership and core boundary](../../../ARCHITECTURE_V2.md) | The client owns device, invitation, mailbox, and MLS secrets; UI code is not cryptographic or membership authority. |
-| `V003` | [OpenMLS persistence decision](../../../adr/0011-select-openmls-for-the-phase-1-laboratory.md) | Durable state must transact MLS, invitation, replay, approval, and encrypted Welcome-outbox state and must reject rollback. |
+| `V003` | [Current MLS persistence decision](../../../adr/0012-select-mls-rs-for-the-phase-1-laboratory.md) | Durable state must transact MLS, KeyPackage deletion, invitation, replay, approval, and encrypted Welcome-outbox state and must reject rollback. |
 | `V004` | [Apple Keychain access control](https://developer.apple.com/documentation/security/restricting-keychain-item-accessibility) | Keychain items can be device-only and gated by user presence; the selected accessibility class changes background and backup behavior. |
 | `V005` | [Windows DPAPI](https://learn.microsoft.com/en-us/windows/win32/api/dpapi/nf-dpapi-cryptprotectdata) and [CNG KSPs](https://learn.microsoft.com/en-us/windows/win32/seccertenroll/cng-key-storage-providers) | DPAPI normally binds decryption to a user and machine; a TPM-backed CNG provider is a separate, stronger primitive that needs its own integration. |
 | `V006` | [Secret Service locking](https://specifications.freedesktop.org/secret-service/latest/unlocking.html) | Linux collection/item unlock can vary by implementation and may extend beyond one application, so “keychain unlocked” is not a uniform user-presence guarantee. |
@@ -280,7 +280,7 @@ protector retained as a control. Do not migrate production plaintext because no
 production client exists.
 
 If a candidate cannot make the cross-layer MLS transaction atomic, stop rather
-than placing OpenMLS beside a second “eventually consistent” application store.
+than placing MLS state beside a second “eventually consistent” application store.
 If a platform cannot enforce user presence, expose a named weaker device-unlock
 mode or require an application passphrase; do not silently claim parity.
 
@@ -317,7 +317,7 @@ mode or require an application passphrase; do not silently claim parity.
 - Build deterministic fake protector, fake clock, and event-race tests.
 - Build OS `KeyProtector` probes that report factual semantics rather than a
   generic “secure storage available” boolean.
-- Evaluate candidate encrypted stores against the atomic OpenMLS adapter.
+- Evaluate candidate encrypted stores against the atomic MLS adapter.
 - Add opaque inbox quotas, import validation, and failure recovery.
 - Add platform lifecycle adapters and a narrow UI-to-core command policy only
   after the desktop-shell ADR.

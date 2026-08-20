@@ -13,6 +13,9 @@ bounded inviter-owned invitation reservation/consumption state machine. It
 does not yet encrypt join requests, prove capability possession, approve a
 member, operate MLS, or persist rollback-resistant state. The retired v1
 Angular/NestJS application used a server-readable, server-authoritative model.
+ADR 0012 selects a reduced-feature `mls-rs`/AWS-LC boundary for a future
+isolated laboratory; neither dependency is present, and upstream's missing full
+independent `mls-rs` audit remains a release risk rather than inherited assurance.
 The proposed v2 product replaces it with client-owned MLS sessions, encrypted
 pre-membership rendezvous, optional external admission evidence, and pluggable
 delivery transports.

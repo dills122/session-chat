@@ -51,9 +51,14 @@ all.
   binds every admission method to the exact MLS leaf proposed for membership.
 - [Mailbox authority decision](adr/0010-use-right-specific-mailbox-capabilities.md)
   separates deposit, receive, acknowledgement, and rotation authority in transport APIs.
-- [MLS implementation decision](adr/0011-select-openmls-for-the-phase-1-laboratory.md)
-  selects a pinned, bounded OpenMLS evaluation, records its dependency blocker,
-  and defines persistence stop conditions.
+- [Current MLS implementation decision](adr/0012-select-mls-rs-for-the-phase-1-laboratory.md)
+  selects a pinned, reduced-feature `mls-rs`/AWS-LC boundary for the isolated
+  laboratory and defines its ownership, audit, and persistence stop conditions.
+- [Superseded OpenMLS decision](adr/0011-select-openmls-for-the-phase-1-laboratory.md)
+  retains the bounded OpenMLS evaluation and its dependency blocker.
+- [MLS implementation comparison](research/MLS_IMPLEMENTATION_COMPARISON.md)
+  compares exact released provider graphs and records the disposable ownership
+  and storage-boundary evidence behind ADR 0012.
 - [OpenMLS 0.8.1 applicability map](research/OPENMLS_0_8_1_APPLICABILITY.md)
   maps all published audit findings and the separately scoped provider to the
   evaluated in-memory boundary and records the dependency-policy blocker.

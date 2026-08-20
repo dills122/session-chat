@@ -35,7 +35,7 @@ issue time and expiration time
 admission-proof protocol version
 ```
 
-The KeyPackage reference is the RFC 9420/OpenMLS ciphersuite hash reference over
+The KeyPackage reference is the RFC 9420 ciphersuite hash reference over
 the canonical TLS-serialized KeyPackage. Session Chat does not invent a second
 KeyPackage hash format.
 

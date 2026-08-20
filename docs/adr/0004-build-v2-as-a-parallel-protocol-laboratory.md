@@ -108,7 +108,7 @@ targets in addition to example-based tests.
 
 Research is bounded to decisions that directly unblock the milestone:
 
-1. Select a reviewed OpenMLS release, crypto provider, ciphersuite, and persistence
+1. Select a reviewed MLS implementation, crypto provider, ciphersuite, and persistence
    strategy. Avoid unreleased APIs, experimental extensions, and sensitive debug output.
 2. Select deterministic canonical encodings for invitations and protocol envelopes,
    with explicit versioning and rejection of ambiguous or non-canonical inputs.

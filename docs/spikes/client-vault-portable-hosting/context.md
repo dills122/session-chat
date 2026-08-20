@@ -22,7 +22,7 @@ The strongest constraints carried into the analysis were:
 
 - MLS state, invitation consumption, request replay state, and the encrypted
   Welcome outbox require one durable application transaction.
-- OpenMLS deletion semantics make storage copies and backups part of the
+- MLS deletion semantics make storage copies and backups part of the
   forward-secrecy boundary.
 - A realm operator may control availability and observe deployment-specific
   metadata, but must not receive client group keys or plaintext.

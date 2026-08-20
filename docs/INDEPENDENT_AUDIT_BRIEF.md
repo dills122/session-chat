@@ -46,9 +46,10 @@ The checked-in runtime consists of:
 
 There is no join request, capability-proof verifier, HPKE, MLS group, durable
 transaction, production transport, client vault, desktop shell, hosted realm,
-or headless end-to-end client. OpenMLS is selected for a bounded future
-laboratory, but its current provider graph is blocked by repository dependency
-policy and is not a workspace dependency. The Node simulator's custom
+or headless end-to-end client. ADR 0012 selects exact `mls-rs` 0.56.0 and its
+AWS-LC 0.25.0 provider for a bounded future laboratory, but neither is a
+workspace dependency yet. The superseded OpenMLS selection remains blocked by
+repository dependency policy. The Node simulator's custom
 composition of platform crypto and placeholder address control is explicitly
 non-production.
 
@@ -74,7 +75,7 @@ flowchart LR
 | Invitation reservation is tied to the exact record instance, including expiry/reissue with reused invitation and request IDs | Implemented and tested | `InvitationReservation.record_signature` and stale release/consume regression tests |
 | Invitation state is durable or rollback resistant | Accepted contract, unimplemented | ADR 0008 and the roadmap require a later cross-layer transaction |
 | Admission owns the exact validated MLS KeyPackage, credential identity, and leaf signature key | Accepted contract, unimplemented | ADR 0009; no admission crate or MLS dependency exists |
-| MLS membership, forward secrecy, post-compromise security, and removal isolation | Accepted contract, unimplemented | ADR 0011 selects OpenMLS for evaluation; integration is blocked by the provider dependency-policy result |
+| MLS membership, forward secrecy, post-compromise security, and removal isolation | Accepted contract, unimplemented | ADR 0012 selects `mls-rs`/AWS-LC for an isolated laboratory; no MLS dependency or retained lifecycle exists |
 | Welcome delivery is idempotent and atomic with MLS, replay, approval, and invitation state | Accepted contract, unimplemented | Architecture transaction invariant; no durable store exists |
 | Deposit, receive, acknowledge, and rotate rights are non-interchangeable | Accepted contract plus simulator evidence | ADR 0010; Node tests do not establish a production transport |
 | Unknown, cyclic, accessor-backed, symbol-keyed, deep, or oversized provider input fails before cloning or authorization | Non-production simulator evidence | Retained Node adversarial tests at directory and attestor entry points |
@@ -141,14 +142,15 @@ Implemented dependencies are pinned in `Cargo.toml` and `Cargo.lock`:
 - `minicbor` 2.3.0 for the restricted deterministic CBOR profile; and
 - `zeroize` 1.9.0 for best-effort clearing of owned secret buffers.
 
-Selected but unimplemented candidates are OpenMLS 0.8.1 and
-`openmls_rust_crypto` 0.5.1 with the RFC 9420 mandatory-to-implement
-X25519/AES-128-GCM/SHA-256/Ed25519 ciphersuite. The
-[applicability map](research/OPENMLS_0_8_1_APPLICABILITY.md) reviews all eight
-published findings, the selected provider boundary, and the newer advisory set
-that blocks retaining the resolved graph. The published OpenMLS review did not
-cover its crypto or storage providers, left one Low issue unresolved at
-publication, and is not inherited assurance for Session Chat.
+Selected but unimplemented candidates are `mls-rs` 0.56.0 and
+`mls-rs-crypto-awslc` 0.25.0 with a reduced feature set and the RFC 9420
+mandatory-to-implement X25519/AES-128-GCM/SHA-256/Ed25519 ciphersuite. The
+[comparison](research/MLS_IMPLEMENTATION_COMPARISON.md) records the dated
+dependency screening and disposable ownership/storage-boundary experiment. Upstream
+states that `mls-rs` has not received a full independent third-party audit, so
+the selection is not inherited assurance for Session Chat. ADR 0011 and the
+[OpenMLS applicability map](research/OPENMLS_0_8_1_APPLICABILITY.md) retain the
+rejected OpenMLS graph and its published audit context.
 
 HPKE, encrypted storage, OS key protectors, realm signing, and signed updates
 have not been selected. Citations in the reference ledger are research inputs,
@@ -213,7 +215,7 @@ silently re-establish continuity. None of this is implemented today.
 
 High-value questions for the current review include:
 
-- Can the selected OpenMLS provider participate in the required single
+- Can the selected `mls-rs`/AWS-LC adapter participate in the required single
   application transaction without split-brain membership or Welcome state?
 - Is the proposed linear ownership API sufficient to prevent KeyPackage,
   credential, or leaf-key substitution at every seam?
@@ -228,20 +230,21 @@ High-value questions for the current review include:
 
 ## Near-term research and implementation sequence
 
-The recommended next bounded feature remains an isolated two-party
-`session-crypto-mls` laboratory, but the selected provider graph must first pass
-the repository's advisory and GitHub dependency-review gates without broad
-exceptions. The audit/provider applicability map is retained. Stop if the exact
-validated KeyPackage cannot remain owned through the future admission/Add seam,
-or if provider-write behavior makes the required transaction infeasible.
+The recommended next bounded feature is now the isolated two-party
+`session-crypto-mls` laboratory selected by ADR 0012. Its exact disposable
+graph passed the local advisory, license, source, and ban policy without an
+advisory exception; hosted dependency review must still pass when the dependency
+is actually added. Stop if the exact validated KeyPackage cannot remain owned
+through the future admission/Add seam or if retained provider-write evidence
+makes the required transaction infeasible.
 
 The next decision-producing research tasks are:
 
-1. OpenMLS provider release or replacement that clears the dependency policy.
-2. RFC 9180 HPKE library, suite, context-label, schema, and vector comparison.
-3. OpenMLS `StorageProvider` call trace and cross-layer crash/rollback model.
-4. Parser fuzzing and invitation/admission state-machine property-test plan.
-5. RNG and clock-source contracts for expiry, replay, and deterministic tests.
+1. RFC 9180 HPKE library, suite, context-label, schema, and vector comparison.
+2. `mls-rs` group-state/KeyPackage repository call trace and cross-layer
+   crash/rollback model.
+3. Parser fuzzing and invitation/admission state-machine property-test plan.
+4. RNG and clock-source contracts for expiry, replay, and deterministic tests.
 
 Then implement, in order: the isolated MLS lifecycle; the canonical capability
 proof and linear admission contract; the HPKE join-request contract;
@@ -257,12 +260,15 @@ in-memory Phase 1 path.
 Run from a clean checkout of the exact revision under review:
 
 ```sh
+cargo fetch --locked
 cargo fmt --all --check
-cargo clippy --workspace --all-targets --locked -- -D warnings
-cargo test --workspace --locked
-RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --locked
-node --test scripts/setup-codex-links.test.mjs
+cargo clippy --workspace --all-targets --all-features --locked --offline -- -D warnings
+cargo test --workspace --all-features --locked --offline
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps --locked --offline
+cargo deny --all-features --locked check
+node --test scripts/check-repository.test.mjs scripts/setup-codex-links.test.mjs
 node --test spikes/sealed-invitation-provider/test/provider.test.mjs
+node scripts/check-repository.mjs
 git diff --check
 ```
 

@@ -51,9 +51,10 @@ workspace, bounded deterministic-CBOR opaque envelope, canonical
 domain-separated Ed25519 secret-capability invitation, exhaustive field-boundary
 fixtures, and a bounded inviter-owned invitation reservation/consumption state
 machine. Capability proof and approval, HPKE, MLS, durable state, the headless
-flow, and transport work listed below remain outstanding. The selected OpenMLS
-0.8.1 provider stack is blocked from integration by the dependency-policy result
-recorded in `research/OPENMLS_0_8_1_APPLICABILITY.md`.
+flow, and transport work listed below remain outstanding. ADR 0012 now selects
+a reduced-feature `mls-rs`/AWS-LC graph that had no matched RustSec advisory in
+the 2026-08-19 screening for the isolated MLS laboratory; no MLS dependency or
+behavior is implemented yet.
 
 Contract hardening gate before HPKE or the isolated MLS laboratory:
 
@@ -61,10 +62,10 @@ Contract hardening gate before HPKE or the isolated MLS laboratory:
 - Invitation reservation and consumption follow ADR 0008.
 - Admission binds the exact KeyPackage, credential, and leaf key under ADR 0009.
 - Transport interfaces use the distinct authorities from ADR 0010.
-- The MLS integration obeys the selection and stop conditions in ADR 0011.
+- The MLS integration obeys the selection and stop conditions in ADR 0012.
 
 The first MLS increment may use only isolated in-memory providers for
-deterministic protocol tests, as ADR 0011 specifies. Before any networked or
+deterministic protocol tests, as ADR 0012 specifies. Before any networked or
 user-facing join path is enabled, one durable transaction must own reservation
 recovery, request replay state, the MLS membership transition, invitation
 consumption, approval/result state, and the encrypted Welcome outbox job with

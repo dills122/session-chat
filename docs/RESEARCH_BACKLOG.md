@@ -17,34 +17,35 @@ foundational changes, an ADR.
 
 ### Decision recorded: MLS implementation selection
 
-- ADR 0011 selects exact OpenMLS 0.8.1 and `openmls_rust_crypto` 0.5.1 versions,
-  the RFC 9420 mandatory-to-implement ciphersuite, and no draft/debug features
-  for a bounded Phase 1 integration spike.
+- ADR 0012 selects exact `mls-rs` 0.56.0 and `mls-rs-crypto-awslc` 0.25.0
+  versions, the RFC 9420 mandatory-to-implement ciphersuite, and a reduced
+  non-FIPS feature set for a bounded Phase 1 integration spike. ADR 0011
+  retains the rejected OpenMLS 0.8.1 evaluation.
 - ADR 0009 defines the BasicCredential, leaf signature key, and KeyPackage
   binding that admission must authenticate.
-- OpenMLS selection does not resolve durable cross-layer atomicity. Its storage
-  provider writes MLS state, while Session Chat must transact that state with
-  invitation consumption, replay state, and Welcome work.
+- The `mls-rs` selection does not resolve durable cross-layer atomicity. It
+  exposes an explicit group-state write, but joining-client KeyPackage deletion
+  uses a subsequent repository call. Session Chat must transact both with
+  invitation consumption, replay state, approval/result state, and Welcome work.
 - The May 2026 SRLabs audit left one Low-severity issue unresolved at
   publication. The
   [applicability map](research/OPENMLS_0_8_1_APPLICABILITY.md) records all eight
   findings against the exact 0.8.1 tag. It also records a newer locked HPKE and
   libcrux advisory set that blocks adding the selected provider to the
   workspace under the current dependency policy.
-- That audit excluded cryptographic and storage providers. Review the selected
-  Rust crypto provider and the Session Chat storage adapter as separate scopes.
-  The applicability map contains a bounded source/dependency review of
-  `openmls_rust_crypto`; that is not an independent cryptographic audit, does
-  not clear the dependency gate, and no Session Chat storage adapter exists yet.
+- The OpenMLS audit excluded cryptographic and storage providers and does not
+  transfer to `mls-rs`. Upstream states that `mls-rs` has not received a full
+  independent third-party audit. Review the selected AWS-LC provider boundary,
+  the protocol adapter, and the Session Chat storage adapter as separate scopes.
 - Confirm how KeyPackages, Welcome messages, epoch state, and pending Commits
   are stored and recovered.
 - Prototype removal, key update, out-of-order delivery, and lost Commit cases.
 
-Immediate gate: wait for or select an audited, API-compatible provider graph
-that passes repository advisory and dependency-review policy without a broad
-exception. Then retain the isolated laboratory with interoperability fixtures
-plus the transactional storage, crash, rollback, deletion, reordered/lost
-message, and pending-Commit evidence required by ADR 0011.
+Immediate gate: retain the isolated ADR 0012 laboratory with exact KeyPackage
+ownership, two-party lifecycle, removal, reordered/lost message, and
+interoperability fixtures. Before a durable or networked path, add the
+transactional storage, crash, rollback, deletion, and pending-Commit evidence
+required by ADR 0012.
 
 ### P0: invitation protocol
 
