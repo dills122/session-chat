@@ -1,5 +1,9 @@
 [workspace]
-members = ["crates/session-core", "crates/session-protocol"]
+members = [
+  "crates/session-core",
+  "crates/session-crypto-mls",
+  "crates/session-protocol",
+]
 resolver = "3"
 
 [workspace.package]
@@ -9,6 +13,14 @@ license = "MIT"
 [workspace.dependencies]
 ed25519-dalek = { version = "=3.0.0", default-features = false, features = ["fast", "zeroize"] }
 minicbor = { version = "=2.3.0", features = ["std"] }
+mls-rs = { version = "=0.56.0", default-features = false, features = [
+  "external_client",
+  "out_of_order",
+  "prior_epoch",
+  "std",
+  "tree_index",
+] }
+mls-rs-crypto-awslc = { version = "=0.25.0", default-features = false, features = ["non-fips"] }
 thiserror = "=2.0.20"
 zeroize = { version = "=1.9.0", default-features = false, features = ["alloc"] }
 
