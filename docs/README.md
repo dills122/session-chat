@@ -73,6 +73,9 @@ all.
 - [Phase 1 response-deposit and verifier-context research](research/PHASE1_RESPONSE_DEPOSIT_AND_VERIFIER_CONTEXT.md)
   records the verifier and authority analysis behind ADR 0014's local
   one-Welcome endpoint and 21-field inner request.
+- [Inviter storage and vault-key decision packet](research/INVITER_STORAGE_ENGINE.md)
+  compares transaction engines and recommends a bounded SQLCipher compatibility
+  spike without selecting a production storage dependency.
 - [Superseded OpenMLS decision](adr/0011-select-openmls-for-the-phase-1-laboratory.md)
   retains the bounded OpenMLS evaluation and its dependency blocker.
 - [MLS implementation comparison](research/MLS_IMPLEMENTATION_COMPARISON.md)
