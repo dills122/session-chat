@@ -162,4 +162,15 @@ fn actual_inviter_mls_write_is_atomic_with_join_and_welcome_outbox_state() {
         .expect("transaction committed");
     assert_eq!(recovered.epoch_after, 1);
     assert!(recovered.welcome_pending);
+
+    drop(alice_group);
+    drop(alice);
+    drop(storage);
+    let reopened = SqlCipherStorage::open(&database.0, vault_key()).expect("store reopens");
+    assert_eq!(
+        reopened
+            .recover_inviter(&[4; 16])
+            .expect("recovery after reopen"),
+        Some(recovered)
+    );
 }

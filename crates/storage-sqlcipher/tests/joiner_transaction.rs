@@ -115,4 +115,24 @@ fn actual_joiner_write_atomically_persists_group_and_deletes_one_time_key_packag
     bob_group
         .write_to_storage()
         .expect("committed join recovered idempotently");
+
+    drop(bob_group);
+    drop(bob);
+    drop(storage);
+    let reopened = SqlCipherStorage::open(
+        &database.0,
+        VaultKey::new([21; 32]).expect("nonzero test key"),
+    )
+    .expect("store reopens");
+    assert_eq!(
+        reopened
+            .recover_joiner(&[41; 16])
+            .expect("recovery after reopen"),
+        Some(recovered)
+    );
+    assert!(
+        !reopened
+            .key_package_exists(&key_package_reference)
+            .expect("KeyPackage lookup after reopen")
+    );
 }
