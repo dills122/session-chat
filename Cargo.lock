@@ -848,6 +848,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "session-inviter-transaction"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
+ "zeroize",
+]
+
+[[package]]
 name = "session-protocol"
 version = "0.1.0"
 dependencies = [

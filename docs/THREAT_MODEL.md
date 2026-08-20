@@ -26,10 +26,13 @@ bounded one-Welcome deposit, receive, and acknowledgement with independent
 provider-generated authorities. The approved in-memory join result carries only
 the authenticated deposit endpoint beside its MLS outputs, and a retained test
 delivers the encrypted Welcome through that mailbox. This provides no durable
-outbox or network behavior. The MLS crate operates an in-memory two-party MLS
-1.0 lifecycle behind the reduced-feature `mls-rs`/AWS-LC boundary selected by
-ADR 0012. It has no durable state, and upstream's missing full independent `mls-rs`
-audit remains a release risk rather than inherited assurance. The retired v1
+outbox or network behavior. A separate bounded, fault-injectable model exercises
+all-or-nothing inviter state, ambiguous-result recovery, and Welcome-outbox
+leasing semantics without providing storage or connecting to that sequential
+join path. The MLS crate operates an in-memory two-party MLS 1.0 lifecycle
+behind the reduced-feature `mls-rs`/AWS-LC boundary selected by ADR 0012. It has
+no durable state, and upstream's missing full independent `mls-rs` audit remains
+a release risk rather than inherited assurance. The retired v1
 Angular/NestJS application used a server-readable, server-authoritative model.
 The proposed v2 product replaces it with client-owned MLS sessions, encrypted
 pre-membership rendezvous, optional external admission evidence, and pluggable
@@ -390,9 +393,14 @@ transport behavior.
 The provider owns one complete invitation-v2 creation API covering every secret
 and random field; callers supply only issue and expiration times. The in-memory
 approval path applies MLS and then consumes invitation state before returning
-the committed outputs, but that sequencing is not crash-atomic. Remaining
-requirements include human approval UX, durable replay/rollback protection, one
-Welcome outbox transaction, and crash-safe mutation ordering.
+the committed outputs, but that sequencing is not crash-atomic. A separate
+conformance model tests the accepted inviter transaction's all-or-nothing
+components, exact retries, stale-generation rejection, ambiguous commit
+recovery, and bounded outbox leases over in-memory records. It is not durable
+and is not wired to MLS, admission, or transport. Remaining requirements include
+human approval UX, a real shared MLS/Session Chat storage transaction, durable
+replay and rollback protection, vault-backed confidentiality, and crash-safe
+mutation ordering.
 
 Attacker story: Mallory captures a protected request and resubmits it after the
 invitation expires and is reissued with the same invitation and request IDs.
@@ -457,10 +465,12 @@ parsing, retained KeyPackage ownership through Add and Welcome targeting,
 two-member roster enforcement, explicit prepare/apply and abandoned-pending
 handling, replay, reordering, temporarily lost epoch commits, path updates,
 removal, explicit-only group-state writes, and the provider-neutral established-
-session message interface from ADR 0013. It does not cover durable
-recovery, cross-implementation fixtures, inviter-local join/outbox atomicity,
-joiner-local joined-state and KeyPackage-deletion atomicity, cross-device
-acknowledgement semantics, old-secret deletion, or fuzzing.
+session message interface from ADR 0013. The separate inviter-transaction model
+covers only the application-level all-or-nothing and recovery semantics over
+bounded memory records. Current evidence does not cover durable recovery,
+cross-implementation fixtures, a real inviter-local MLS/join/outbox storage
+transaction, joiner-local joined-state and KeyPackage-deletion atomicity,
+cross-device acknowledgement semantics, old-secret deletion, or fuzzing.
 
 Attacker story: a malicious delivery service withholds one Commit and later
 replays it after a subsequent epoch. The client must reject it without rolling

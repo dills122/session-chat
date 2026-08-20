@@ -29,6 +29,8 @@ The Rust workspace currently contains:
   bounded KeyPackage validation, Add/Welcome, messages, path updates, and removal
 - `session-transport`, with provider-generated, right-specific local Welcome
   mailboxes, one-envelope idempotency, expiry, and bounded in-memory state
+- `session-inviter-transaction`, with a bounded fault-injectable conformance
+  model for atomic invitation/replay/approval/MLS-snapshot/Welcome-outbox state
 
 The signing key authenticates the invitation bytes, not a GitHub identity or
 person. The capability invitation is a secret bearer object and must not be
@@ -42,20 +44,22 @@ within bounded in-memory state. The approval-gated path binds that value to the
 local v2 invitation reservation before MLS preparation. Explicit rejection,
 expiry, pre-commit failure, or abandonment releases both reservations; a
 successful in-memory Add consumes invitation state. This sequencing is not a
-durable transaction. Cross-layer atomic persistence, a Welcome outbox, durable
-or network mailbox behavior, human UI approval, and a user interface remain
-unimplemented. The in-memory approved-join result now carries only the exact
-authenticated deposit endpoint beside its MLS outputs, and a retained test
-delivers the encrypted Welcome through the local adapter. This sequential path
-is not evidence for a durable outbox or network profile.
+durable transaction. A separate conformance model now proves the required
+atomic visibility, ambiguous-commit recovery, and resumable Welcome-outbox
+semantics over bounded memory records. A durable adapter, real cross-layer
+persistence, durable or network mailbox behavior, human UI approval, and a user
+interface remain unimplemented. The in-memory approved-join result now carries
+only the exact authenticated deposit endpoint beside its MLS outputs, and a
+retained test delivers the encrypted Welcome through the local adapter. This
+sequential path is not evidence for a durable outbox or network profile.
 
 ADR 0014 defines the exact local-only invitation-v2, HPKE capability-join, and
 one-Welcome response contract. Its canonical protocol value types are now
 implemented and tested, its one-shot HPKE operation has RFC and cross-provider
 evidence, and its capability-admission boundary now retains explicit simulated
 approval plus in-memory invitation/MLS/Welcome-delivery coordination. Human
-approval UX, durable atomic replay/membership/outbox state, and network behavior remain
-accepted design boundaries rather than runtime or production claims.
+approval UX, durable atomic replay/membership/outbox state, and network behavior
+remain accepted design boundaries rather than runtime or production claims.
 
 ```sh
 cargo fetch --locked

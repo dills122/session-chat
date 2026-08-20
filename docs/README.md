@@ -64,6 +64,9 @@ all.
 - [Protected capability join specification](specs/PROTECTED_CAPABILITY_JOIN_V1.md)
   assigns the fixed-array layouts, code points, cryptographic contexts, parsing
   order, mailbox lifecycle, and retained-evidence gates for ADR 0014.
+- [Inviter join transaction specification](specs/INVITER_JOIN_TRANSACTION_V1.md)
+  defines the exact all-or-nothing inviter state and recovery contract that a
+  durable storage adapter must satisfy.
 - [HPKE and capability join-request research](research/HPKE_JOIN_REQUEST_PROFILE.md)
   records the bounded RFC 9180 PSK comparison and provider evidence behind ADR
   0014.
@@ -156,10 +159,12 @@ automated capability admission, explicit simulated approval, exact v2
 reservation, failure release, and post-Add consumption now have retained
 in-memory evidence. Human approval UX, atomic durable membership/replay state,
 rollback protection, and durable or network transport remain unimplemented at
-product level. A right-specific local one-Welcome mailbox now has bounded
-in-memory evidence, and the committed approved-join result carries its exact
-deposit-only endpoint beside the encrypted MLS Welcome. The current sequential
-delivery path is not a durability or crash-atomicity claim.
+product level. A bounded fault-injectable model now retains evidence for the
+required atomic visibility, retry, and Welcome-outbox state semantics without
+claiming disk durability. A right-specific local one-Welcome mailbox now has
+bounded in-memory evidence, and the committed approved-join result carries its
+exact deposit-only endpoint beside the encrypted MLS Welcome. The current
+sequential delivery path is not a durability or crash-atomicity claim.
 
 ## Reference standards and projects
 

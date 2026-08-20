@@ -70,9 +70,13 @@ reservations; successful in-memory Add consumes invitation state. A separate
 bounded local transport adapter now models one-Welcome deposit, receive, and
 acknowledgement under independent authorities. The approved in-memory join
 result now carries its exact deposit endpoint beside the MLS outputs, with
-retained local Welcome-delivery evidence. Human approval UX, durable cross-layer
-state and outbox processing, the headless end-to-end flow, and network transport
-work listed below remain outstanding.
+retained local Welcome-delivery evidence. A separate bounded conformance model
+now exercises the accepted inviter transaction's atomic visibility, exact retry,
+ambiguous-result recovery, and Welcome-outbox leasing semantics under injected
+memory-model faults. Human approval UX, durable cross-layer state and outbox
+processing, integration of that transaction with MLS/admission/transport, the
+headless end-to-end flow, and network transport work listed below remain
+outstanding.
 
 Contract hardening rules to preserve before wiring HPKE and the isolated MLS
 laboratory into a join flow:
@@ -109,6 +113,7 @@ Create a Rust workspace containing:
 - `session-crypto`
 - `session-crypto-hpke`
 - `session-crypto-mls`
+- `session-inviter-transaction`
 - `session-transport`
 - Deterministic in-memory transport
 - `sessionctl` headless client

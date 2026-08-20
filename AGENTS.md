@@ -49,6 +49,9 @@ Current areas:
   bounded exact KeyPackage ownership and explicit prepare/apply transitions
 - `crates/session-transport`: bounded local one-Welcome mailbox with distinct
   deposit, receive, and acknowledgement authorities
+- `crates/session-inviter-transaction`: bounded, fault-injectable conformance
+  model for inviter-local atomic join and Welcome-outbox recovery semantics;
+  not a durable storage implementation
 - `spikes/`: disposable feasibility code; production packages must not depend on it
 - `docs/`: canonical v2 product, architecture, threat-model, protocol, ADR, and legacy-evidence baseline
 - `scripts/`: tested repository and AI Central setup tooling

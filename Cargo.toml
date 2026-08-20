@@ -5,6 +5,7 @@ members = [
   "crates/session-crypto",
   "crates/session-crypto-hpke",
   "crates/session-crypto-mls",
+  "crates/session-inviter-transaction",
   "crates/session-protocol",
   "crates/session-transport",
 ]
