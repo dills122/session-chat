@@ -115,6 +115,12 @@ impl OpenedCapabilityJoinRequest {
     pub const fn invitation_signature(&self) -> &[u8; 64] {
         &self.invitation_signature
     }
+
+    /// Moves the exact authenticated request into the next one-shot boundary.
+    #[must_use]
+    pub fn into_request(self) -> CapabilityJoinRequest {
+        self.request
+    }
 }
 
 impl GeneratedInvitationHpkeKey {

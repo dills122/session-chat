@@ -68,9 +68,11 @@ explicit simulated approval decision, and permits only that approved value to
 enter MLS. Rejection, expiry, failed preparation, and abandonment release both
 reservations; successful in-memory Add consumes invitation state. A separate
 bounded local transport adapter now models one-Welcome deposit, receive, and
-acknowledgement under independent authorities. Human approval UX, durable
-cross-layer state, approved-join delivery integration, the headless end-to-end
-flow, and network transport work listed below remain outstanding.
+acknowledgement under independent authorities. The approved in-memory join
+result now carries its exact deposit endpoint beside the MLS outputs, with
+retained local Welcome-delivery evidence. Human approval UX, durable cross-layer
+state and outbox processing, the headless end-to-end flow, and network transport
+work listed below remain outstanding.
 
 Contract hardening rules to preserve before wiring HPKE and the isolated MLS
 laboratory into a join flow:

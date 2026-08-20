@@ -21,15 +21,14 @@ invitation signature, binds the admission to local v2 state, and consumes an
 explicit simulated approval decision before MLS preparation. Rejection and
 pre-commit failure release invitation and replay state; successful in-memory
 Add consumes the invitation. It does not perform human UI approval or
-rollback-resistant persistence. A separate local transport adapter implements
+rollback-resistant persistence. A local transport adapter implements
 bounded one-Welcome deposit, receive, and acknowledgement with independent
-provider-generated authorities, but it is not connected to the approved join
-output and provides no durability or network behavior. ADR 0014's implemented
-evidence is narrower than its accepted integrated capability-join and
-one-Welcome contract. A separate isolated crate now operates an in-memory
-two-party MLS 1.0 lifecycle behind the reduced-feature
-`mls-rs`/AWS-LC boundary selected by ADR 0012. It is not connected to admission,
-transport, or durable state, and upstream's missing full independent `mls-rs`
+provider-generated authorities. The approved in-memory join result carries only
+the authenticated deposit endpoint beside its MLS outputs, and a retained test
+delivers the encrypted Welcome through that mailbox. This provides no durable
+outbox or network behavior. The MLS crate operates an in-memory two-party MLS
+1.0 lifecycle behind the reduced-feature `mls-rs`/AWS-LC boundary selected by
+ADR 0012. It has no durable state, and upstream's missing full independent `mls-rs`
 audit remains a release risk rather than inherited assurance. The retired v1
 Angular/NestJS application used a server-readable, server-authoritative model.
 The proposed v2 product replaces it with client-owned MLS sessions, encrypted
@@ -369,7 +368,8 @@ binds that value to exact local v2 state and requires an explicit simulated
 approval token before MLS preparation. Rejected, expired, failed, or dropped
 preparation releases invitation and replay reservations while leaving
 membership unchanged. Apply rechecks request and invitation expiry using a
-fresh caller-supplied time before MLS mutation. Tests cover substitution,
+fresh caller-supplied time before MLS mutation, and independently rechecks the
+shorter-lived response endpoint. Tests cover substitution,
 same-generation replay, expiry/reissue with reused request values, stale-release
 ABA, foreign-verifier reservation rejection, capacity preservation, delayed
 expiry, and unchanged state after rejection or abandonment.
@@ -379,17 +379,20 @@ and acknowledgement authorities, stores only their domain-separated
 commitments, bounds mailbox count, lifetime, and envelope size, and accepts one
 logical envelope. Tests reject foreign or expired authority, changed competing
 deposits, and capacity violations without replacement or mutation; exact
-deposit and acknowledgement retries are idempotent. This evidence does not yet
-connect the approved MLS Welcome to the deposit endpoint and does not establish
-durability, rotation, networking, anonymity, or production transport behavior.
+deposit and acknowledgement retries are idempotent. The committed approved-join
+result carries only the authenticated deposit endpoint alongside its MLS
+outputs; a retained integration test deposits the exact encrypted Welcome and
+proves later delivery failure does not roll back membership. Expired endpoints
+fail before replay reservation or MLS mutation. This evidence does not establish
+durability, outbox atomicity, rotation, networking, anonymity, or production
+transport behavior.
 
 The provider owns one complete invitation-v2 creation API covering every secret
 and random field; callers supply only issue and expiration times. The in-memory
 approval path applies MLS and then consumes invitation state before returning
 the committed outputs, but that sequencing is not crash-atomic. Remaining
-requirements include human approval UX, approved-join delivery integration,
-durable replay/rollback protection, one Welcome outbox transaction, and
-crash-safe mutation ordering.
+requirements include human approval UX, durable replay/rollback protection, one
+Welcome outbox transaction, and crash-safe mutation ordering.
 
 Attacker story: Mallory captures a protected request and resubmits it after the
 invitation expires and is reissued with the same invitation and request IDs.

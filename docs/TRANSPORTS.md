@@ -180,9 +180,10 @@ same envelope ID and bytes is idempotent; a different second envelope is
 rejected without replacement. Acknowledgement deletes retained ciphertext while
 keeping one bounded commitment for exact-retry recognition. Delivery identifiers
 remain untrusted and remote acknowledgement never gates or rolls back inviter
-membership. The adapter is not yet connected to the approved join output. This
-is local protocol evidence, not durability, networking, anonymity, or a
-production profile.
+membership. The committed in-memory approved-join result carries the exact
+authenticated deposit endpoint beside its MLS outputs, and retained integration
+evidence deposits that encrypted Welcome. This is local protocol evidence, not
+durability, outbox atomicity, networking, anonymity, or a production profile.
 
 ## Transport acceptance tests
 

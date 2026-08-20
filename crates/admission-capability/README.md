@@ -28,14 +28,17 @@ release from deleting a replacement reservation.
 
 Explicit rejection, request expiry, failed MLS preparation, or dropping a
 prepared Add releases invitation and replay reservations and clears any pending
-MLS Commit. Apply requires a fresh caller-supplied time and rechecks request and
-invitation expiry before MLS mutation. Successful apply advances MLS, consumes
+MLS Commit. Apply requires a fresh caller-supplied time and rechecks request,
+response-endpoint, and invitation expiry before MLS mutation. Successful apply
+advances MLS, consumes
 the exact invitation in memory, and keeps replay state through request expiry.
 Provider contradiction after MLS apply preserves the remaining authorities
 fail-closed.
 
 The state is single-process and in memory. `Approve` is a simulated headless
 decision, not evidence of a human UI action. The apply/consume sequence is not
-durable or crash-atomic and exposes no network Welcome. Durable replay
-protection, the ADR 0008 membership transaction and Welcome outbox, mailbox
-behavior, and transport remain unimplemented.
+durable or crash-atomic. The committed result carries only the authenticated
+deposit endpoint beside its MLS outputs, and a retained integration test
+delivers the encrypted Welcome through the right-specific local mailbox. Durable
+replay protection, the ADR 0008 membership transaction and Welcome outbox, and
+network transport remain unimplemented.

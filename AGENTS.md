@@ -60,8 +60,8 @@ Planned v2 areas:
   transactional state persistence
 - later admission increments: human approval UX and durable atomic
   replay/result, invitation, membership, and Welcome-outbox state
-- later `session-transport` increments: approved-join integration, durable
-  outbox delivery, and network-profile adapters
+- later `session-transport` increments: durable outbox delivery and
+  network-profile adapters
 - `apps/sessionctl`: headless protocol and conformance client
 
 When a change spans areas, update the shared contract first and preserve the

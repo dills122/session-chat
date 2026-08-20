@@ -1,8 +1,8 @@
 # ADR 0014: Use HPKE PSK and a local Welcome deposit for Phase 1
 
 Status: accepted; canonical protocol values, one-shot HPKE, bounded in-memory
-automated capability admission, and a separate local mailbox implemented;
-integrated stateful flow unimplemented
+approval-gated MLS coordination, and local Welcome delivery implemented;
+durable integrated flow unimplemented
 
 Date: 2026-08-20
 
@@ -15,9 +15,10 @@ operation, and an automated capability verifier owning the exact ADR 0009 value
 with bounded in-memory replay reservation. The verifier now retains the exact
 HPKE-opened invitation signature, binds that value to provider-generated local
 v2 state, consumes an explicit simulated approval decision, and permits only
-the approved one-shot value to enter MLS preparation. The laboratory does not
-yet commit durable cross-layer state or connect the approved Welcome to the
-separate right-specific local transport.
+the approved one-shot value to enter MLS preparation. The committed in-memory
+result now carries the authenticated deposit-only endpoint beside its MLS
+outputs and can deliver the exact Welcome through the local mailbox. The
+laboratory does not commit durable cross-layer state or a Welcome outbox.
 
 ADR 0010 requires deposit, receive, acknowledgement, and rotation authority to
 remain separate. ADR 0008 requires the inviter's future durable membership
@@ -150,14 +151,18 @@ protection, or a Welcome outbox.
 generates independent deposit, receive, and acknowledgement authorities,
 stores only domain-separated authority commitments, bounds mailbox count and
 lifetime, and retains exact-retry and rejection evidence. It deliberately has
-no rotation operation. This adapter is not yet connected to the approved join
-result and is not durability, networking, anonymity, or production evidence.
+no rotation operation. The committed approved-join result carries the exact
+authenticated deposit endpoint beside its MLS outputs; retained evidence
+delivers the encrypted Welcome and shows delivery failure does not roll back
+membership. Endpoint expiry is checked before replay reservation and rechecked
+before MLS mutation. This is not durability, outbox atomicity, networking,
+anonymity, or production evidence.
 
 ## Consequences and limits
 
-- The next slice can connect the approval-gated ownership chain to the existing
-  right-specific in-memory transport without claiming persistence or a
-  networked product.
+- The next slice can replace sequential in-memory coordination with ADR 0008's
+  durable membership and Welcome-outbox transaction without changing the
+  right-specific transport contract.
 - Hosted realm, public rendezvous, direct, relay, mixnet, and private-network
   endpoints require new transport-specific schemas. Version 1 has no generic
   route escape hatch.

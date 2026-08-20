@@ -156,10 +156,10 @@ automated capability admission, explicit simulated approval, exact v2
 reservation, failure release, and post-Add consumption now have retained
 in-memory evidence. Human approval UX, atomic durable membership/replay state,
 rollback protection, and durable or network transport remain unimplemented at
-product level. A separate right-specific local one-Welcome
-mailbox now has bounded in-memory evidence but is not yet connected to the join
-output. The current sequential paths are not durability or crash-atomicity
-claims.
+product level. A right-specific local one-Welcome mailbox now has bounded
+in-memory evidence, and the committed approved-join result carries its exact
+deposit-only endpoint beside the encrypted MLS Welcome. The current sequential
+delivery path is not a durability or crash-atomicity claim.
 
 ## Reference standards and projects
 

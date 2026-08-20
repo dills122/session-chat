@@ -44,15 +44,17 @@ expiry, pre-commit failure, or abandonment releases both reservations; a
 successful in-memory Add consumes invitation state. This sequencing is not a
 durable transaction. Cross-layer atomic persistence, a Welcome outbox, durable
 or network mailbox behavior, human UI approval, and a user interface remain
-unimplemented. The local transport adapter is not yet connected to the approved
-join output and is not evidence for a network profile.
+unimplemented. The in-memory approved-join result now carries only the exact
+authenticated deposit endpoint beside its MLS outputs, and a retained test
+delivers the encrypted Welcome through the local adapter. This sequential path
+is not evidence for a durable outbox or network profile.
 
 ADR 0014 defines the exact local-only invitation-v2, HPKE capability-join, and
 one-Welcome response contract. Its canonical protocol value types are now
 implemented and tested, its one-shot HPKE operation has RFC and cross-provider
 evidence, and its capability-admission boundary now retains explicit simulated
-approval plus in-memory invitation/MLS coordination. Human approval UX,
-durable atomic replay/membership state, mailbox, and network behavior remain
+approval plus in-memory invitation/MLS/Welcome-delivery coordination. Human
+approval UX, durable atomic replay/membership/outbox state, and network behavior remain
 accepted design boundaries rather than runtime or production claims.
 
 ```sh

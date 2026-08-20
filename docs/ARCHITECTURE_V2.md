@@ -186,9 +186,10 @@ reservations, abandonment also clears the MLS pending Commit, and successful
 in-memory Add consumes the invitation before returning its outputs. This is
 sequential in-memory coordination, not one persistent, cross-process,
 crash-atomic, or rollback-resistant transaction. Human approval UX, durable
-membership/replay state and Welcome outbox processing do not exist. The local
-mailbox operates separately and is not yet connected to the approved join
-output; no network transport exists.
+membership/replay state and Welcome outbox processing do not exist. The
+in-memory committed join result now carries the exact authenticated deposit-only
+endpoint beside its MLS Welcome, and retained integration evidence delivers
+that Welcome through the local mailbox. No network transport exists.
 
 ADR 0014 accepts the local-only contract: a signed capability invitation v2,
 RFC 9180 PSK-protected join request, the invitation-scoped Ed25519 key as

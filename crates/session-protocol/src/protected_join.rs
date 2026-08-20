@@ -657,6 +657,12 @@ impl CapabilityJoinRequest {
         &self.response_endpoint
     }
 
+    /// Moves the deposit-only response endpoint out of the authenticated request.
+    #[must_use]
+    pub fn into_response_endpoint(self) -> LocalWelcomeDepositEndpoint {
+        self.response_endpoint
+    }
+
     pub fn encode_canonical(&self) -> Result<Vec<u8>, WireError> {
         let mut encoder = Encoder::new(Vec::with_capacity(self.mls.key_package.len() + 320));
         encoder

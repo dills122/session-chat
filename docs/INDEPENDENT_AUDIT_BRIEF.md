@@ -76,9 +76,10 @@ HPKE capability-join and one-Welcome response contract. The canonical values
 and isolated HPKE proof operation are runtime inventory, as is bounded
 single-process replay-aware capability verification and approval-gated
 invitation/MLS sequencing. The right-specific local mailbox is also runtime
-inventory, but is not connected to the approved join result. Human approval UX,
-durable replay, and atomic cross-layer state transitions remain
-accepted-but-unimplemented contracts.
+inventory, and the committed approved-join result carries only its authenticated
+deposit endpoint beside the exact MLS outputs. A retained test deposits the
+encrypted Welcome. Human approval UX, durable replay, and atomic cross-layer
+state transitions remain accepted-but-unimplemented contracts.
 
 ```mermaid
 flowchart LR
@@ -91,7 +92,8 @@ flowchart LR
   C --> A["Implemented: simulated approval and in-memory invitation/MLS coordination"]
   R --> A
   A --> M
-  M -. future integration .-> T["Implemented: local right-specific mailbox"]
+  M --> T["Implemented: local right-specific Welcome delivery"]
+  E --> T
   A -. future .-> V["Atomic durable state and sealed vault"]
   T -. proposed .-> H["Portable self-hosted realm"]
 ```
@@ -114,8 +116,9 @@ flowchart LR
 | Request ID and nonce are replay-reserved within one invitation generation | Implemented and tested | Bounded in-memory reservations cover same-generation replay, expiry/reissue independence, stale-release ABA, and capacity preservation; not durable or rollback resistant |
 | Two-party MLS Add/Welcome, application messages, path updates, removal, replay/reordering, and delayed-Commit handling work in memory | Implemented and tested | `session-crypto-mls` lifecycle and hostile-member tests with exact pinned provider graph |
 | Product-level forward secrecy, post-compromise security, durable removal isolation, and interoperability | Accepted contract, unimplemented | Requires cross-implementation fixtures, durable state, deletion/rollback evidence, and independent boundary review |
-| Welcome delivery is idempotent and atomic with MLS, replay, approval, and invitation state | Accepted contract, unimplemented | Architecture transaction invariant; no durable store exists |
-| Local deposit, receive, and acknowledge rights are non-interchangeable | Implemented and tested | `session-transport` uses separately typed provider-generated authorities, commitment checks, and hostile authority tests; it is not yet connected to approved joins |
+| Approved in-memory join returns the exact deposit endpoint beside the encrypted MLS Welcome | Implemented and tested | The endpoint moves from the HPKE-authenticated request through approval and MLS apply; expiry is checked before reservation and MLS mutation, while local delivery and non-rollback after delivery failure are retained integration evidence |
+| Welcome outbox delivery is atomic with MLS, replay, approval, and invitation state | Accepted contract, unimplemented | Architecture transaction invariant; no durable store or outbox exists |
+| Local deposit, receive, and acknowledge rights are non-interchangeable | Implemented and tested | `session-transport` uses separately typed provider-generated authorities, commitment checks, hostile authority tests, and an approved-join integration test |
 | Reusable or network mailbox rotation is a separate non-interchangeable right | Accepted contract, unimplemented | ADR 0010; the one-use local profile deliberately has no rotation operation, and Node simulator evidence does not establish production transport |
 | The Node simulator rejects unknown, cyclic, accessor-backed, symbol-keyed, deep, or oversized provider input before cloning or authorization | Implemented and tested | Retained non-production adversarial tests at directory and attestor entry points |
 | Client secrets are sealed when not in an active user-approved session | Proposed experiment | Session-scoped vault proposal with whole-store fallback; no dependency selected |

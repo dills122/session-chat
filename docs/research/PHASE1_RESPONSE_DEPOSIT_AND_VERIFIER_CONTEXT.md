@@ -18,10 +18,11 @@ This packet closes two inputs left open by the HPKE join-request research. It
 proposes a local-memory-only Phase 1 profile, assigns the inner request's field
 positions, and defines the authority and retry lifecycle that a later transport
 slice should test. This packet itself is research; ADR 0014 later adopts the
-local wire contract, and `session-transport` now implements its separate local
-mailbox state machine. That adapter does not add a network endpoint, define a
-hosted realm, or connect join admission, MLS membership, and Welcome delivery
-into one integrated flow.
+local wire contract, and `session-transport` now implements its local mailbox
+state machine. The committed approved-join result subsequently connected the
+authenticated deposit endpoint to the exact MLS Welcome in memory. That path
+does not add a network endpoint, define a hosted realm, or make the coordination
+durable or crash-atomic.
 
 The scope is deliberately smaller than a general `DepositEndpoint`. The first
 schema can express only a single-purpose local Welcome mailbox. A network,
@@ -420,9 +421,9 @@ byte fixtures are not production evidence.
 
 This packet provides no network confidentiality, source-address privacy,
 host-compromise resistance, realm continuity, DNS trust, endpoint migration,
-durable rollback protection, admission implementation, Welcome delivery, or
-production-readiness guarantee. The local transport can establish API and
-state-machine semantics only.
+durable rollback protection, or production-readiness guarantee. The later local
+implementation establishes only in-memory admission, delivery API, and
+state-machine semantics.
 
 Still unresolved for later profiles:
 

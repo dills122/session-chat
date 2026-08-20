@@ -8,6 +8,7 @@ use session_crypto_mls::{
     CommittedAddition, KeyPackageReference, PreparedAddition, SessionMlsConfig, SessionMlsGroup,
     ValidatedKeyPackage, create_key_package_validator,
 };
+use session_protocol::LocalWelcomeDepositEndpoint;
 use thiserror::Error;
 
 const IDENTIFIER_BYTES: usize = 16;
@@ -117,6 +118,7 @@ impl CapabilityAdmissionVerifier {
             .ok_or(CapabilityAdmissionError::Rejected)?;
         if request.issued_at_unix_seconds() > latest_issue
             || request.expires_at_unix_seconds() <= now_unix_seconds
+            || request.response_endpoint().expires_at_unix_seconds() <= now_unix_seconds
             || lifetime > self.policy.maximum_request_lifetime_seconds
         {
             return Err(CapabilityAdmissionError::Rejected);
@@ -265,6 +267,13 @@ impl CapabilityAdmissionVerifier {
             }
             ManualApprovalDecision::Approve => {
                 if pending.verified.opened.request().expires_at_unix_seconds() <= now_unix_seconds
+                    || pending
+                        .verified
+                        .opened
+                        .request()
+                        .response_endpoint()
+                        .expires_at_unix_seconds()
+                        <= now_unix_seconds
                     || registry
                         .validate_reservation(&pending.invitation_reservation, now_unix_seconds)
                         .is_err()
@@ -302,6 +311,12 @@ impl CapabilityAdmissionVerifier {
         }
         let request_expires_at_unix_seconds = verified.opened.request().expires_at_unix_seconds();
         if verified.opened.request().expires_at_unix_seconds() <= now_unix_seconds
+            || verified
+                .opened
+                .request()
+                .response_endpoint()
+                .expires_at_unix_seconds()
+                <= now_unix_seconds
             || registry
                 .validate_reservation(&invitation_reservation, now_unix_seconds)
                 .is_err()
@@ -311,10 +326,11 @@ impl CapabilityAdmissionVerifier {
             return Err(CapabilityAdmissionError::Rejected);
         }
         let VerifiedCapabilityAdmission {
-            opened: _,
+            opened,
             validated,
             reservation,
         } = verified;
+        let response_endpoint = opened.into_request().into_response_endpoint();
         match group.prepare_add(validated, now_unix_seconds) {
             Ok(inner) => Ok(PreparedApprovedCapabilityAddition {
                 verifier: self,
@@ -324,6 +340,7 @@ impl CapabilityAdmissionVerifier {
                 invitation_reservation: Some(invitation_reservation),
                 now_unix_seconds,
                 request_expires_at_unix_seconds,
+                response_endpoint: Some(response_endpoint),
                 preserve_states: false,
             }),
             Err(_) => {
@@ -459,6 +476,7 @@ pub struct PreparedApprovedCapabilityAddition<'verifier, 'registry, 'group, C: S
     invitation_reservation: Option<InvitationReservation>,
     now_unix_seconds: u64,
     request_expires_at_unix_seconds: u64,
+    response_endpoint: Option<LocalWelcomeDepositEndpoint>,
     preserve_states: bool,
 }
 
@@ -488,9 +506,14 @@ impl<C: SessionMlsConfig> PreparedApprovedCapabilityAddition<'_, '_, '_, C> {
     pub fn apply(
         mut self,
         now_unix_seconds: u64,
-    ) -> Result<CommittedAddition, CapabilityAdmissionError> {
+    ) -> Result<CommittedCapabilityJoin, CapabilityAdmissionError> {
         self.now_unix_seconds = now_unix_seconds;
-        if self.request_expires_at_unix_seconds <= now_unix_seconds {
+        if self.request_expires_at_unix_seconds <= now_unix_seconds
+            || self
+                .response_endpoint
+                .as_ref()
+                .is_none_or(|endpoint| endpoint.expires_at_unix_seconds() <= now_unix_seconds)
+        {
             return Err(CapabilityAdmissionError::Rejected);
         }
         let invitation_reservation = self
@@ -515,7 +538,52 @@ impl<C: SessionMlsConfig> PreparedApprovedCapabilityAddition<'_, '_, '_, C> {
         self.registry
             .consume_after_membership(invitation_reservation, now_unix_seconds)
             .map_err(|_| CapabilityAdmissionError::Rejected)?;
-        Ok(committed)
+        let response_endpoint = self
+            .response_endpoint
+            .take()
+            .ok_or(CapabilityAdmissionError::Rejected)?;
+        Ok(CommittedCapabilityJoin {
+            committed,
+            response_endpoint,
+        })
+    }
+}
+
+/// Applied in-memory capability join plus its authenticated deposit-only endpoint.
+pub struct CommittedCapabilityJoin {
+    committed: CommittedAddition,
+    response_endpoint: LocalWelcomeDepositEndpoint,
+}
+
+impl CommittedCapabilityJoin {
+    /// Returns the reference checked against the encrypted Welcome recipients.
+    #[must_use]
+    pub const fn key_package_reference(&self) -> &KeyPackageReference {
+        self.committed.key_package_reference()
+    }
+
+    /// Borrows the MLS Commit for future durable local persistence.
+    #[must_use]
+    pub const fn commit(&self) -> &session_crypto_mls::MlsWireMessage {
+        self.committed.commit()
+    }
+
+    /// Borrows the encrypted MLS Welcome to frame for delivery.
+    #[must_use]
+    pub const fn welcome(&self) -> &session_crypto_mls::WelcomeMessage {
+        self.committed.welcome()
+    }
+
+    /// Borrows the only mailbox authority returned to the inviter.
+    #[must_use]
+    pub const fn response_endpoint(&self) -> &LocalWelcomeDepositEndpoint {
+        &self.response_endpoint
+    }
+
+    /// Separates the committed MLS result from its deposit-only destination.
+    #[must_use]
+    pub fn into_parts(self) -> (CommittedAddition, LocalWelcomeDepositEndpoint) {
+        (self.committed, self.response_endpoint)
     }
 }
 

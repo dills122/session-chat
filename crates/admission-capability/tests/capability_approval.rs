@@ -11,8 +11,9 @@ use session_crypto_mls::{
 };
 use session_protocol::{
     CapabilityJoinRequest, DepositCapability, InvitationJoinBinding, JoinRequestBinding,
-    LocalWelcomeDepositEndpoint, MlsKeyPackageBinding,
+    LocalWelcomeDepositEndpoint, MlsKeyPackageBinding, OpaqueEnvelope,
 };
+use session_transport::{LocalMailboxPolicy, LocalMemoryWelcomeTransport, LocalTransportError};
 
 const NOW: u64 = 1_700_000_000;
 const REQUEST_ID: [u8; 16] = [0x41; 16];
@@ -27,6 +28,19 @@ struct ApprovalFixture {
 }
 
 fn approval_fixture() -> ApprovalFixture {
+    let response_endpoint = LocalWelcomeDepositEndpoint::new(
+        [0x61; 16],
+        [0x71; 16],
+        DepositCapability::new([0x81; 32]).expect("nonzero deposit capability"),
+        NOW + 120,
+    )
+    .expect("create response endpoint");
+    approval_fixture_with_endpoint(response_endpoint)
+}
+
+fn approval_fixture_with_endpoint(
+    response_endpoint: LocalWelcomeDepositEndpoint,
+) -> ApprovalFixture {
     let protector = AwsLcInvitationJoinProtector::new();
     let generated = protector
         .generate_capability_invitation(NOW, NOW + 300)
@@ -66,13 +80,6 @@ fn approval_fixture() -> ApprovalFixture {
         *exact.leaf_signature_key(),
     )
     .expect("bind exact KeyPackage");
-    let response_endpoint = LocalWelcomeDepositEndpoint::new(
-        [0x61; 16],
-        [0x71; 16],
-        DepositCapability::new([0x81; 32]).expect("nonzero deposit capability"),
-        NOW + 120,
-    )
-    .expect("create response endpoint");
     let request = CapabilityJoinRequest::new(
         invitation_binding,
         request_binding,
@@ -377,6 +384,70 @@ fn delayed_apply_rechecks_request_time_before_mls_mutation() {
 }
 
 #[test]
+fn expired_response_endpoint_is_rejected_before_replay_reservation() {
+    let response_endpoint = LocalWelcomeDepositEndpoint::new(
+        [0x62; 16],
+        [0x72; 16],
+        DepositCapability::new([0x82; 32]).expect("nonzero deposit capability"),
+        NOW,
+    )
+    .expect("create structurally valid expired endpoint");
+    let fixture = approval_fixture_with_endpoint(response_endpoint);
+    let mut verifier = verifier();
+
+    assert!(verifier.verify_and_reserve(fixture.opened, NOW).is_err());
+    assert_eq!(verifier.pending_count(), 0);
+    assert_eq!(
+        fixture.registry.lifecycle(&fixture.invitation_id),
+        Some(InvitationLifecycle::Available)
+    );
+}
+
+#[test]
+fn delayed_apply_rechecks_response_endpoint_before_mls_mutation() {
+    let response_endpoint = LocalWelcomeDepositEndpoint::new(
+        [0x63; 16],
+        [0x73; 16],
+        DepositCapability::new([0x83; 32]).expect("nonzero deposit capability"),
+        NOW + 60,
+    )
+    .expect("create shorter-lived endpoint");
+    let mut fixture = approval_fixture_with_endpoint(response_endpoint);
+    let mut verifier = verifier();
+    let verified = verifier
+        .verify_and_reserve(fixture.opened, NOW)
+        .expect("automated verification succeeds");
+    let pending = verifier
+        .reserve_v2_for_approval(&mut fixture.registry, &fixture.validated, verified, NOW)
+        .expect("reserve invitation");
+    let CapabilityApprovalOutcome::Approved(approved) = verifier
+        .decide_v2(
+            &mut fixture.registry,
+            pending,
+            ManualApprovalDecision::Approve,
+            NOW,
+        )
+        .expect("record simulated approval")
+    else {
+        panic!("approval must produce the one-shot approved value");
+    };
+    let inviter = create_client().expect("create inviter");
+    let mut group = inviter.create_group(group_id(), NOW).expect("create group");
+    let prepared = verifier
+        .prepare_approved_add(&mut fixture.registry, approved, &mut group, NOW)
+        .expect("prepare while endpoint is live");
+
+    assert!(prepared.apply(NOW + 60).is_err());
+    assert_eq!(group.epoch(), 0);
+    assert_eq!(group.member_count(), 1);
+    assert_eq!(verifier.pending_count(), 0);
+    assert_eq!(
+        fixture.registry.lifecycle(&fixture.invitation_id),
+        Some(InvitationLifecycle::Available)
+    );
+}
+
+#[test]
 fn only_approved_exact_value_applies_mls_and_consumes_invitation() {
     let mut fixture = approval_fixture();
     let mut verifier = verifier();
@@ -416,6 +487,87 @@ fn only_approved_exact_value_applies_mls_and_consumes_invitation() {
     assert_eq!(group.epoch(), 1);
     assert_eq!(group.member_count(), 2);
     assert_eq!(verifier.pending_count(), 1);
+    assert_eq!(
+        fixture.registry.lifecycle(&fixture.invitation_id),
+        Some(InvitationLifecycle::Consumed)
+    );
+}
+
+#[test]
+fn approved_join_returns_only_the_deposit_endpoint_for_local_welcome_delivery() {
+    let mut transport = LocalMemoryWelcomeTransport::new(
+        LocalMailboxPolicy::new(300, 1).expect("valid mailbox policy"),
+    )
+    .expect("create local transport");
+    let (deposit, receive, acknowledgement) = transport
+        .create_welcome_mailbox(NOW + 120, NOW)
+        .expect("create right-specific mailbox")
+        .into_parts();
+    let mut fixture = approval_fixture_with_endpoint(deposit);
+    let mut verifier = verifier();
+    let verified = verifier
+        .verify_and_reserve(fixture.opened, NOW)
+        .expect("automated verification succeeds");
+    let pending = verifier
+        .reserve_v2_for_approval(&mut fixture.registry, &fixture.validated, verified, NOW)
+        .expect("reserve invitation");
+    let CapabilityApprovalOutcome::Approved(approved) = verifier
+        .decide_v2(
+            &mut fixture.registry,
+            pending,
+            ManualApprovalDecision::Approve,
+            NOW,
+        )
+        .expect("record simulated approval")
+    else {
+        panic!("approval must produce the one-shot approved value");
+    };
+    let inviter = create_client().expect("create inviter");
+    let mut group = inviter.create_group(group_id(), NOW).expect("create group");
+
+    let committed = verifier
+        .prepare_approved_add(&mut fixture.registry, approved, &mut group, NOW)
+        .expect("prepare approved exact Add")
+        .apply(NOW)
+        .expect("apply in-memory join");
+    let envelope = OpaqueEnvelope::new(
+        [0xa1; 16],
+        NOW + 60,
+        committed.welcome().as_bytes().to_vec(),
+    )
+    .expect("MLS Welcome fits the bounded envelope");
+    let delivery_id = transport
+        .deposit(committed.response_endpoint(), envelope.clone(), NOW)
+        .expect("deposit through the returned sender-only endpoint");
+    let received = transport
+        .receive(&receive, NOW)
+        .expect("receive with joiner-only authority")
+        .expect("Welcome is retained");
+
+    assert_eq!(received.delivery_id(), &delivery_id);
+    assert_eq!(received.envelope(), &envelope);
+    assert_eq!(group.epoch(), 1);
+    assert_eq!(group.member_count(), 2);
+    assert_eq!(
+        fixture.registry.lifecycle(&fixture.invitation_id),
+        Some(InvitationLifecycle::Consumed)
+    );
+
+    transport
+        .acknowledge(&acknowledgement, delivery_id, NOW)
+        .expect("joiner acknowledgement deletes the Welcome");
+    assert!(
+        transport
+            .receive(&receive, NOW)
+            .expect("mailbox remains readable")
+            .is_none()
+    );
+    assert_eq!(
+        transport.deposit(committed.response_endpoint(), envelope, NOW + 120),
+        Err(LocalTransportError::Rejected)
+    );
+    assert_eq!(group.epoch(), 1);
+    assert_eq!(group.member_count(), 2);
     assert_eq!(
         fixture.registry.lifecycle(&fixture.invitation_id),
         Some(InvitationLifecycle::Consumed)

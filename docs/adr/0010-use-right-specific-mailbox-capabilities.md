@@ -63,10 +63,11 @@ lifetime, accepts one bounded opaque envelope, makes exact deposit and
 acknowledgement retries idempotent, and rejects foreign, expired, or competing
 authority without replacement. `DeliveryId` remains untrusted.
 
-The local profile deliberately exposes no rotation operation. It is not yet
-connected to approved join output and is not a durable, network, anonymous, or
-production transport. Reusable and network profiles must add separately typed
-rotation and revocation under their own schemas.
+The local profile deliberately exposes no rotation operation. The committed
+approved-join result carries only its authenticated deposit endpoint; receive
+and acknowledgement authority remain with the joiner. This is not a durable,
+network, anonymous, or production transport. Reusable and network profiles must
+add separately typed rotation and revocation under their own schemas.
 
 ## Alternatives considered
 

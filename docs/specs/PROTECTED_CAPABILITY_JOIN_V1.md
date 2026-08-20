@@ -21,11 +21,11 @@ bounded in-memory request-ID/nonce reservation, exact signed-invitation
 provenance, provider-generated local v2 reservation, explicit simulated
 approval, and ownership-preserving MLS prepare/apply. Rejected, expired, failed,
 or abandoned work releases invitation and replay state without changing
-membership; successful in-memory Add consumes invitation state. Human approval
-UX, atomic durable membership state, approved-join mailbox integration, outbox
-processing, hosted realm trust, a network transport, and a deployable client
-remain unimplemented. The separate local mailbox state machine is implemented
-with bounded right-specific evidence.
+membership; successful in-memory Add consumes invitation state. The committed
+result carries the authenticated deposit endpoint beside the MLS outputs, and a
+retained local integration test delivers the encrypted Welcome. Human approval
+UX, atomic durable membership/outbox state, hosted realm trust, a network
+transport, and a deployable client remain unimplemented.
 
 ## Assumptions
 
@@ -343,8 +343,9 @@ The inviter performs, without mutation through step 7:
 6. compare every outer, signed, HPKE, and inner binding exactly;
 7. enforce replay policy and validate the exact KeyPackage/ADR 0009 tuple;
 8. produce the one-shot admission value and only then reserve the invitation;
-9. consume an explicit approval decision, prepare/apply that exact value in MLS,
-   and consume the invitation after successful in-memory Add; and
+9. consume an explicit approval decision, recheck request, invitation, and
+   response-endpoint expiry, prepare/apply that exact value in MLS, and consume
+   the invitation after successful in-memory Add; and
 10. later commit and deliver under the separate ADR 0008/0012 transaction and
     outbox contracts.
 
@@ -363,9 +364,10 @@ docs/specs/                    # this normative contract
 docs/adr/                      # ADR 0014 decision rationale
 ```
 
-The right-specific memory transport now exists under `crates/session-transport`
-but is not yet connected to the approved join output. Human approval UX,
-durable transaction/outbox work, and `sessionctl` remain later slices.
+The right-specific memory transport exists under `crates/session-transport`,
+and the committed approved-join result carries its exact deposit endpoint.
+Human approval UX, durable transaction/outbox work, and `sessionctl` remain
+later slices.
 
 ## Code style
 

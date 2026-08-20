@@ -11,6 +11,7 @@ dependencies = [
  "session-crypto-hpke",
  "session-crypto-mls",
  "session-protocol",
+ "session-transport",
  "thiserror",
 ]
 
