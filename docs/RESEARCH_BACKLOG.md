@@ -264,6 +264,13 @@ Expected output: wire-format draft plus test vectors.
   recommends testing a session-scoped sealed vault with a bounded opaque inbox,
   OS user-presence adapters, and a whole-store fallback. This is not an
   implementation or dependency selection.
+- **Local compatibility spike completed:** the isolated
+  [SQLCipher inviter-store spike](../spikes/sqlcipher-inviter-store/README.md)
+  proves raw-key, wrong-key, copied-file, tamper, process-crash, and atomic MLS
+  plus inviter-join behavior on macOS Apple silicon. Production selection is
+  still blocked on cross-platform builds and faults, a platform-vault adapter,
+  lifecycle and rollback policy, and integration through the Session Chat MLS
+  adapter.
 - Evaluate Tauri and Rust integration with platform keychains and secure
   hardware.
 - Define database encryption, key hierarchy, lock behavior, and crash recovery.

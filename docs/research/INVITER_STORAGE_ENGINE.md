@@ -1,30 +1,30 @@
 # Inviter transaction storage and vault-key decision packet
 
-Status: recommendation awaiting architecture-owner approval; no storage
-dependency selected or added
+Status: local macOS compatibility spike completed; no production storage
+dependency selected
 
 Reviewed: 2026-08-20
 
 ## Decision question
 
-Which embedded storage approach should be spiked for the inviter-local ADR 0008
-transaction while preserving the client-vault requirement that copied state is
-not useful without an externally unsealed key?
+Is SQLCipher compatible with the inviter-local ADR 0008 transaction and the
+client-vault requirement that copied state is not useful without an externally
+unsealed key?
 
-The project owner decides whether to authorize the dependency spike. This packet
-does not authorize production storage, a public durability claim, or a release
-dependency.
+The project owner authorized the disposable compatibility spike. Its local
+result informs the next gate but does not authorize production storage, a public
+durability claim, or a release dependency.
 
 ## Executive conclusion
 
-Run a bounded SQLCipher Community Edition compatibility spike through exact
-`rusqlite` 0.40.1 bindings. Supply a raw 32-byte database key from a separate
-vault-key interface; never derive or retain that key in the database. Start with
-one connection, rollback-journal mode, full synchronization, and one SQL
-transaction containing the MLS storage write plus invitation, replay, approval,
-result, and encrypted Welcome outbox rows.
+The bounded SQLCipher Community Edition compatibility spike through exact
+`rusqlite` 0.40.1 bindings passed on macOS Apple silicon. It accepted a raw
+32-byte database key, used one connection with rollback-journal mode and full
+synchronization, and committed the MLS storage write plus invitation, replay,
+approval, result, endpoint, and pending encrypted Welcome outbox rows in one SQL
+transaction.
 
-Do not adopt the spike unless it proves all of the following:
+Do not adopt the spike for production unless it proves all of the following:
 
 - Linux, macOS, and Windows builds can be pinned and reproduced in CI;
 - the resolved SQLCipher, native crypto, and transitive dependency graph passes
@@ -39,10 +39,43 @@ Do not adopt the spike unless it proves all of the following:
 - unlock, lock, rekey, backup, migration, and deletion behavior satisfy the
   client-vault contract.
 
-This is a high-confidence recommendation for the next experiment, not yet a
-production selection. SQLCipher does not provide rollback resistance against a
-valid older database copy; that still needs a trusted monotonic anchor or an
-explicitly documented limitation.
+The local result supports continuing the SQLCipher evaluation, not a production
+selection. SQLCipher does not provide rollback resistance against a valid older
+database copy; that still needs a trusted monotonic anchor or an explicitly
+documented limitation.
+
+## Observed compatibility result
+
+The isolated spike at `spikes/sqlcipher-inviter-store` records its own manifest
+and lockfile. It does not enter the production workspace dependency graph.
+
+**Observed on 2026-08-20:**
+
+- macOS Darwin 25.5.0, Apple silicon, Rust/Cargo 1.97.1;
+- `rusqlite` 0.40.1, `libsqlite3-sys` 0.38.2, bundled SQLCipher 4.14.0
+  Community Edition, and `mls-rs-core` 0.27.0;
+- raw 32-byte key injection and immediate wrong-key rejection;
+- one SQL transaction containing the real `GroupStateStorage::write` provider
+  hook, MLS epochs, and every modeled inviter-owned join value;
+- rollback of every MLS and application row at the injected pre-commit fault;
+- complete recovery and exact-retry idempotence after an injected lost commit
+  response;
+- no fixture plaintext or normal SQLite header in the closed main database;
+- rejection of a one-byte page mutation; and
+- old-complete-state recovery after a separate process exits before commit.
+
+The spike also uses rollback-journal mode, `synchronous=FULL`, memory-only
+temporary storage, secure deletion, disabled trusted schemas, and foreign-key
+enforcement. Its public errors are coarse and retained sensitive Rust buffers
+zeroize on drop.
+
+The evidence remains deliberately narrow. It covers an application-process
+exit, not power loss or a lying storage device. Linux, Windows, disk-full,
+truncation, platform-vault integration, rekey, backup, migration, deletion,
+old-copy rollback, durable outbox leasing, and the joining device's separate
+KeyPackage deletion transaction remain open. The spike calls the exact MLS
+storage trait directly; the Session Chat adapter does not yet invoke it through
+an actual `Group::write_to_storage` path.
 
 ## Method and scope
 
@@ -109,10 +142,10 @@ without inventing Session Chat record encryption. The trade-off is a native
 cryptographic provider and packaging surface that must remain isolated behind a
 storage adapter and tested on every supported platform.
 
-**Unknown.** The exact resolved SQLCipher source revision, native provider, and
-license graph for the proposed feature combination have not entered
-`Cargo.lock`. They must be recorded by the spike rather than inferred from the
-wrapper version.
+**Observation.** The spike's independent lockfile resolves `rusqlite` 0.40.1 to
+`libsqlite3-sys` 0.38.2 and bundled SQLCipher 4.14.0 Community Edition. That
+graph is locally reproducible, but its Linux and Windows native-provider,
+packaging, advisory, and license behavior still require CI evidence.
 
 ### redb
 
@@ -192,8 +225,9 @@ Required configuration and checks:
   with stronger lifecycle guarantees could remove the SQLCipher dependency,
   but must still pass the same copied-file and crash tests.
 
-## Required owner decision
+## Next decision gate
 
-Approve or reject a disposable SQLCipher compatibility spike. Approval means
-the exact dependency graph may be added on a feature branch for evaluation; it
-does not approve production use, a release claim, or a permanent provider.
+Decide whether to invest in cross-platform CI and a platform-vault adapter for
+this candidate. Production selection remains blocked until the unresolved
+platform, lifecycle, fault, rollback, and Session Chat integration gates above
+are satisfied or explicitly accepted in an ADR.
