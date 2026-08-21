@@ -3,6 +3,14 @@
 `session-transport` implements ADR 0010's first right-specific delivery adapter:
 a bounded, single-process local Welcome mailbox for Phase 1 protocol tests.
 
+It also contains the first additive ADR 0015 contract values. The closed
+`TransportProfileId` set fails on unknown versions; `AdapterId` accepts only a
+bounded local diagnostic grammar; `CanonicalEnvelope` owns one exact validated
+protocol encoding without ordinary debug or clone output; and
+`OperationBudget`, `RetryAdvice`, and `TransportFailure` expose finite work and
+context-free failure semantics. No generalized delivery trait, profile binder,
+coordinator, or network adapter exists yet.
+
 `LocalMemoryWelcomeTransport` creates fresh mailbox identifiers and independent
 deposit, receive, and acknowledgement authorities with AWS-LC's CSPRNG. Only
 the existing `LocalWelcomeDepositEndpoint` is sender-facing. Joiner-retained

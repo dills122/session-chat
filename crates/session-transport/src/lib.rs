@@ -2,6 +2,14 @@
 
 //! Right-specific transport contracts and deterministic local adapters.
 
+mod contract;
+
+pub use contract::{
+    AdapterId, BoundedRetryDelay, CanonicalEnvelope, EnvelopeId, MAX_ADAPTER_ID_BYTES,
+    MAX_RETRY_DELAY_SECONDS, OperationBudget, RetryAdvice, TransportContractError,
+    TransportFailure, TransportFailureCode, TransportProfileId,
+};
+
 use std::collections::BTreeMap;
 
 use aws_lc_rs::{constant_time, digest, rand};
