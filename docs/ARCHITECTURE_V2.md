@@ -55,7 +55,11 @@ The client owns:
 The desktop shell remains a research decision. Tauri with Rust responsible for
 protocol, cryptography, storage, and networking is the leading boundary, but no
 web UI framework is selected. Whatever shell is chosen, UI code is not the
-authority for keys or membership decisions.
+authority for keys or membership decisions. ADR 0018 additionally prohibits a
+native API from shaping the core contract: one baseline local workflow and
+format must build and pass conformance on macOS, Windows, and Linux before the
+capability is considered implemented. Stronger native behavior is optional and
+reported through factual adapter capabilities.
 
 ### Identity bridge
 
@@ -161,7 +165,7 @@ the chosen transport, but should not possess message keys or plaintext.
 
 ### Current Phase 1 evidence
 
-The active Rust laboratory now contains eight narrow pieces of this architecture:
+The active Rust laboratory now contains thirteen narrow pieces of this architecture:
 
 - `session-protocol` encodes and strictly verifies deterministic signed
   secret-capability invitation v1/v2 layouts and owns ADR 0014's bounded
@@ -171,6 +175,9 @@ The active Rust laboratory now contains eight narrow pieces of this architecture
   v2 local issuance only from the provider-generated wrapper, validates remote
   descriptors without mutation, and models explicit reservation, release, and
   post-membership consumption in memory.
+- `session-admission` defines the object-safe, provider-neutral approval
+  observation and decision contract. Its context is display-only and carries no
+  proof, bearer capability, parsed KeyPackage, reservation, or membership authority.
 - `session-crypto` defines the provider-neutral, object-safe message-session
   contract for bounded protected bytes, redacted events, and coarse errors.
 - `session-crypto-hpke` defines the separate provider-neutral one-shot join
@@ -180,21 +187,35 @@ The active Rust laboratory now contains eight narrow pieces of this architecture
   validates and owns the exact provider KeyPackage, compares the ADR 0009 tuple,
   retains bounded in-memory request-ID/nonce replay reservations, binds the
   exact HPKE-opened invitation signature to local v2 state, consumes an explicit
-  simulated approval decision, and permits only that approved one-shot value to
-  enter MLS prepare/apply.
+  simulated approval decision through the shared seam, and permits only that
+  provider-owned approved one-shot value to enter MLS prepare/apply.
 - `session-crypto-mls` isolates the pinned `mls-rs`/AWS-LC provider behind
   bounded KeyPackage, Welcome, and message inputs and models an in-memory
   two-member Add, path-update, message, and removal lifecycle. It is the only
   current implementation of the provider-neutral message contract.
 - `session-transport` creates bounded local one-Welcome mailboxes with distinct
   deposit, receive, and acknowledgement authorities, exact-retry idempotency,
-  expiry, and no ambient credentials. Its first additive generalized values
-  provide closed profile IDs, bounded local adapter IDs, exact
-  canonical-envelope ownership, finite operation budgets, bounded retry advice,
-  and context-free failures; no common delivery trait or network adapter exists.
+  expiry, and no ambient credentials. Its additive generalized values provide
+  closed profile IDs, bounded local adapter IDs, exact canonical-envelope
+  ownership, finite operation budgets, bounded retry advice, and context-free
+  failures. It also defines the provider-neutral right-specific opaque-envelope
+  transport trait; no profile binder, coordinator, or network adapter exists.
+- `transport-memory` implements that trait with bounded deterministic drop,
+  hold/release, duplication, reordering, retry, and acknowledgement controls
+  for headless tests. It is not a network transport.
 - `session-inviter-transaction` is a bounded, fault-injectable conformance model
   for all-or-nothing invitation/replay/approval/MLS-snapshot/Welcome-outbox
   visibility, exact retry recovery, and delivery leasing. It is not storage.
+- `session-storage` is a deterministic in-memory conformance model for the
+  session-scoped sealed-vault lifecycle and bounded canonical opaque receipt.
+  It is not encrypted or durable storage and has no production key protector.
+- `storage-sqlcipher` is a file-backed encrypted durability-laboratory adapter
+  for the real inviter and joiner MLS persistence calls. It is not connected to
+  a platform key protector and provides no rollback or production claim.
+- `sessionctl` composes the current local pieces into one headless Alice/Bob
+  flow: capability join, simulated approval, Welcome delivery, bidirectional
+  application messages, path update, removal, and post-removal rejection. It
+  is not a durable, hosted, or networked client.
 
 The invitation registry, replay verifier, and MLS adapter remain separate
 in-process state machines. The capability adapter now coordinates them through
@@ -203,13 +224,16 @@ reservations, abandonment also clears the MLS pending Commit, and successful
 in-memory Add consumes the invitation before returning its outputs. This is
 sequential in-memory coordination, not one persistent, cross-process,
 crash-atomic, or rollback-resistant transaction. Human approval UX, durable
-membership/replay state and durable Welcome outbox processing do not exist. The
-separate conformance model exercises the required atomic visibility and
-ambiguous-result recovery semantics over memory records without connecting to
-the sequential join path. The in-memory committed join result now carries the
+membership/replay integration, and durable Welcome outbox processing do not
+exist in that product path. The separate memory conformance model and SQLCipher
+laboratory exercise atomic visibility and ambiguous-result recovery without
+connecting to the sequential join path. The in-memory committed join result
+now carries the
 exact authenticated deposit-only endpoint beside its MLS Welcome, and retained
 integration evidence delivers that Welcome through the local mailbox. No
-network transport exists.
+network transport exists. The headless composition retains an executable
+happy-path acceptance test across these boundaries, but does not make their
+sequential in-memory mutations atomic or persistent.
 
 ADR 0014 accepts the local-only contract: a signed capability invitation v2,
 RFC 9180 PSK-protected join request, the invitation-scoped Ed25519 key as

@@ -44,9 +44,10 @@ foundational changes, an ADR.
   are stored and recovered.
 - **Isolated evidence retained:** `session-crypto-mls` now covers removal, a
   path update, out-of-order application delivery, a temporarily lost epoch
-  Commit, abandoned pending Commits, and explicit-only group-state writes.
-  Durable recovery, joining-KeyPackage deletion, and cross-layer atomicity are
-  still open.
+  Commit, abandoned pending Commits, and explicit-only group-state writes. The
+  SQLCipher laboratory adds close/reopen recovery, joining-KeyPackage deletion,
+  and owner-local transaction evidence; integrated product recovery,
+  rollback protection, and durable outbox delivery are still open.
 
 Immediate gate: retain the isolated ADR 0012 laboratory with exact KeyPackage
 ownership, two-party lifecycle, removal, reordered/lost message, and
@@ -329,18 +330,36 @@ later packaging decision, not an initial requirement.
 
 ### P0: device and session key storage
 
+- **Design contract and conformance model implemented:** ADR 0016 and
+  `session-storage` now retain the recommended session-scoped lifecycle,
+  locked-mode capability matrix, stale-generation rejection, and bounded
+  canonical opaque inbox. The deterministic clock and key protector are test
+  providers, not encrypted-storage or user-presence evidence.
 - **Design spike completed:** the
   [client-state vault proposal](spikes/client-vault-portable-hosting/proposals/client-state-vault.md)
-  recommends testing a session-scoped sealed vault with a bounded opaque inbox,
-  OS user-presence adapters, and a whole-store fallback. This is not an
-  implementation or dependency selection.
+  recommends OS user-presence adapters and a whole-store fallback. It is not a
+  storage dependency or platform-protector selection.
 - **Local compatibility spike completed:** the isolated
   [SQLCipher inviter-store spike](../spikes/sqlcipher-inviter-store/README.md)
   proves raw-key, wrong-key, copied-file, tamper, process-crash, and atomic MLS
-  plus inviter-join behavior on macOS Apple silicon. Production selection is
-  still blocked on cross-platform builds and faults, a platform-vault adapter,
-  lifecycle and rollback policy, and integration through the Session Chat MLS
-  adapter.
+  plus inviter-join behavior on macOS Apple silicon. The integrated laboratory
+  below now supplies the required three-OS CI result; production selection is
+  still blocked on broader faults, a portable key-protection baseline,
+  lifecycle and rollback policy, and product-path integration.
+- **Durability laboratory selected and implemented:** ADR 0017 and
+  `storage-sqlcipher` exercise the real inviter and joiner MLS storage calls in
+  encrypted owner-local transactions. The required Linux, macOS, and Windows CI
+  matrix now retains build and execution evidence, but this is not a production
+  dependency, packaging, key-protector, or broader platform-compatibility claim.
+- **Platform capability decision recorded:** the
+  [platform key-protector packet](research/PLATFORM_KEY_PROTECTOR.md) records why
+  native stores cannot provide one uniform claim. ADR 0018 withdraws the
+  macOS-first order and requires a portable baseline plus Linux/macOS/Windows
+  CI before native enhanced modes.
+- Evaluate the portable passphrase-derived KEK candidate with RFC 9106 Argon2id
+  test vectors and a reviewed AEAD for wrapping a random vault key. Measure
+  parameters, cancellation, offline-guessing cost, memory clearing, rekey,
+  recovery, and equivalent UX on all three supported families before selection.
 - Evaluate Tauri and Rust integration with platform keychains and secure
   hardware.
 - Define database encryption, key hierarchy, lock behavior, and crash recovery.

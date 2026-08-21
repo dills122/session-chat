@@ -1,13 +1,18 @@
 [workspace]
 members = [
+  "apps/sessionctl",
   "crates/admission-capability",
+  "crates/session-admission",
   "crates/session-core",
   "crates/session-crypto",
   "crates/session-crypto-hpke",
   "crates/session-crypto-mls",
   "crates/session-inviter-transaction",
   "crates/session-protocol",
+  "crates/session-storage",
   "crates/session-transport",
+  "crates/storage-sqlcipher",
+  "crates/transport-memory",
 ]
 resolver = "3"
 
@@ -29,6 +34,7 @@ mls-rs = { version = "=0.56.0", default-features = false, features = [
 mls-rs-crypto-awslc = { version = "=0.25.0", default-features = false, features = ["non-fips"] }
 mls-rs-crypto-hpke = "=0.21.0"
 mls-rs-core = "=0.27.0"
+rusqlite = { version = "=0.40.1", default-features = false, features = ["bundled-sqlcipher-vendored-openssl"] }
 thiserror = "=2.0.20"
 zeroize = { version = "=1.9.0", default-features = false, features = ["alloc"] }
 

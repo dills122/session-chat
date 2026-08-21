@@ -2,6 +2,7 @@ use admission_capability::{
     CapabilityAdmissionError, CapabilityAdmissionPolicy, CapabilityAdmissionVerifier,
     CapabilityApprovalOutcome, ManualApprovalDecision,
 };
+use session_admission::{AdmissionMethod, PendingAdmission};
 use session_core::{
     InvitationLifecycle, InvitationPolicy, InvitationRegistry, ValidatedCapabilityInvitationV2,
 };
@@ -111,6 +112,28 @@ fn verifier() -> CapabilityAdmissionVerifier {
 
 fn group_id() -> SessionGroupId {
     SessionGroupId::new([0x91; 32]).expect("nonzero group ID")
+}
+
+#[test]
+fn pending_capability_exposes_exact_non_authorizing_approval_context() {
+    let mut fixture = approval_fixture();
+    let mut verifier = verifier();
+    let verified = verifier
+        .verify_and_reserve(fixture.opened, NOW)
+        .expect("automated verification succeeds");
+    let pending = verifier
+        .reserve_v2_for_approval(&mut fixture.registry, &fixture.validated, verified, NOW)
+        .expect("exact local invitation is reserved");
+
+    let context = pending.approval_context();
+    assert_eq!(context.method(), AdmissionMethod::SecretCapability);
+    assert_eq!(context.invitation_id(), &fixture.invitation_id);
+    assert_eq!(context.join_request_id(), &REQUEST_ID);
+    assert_eq!(
+        context.key_package_reference(),
+        &fixture.key_package_reference
+    );
+    assert_eq!(context.expires_at_unix_seconds(), NOW + 120);
 }
 
 #[test]

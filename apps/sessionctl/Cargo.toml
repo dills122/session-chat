@@ -1,0 +1,22 @@
+[package]
+name = "sessionctl"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+admission-capability = { version = "=0.1.0", path = "../../crates/admission-capability" }
+aws-lc-rs.workspace = true
+session-admission = { version = "=0.1.0", path = "../../crates/session-admission" }
+session-core = { version = "=0.1.0", path = "../../crates/session-core" }
+session-crypto = { version = "=0.1.0", path = "../../crates/session-crypto" }
+session-crypto-hpke = { version = "=0.1.0", path = "../../crates/session-crypto-hpke" }
+session-crypto-mls = { version = "=0.1.0", path = "../../crates/session-crypto-mls" }
+session-protocol = { version = "=0.1.0", path = "../../crates/session-protocol" }
+session-transport = { version = "=0.1.0", path = "../../crates/session-transport" }
+thiserror.workspace = true
+transport-memory = { version = "=0.1.0", path = "../../crates/transport-memory" }
+
+[lints]
+workspace = true

@@ -21,6 +21,15 @@ specific database. SQLCipher and Tauri Stronghold are candidates to measure, but
 neither name by itself proves user-presence enforcement, application-level
 atomicity, rollback resistance, deletion, or a narrow UI boundary.
 
+## Implementation status
+
+ADR 0016 and `session-storage` now retain the first deterministic Option 2
+conformance model: linear sealed/open transitions, forced relock events,
+locked-mode privilege rejection, bounded canonical opaque receipt, and
+generation-bound local import. This does not select an encrypted store or
+platform protector and provides no durability, user-presence, rollback, crash,
+rekey, backup, or deletion evidence.
+
 ## Evidence
 
 I inspected the current architecture, threat model, storage backlog, and MLS
@@ -312,13 +321,16 @@ mode or require an application passphrase; do not silently claim parity.
 
 ## Implementation Work Packages
 
-- Define the vault state machine, locked-mode capability matrix, and error
-  contract in `session-storage` interfaces.
-- Build deterministic fake protector, fake clock, and event-race tests.
+- **Implemented as a conformance model:** define the vault state machine,
+  locked-mode capability matrix, and error contract in `session-storage`.
+- **Implemented as test evidence:** build deterministic fake protector, fake
+  clock, and event-race tests.
 - Build OS `KeyProtector` probes that report factual semantics rather than a
   generic “secure storage available” boolean.
 - Evaluate candidate encrypted stores against the atomic MLS adapter.
-- Add opaque inbox quotas, import validation, and failure recovery.
+- **Partially implemented as a conformance model:** add opaque inbox quotas,
+  canonical import validation, and lifecycle-race rejection. Durable failure
+  recovery remains open.
 - Add platform lifecycle adapters and a narrow UI-to-core command policy only
   after the desktop-shell ADR.
 - Record the selected design, exact dependencies, and rollback behavior in an

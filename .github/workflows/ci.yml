@@ -18,9 +18,19 @@ concurrency:
 
 jobs:
   rust:
-    name: Rust
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    name: Rust (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x64
+            os: ubuntu-24.04
+          - name: macOS arm64
+            os: macos-15
+          - name: Windows x64
+            os: windows-2025
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
     steps:
       - name: Check out source without retained credentials
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -30,12 +40,13 @@ jobs:
       - name: Verify repository-pinned Rust toolchain
         run: |
           rustc --version --verbose
-          test "$(rustc --version | awk '{print $2}')" = "1.97.1"
+          node -e 'const { execFileSync } = require("node:child_process"); const version = execFileSync("rustc", ["--version"], { encoding: "utf8" }).trim().split(/\s+/)[1]; if (version !== "1.97.1") throw new Error("expected Rust 1.97.1, received " + version);'
 
       - name: Fetch the locked dependency graph
         run: cargo fetch --locked
 
       - name: Check formatting
+        if: runner.os == 'Linux'
         run: cargo fmt --all --check
 
       - name: Lint every target and feature
@@ -45,6 +56,7 @@ jobs:
         run: cargo test --workspace --all-features --locked --offline
 
       - name: Build warning-free documentation
+        if: runner.os == 'Linux'
         env:
           RUSTDOCFLAGS: -D warnings
         run: cargo doc --workspace --all-features --no-deps --locked --offline

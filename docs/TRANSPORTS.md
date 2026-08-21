@@ -227,6 +227,21 @@ authenticated deposit endpoint beside its MLS outputs, and retained integration
 evidence deposits that encrypted Welcome. This is local protocol evidence, not
 durability, outbox atomicity, networking, anonymity, or a production profile.
 
+### Deterministic Phase 1 envelope transport
+
+`session-transport` defines a provider-neutral trait whose associated deposit,
+receive, and acknowledgement types preserve ADR 0010's authority separation.
+The separate `transport-memory` adapter implements that contract for headless
+tests. Its bounded action queue can deliver, drop, hold, release out of order,
+or duplicate one accepted attempt. Exact retries retain one logical delivery
+identifier, while changed bytes under the same envelope identifier fail closed.
+
+The adapter receives an `OpaqueEnvelope`; it does not encrypt or authenticate
+the bytes inside that container. Its capabilities are provider-generated and
+stored only as commitments, but the adapter remains single-process test code.
+It provides no network routing, persistence, anonymity, metadata privacy,
+crash recovery, or rollback resistance.
+
 ## Transport acceptance tests
 
 All production transports:

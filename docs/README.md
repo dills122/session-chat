@@ -73,6 +73,18 @@ all.
   selects the exact local Phase 1 HPKE PSK profile, capability verifier, closed
   join schemas, and one-Welcome response authority without claiming an
   implementation or hosted transport.
+- [Provider-neutral approval-context decision](adr/0015-use-a-provider-neutral-approval-context.md)
+  gives headless and later UI composition one display-only decision seam while
+  concrete providers retain exact proof, reservation, and KeyPackage authority.
+- [Session-scoped sealed-vault decision](adr/0016-use-a-session-scoped-sealed-vault-contract.md)
+  defines the locked-mode capability matrix, linear lifecycle transitions, and
+  bounded opaque receipt contract without selecting durable storage.
+- [Durable storage laboratory decision](adr/0017-use-sqlcipher-for-the-durable-storage-laboratory.md)
+  selects the exact SQLCipher graph for real inviter/joiner MLS transaction
+  evidence without making a production or platform-vault claim.
+- [Cross-platform local-app decision](adr/0018-require-cross-platform-local-app-baselines.md)
+  requires one common macOS, Windows, and Linux baseline and merge gate before
+  any native local capability is considered implemented.
 - [Protected capability join specification](specs/PROTECTED_CAPABILITY_JOIN_V1.md)
   assigns the fixed-array layouts, code points, cryptographic contexts, parsing
   order, mailbox lifecycle, and retained-evidence gates for ADR 0014.
@@ -88,6 +100,9 @@ all.
 - [Inviter storage and vault-key decision packet](research/INVITER_STORAGE_ENGINE.md)
   compares transaction engines and recommends a bounded SQLCipher compatibility
   spike without selecting a production storage dependency.
+- [Platform key-protector decision packet](research/PLATFORM_KEY_PROTECTOR.md)
+  separates macOS, Windows, and Linux protection semantics and frames the
+  portable-baseline decision that must precede native enhancements.
 - [Superseded OpenMLS decision](adr/0011-select-openmls-for-the-phase-1-laboratory.md)
   retains the bounded OpenMLS evaluation and its dependency blocker.
 - [MLS implementation comparison](research/MLS_IMPLEMENTATION_COMPARISON.md)
@@ -157,13 +172,18 @@ object-safe application message seam, and `session-crypto-mls` is its only
 current implementation. This defines where a future client can select a
 reviewed backend for a new session; it does not yet provide backend negotiation
 or migrate active MLS state.
+The implementation-free `session-admission` crate now defines an object-safe,
+display-only approval context and shared decision. It exposes no proof, bearer
+capability, parsed KeyPackage, reservation, or membership authority.
 
 The `admission-capability` crate accepts only an HPKE-authenticated request,
 retains the exact signed-invitation provenance, independently validates and owns
 its exact provider KeyPackage, verifies the ADR 0009 tuple, and reserves the
 request ID and nonce in bounded in-memory state. It now binds that value to the
 exact local v2 invitation, consumes an explicit simulated approval decision,
-and permits only the approved one-shot value to reach MLS preparation.
+and permits only the approved one-shot value to reach MLS preparation. Its
+pending value implements the shared approval observation seam without releasing
+the provider-owned evidence or exact KeyPackage.
 
 The invitation's self-contained key proves descriptor integrity only. The
 registry accepts provider-generated invitation v2 and models its bounded
@@ -183,6 +203,25 @@ claiming disk durability. A right-specific local one-Welcome mailbox now has
 bounded in-memory evidence, and the committed approved-join result carries its
 exact deposit-only endpoint beside the encrypted MLS Welcome. The current
 sequential delivery path is not a durability or crash-atomicity claim.
+The separate `transport-memory` adapter now implements the right-specific
+opaque-envelope trait with bounded deterministic loss, duplication, reordering,
+retry, expiry, and acknowledgement controls for headless tests. It is not a
+network, encryption, or privacy implementation.
+The `sessionctl` binary now composes the implemented local boundaries into one
+fresh two-client run covering protected capability admission, explicit
+simulated approval, Welcome delivery, bidirectional MLS application messages,
+path update, removal, and post-removal rejection. It prints only coarse
+milestones and is neither a durable nor networked client.
+The `session-storage` crate now retains a deterministic in-memory conformance
+model for one-session unsealing, forced relock events, stale-completion
+rejection, and bounded canonical opaque receipt/import. It provides no
+encrypted persistence, platform key protector, durability, rollback, or crash
+recovery claim.
+The separate `storage-sqlcipher` crate now exercises both owner-local
+transactions through the real MLS storage path and recovers them after close
+and reopen on the required Linux, macOS, and Windows CI runners. It is not wired
+to the vault lifecycle and adds no production packaging, broader platform,
+rollback-resistance, or production-storage claim.
 
 ## Reference standards and projects
 
