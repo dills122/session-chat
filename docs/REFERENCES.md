@@ -1,6 +1,6 @@
 # Reference ledger
 
-Last reviewed: 2026-08-19
+Last reviewed: 2026-08-20
 
 This is a research starting point, not a dependency manifest. Standards and
 project maturity must be rechecked when an implementation decision is made.
@@ -213,6 +213,9 @@ identity, mailbox separation, and current project maturity.
 
 ## Mixnets and routed privacy transports
 
+The dated comparison and evidence labels are retained in the
+[transport and security technology landscape](research/TRANSPORT_SECURITY_LANDSCAPE_2026-08-20.md).
+
 ### Privacy partitioning and anonymous resource control
 
 - [RFC 9458: Oblivious HTTP](https://www.rfc-editor.org/rfc/rfc9458)
@@ -294,6 +297,92 @@ operations.
 Open questions: maturity, security review, metadata threat model, offline
 delivery, interoperability, and operational fit. It is not selected as the v2
 foundation.
+
+### Tor and Arti
+
+- [Tor onion-service overview](https://community.torproject.org/onion-services/overview/)
+- [Tor traffic-correlation limitations](https://support.torproject.org/about-tor/security/attacks-on-onion-routing/)
+- [Arti documentation](https://arti.torproject.org/)
+
+Relevance: a separately named low-latency Private Interactive experiment with
+self-authenticating onion-service endpoints and an official Rust integration
+boundary.
+
+Caveat: Tor is a low-latency onion-routing network, not a mixnet. An observer
+that sees both ends may correlate timing and volume. It must not be an automatic
+fallback from a mixnet profile.
+
+### SimpleX Messaging Protocol
+
+- [SimpleX Messaging Protocol](https://github.com/simplex-chat/simplexmq/blob/stable/protocol/simplex-messaging.md)
+- [SimpleX network architecture and threat model](https://github.com/simplex-chat/simplexmq/blob/stable/protocol/overview-tjr.md)
+- [SimpleX security policy and review history](https://github.com/simplex-chat/simplex-chat/security)
+
+Relevance: asynchronous unidirectional queues, separate sender and recipient
+identifiers and credentials, fixed-size transport blocks, queue rotation, and
+two-router forwarding are close prior art for ADR 0010 mailbox rights.
+
+Caveat: Session Chat must not import SimpleX chat membership or encryption over
+MLS. Exact revision, assessment applicability, integration boundary, and AGPL
+implications require review before code reuse.
+
+### Nym
+
+- [Nym network overview](https://nym.com/network)
+- [Nym source organization](https://github.com/nymtech)
+- [Nym security review](https://nym.com/nym-audit-report-draft-202109-3.pdf)
+
+Relevance: comparative public mixnet experiment with independently operated
+nodes, cover traffic, and application integration paths.
+
+Caveat: the Nyx chain, credentials, and token economics are additional
+dependencies and do not become Session Chat admission, membership, or message
+authority.
+
+### Reticulum and disruption-tolerant prior art
+
+- [Reticulum overview](https://reticulum.network/manual/whatis.html)
+- [Reticulum network construction](https://reticulum.network/manual/networks.html)
+- [Briar architecture](https://briarproject.org/how-it-works/)
+
+Relevance: possible later off-grid profile over local, radio, or intermittent
+links and design evidence for explicit rather than automatic path changes.
+
+Open questions: independent review, shared-medium metadata, fragmentation,
+Rust integration, regulatory constraints, and supported store-and-forward
+semantics.
+
+## Secure software delivery
+
+- [The Update Framework overview](https://theupdateframework.io/docs/overview/)
+- [The Update Framework security model](https://theupdateframework.io/docs/security/)
+- [Sigstore signing overview](https://docs.sigstore.dev/cosign/signing/overview/)
+- [Sigsum documentation](https://github.com/sigsum/sigsum)
+
+Relevance: protect desktop update authenticity and freshness against signing-key
+compromise, rollback, freeze, and fast-forward attacks, while making release
+signing observable or independently witnessed.
+
+Open questions: Tauri integration, offline/threshold key ceremonies, client
+rollback state, witness policy, privacy of public signing identity, and
+reproducible artifact evidence.
+
+## Cryptographic migration and pairing
+
+- [RFC 10024: PQ/T hybrid TLS groups](https://www.rfc-editor.org/rfc/rfc10024)
+- [MLS ML-KEM ciphersuite draft](https://datatracker.ietf.org/doc/draft-ietf-mls-pq-ciphersuites/)
+- [OpenMLS post-quantum experiment](https://blog.openmls.tech/posts/2024-04-11-pq-openmls/)
+- [RFC 9382: SPAKE2](https://www.rfc-editor.org/rfc/rfc9382)
+- [RFC 9807: OPAQUE](https://www.rfc-editor.org/rfc/rfc9807)
+
+Relevance: preserve suite agility for later hybrid post-quantum migration and
+consider a standardized PAKE only if a future manual-pairing mode intentionally
+uses a low-entropy shared code.
+
+Caveat: the Phase 1 MLS suite remains pinned by ADR 0012. Draft PQ MLS/HPKE
+mechanisms and experimental code points are not a product claim. PAKE does not
+replace high-entropy invitation capabilities and still requires strict online
+attempt limits.
 
 ## Comparative systems
 

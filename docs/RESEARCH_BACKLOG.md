@@ -161,6 +161,37 @@ Expected output: wire-format draft plus test vectors.
 
 ## Transport and rendezvous
 
+### Landscape review retained: transport and adjacent security technologies
+
+- The 2026-08-20
+  [technology landscape](research/TRANSPORT_SECURITY_LANDSCAPE_2026-08-20.md)
+  compares Tor/Arti, SimpleX SMP, Katzenpost, Nym, Veilid, Reticulum,
+  Briar-style disruption tolerance, OHTTP, Privacy Pass, KEYTRANS, secure
+  updates, credential presentation, post-quantum hybrids, and PAKE pairing.
+- The review recommends a portfolio of distinctly named profiles rather than a
+  single interchangeable privacy tier.
+- The review does not select dependencies or create product privacy claims.
+
+### P0: profile-bound transport abstraction
+
+- Review and accept or revise proposed
+  [ADR 0015](adr/0015-bind-transport-adapters-to-versioned-profiles.md) before
+  publishing the Rust API.
+- Resolve the first Rust API shape, coordinator-storage ownership,
+  acknowledgement-capability issuance model, and local profile-ID encoding.
+- Generalize the existing local one-Welcome adapter into the deterministic
+  adverse-network control path and add the shared conformance harness before a
+  real network adapter.
+- Decide which adapters can use a scoped in-process network broker and which
+  require process/OS-level egress isolation.
+- Retain the exact adverse-network trace and redacted evidence format used by
+  every later adapter.
+
+Expected output: the accepted version 1 contract, a stabilized
+`session-transport`, a reusable conformance harness, and the Phase 1 headless
+flow through that boundary. Extracting a separate `transport-memory` crate is a
+later packaging decision, not an initial requirement.
+
 ### Spike completed: sealed invitation post office
 
 - See [the sealed invitation provider spike](spikes/SEALED_INVITATION_PROVIDER.md).
@@ -224,6 +255,36 @@ Expected output: wire-format draft plus test vectors.
   behavior.
 - Confirm how client authentication to an entry provider affects linkability.
 
+### P1: Tor/Arti Private Interactive experiment
+
+- Host and access an opaque mailbox through Arti onion-service support.
+- Measure bootstrap, interactive latency, resource usage, suspension, outage,
+  onion-service key lifecycle, and censorship behavior.
+- Prove through egress-denial tests that the profile opens no direct peer,
+  normal relay, ordinary DNS, identity, telemetry, update, preview, or crash path.
+- Preserve Tor's low-latency timing-correlation limitation in product language.
+
+### P1: SimpleX SMP mailbox experiment
+
+- Compare direct SMP carriage of canonical Session Chat envelopes with an
+  independently specified mailbox that uses SMP only as prior art.
+- Map separate sender/recipient queue identifiers and credentials to ADR 0010
+  rights without importing SimpleX membership or end-to-end encryption.
+- Measure fixed-block overhead, offline delivery, queue rotation, two-router
+  routing, and failure behavior.
+- Review current security assessment results, exact protocol revision, Rust or
+  process integration options, and AGPL implications before embedding code.
+
+### P1: Nym comparison
+
+- Run Nym and Katzenpost through the same workload, adverse trace, observer
+  matrix, and packet-capture format.
+- Compare public-network anonymity-set potential, provider linkability,
+  latency, variance, cover traffic, availability, cost, governance, and SDK
+  stability.
+- Keep Nym chain, credential, and token systems outside Session Chat admission,
+  membership, and envelope formats.
+
 ### P1: anonymity-set requirements
 
 - Define the adversaries a private profile intends to resist.
@@ -244,6 +305,15 @@ Expected output: wire-format draft plus test vectors.
   proven.
 - Compare DHT discovery metadata, routed operations, offline behavior, and
   operational complexity with the other profiles.
+
+### P2: disruption-tolerant and off-grid experiment
+
+- Evaluate Reticulum and Briar-style Bluetooth/Wi-Fi/local synchronization as
+  design inputs for an explicitly named off-grid profile.
+- Measure metadata on shared radio or local media, fragmentation, replay,
+  store-and-forward behavior, independent review evidence, and Rust integration.
+- Never use the off-grid profile as an automatic fallback from an active Fast
+  or Private session.
 
 ## Client and storage
 
