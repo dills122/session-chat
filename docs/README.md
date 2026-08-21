@@ -44,6 +44,9 @@ all.
   sequences stabilization of the existing local adapter and outbox model, the
   generalized contract, conformance harness, coordinator, and later
   real-network experiments.
+- [Local transport baseline evidence](evidence/transport-local-baseline.md)
+  maps the implemented one-Welcome adapter and inviter outbox model to the
+  generalized contract without overstating missing behavior.
 - [Threat model](THREAT_MODEL.md) defines assets, trust boundaries, attackers,
   invariants, and severity calibration.
 - [Roadmap](ROADMAP_V2.md) proposes an incremental implementation and validation

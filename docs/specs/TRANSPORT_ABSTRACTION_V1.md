@@ -1,7 +1,8 @@
 # Session Chat transport abstraction version 1
 
-Status: proposed generalized contract; a narrow local Welcome adapter exists,
-but no common multi-adapter API or production network adapter exists
+Status: accepted for incremental internal implementation; a narrow local
+Welcome adapter exists, but no stable multi-adapter trait or production network
+adapter exists
 
 Date: 2026-08-20
 
@@ -575,18 +576,21 @@ The initial Rust API can change while the Phase 1 laboratory is internal, but
 the authority boundaries and portable semantics cannot be weakened without
 updating ADR 0010 or superseding ADR 0015.
 
-## Open decisions before implementation
+## Deferred decisions after the first contract-values increment
 
-- Whether the first Rust boundary is generic, actor-based, or object-safe.
+- Whether the eventual delivery trait is generic, actor-based, or object-safe.
+  The first increment deliberately stabilizes bounded values and errors before
+  fixing dispatch or async mechanics.
 - Exact storage ownership for cursors, receive-side deduplication, and
   acknowledgement scheduling; owner-local transaction stores already own
   durable outbox truth and leases.
 - Whether acknowledgement authority is long-lived per mailbox or issued per
   delivery/batch by each provider protocol.
-- Exact `TransportProfileId` encoding and where future authenticated profile
-  negotiation is bound.
+- Future authenticated profile negotiation and its wire binding. The local
+  Rust boundary initially uses the closed reserved version 1 profile set.
 - Network-broker design for libraries that normally own sockets.
-- Stable redacted diagnostic schema.
+- Stable redacted diagnostic context beyond the initial context-free error
+  code and retry advice.
 - Whether the generalized memory control path should be extracted from
   `session-transport` after the first stabilization slice; the existing local
   Welcome evidence remains in place during that slice.
