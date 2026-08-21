@@ -22,7 +22,6 @@ const MAX_MLS_STATE_BYTES: usize = 2 * 1024 * 1024;
 const MAX_EPOCH_WRITES: usize = 64;
 const MAX_KEY_PACKAGE_BYTES: usize = 16 * 1024;
 const MAX_SECRET_KEY_BYTES: usize = 4 * 1024;
-const SQLCIPHER_OPEN_STACK_BYTES: usize = 8 * 1024 * 1024;
 
 /// Exact raw database key released only while the client vault is unsealed.
 ///
@@ -439,14 +438,45 @@ impl SqlCipherStorage {
     }
 
     fn open_internal(path: &Path, key: VaultKey, create: bool) -> Result<Self, StoreError> {
-        let path = path.to_path_buf();
-        let connection = std::thread::Builder::new()
-            .name("session-sqlcipher-open".into())
-            .stack_size(SQLCIPHER_OPEN_STACK_BYTES)
-            .spawn(move || open_keyed_connection(&path, key, create))
-            .map_err(|_| StoreError::Rejected)?
-            .join()
-            .map_err(|_| StoreError::Rejected)??;
+        let mut flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX;
+        if create {
+            flags |= OpenFlags::SQLITE_OPEN_CREATE;
+        }
+        let connection = Connection::open_with_flags(path, flags)?;
+
+        // Source: https://www.zetetic.net/sqlcipher/sqlcipher-api/#pragma-key
+        connection.execute_batch(&key.raw_key_pragma())?;
+        // Keep SQLCipher's default crypto-allocation sanitization. Do not enable
+        // process-wide `cipher_memory_security`: it cannot be disabled again and
+        // the pinned Windows provider has overflowed during wrong-key validation
+        // when this optional mode is enabled.
+        // Source: https://www.zetetic.net/sqlcipher/sqlcipher-api/#pragma-cipher-memory-security
+        let _: i64 =
+            connection.query_row("SELECT count(*) FROM sqlite_master;", [], |row| row.get(0))?;
+        let cipher_version: String =
+            connection.query_row("PRAGMA cipher_version;", [], |row| row.get(0))?;
+        if cipher_version.is_empty() {
+            return Err(StoreError::Rejected);
+        }
+        connection.execute_batch(
+            "PRAGMA journal_mode = DELETE;
+             PRAGMA synchronous = FULL;
+             PRAGMA temp_store = MEMORY;
+             PRAGMA secure_delete = ON;
+             PRAGMA trusted_schema = OFF;
+             PRAGMA foreign_keys = ON;",
+        )?;
+        if create {
+            create_schema(&connection)?;
+        } else {
+            let version: i64 =
+                connection.query_row("SELECT schema_version FROM storage_metadata", [], |row| {
+                    row.get(0)
+                })?;
+            if version != 1 {
+                return Err(StoreError::Rejected);
+            }
+        }
 
         Ok(Self {
             inner: Arc::new(Mutex::new(StorageInner {
@@ -457,50 +487,6 @@ impl SqlCipherStorage {
             })),
         })
     }
-}
-
-fn open_keyed_connection(
-    path: &Path,
-    key: VaultKey,
-    create: bool,
-) -> Result<Connection, StoreError> {
-    let mut flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX;
-    if create {
-        flags |= OpenFlags::SQLITE_OPEN_CREATE;
-    }
-    let connection = Connection::open_with_flags(path, flags)?;
-
-    // Source: https://www.zetetic.net/sqlcipher/sqlcipher-api/#pragma-key
-    connection.execute_batch(&key.raw_key_pragma())?;
-    connection.execute_batch("PRAGMA cipher_memory_security = ON;")?;
-    let _: i64 =
-        connection.query_row("SELECT count(*) FROM sqlite_master;", [], |row| row.get(0))?;
-    let cipher_version: String =
-        connection.query_row("PRAGMA cipher_version;", [], |row| row.get(0))?;
-    if cipher_version.is_empty() {
-        return Err(StoreError::Rejected);
-    }
-    connection.execute_batch(
-        "PRAGMA journal_mode = DELETE;
-             PRAGMA synchronous = FULL;
-             PRAGMA temp_store = MEMORY;
-             PRAGMA secure_delete = ON;
-             PRAGMA trusted_schema = OFF;
-             PRAGMA foreign_keys = ON;",
-    )?;
-    if create {
-        create_schema(&connection)?;
-    } else {
-        let version: i64 =
-            connection.query_row("SELECT schema_version FROM storage_metadata", [], |row| {
-                row.get(0)
-            })?;
-        if version != 1 {
-            return Err(StoreError::Rejected);
-        }
-    }
-
-    Ok(connection)
 }
 
 impl GroupStateStorage for SqlCipherStorage {

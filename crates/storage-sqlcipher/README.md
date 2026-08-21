@@ -5,9 +5,9 @@ the Session Chat protocol laboratory. It uses exact `rusqlite` 0.40.1 with
 bundled SQLCipher 4.14.0, vendored OpenSSL, and an externally supplied nonzero
 32-byte raw key. The vendored provider removes the Windows dependency on an
 ambient `OPENSSL_DIR`; it does not make the resulting binaries reproducible.
-Keyed connection setup and first-page validation run on one transient, bounded
-8 MiB worker stack. This preserves fail-closed wrong-key rejection on the pinned
-Windows provider path without relying on a caller thread's platform stack size.
+The adapter retains SQLCipher's default memory policy: cryptographic allocations
+are locked and sanitized, while the optional process-wide wiping of every SQLite
+allocation remains disabled.
 
 Retained tests exercise the real `session-crypto-mls` storage path and prove on
 the tested macOS host that:
