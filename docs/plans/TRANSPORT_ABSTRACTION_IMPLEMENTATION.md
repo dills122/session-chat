@@ -173,6 +173,13 @@ traits alongside the existing local API. Add negative and compile-time tests
 showing that capabilities cannot be substituted and secret-bearing values
 cannot enter ordinary debug/error output. Do not add network dependencies.
 
+**Progress (2026-08-20):** The bounded contract-values sub-increment is
+implemented with closed profile IDs, validated adapter IDs, exact canonical
+envelope ownership, operation budgets, bounded retry advice, context-free
+failures, and a compile-fail `CanonicalEnvelope: Debug` check. Capability types
+and the delivery trait remain deliberately unimplemented, so Task 3 is not yet
+complete.
+
 **Acceptance criteria:**
 
 - [ ] Deposit cannot accept receive, acknowledgement, or rotation authority.

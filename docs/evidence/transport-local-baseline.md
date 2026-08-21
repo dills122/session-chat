@@ -70,3 +70,12 @@ validated adapter IDs, a canonical envelope owner, operation budgets, and
 normalized redacted failures. Preserve the local adapter API during that
 increment. Stabilize capability representation and dispatch only after those
 values compile and their negative tests pass.
+
+## First follow-up increment
+
+The first additive increment implements those bounded values in
+`crates/session-transport/src/contract.rs` and retains seven focused tests plus
+a compile-fail proof that `CanonicalEnvelope` does not implement `Debug`. The
+original five local mailbox tests remain unchanged and passing. This closes the
+profile-ID, adapter-ID, canonical-envelope, operation-budget, retry-advice, and
+context-free-error gaps only; every other gap above remains open.

@@ -250,6 +250,24 @@ sender and may require controlled cloning or serialization.
 is authority. Both MUST be size-bounded, scoped to the adapter/profile context,
 and safe to reject after restart or rotation.
 
+### First implemented contract values
+
+The first internal stabilization increment implements only:
+
+- the five closed reserved version 1 `TransportProfileId` values;
+- a 96-byte lowercase ASCII `AdapterId` grammar for local binding and diagnostics;
+- a non-`Clone`, non-`Debug` `CanonicalEnvelope` that owns exact validated
+  `session-protocol` bytes and rejects an all-zero envelope identifier;
+- nonzero byte/attempt `OperationBudget` values with a monotonic deadline;
+- retry delays capped at one hour before they enter `RetryAdvice`; and
+- the context-free `TransportFailureCode`, `RetryAdvice`, and
+  `TransportFailure` boundary.
+
+This increment does not implement capability erasure, the delivery traits,
+polling, manifests, binding, coordination, adverse scheduling, durability, or
+network I/O. Those boundaries remain gated on direct evidence rather than being
+inferred from the value types.
+
 ## Delivery interfaces
 
 ```rust
