@@ -29,7 +29,12 @@ bounded one-Welcome deposit, receive, and acknowledgement with independent
 provider-generated authorities. The approved in-memory join result carries only
 the authenticated deposit endpoint beside its MLS outputs, and a retained test
 delivers the encrypted Welcome through that mailbox. This provides no durable
-outbox or network behavior. A separate bounded, fault-injectable model exercises
+outbox or network behavior. The first generalized transport values now use a
+closed profile set, bounded local adapter identifiers, exact canonical-envelope
+ownership without ordinary debug output, finite operation budgets, bounded
+retry advice, and context-free failures. They add no capability erasure,
+delivery trait, binder, coordinator, or network authority. A separate bounded,
+fault-injectable model exercises
 all-or-nothing inviter state, ambiguous-result recovery, and Welcome-outbox
 leasing semantics without providing storage or connecting to that sequential
 join path. A separate deterministic memory transport uses right-specific
@@ -731,6 +736,6 @@ prevents the claimed outcome.
 
 Provenance: living repository threat model updated with ADRs 0008-0014, the
 inviter-owned invitation lifecycle, the isolated MLS lifecycle, and the
-proposed ADR 0015 transport boundary. Git history is the authoritative reviewed
+accepted ADR 0015 transport boundary. Git history is the authoritative reviewed
 version boundary; do not copy a commit hash forward without re-reviewing the
 document against that commit.

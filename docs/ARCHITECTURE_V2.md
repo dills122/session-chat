@@ -144,7 +144,7 @@ second outbox ledger. A profile binder supplies one adapter with only the
 network and mailbox authority allowed by the selected profile; adapters cannot
 select fallbacks or broaden egress. See the
 [transport abstraction specification](specs/TRANSPORT_ABSTRACTION_V1.md) and
-[proposed ADR 0015](adr/0015-bind-transport-adapters-to-versioned-profiles.md).
+[accepted ADR 0015](adr/0015-bind-transport-adapters-to-versioned-profiles.md).
 
 ### Realm administration
 
@@ -195,8 +195,11 @@ The active Rust laboratory now contains thirteen narrow pieces of this architect
   current implementation of the provider-neutral message contract.
 - `session-transport` creates bounded local one-Welcome mailboxes with distinct
   deposit, receive, and acknowledgement authorities, exact-retry idempotency,
-  expiry, and no ambient credentials. It also defines the provider-neutral
-  right-specific opaque-envelope transport trait.
+  expiry, and no ambient credentials. Its additive generalized values provide
+  closed profile IDs, bounded local adapter IDs, exact canonical-envelope
+  ownership, finite operation budgets, bounded retry advice, and context-free
+  failures. It also defines the provider-neutral right-specific opaque-envelope
+  transport trait; no profile binder, coordinator, or network adapter exists.
 - `transport-memory` implements that trait with bounded deterministic drop,
   hold/release, duplication, reordering, retry, and acknowledgement controls
   for headless tests. It is not a network transport.

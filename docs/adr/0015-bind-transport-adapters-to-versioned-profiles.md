@@ -1,6 +1,6 @@
 # ADR 0015: Bind transport adapters to versioned profiles
 
-Status: proposed
+Status: accepted; local baseline mapped, generalized implementation in progress
 
 Date: 2026-08-20
 
@@ -111,11 +111,19 @@ mailbox pieces, but the core needs one envelope-delivery contract.
 
 ## Adoption gate
 
-Accept this ADR before generalizing the existing local-only `session-transport`
-API into a public multi-adapter boundary. The acceptance review must resolve or
-explicitly defer the open API-shape,
-coordinator-storage, acknowledgement-issuance, profile-encoding, and
-network-broker questions in the transport specification.
+The accepted decision permits incremental internal generalization of the
+existing local-only `session-transport` API. The first implementation increment
+adds bounded contract values beside the local API and does not publish a stable
+multi-adapter trait. Capability representation and dispatch must be proven
+against the local adapter before that trait is stabilized. Network adapters
+remain gated on the memory control path and conformance harness.
+
+The owner-local transaction store remains authoritative for Welcome-outbox
+truth and leases. Acknowledgement issuance stays provider-specific while its
+right remains statically distinct. Initial profile IDs use the closed reserved
+version 1 set; authenticated wire negotiation requires a later protocol schema.
+Network-broker and process-isolation choices remain deferred until a network
+adapter spike can produce direct evidence.
 
 ## Sources reviewed
 

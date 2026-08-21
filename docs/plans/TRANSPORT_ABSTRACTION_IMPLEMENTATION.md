@@ -103,17 +103,17 @@ questions that affect stabilization; leave real-network selection as research.
 
 **Acceptance criteria:**
 
-- [ ] ADR 0015 is accepted, revised, or explicitly rejected with rationale.
-- [ ] Ownership among the owner-local store, coordinator, and adapter is
+- [x] ADR 0015 is accepted, revised, or explicitly rejected with rationale.
+- [x] Ownership among the owner-local store, coordinator, and adapter is
   unambiguous.
-- [ ] The first Rust API shape and acknowledgement-authority issuance model are
+- [x] The first Rust API shape and acknowledgement-authority issuance model are
   recorded.
 
 **Verification:**
 
-- [ ] Every normative transport statement has one authoritative home or a
+- [x] Every normative transport statement has one authoritative home or a
   cross-reference.
-- [ ] `rg -n "EnvelopeTransport|EnvelopeDelivery|TransportProfileId" docs`
+- [x] `rg -n "EnvelopeTransport|EnvelopeDelivery|TransportProfileId" docs`
   reveals no contradictory interface or fallback semantics.
 
 **Dependencies:** None
@@ -138,18 +138,18 @@ task.
 
 **Acceptance criteria:**
 
-- [ ] Existing exact-retry, conflicting-second-deposit, expiry, capacity,
+- [x] Existing exact-retry, conflicting-second-deposit, expiry, capacity,
   right-separation, deletion, and redaction evidence is mapped to the proposal.
-- [ ] Gaps for general polling, cursors, batches, profiles, operation budgets,
+- [x] Gaps for general polling, cursors, batches, profiles, operation budgets,
   normalized errors, and adverse delivery are explicit.
-- [ ] The inviter transaction remains the single owner of Welcome-outbox truth
+- [x] The inviter transaction remains the single owner of Welcome-outbox truth
   and leases.
 
 **Verification:**
 
-- [ ] `cargo test -p session-transport --all-features --locked --offline`
-- [ ] `cargo test -p session-inviter-transaction --all-features --locked --offline`
-- [ ] A retained gap table cites exact tests and distinguishes missing evidence
+- [x] `cargo test -p session-transport --all-features --locked --offline`
+- [x] `cargo test -p session-inviter-transaction --all-features --locked --offline`
+- [x] A retained gap table cites exact tests and distinguishes missing evidence
   from failed evidence.
 
 **Dependencies:** Task 1
@@ -172,6 +172,13 @@ bounded operation types, receipts, batches, retry advice, and the core-facing
 traits alongside the existing local API. Add negative and compile-time tests
 showing that capabilities cannot be substituted and secret-bearing values
 cannot enter ordinary debug/error output. Do not add network dependencies.
+
+**Progress (2026-08-20):** The bounded contract-values sub-increment is
+implemented with closed profile IDs, validated adapter IDs, exact canonical
+envelope ownership, operation budgets, bounded retry advice, context-free
+failures, and a compile-fail `CanonicalEnvelope: Debug` check. Capability types
+and the delivery trait remain deliberately unimplemented, so Task 3 is not yet
+complete.
 
 **Acceptance criteria:**
 
@@ -206,7 +213,7 @@ cannot enter ordinary debug/error output. Do not add network dependencies.
 
 ## Checkpoint: contract foundation
 
-- [ ] ADR 0015 is accepted for implementation.
+- [x] ADR 0015 is accepted for implementation.
 - [ ] The crate builds without a network dependency.
 - [ ] Authority and redaction tests pass.
 - [ ] Review before adding mutable delivery state.
