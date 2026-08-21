@@ -268,6 +268,21 @@ polling, manifests, binding, coordination, adverse scheduling, durability, or
 network I/O. Those boundaries remain gated on direct evidence rather than being
 inferred from the value types.
 
+### First local capability-boundary evidence
+
+The next internal sub-increment extracts the existing local receive and
+acknowledgement capabilities behind private fields and crate-only constructors.
+Compile-fail tests prove that the local deposit, receive, and acknowledgement
+rights cannot occupy one another's typed positions, that receive and
+acknowledgement authority are not `Clone` or `Debug`, and that `DeliveryId`
+cannot authorize acknowledgement. A seeded rejection fixture proves ordinary
+error diagnostics contain neither authority nor ciphertext bytes.
+
+This is evidence for the local compatibility boundary, not a provider-neutral
+capability representation. The local one-use profile still issues no rotation
+authority. Provider-specific issuance, revocation, serialization, and the
+generalized delivery trait remain gated on later Task 3 review.
+
 ## Delivery interfaces
 
 ```rust

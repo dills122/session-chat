@@ -536,6 +536,13 @@ operation. Its tested deposit, receive, and acknowledgement separation is local
 state-machine evidence only; reusable and network mailboxes still require
 explicit rotation, revocation, abuse controls, and metadata analysis.
 
+The local receive and acknowledgement values now have private fields and
+crate-only constructors, compile-fail evidence rejects cross-right substitution
+and use of a delivery identifier as authority, and a seeded foreign-deposit
+fixture proves coarse diagnostics omit known authority and ciphertext bytes.
+These checks do not establish provider-neutral capability issuance, operating-
+system memory erasure, process isolation, or network-metadata privacy.
+
 Attacker story: an unauthenticated sender floods a public request mailbox with
 maximum-sized objects. The service must bound per-invitation and global storage,
 CPU, and outgoing work without requiring identity in Anonymous Private mode.

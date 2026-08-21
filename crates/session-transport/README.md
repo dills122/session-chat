@@ -19,7 +19,10 @@ deposit, receive, and acknowledgement authorities with AWS-LC's CSPRNG. Only
 the existing `LocalWelcomeDepositEndpoint` is sender-facing. Joiner-retained
 receive and acknowledgement types do not implement `Clone`, `Debug`, or
 `Display`, and temporary secret copies are zeroized. The adapter stores only
-domain-separated SHA-256 capability commitments.
+domain-separated SHA-256 capability commitments. The local capability types
+now live behind private fields and crate-only constructors in `capability.rs`;
+compile-fail tests reject cross-right substitution, while a seeded diagnostic
+fixture proves coarse errors omit both authority and ciphertext bytes.
 
 Each mailbox accepts at most one bounded `OpaqueEnvelope`. The same envelope ID
 and canonical bytes are an idempotent retry. Any changed or different second

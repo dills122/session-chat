@@ -2,8 +2,12 @@
 
 //! Right-specific transport contracts and deterministic local adapters.
 
+mod capability;
 mod contract;
 
+pub use capability::{
+    LocalWelcomeAcknowledgementCapability, LocalWelcomeMailbox, LocalWelcomeReceiveCapability,
+};
 pub use contract::{
     AdapterId, BoundedRetryDelay, CanonicalEnvelope, EnvelopeId, MAX_ADAPTER_ID_BYTES,
     MAX_RETRY_DELAY_SECONDS, OperationBudget, RetryAdvice, TransportContractError,
@@ -15,7 +19,7 @@ use std::{collections::BTreeMap, error::Error};
 use aws_lc_rs::{constant_time, digest, rand};
 use session_protocol::{DepositCapability, LocalWelcomeDepositEndpoint, OpaqueEnvelope};
 use thiserror::Error;
-use zeroize::{Zeroize, Zeroizing};
+use zeroize::Zeroizing;
 
 const IDENTIFIER_BYTES: usize = 16;
 const CAPABILITY_BYTES: usize = 32;
@@ -150,63 +154,6 @@ pub trait EnvelopeTransport {
     ) -> Result<(), Self::Error>;
 }
 
-/// Joiner-only authority for reading one local Welcome mailbox.
-///
-/// This secret-bearing type intentionally does not implement `Clone`, `Debug`,
-/// or `Display`.
-pub struct LocalWelcomeReceiveCapability {
-    transport_instance_id: [u8; IDENTIFIER_BYTES],
-    mailbox_id: [u8; IDENTIFIER_BYTES],
-    secret: [u8; CAPABILITY_BYTES],
-    expires_at_unix_seconds: u64,
-}
-
-impl Drop for LocalWelcomeReceiveCapability {
-    fn drop(&mut self) {
-        self.secret.zeroize();
-    }
-}
-
-/// Joiner-only authority for deleting one local Welcome delivery.
-///
-/// This secret-bearing type intentionally does not implement `Clone`, `Debug`,
-/// or `Display`.
-pub struct LocalWelcomeAcknowledgementCapability {
-    transport_instance_id: [u8; IDENTIFIER_BYTES],
-    mailbox_id: [u8; IDENTIFIER_BYTES],
-    secret: [u8; CAPABILITY_BYTES],
-    expires_at_unix_seconds: u64,
-}
-
-impl Drop for LocalWelcomeAcknowledgementCapability {
-    fn drop(&mut self) {
-        self.secret.zeroize();
-    }
-}
-
-/// Fresh local mailbox authorities split by operation.
-///
-/// Only the deposit endpoint is intended to enter a protected join request.
-pub struct LocalWelcomeMailbox {
-    deposit: LocalWelcomeDepositEndpoint,
-    receive: LocalWelcomeReceiveCapability,
-    acknowledgement: LocalWelcomeAcknowledgementCapability,
-}
-
-impl LocalWelcomeMailbox {
-    /// Separates the sender-facing endpoint from joiner-retained rights.
-    #[must_use]
-    pub fn into_parts(
-        self,
-    ) -> (
-        LocalWelcomeDepositEndpoint,
-        LocalWelcomeReceiveCapability,
-        LocalWelcomeAcknowledgementCapability,
-    ) {
-        (self.deposit, self.receive, self.acknowledgement)
-    }
-}
-
 struct AcceptedEnvelope {
     envelope_id: [u8; IDENTIFIER_BYTES],
     envelope_digest: [u8; DIGEST_BYTES],
@@ -284,18 +231,18 @@ impl LocalMemoryWelcomeTransport {
             expires_at_unix_seconds,
         )
         .map_err(|_| LocalTransportError::ProviderFailure)?;
-        let receive = LocalWelcomeReceiveCapability {
-            transport_instance_id: self.transport_instance_id,
+        let receive = LocalWelcomeReceiveCapability::new(
+            self.transport_instance_id,
             mailbox_id,
-            secret: *receive_secret,
+            *receive_secret,
             expires_at_unix_seconds,
-        };
-        let acknowledgement = LocalWelcomeAcknowledgementCapability {
-            transport_instance_id: self.transport_instance_id,
+        );
+        let acknowledgement = LocalWelcomeAcknowledgementCapability::new(
+            self.transport_instance_id,
             mailbox_id,
-            secret: *acknowledgement_secret,
+            *acknowledgement_secret,
             expires_at_unix_seconds,
-        };
+        );
 
         self.mailboxes
             .retain(|_, record| record.expires_at_unix_seconds > now_unix_seconds);
@@ -309,11 +256,7 @@ impl LocalMemoryWelcomeTransport {
                 accepted: None,
             },
         );
-        Ok(LocalWelcomeMailbox {
-            deposit,
-            receive,
-            acknowledgement,
-        })
+        Ok(LocalWelcomeMailbox::new(deposit, receive, acknowledgement))
     }
 
     /// Stores one bounded opaque envelope using deposit-only authority.
@@ -375,17 +318,17 @@ impl LocalMemoryWelcomeTransport {
         authority: &LocalWelcomeReceiveCapability,
         now_unix_seconds: u64,
     ) -> Result<Option<ReceivedEnvelope>, LocalTransportError> {
-        if authority.transport_instance_id != self.transport_instance_id
-            || authority.expires_at_unix_seconds <= now_unix_seconds
+        if authority.transport_instance_id() != &self.transport_instance_id
+            || authority.expires_at_unix_seconds() <= now_unix_seconds
         {
             return Err(LocalTransportError::Rejected);
         }
         let record = self
             .mailboxes
-            .get_mut(&authority.mailbox_id)
+            .get_mut(authority.mailbox_id())
             .ok_or(LocalTransportError::Rejected)?;
-        if record.expires_at_unix_seconds != authority.expires_at_unix_seconds
-            || !secret_matches(&record.receive_digest, &authority.secret)
+        if record.expires_at_unix_seconds != authority.expires_at_unix_seconds()
+            || !secret_matches(&record.receive_digest, authority.expose_secret())
         {
             return Err(LocalTransportError::Rejected);
         }
@@ -412,17 +355,17 @@ impl LocalMemoryWelcomeTransport {
         delivery_id: DeliveryId,
         now_unix_seconds: u64,
     ) -> Result<(), LocalTransportError> {
-        if authority.transport_instance_id != self.transport_instance_id
-            || authority.expires_at_unix_seconds <= now_unix_seconds
+        if authority.transport_instance_id() != &self.transport_instance_id
+            || authority.expires_at_unix_seconds() <= now_unix_seconds
         {
             return Err(LocalTransportError::Rejected);
         }
         let record = self
             .mailboxes
-            .get_mut(&authority.mailbox_id)
+            .get_mut(authority.mailbox_id())
             .ok_or(LocalTransportError::Rejected)?;
-        if record.expires_at_unix_seconds != authority.expires_at_unix_seconds
-            || !secret_matches(&record.acknowledgement_digest, &authority.secret)
+        if record.expires_at_unix_seconds != authority.expires_at_unix_seconds()
+            || !secret_matches(&record.acknowledgement_digest, authority.expose_secret())
         {
             return Err(LocalTransportError::Rejected);
         }

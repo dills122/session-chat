@@ -180,6 +180,14 @@ failures, and a compile-fail `CanonicalEnvelope: Debug` check. Capability types
 and the delivery trait remain deliberately unimplemented, so Task 3 is not yet
 complete.
 
+The local capability-evidence sub-increment extracts receive and
+acknowledgement authority behind private fields and crate-only constructors,
+retains the sender-facing canonical deposit endpoint, adds a compile-fail
+wrong-right matrix, and seeds authority/ciphertext bytes into a coarse-error
+redaction fixture. This proves the local adoption boundary only; generalized
+capability issuance, rotation, requests, receipts, batches, and dispatch remain
+open.
+
 **Acceptance criteria:**
 
 - [ ] Deposit cannot accept receive, acknowledgement, or rotation authority.
@@ -193,9 +201,13 @@ complete.
 
 **Verification:**
 
-- [ ] Compile-fail or type tests cover wrong-right calls.
-- [ ] Error/log fixture tests contain none of the seeded secret bytes.
-- [ ] `cargo test -p session-transport`
+- [x] Local compile-fail tests cover deposit, receive, acknowledgement, and
+  delivery-ID substitution.
+- [ ] Generalized wrong-right tests cover the eventual common trait.
+- [x] The local rejection fixture contains none of the seeded authority or
+  ciphertext bytes.
+- [ ] Generalized adapter error/log fixtures cover every authority type.
+- [x] `cargo test -p session-transport`
 
 **Dependencies:** Task 2
 
@@ -214,7 +226,7 @@ complete.
 ## Checkpoint: contract foundation
 
 - [x] ADR 0015 is accepted for implementation.
-- [ ] The crate builds without a network dependency.
+- [x] The crate builds without a network dependency.
 - [ ] Authority and redaction tests pass.
 - [ ] Review before adding mutable delivery state.
 
