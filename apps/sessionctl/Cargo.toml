@@ -6,17 +6,17 @@ license.workspace = true
 publish = false
 
 [dependencies]
-admission-capability = { path = "../../crates/admission-capability" }
+admission-capability = { version = "=0.1.0", path = "../../crates/admission-capability" }
 aws-lc-rs.workspace = true
-session-admission = { path = "../../crates/session-admission" }
-session-core = { path = "../../crates/session-core" }
-session-crypto = { path = "../../crates/session-crypto" }
-session-crypto-hpke = { path = "../../crates/session-crypto-hpke" }
-session-crypto-mls = { path = "../../crates/session-crypto-mls" }
-session-protocol = { path = "../../crates/session-protocol" }
-session-transport = { path = "../../crates/session-transport" }
+session-admission = { version = "=0.1.0", path = "../../crates/session-admission" }
+session-core = { version = "=0.1.0", path = "../../crates/session-core" }
+session-crypto = { version = "=0.1.0", path = "../../crates/session-crypto" }
+session-crypto-hpke = { version = "=0.1.0", path = "../../crates/session-crypto-hpke" }
+session-crypto-mls = { version = "=0.1.0", path = "../../crates/session-crypto-mls" }
+session-protocol = { version = "=0.1.0", path = "../../crates/session-protocol" }
+session-transport = { version = "=0.1.0", path = "../../crates/session-transport" }
 thiserror.workspace = true
-transport-memory = { path = "../../crates/transport-memory" }
+transport-memory = { version = "=0.1.0", path = "../../crates/transport-memory" }
 
 [lints]
 workspace = true
