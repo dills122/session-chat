@@ -55,7 +55,11 @@ The client owns:
 The desktop shell remains a research decision. Tauri with Rust responsible for
 protocol, cryptography, storage, and networking is the leading boundary, but no
 web UI framework is selected. Whatever shell is chosen, UI code is not the
-authority for keys or membership decisions.
+authority for keys or membership decisions. ADR 0018 additionally prohibits a
+native API from shaping the core contract: one baseline local workflow and
+format must build and pass conformance on macOS, Windows, and Linux before the
+capability is considered implemented. Stronger native behavior is optional and
+reported through factual adapter capabilities.
 
 ### Identity bridge
 

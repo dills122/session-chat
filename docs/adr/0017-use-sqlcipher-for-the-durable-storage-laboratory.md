@@ -38,16 +38,16 @@ or power-loss claim.
 ## Platform protector direction
 
 Use the factual capability contract in `session-storage`; do not select one
-generic keychain guarantee. The companion platform decision packet selects
-macOS Keychain Services as the first fresh-user-presence probe. Windows and
-Linux require separately named and measured modes before implementation.
+generic keychain guarantee. ADR 0018 supersedes the earlier macOS-first
+implementation order: select and prove one portable baseline on macOS, Windows,
+and Linux before adding any native enhanced protector.
 
 ## Required next gates
 
-- build and test the exact native graph on every supported target;
-- add macOS native key creation/unseal/delete probes and lifecycle tests;
-- investigate Windows Hello/CNG beyond DPAPI and concrete Linux Secret Service
-  implementations;
+- pass the exact SQLCipher graph on required Linux, macOS, and Windows CI;
+- select and test one portable key-protection baseline on all three families;
+- only then investigate enhanced macOS Keychain, Windows Hello/CNG, and concrete
+  Linux Secret Service implementations in parallel;
 - test process kill at every production adapter write boundary, disk full,
   truncation, tampering, migration, rekey, backup, and deletion;
 - add durable Welcome leasing/delivery state and recovery;

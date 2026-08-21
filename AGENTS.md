@@ -97,6 +97,10 @@ dependency direction described in `docs/ARCHITECTURE_V2.md`.
   cryptographic primitives.
 - Record consequential security or protocol changes in an ADR and update the
   threat model in the same change.
+- Treat macOS, Windows, and Linux as supported local-app families from the
+  first retained increment. Keep native integrations behind provider-neutral
+  contracts, require one common baseline workflow, and do not call a
+  platform-only implementation complete.
 
 ## Contract-First Files
 
@@ -133,6 +137,9 @@ requires compatibility fixtures and negative tests before it is considered done.
 - Follow the pinned Rust toolchain and workspace lints. Retained Node scripts use
   ESM and built-in modules so they can be tested without an npm install.
 - Prefer deterministic, offline unit and integration tests for protocol work.
+- Build, lint, and test every local-app foundation on Linux, macOS, and Windows
+  CI from its first retained increment; platform-specific positive evidence is
+  additional, not a substitute for the common matrix.
 - Add malformed, expired, replayed, duplicated, reordered, unauthorized, and
   persistence-rollback cases at every untrusted boundary where they apply.
 - Update docs whenever setup, commands, contracts, wire behavior, or security

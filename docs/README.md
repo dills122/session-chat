@@ -70,6 +70,9 @@ all.
 - [Durable storage laboratory decision](adr/0017-use-sqlcipher-for-the-durable-storage-laboratory.md)
   selects the exact SQLCipher graph for real inviter/joiner MLS transaction
   evidence without making a production or platform-vault claim.
+- [Cross-platform local-app decision](adr/0018-require-cross-platform-local-app-baselines.md)
+  requires one common macOS, Windows, and Linux baseline and merge gate before
+  any native local capability is considered implemented.
 - [Protected capability join specification](specs/PROTECTED_CAPABILITY_JOIN_V1.md)
   assigns the fixed-array layouts, code points, cryptographic contexts, parsing
   order, mailbox lifecycle, and retained-evidence gates for ADR 0014.
@@ -86,8 +89,8 @@ all.
   compares transaction engines and recommends a bounded SQLCipher compatibility
   spike without selecting a production storage dependency.
 - [Platform key-protector decision packet](research/PLATFORM_KEY_PROTECTOR.md)
-  separates macOS, Windows, and Linux protection semantics and selects the
-  first native fresh-user-presence probe.
+  separates macOS, Windows, and Linux protection semantics and frames the
+  portable-baseline decision that must precede native enhancements.
 - [Superseded OpenMLS decision](adr/0011-select-openmls-for-the-phase-1-laboratory.md)
   retains the bounded OpenMLS evaluation and its dependency blocker.
 - [MLS implementation comparison](research/MLS_IMPLEMENTATION_COMPARISON.md)

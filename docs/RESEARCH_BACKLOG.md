@@ -273,17 +273,23 @@ Expected output: wire-format draft plus test vectors.
   [SQLCipher inviter-store spike](../spikes/sqlcipher-inviter-store/README.md)
   proves raw-key, wrong-key, copied-file, tamper, process-crash, and atomic MLS
   plus inviter-join behavior on macOS Apple silicon. Production selection is
-  still blocked on cross-platform builds and faults, a platform-vault adapter,
-  lifecycle and rollback policy, and integration through the Session Chat MLS
-  adapter.
+  still blocked on the required three-OS CI result and broader faults, a
+  portable key-protection baseline, lifecycle and rollback policy, and
+  integration through the Session Chat MLS adapter.
 - **Durability laboratory selected and implemented:** ADR 0017 and
   `storage-sqlcipher` exercise the real inviter and joiner MLS storage calls in
   encrypted owner-local transactions. Evidence is currently macOS-only and is
-  not a production dependency/platform claim.
+  not a production dependency/platform claim; the new required CI matrix must
+  add Linux and Windows evidence before merge.
 - **Platform capability decision recorded:** the
-  [platform key-protector packet](research/PLATFORM_KEY_PROTECTOR.md) selects
-  macOS Keychain Services as the first fresh-user-presence probe and requires
-  separately measured Windows and Linux modes.
+  [platform key-protector packet](research/PLATFORM_KEY_PROTECTOR.md) records why
+  native stores cannot provide one uniform claim. ADR 0018 withdraws the
+  macOS-first order and requires a portable baseline plus Linux/macOS/Windows
+  CI before native enhanced modes.
+- Evaluate the portable passphrase-derived KEK candidate with RFC 9106 Argon2id
+  test vectors and a reviewed AEAD for wrapping a random vault key. Measure
+  parameters, cancellation, offline-guessing cost, memory clearing, rekey,
+  recovery, and equivalent UX on all three supported families before selection.
 - Evaluate Tauri and Rust integration with platform keychains and secure
   hardware.
 - Define database encryption, key hierarchy, lock behavior, and crash recovery.

@@ -77,8 +77,14 @@ realm, or production transport.
 The `session-storage` model now rejects key protectors whose factual capability
 report is weaker than the selected policy. `storage-sqlcipher` adds encrypted
 file-backed transaction evidence, but no platform protector connects them.
-Cross-platform builds, rollback resistance, broader crash/fault testing, and
-production key protection remain unimplemented.
+The required cross-platform build matrix is now configured; rollback
+resistance, broader crash/fault testing, packaging, and production key
+protection remain unimplemented.
+
+ADR 0018 makes macOS, Windows, and Linux a single local-app delivery gate. The
+required Rust CI matrix now builds, lints, and tests the workspace on all three;
+native capabilities may add stronger modes behind shared interfaces, but a
+platform-only implementation is not considered a completed feature.
 
 ADR 0014 defines the exact local-only invitation-v2, HPKE capability-join, and
 one-Welcome response contract. Its canonical protocol value types are now

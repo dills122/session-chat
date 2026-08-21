@@ -106,9 +106,10 @@ and secure-deletion evidence remain outstanding. The separate SQLCipher
 laboratory adapter now commits the actual inviter MLS snapshot with bounded
 transaction-model invitation, replay/approval, and Welcome-outbox records, and
 separately commits joiner MLS state with exact one-time KeyPackage deletion.
-Tests cover
-rollback, ambiguous-result recovery, and close/reopen on the tested macOS host;
-cross-platform, platform-vault, disk/power fault, and rollback-anchor gates remain.
+Tests cover rollback, ambiguous-result recovery, and close/reopen on the tested
+macOS host;
+the first required three-OS CI result, platform-vault, disk/power fault, and
+rollback-anchor gates remain.
 
 Contract hardening rules preserved by the current in-memory flow and required
 for the remaining headless and durable composition:
@@ -233,7 +234,9 @@ Exit criteria:
 
 Create the desktop shell selected by its dedicated ADR around the Rust core.
 Tauri is the leading privilege boundary; Angular or another UI framework is not
-selected by the retirement history or this roadmap.
+selected by the retirement history or this roadmap. ADR 0018 requires the
+common local-app baseline to be implemented and tested across macOS, Windows,
+and Linux together rather than treating ports as later phases.
 
 Initial UX:
 
@@ -248,6 +251,8 @@ Initial UX:
 
 Exit criteria:
 
+- The same baseline workflow and canonical state pass required build, lint,
+  and conformance gates on Linux, macOS, and Windows.
 - UI code cannot bypass core admission or MLS state transitions.
 - Secrets use appropriate OS storage and are excluded from browser storage.
 - Deep-link parsing is fuzzed and treats links as attacker-controlled.

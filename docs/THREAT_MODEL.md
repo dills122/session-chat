@@ -547,6 +547,13 @@ encrypted databases, lock and idle behavior, transactional deletion, log and
 panic redaction, backup analysis, and tests that map implementation behavior to
 the selected retention policy.
 
+ADR 0018 treats portability drift as a security risk. The baseline local vault,
+storage format, failure behavior, and lifecycle must pass the same conformance
+suite on macOS, Windows, and Linux before being called implemented. Native
+enhancements remain isolated adapters and cannot silently alter the core format
+or lower the selected policy on one platform. A missing platform implementation
+blocks the feature gate; it is not deferred as a later port.
+
 ADR 0016 and `session-storage` now make part of the client-vault proposal a
 deterministic conformance boundary: sealed mode may append only bounded
 canonical opaque envelopes, while decrypt, signing, admission, MLS mutation,
