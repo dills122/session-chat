@@ -3,7 +3,6 @@
 //! SQLCipher-backed MLS persistence candidate for Session Chat.
 
 use std::{
-    ops::{Deref, DerefMut},
     path::Path,
     sync::{Arc, Mutex, MutexGuard},
 };
@@ -23,11 +22,6 @@ const MAX_MLS_STATE_BYTES: usize = 2 * 1024 * 1024;
 const MAX_EPOCH_WRITES: usize = 64;
 const MAX_KEY_PACKAGE_BYTES: usize = 16 * 1024;
 const MAX_SECRET_KEY_BYTES: usize = 4 * 1024;
-
-// SQLCipher's bundled OpenSSL provider owns process-global activation state.
-// Serialize every native call, including connection setup and teardown, so
-// separate vault connections cannot race that lifecycle on any platform.
-static SQLCIPHER_PROVIDER: Mutex<()> = Mutex::new(());
 
 /// Exact raw database key released only while the client vault is unsealed.
 ///
@@ -239,66 +233,11 @@ struct PendingJoiner {
     already_committed: bool,
 }
 
-struct ProcessBoundConnection(Option<Connection>);
-
-impl ProcessBoundConnection {
-    fn new(connection: Connection) -> Self {
-        Self(Some(connection))
-    }
-}
-
-impl Deref for ProcessBoundConnection {
-    type Target = Connection;
-
-    fn deref(&self) -> &Self::Target {
-        self.0
-            .as_ref()
-            .expect("the SQLCipher connection exists until drop")
-    }
-}
-
-impl DerefMut for ProcessBoundConnection {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.0
-            .as_mut()
-            .expect("the SQLCipher connection exists until drop")
-    }
-}
-
-impl Drop for ProcessBoundConnection {
-    fn drop(&mut self) {
-        let _provider = SQLCIPHER_PROVIDER
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        drop(self.0.take());
-    }
-}
-
 struct StorageInner {
-    connection: ProcessBoundConnection,
+    connection: Connection,
     staged_inviter: Option<StagedInviter>,
     staged_joiner: Option<StagedJoiner>,
     pending_joiner: Option<PendingJoiner>,
-}
-
-struct StorageGuard<'a> {
-    // Drop the connection-specific guard before releasing the provider guard.
-    inner: MutexGuard<'a, StorageInner>,
-    _provider: MutexGuard<'static, ()>,
-}
-
-impl Deref for StorageGuard<'_> {
-    type Target = StorageInner;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-
-impl DerefMut for StorageGuard<'_> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.inner
-    }
 }
 
 /// Cloneable SQLCipher provider handle shared by the MLS and application layers.
@@ -494,21 +433,11 @@ impl SqlCipherStorage {
         Ok(rows.next()?.is_none())
     }
 
-    fn lock(&self) -> Result<StorageGuard<'_>, StoreError> {
-        let provider = SQLCIPHER_PROVIDER
-            .lock()
-            .map_err(|_| StoreError::Rejected)?;
-        let inner = self.inner.lock().map_err(|_| StoreError::Rejected)?;
-        Ok(StorageGuard {
-            inner,
-            _provider: provider,
-        })
+    fn lock(&self) -> Result<MutexGuard<'_, StorageInner>, StoreError> {
+        self.inner.lock().map_err(|_| StoreError::Rejected)
     }
 
     fn open_internal(path: &Path, key: VaultKey, create: bool) -> Result<Self, StoreError> {
-        let _provider = SQLCIPHER_PROVIDER
-            .lock()
-            .map_err(|_| StoreError::Rejected)?;
         let mut flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX;
         if create {
             flags |= OpenFlags::SQLITE_OPEN_CREATE;
@@ -547,7 +476,7 @@ impl SqlCipherStorage {
 
         Ok(Self {
             inner: Arc::new(Mutex::new(StorageInner {
-                connection: ProcessBoundConnection::new(connection),
+                connection,
                 staged_inviter: None,
                 staged_joiner: None,
                 pending_joiner: None,

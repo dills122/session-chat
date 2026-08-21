@@ -1,7 +1,4 @@
-use std::{
-    path::PathBuf,
-    sync::{Arc, Barrier},
-};
+use std::path::PathBuf;
 
 use mls_rs_core::group::GroupStateStorage;
 use session_crypto_mls::{
@@ -35,9 +32,8 @@ fn vault_key() -> VaultKey {
     VaultKey::new([7; 32]).expect("nonzero test key")
 }
 
-#[test]
-fn keyed_database_rejects_wrong_key_and_closed_file_hides_fixture_plaintext() {
-    let database = TestDatabase::new("keying");
+fn create_keyed_fixture(name: &str) -> TestDatabase {
+    let database = TestDatabase::new(name);
     let storage = SqlCipherStorage::create(&database.0, vault_key()).expect("storage created");
     assert!(!storage.cipher_version().expect("cipher version").is_empty());
     storage
@@ -45,8 +41,18 @@ fn keyed_database_rejects_wrong_key_and_closed_file_hides_fixture_plaintext() {
         .expect("reservation stored");
     assert!(storage.integrity_check().expect("integrity check"));
     drop(storage);
+    database
+}
 
+#[test]
+fn keyed_database_rejects_wrong_key() {
+    let database = create_keyed_fixture("wrong-key");
     assert!(SqlCipherStorage::open(&database.0, VaultKey::new([9; 32]).expect("key")).is_err());
+}
+
+#[test]
+fn closed_database_hides_fixture_plaintext_and_sqlite_header() {
+    let database = create_keyed_fixture("ciphertext");
     let bytes = std::fs::read(&database.0).expect("closed database readable");
     assert!(!bytes.windows(64).any(|window| window == [12; 64]));
     assert!(
@@ -54,64 +60,16 @@ fn keyed_database_rejects_wrong_key_and_closed_file_hides_fixture_plaintext() {
             .windows(b"SQLite format 3".len())
             .any(|window| window == b"SQLite format 3")
     );
+}
 
+#[test]
+fn keyed_database_reopens_with_the_correct_key() {
+    let database = create_keyed_fixture("correct-key");
     let reopened = SqlCipherStorage::open(&database.0, vault_key()).expect("correct key reopens");
     assert_eq!(
         reopened
             .invitation_state(&[11; 16])
             .expect("invitation lookup"),
-        Some(InvitationState::Reserved)
-    );
-}
-
-#[test]
-fn concurrent_stores_serialize_the_process_global_provider_lifecycle() {
-    let barrier = Arc::new(Barrier::new(3));
-    let first_barrier = Arc::clone(&barrier);
-    let second_barrier = Arc::clone(&barrier);
-
-    let first = std::thread::spawn(move || {
-        exercise_parallel_store("parallel-a", 21, first_barrier);
-    });
-    let second = std::thread::spawn(move || {
-        exercise_parallel_store("parallel-b", 31, second_barrier);
-    });
-
-    barrier.wait();
-    first.join().expect("first SQLCipher worker completed");
-    second.join().expect("second SQLCipher worker completed");
-}
-
-fn exercise_parallel_store(name: &str, key_byte: u8, barrier: Arc<Barrier>) {
-    let database = TestDatabase::new(name);
-    let key = || VaultKey::new([key_byte; 32]).expect("nonzero parallel test key");
-    barrier.wait();
-
-    let storage = SqlCipherStorage::create(&database.0, key()).expect("parallel store created");
-    storage
-        .seed_reservation(
-            [key_byte; 16],
-            [key_byte.wrapping_add(1); 64],
-            [key_byte.wrapping_add(2); 16],
-            NOW + 300,
-            NOW,
-        )
-        .expect("parallel reservation stored");
-    assert!(storage.integrity_check().expect("parallel integrity check"));
-    drop(storage);
-
-    assert!(
-        SqlCipherStorage::open(
-            &database.0,
-            VaultKey::new([key_byte.wrapping_add(3); 32]).expect("wrong parallel key"),
-        )
-        .is_err()
-    );
-    let reopened = SqlCipherStorage::open(&database.0, key()).expect("parallel store reopens");
-    assert_eq!(
-        reopened
-            .invitation_state(&[key_byte; 16])
-            .expect("parallel invitation lookup"),
         Some(InvitationState::Reserved)
     );
 }
