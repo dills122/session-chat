@@ -32,6 +32,11 @@ libraries across the three required CI operating systems.
   is idempotent and conflicting state fails closed.
 - Secret-bearing input types omit `Clone`, `Debug`, and `Display`, and retained
   Rust buffers use zeroization where their types permit it.
+- Keyed connection setup and first-page validation use one transient, bounded
+  8 MiB worker stack. The pinned vendored OpenSSL path otherwise overflows a
+  default Windows caller stack while rejecting a wrong key; a thread creation
+  or worker failure maps to the same coarse fail-closed storage error.
+
 The adapter is compiled into the workspace for testing, but no client opens it
 and no platform protector supplies its raw key. SQLCipher is not a rollback
 anchor and this decision makes no production, cross-platform, secure-deletion,
