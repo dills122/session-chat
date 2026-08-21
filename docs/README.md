@@ -35,6 +35,15 @@ all.
   credentials, SSI/DIDs, capability admission, and session-scoped identities.
 - [Transports](TRANSPORTS.md) covers fast delivery, mixnets, offline mailboxes,
   reliability, and privacy downgrade rules.
+- [Transport abstraction specification](specs/TRANSPORT_ABSTRACTION_V1.md)
+  defines the proposed profile-bound, right-specific envelope-delivery contract.
+- [Transport and security technology landscape](research/TRANSPORT_SECURITY_LANDSCAPE_2026-08-20.md)
+  retains the August 2026 evidence, candidate comparison, limitations, and
+  experiment recommendations.
+- [Transport abstraction implementation plan](plans/TRANSPORT_ABSTRACTION_IMPLEMENTATION.md)
+  sequences stabilization of the existing local adapter and outbox model, the
+  generalized contract, conformance harness, coordinator, and later
+  real-network experiments.
 - [Threat model](THREAT_MODEL.md) defines assets, trust boundaries, attackers,
   invariants, and severity calibration.
 - [Roadmap](ROADMAP_V2.md) proposes an incremental implementation and validation
@@ -84,6 +93,9 @@ all.
 - [OpenMLS 0.8.1 applicability map](research/OPENMLS_0_8_1_APPLICABILITY.md)
   maps all published audit findings and the separately scoped provider to the
   evaluated in-memory boundary and records the dependency-policy blocker.
+- [Profile-bound transport proposal](adr/0015-bind-transport-adapters-to-versioned-profiles.md)
+  proposes separating stable profile policy, delivery coordination, adapter
+  identity, and scoped network authority before the transport API is implemented.
 - [V1 retirement decision](adr/0006-retire-v1-from-the-default-branch.md)
   removes the old runtime while preserving its exact tagged snapshot and lessons.
 - [Legacy v1 archive index](legacy-v1/README.md) records recovery commands,

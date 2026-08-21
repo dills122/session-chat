@@ -118,6 +118,14 @@ Create a Rust workspace containing:
 - Deterministic in-memory transport
 - `sessionctl` headless client
 
+The transport slice follows the profile-bound contract proposed in
+[`TRANSPORT_ABSTRACTION_V1.md`](specs/TRANSPORT_ABSTRACTION_V1.md). Stabilize
+the existing right-specific local Welcome adapter, then add the generalized
+contract, deterministic adverse-network control path, and shared conformance
+harness before any real network dependency. The detailed task order and
+checkpoints are in the
+[transport abstraction implementation plan](plans/TRANSPORT_ABSTRACTION_IMPLEMENTATION.md).
+
 Capabilities:
 
 - Create, parse, authenticate, and expire signed invitations without mutation
@@ -224,6 +232,10 @@ Exit criteria:
 ## Phase 5: private transport experiment
 
 Add a Katzenpost-backed adapter and a deterministic adverse-network simulator.
+After the primary Katzenpost integration boundary is understood, run a bounded
+Nym comparison through the same canonical envelope workload, simulator trace,
+observer matrix, and packet-capture format. This comparison does not add Nym,
+its chain, or its credentials to the session security model.
 
 Test:
 
@@ -246,6 +258,10 @@ Exit criteria for experimental release:
 
 Production privacy claims require additional evidence about anonymity set,
 operator diversity, cover traffic, and real deployment conditions.
+
+An independently scoped Tor/Arti onion-mailbox experiment may evaluate a
+separately named low-latency Private Interactive profile. It is not a fallback
+from Private Mixnet and does not inherit a mixnet traffic-analysis claim.
 
 ## Phase 6: credential admission experiment
 

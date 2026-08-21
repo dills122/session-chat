@@ -131,6 +131,17 @@ include:
 Transport selection is a session profile property. A high-privacy session must
 fail closed rather than silently use a fast direct path.
 
+The proposed detailed boundary separates a stable, versioned profile from a
+local adapter implementation. The owner-local transaction store remains the
+authority for durable outbox records and leases. A delivery coordinator
+executes leased work and owns adapter-independent expiry checks, deduplication,
+retry policy, polling, and acknowledgement scheduling without creating a
+second outbox ledger. A profile binder supplies one adapter with only the
+network and mailbox authority allowed by the selected profile; adapters cannot
+select fallbacks or broaden egress. See the
+[transport abstraction specification](specs/TRANSPORT_ABSTRACTION_V1.md) and
+[proposed ADR 0015](adr/0015-bind-transport-adapters-to-versioned-profiles.md).
+
 ### Realm administration
 
 A self-hosted realm configures:
@@ -139,7 +150,7 @@ A self-hosted realm configures:
 - Trusted identity and credential issuers
 - Allowed credential types and claims
 - Maximum expiration and participant limits
-- Enabled transports and fallback rules
+- Enabled transport profiles and explicit profile-change policy
 - Attachment and retention policies
 - Service endpoints and operator keys
 
@@ -304,24 +315,26 @@ trait AdmissionVerifier {
     ) -> Result<VerifiedAdmission>;
 }
 
-trait EnvelopeTransport {
-    async fn send(
+trait EnvelopeDelivery {
+    async fn deposit(
         &self,
         destination: &DepositEndpoint,
-        envelope: OpaqueEnvelope,
-    ) -> Result<DeliveryId>;
+        envelope: &CanonicalEnvelope,
+        budget: OperationBudget,
+    ) -> Result<DepositReceipt, TransportFailure>;
 
-    async fn receive(
+    async fn poll(
         &self,
         authority: &ReceiveCapability,
-        cursor: Option<Cursor>,
-    ) -> Result<Vec<ReceivedEnvelope>>;
+        request: PollRequest,
+    ) -> Result<ReceiveBatch, TransportFailure>;
 
     async fn acknowledge(
         &self,
         authority: &AcknowledgementCapability,
-        delivery: DeliveryId,
-    ) -> Result<()>;
+        deliveries: BoundedDeliveryIds,
+        budget: OperationBudget,
+    ) -> Result<AcknowledgementReceipt, TransportFailure>;
 }
 ```
 
@@ -335,8 +348,14 @@ KeyPackage or invitation/request context.
 `DepositEndpoint`, `ReceiveCapability`, `AcknowledgementCapability`, and
 `RotationCapability` are distinct authority-bearing types under ADR 0010.
 Secret-bearing variants do not implement `Debug` or enter transport metadata.
+`CanonicalEnvelope` is one validated view of the exact deterministic bytes
+owned by `session-protocol`; adapters do not create alternative envelope
+representations. The portable baseline is unordered and duplicate-capable; the
+coordinator makes bounded attempts without promising eventual delivery, and the
+protocol core remains correct under loss, omission, arbitrary delay, expiry,
+and unavailability.
 
-Invitation publication is intentionally outside `EnvelopeTransport`. An invite
+Invitation publication is intentionally outside `EnvelopeDelivery`. An invite
 may be posted to GitHub, copied privately, rendered as a QR code, or exchanged
 through another system.
 
@@ -359,6 +378,8 @@ session-chat/
 |   |-- admission-capability/
 |   |-- session-storage/
 |   |-- session-transport/
+|   |-- transport-memory/
+|   |-- transport-conformance/
 |   |-- transport-iroh/
 |   `-- transport-katzenpost/
 |-- services/
@@ -395,3 +416,5 @@ Socket.IO rooms into accidental cryptographic protocol state.
 12. Deposit, receive, acknowledgement, and rotation rights are not interchangeable.
 13. A cryptographic backend is selected from a reviewed allowlist for a new
     session; an active session never silently changes backend or storage format.
+14. A transport adapter cannot select a different profile, fallback path, or
+    broader network authority than the locally authorized profile binding.
