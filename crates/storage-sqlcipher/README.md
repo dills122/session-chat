@@ -2,7 +2,9 @@
 
 `storage-sqlcipher` is the first file-backed encrypted persistence adapter for
 the Session Chat protocol laboratory. It uses exact `rusqlite` 0.40.1 with
-bundled SQLCipher 4.14.0 and an externally supplied nonzero 32-byte raw key.
+bundled SQLCipher 4.14.0, vendored OpenSSL, and an externally supplied nonzero
+32-byte raw key. The vendored provider removes the Windows dependency on an
+ambient `OPENSSL_DIR`; it does not make the resulting binaries reproducible.
 
 Retained tests exercise the real `session-crypto-mls` storage path and prove on
 the tested macOS host that:

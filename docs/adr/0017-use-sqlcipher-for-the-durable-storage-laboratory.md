@@ -14,8 +14,11 @@ justify platform-vault and production claims.
 
 ## Decision
 
-Use exact `rusqlite` 0.40.1 with bundled SQLCipher 4.14.0 in the isolated
-`storage-sqlcipher` workspace adapter for the next durability laboratory.
+Use exact `rusqlite` 0.40.1 with bundled SQLCipher 4.14.0 and its
+`bundled-sqlcipher-vendored-openssl` feature in the isolated
+`storage-sqlcipher` workspace adapter for the next durability laboratory. The
+vendored OpenSSL graph avoids relying on differently discovered system crypto
+libraries across the three required CI operating systems.
 
 - The database accepts only an externally supplied nonzero 32-byte raw key.
 - One keyed connection uses rollback-journal mode, `synchronous=FULL`,
@@ -33,7 +36,9 @@ Use exact `rusqlite` 0.40.1 with bundled SQLCipher 4.14.0 in the isolated
 The adapter is compiled into the workspace for testing, but no client opens it
 and no platform protector supplies its raw key. SQLCipher is not a rollback
 anchor and this decision makes no production, cross-platform, secure-deletion,
-or power-loss claim.
+or power-loss claim. Vendoring OpenSSL increases the audited source, native
+build, license, advisory, and compile-time surface; the locked graph and
+dependency policy must therefore cover it explicitly.
 
 ## Platform protector direction
 
