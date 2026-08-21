@@ -140,7 +140,7 @@ second outbox ledger. A profile binder supplies one adapter with only the
 network and mailbox authority allowed by the selected profile; adapters cannot
 select fallbacks or broaden egress. See the
 [transport abstraction specification](specs/TRANSPORT_ABSTRACTION_V1.md) and
-[proposed ADR 0015](adr/0015-bind-transport-adapters-to-versioned-profiles.md).
+[accepted ADR 0015](adr/0015-bind-transport-adapters-to-versioned-profiles.md).
 
 ### Realm administration
 

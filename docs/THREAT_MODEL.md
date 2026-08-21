@@ -706,6 +706,6 @@ prevents the claimed outcome.
 
 Provenance: living repository threat model updated with ADRs 0008-0014, the
 inviter-owned invitation lifecycle, the isolated MLS lifecycle, and the
-proposed ADR 0015 transport boundary. Git history is the authoritative reviewed
+accepted ADR 0015 transport boundary. Git history is the authoritative reviewed
 version boundary; do not copy a commit hash forward without re-reviewing the
 document against that commit.

@@ -213,7 +213,7 @@ complete.
 
 ## Checkpoint: contract foundation
 
-- [ ] ADR 0015 is accepted for implementation.
+- [x] ADR 0015 is accepted for implementation.
 - [ ] The crate builds without a network dependency.
 - [ ] Authority and redaction tests pass.
 - [ ] Review before adding mutable delivery state.

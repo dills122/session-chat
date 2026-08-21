@@ -6,7 +6,7 @@ adapter exists
 
 Date: 2026-08-20
 
-Governing decisions: ADR 0001, ADR 0003, ADR 0010, and proposed ADR 0015
+Governing decisions: ADR 0001, ADR 0003, ADR 0010, and accepted ADR 0015
 
 ## Purpose
 
