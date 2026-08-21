@@ -99,6 +99,9 @@ handles only the minimum information required for its role.
 9. Expiration, deletion, and retention behavior match user-visible claims.
 10. Untrusted inputs cannot cause unbounded storage, CPU, memory, retry, or
     network amplification.
+11. A transport adapter cannot broaden the selected profile's network authority,
+    select a weaker path, or turn implementation capabilities into a product
+    privacy claim.
 
 ## Threat Model, Trust Boundaries, and Assumptions
 
@@ -233,6 +236,28 @@ Assumptions:
   resistance to operator collusion.
 - Application traffic patterns can undermine transport-layer privacy.
 - Private mode is allowed to become unavailable rather than downgrade.
+
+### Trust boundary: delivery coordinator, profile binder, and adapter
+
+The session core supplies canonical opaque envelopes to a coordinator. Local
+policy binds one versioned profile to one adapter or explicitly reviewed
+composite adapter. The adapter then crosses a scoped network or process
+boundary.
+
+Assumptions:
+
+- Adapter manifests and capability declarations are configuration input, not
+  proof that the implementation or deployment provides the claimed behavior.
+- A compromised or misconfigured adapter may attempt undeclared DNS, direct,
+  relay, telemetry, update, discovery, or background connections.
+- Adapter SDKs may retry, cache, reconnect, resolve names, or start background
+  work without the coordinator's knowledge unless constrained.
+- Code-level type separation cannot by itself enforce network isolation;
+  private profiles require a scoped network broker or process/OS egress policy.
+- The owner-local transaction store owns durable outbox truth and leases. The
+  coordinator, not the adapter, owns total retry policy, expiry checks,
+  deduplication, cursor, and acknowledgement execution without maintaining a
+  competing outbox ledger.
 
 ### Trust boundary: local persistent storage and operating system
 
@@ -522,6 +547,12 @@ network allowlisting or isolation, padding, retry jitter, bounded polling,
 cover-traffic research, packet-capture tests, and conservative claims tied to a
 documented deployment.
 
+The profile and adapter are separate identifiers. Required controls also
+include manifest validation, bounded operation budgets, typed redacted errors,
+no generic fallback list, no ambient mailbox or network authority, and common
+conformance tests. An adapter's self-description cannot satisfy a privacy
+acceptance gate without external egress and packet-capture evidence.
+
 Attacker story: the mixnet is temporarily unavailable. The client must show the
 session as unavailable and must not connect to the peer or fast relay.
 
@@ -698,7 +729,8 @@ necessary attacker control is absent from real deployments, only test tooling
 is affected, data is already public, or independent cryptographic verification
 prevents the claimed outcome.
 
-Provenance: living repository threat model updated with ADRs 0008-0012, the
-inviter-owned invitation lifecycle, and the isolated MLS lifecycle. Git history
-is the authoritative reviewed version boundary; do not copy a commit hash
-forward without re-reviewing the document against that commit.
+Provenance: living repository threat model updated with ADRs 0008-0014, the
+inviter-owned invitation lifecycle, the isolated MLS lifecycle, and the
+proposed ADR 0015 transport boundary. Git history is the authoritative reviewed
+version boundary; do not copy a commit hash forward without re-reviewing the
+document against that commit.

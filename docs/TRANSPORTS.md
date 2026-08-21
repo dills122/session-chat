@@ -22,11 +22,48 @@ Content security and network-metadata privacy are separate properties:
 | --- | --- | --- | --- |
 | Local | In-memory or deterministic test adapter | Protocol testing and simulation | No production privacy claim |
 | Fast | Direct encrypted QUIC with relay fallback | Low latency and NAT traversal | Peer or relay metadata exposure |
-| Private | Katzenpost-backed mailboxes | Stronger resistance to peer-IP and timing correlation | Latency, unreliable delivery, operational complexity |
-| Experimental | Veilid or another routed P2P adapter | Exploration of privacy-oriented routing | Maturity and interoperability risk |
+| Private Interactive (research) | Tor/Arti onion-hosted delivery | Public anonymity network, endpoint-IP hiding, and interactive latency | End-to-end timing correlation remains possible; mailbox integration required |
+| Private Mixnet | Katzenpost-backed mailboxes, compared with Nym | Stronger resistance to peer-IP and timing correlation | Latency, unreliable delivery, operational complexity |
+| Experimental | Veilid, Reticulum, or another explicitly evaluated adapter | Routed P2P or disruption-tolerant exploration | Maturity, metadata, and interoperability risk |
 
 An adapter is not automatically a supported product profile. It must pass the
 profile-specific security, reliability, and operational acceptance tests.
+
+## Transport abstraction
+
+A profile names a versioned semantic and egress contract. An adapter names one
+local implementation. These are deliberately different:
+
+- more than one adapter may satisfy a profile;
+- one network technology may expose multiple configurations with materially
+  different metadata behavior; and
+- an adapter name alone says nothing about deployment topology, operator
+  diversity, cover traffic, network isolation, or the justified product claim.
+
+The protocol core uses one profile-bound envelope-delivery contract. The
+owner-local transaction store owns durable outbox truth and leases. A delivery
+coordinator executes that leased work and owns adapter-independent expiry
+checks, deduplication, polling, acknowledgement scheduling, and total retry
+policy without creating a second outbox ledger. The adapter receives canonical
+bounded envelope bytes, the right-specific mailbox capability for one
+operation, and a bounded operation budget.
+
+Adapters do not select profiles or generic fallback chains. They use either a
+profile-scoped network broker or a separately isolated process/OS egress
+boundary. Adapter capability declarations are configuration inputs rather than
+proof of privacy. Private profiles require packet-capture and egress-denial
+evidence.
+
+The common portable semantics are unordered and duplicate-capable. The
+coordinator makes bounded attempts while work remains eligible, but loss,
+omission, arbitrary delay, expiry, and unavailability mean there is no eventual
+delivery guarantee. A stronger adapter guarantee is an optimization and must
+not become a hidden session-core dependency.
+
+See the proposed
+[transport abstraction version 1](specs/TRANSPORT_ABSTRACTION_V1.md),
+[ADR 0015](adr/0015-bind-transport-adapters-to-versioned-profiles.md), and the
+[retained technology landscape](research/TRANSPORT_SECURITY_LANDSCAPE_2026-08-20.md).
 
 ## Invitation publication is separate
 
@@ -64,6 +101,11 @@ Katzenpost is the initial research target because it provides a Sphinx-based
 mix network intended as a substrate for metadata-sensitive applications. The
 network deliberately provides neither reliable nor in-order delivery, so
 Session Chat must add application-level behavior.
+
+Nym is a comparative public-network research candidate. It must run through the
+same envelope workload, adverse-network traces, observer matrix, and
+packet-capture format as Katzenpost. Its public network, chain, credentials, or
+token economics do not become Session Chat membership or protocol authority.
 
 Required behavior above the mixnet:
 
@@ -227,7 +269,13 @@ Private transport additionally:
 
 The following remain research questions:
 
+- Whether Tor/Arti can support a separately named Private Interactive profile
+  with verifiable egress isolation and acceptable desktop behavior
+- Whether SimpleX SMP should carry Session Chat envelopes directly or remain
+  prior art for an independently specified mailbox protocol
 - Whether to use Katzenpost directly or through a mailbox service protocol
+- Whether an existing Nym anonymity set outweighs its additional operational
+  and economic dependencies
 - Public network versus organization-operated network versus hybrid routing
 - Cover traffic and polling budgets for desktop and later mobile clients
 - Latency targets acceptable for interactive chat
@@ -235,3 +283,5 @@ The following remain research questions:
 - How realm discovery works without adding a correlating global directory
 - Whether Veilid offers a useful additional profile after the core interfaces
   are proven
+- Whether Reticulum or a Briar-style local synchronization model justifies a
+  later, explicitly selected off-grid profile
