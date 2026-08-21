@@ -19,6 +19,11 @@ This plan does not select a production transport. It creates the boundary and
 evidence needed to compare transports without changing MLS, admission, or the
 canonical envelope format.
 
+The cross-system execution cadence, stable scenario IDs, retained evidence
+bundle, and progression from offline two-client tests to process, storage,
+network, packet-capture, and release gates are defined in
+[`REAL_WORLD_E2E_TESTING.md`](REAL_WORLD_E2E_TESTING.md).
+
 ## Existing baseline on `master`
 
 - `session-protocol` owns bounded canonical `OpaqueEnvelope` bytes and the

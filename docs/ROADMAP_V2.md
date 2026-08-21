@@ -177,6 +177,10 @@ contract, deterministic adverse-network control path, and shared conformance
 harness before any real network dependency. The detailed task order and
 checkpoints are in the
 [transport abstraction implementation plan](plans/TRANSPORT_ABSTRACTION_IMPLEMENTATION.md).
+The cross-system scenarios, evidence format, and progression from deterministic
+two-client tests to real storage, transports, packet captures, and platform
+release gates are defined in the
+[real-world E2E security test strategy](plans/REAL_WORLD_E2E_TESTING.md).
 
 Capabilities:
 

@@ -44,6 +44,9 @@ all.
   sequences stabilization of the existing local adapter and outbox model, the
   generalized contract, conformance harness, coordinator, and later
   real-network experiments.
+- [Real-world end-to-end security test strategy](plans/REAL_WORLD_E2E_TESTING.md)
+  defines permanent scenario IDs, layered environments, evidence bundles, CI
+  cadence, and release gates without claiming unavailable integrations.
 - [Local transport baseline evidence](evidence/transport-local-baseline.md)
   maps the implemented one-Welcome adapter and inviter outbox model to the
   generalized contract without overstating missing behavior.
