@@ -5,6 +5,10 @@ the Session Chat protocol laboratory. It uses exact `rusqlite` 0.40.1 with
 bundled SQLCipher 4.14.0, vendored OpenSSL, and an externally supplied nonzero
 32-byte raw key. The vendored provider removes the Windows dependency on an
 ambient `OPENSSL_DIR`; it does not make the resulting binaries reproducible.
+Because that bundled provider owns process-global activation state, the adapter
+serializes all native SQLCipher calls across open stores, including connection
+setup and teardown. This is a correctness boundary, not a concurrent-throughput
+claim.
 
 Retained tests exercise the real `session-crypto-mls` storage path and prove on
 the tested macOS host that:
@@ -17,7 +21,8 @@ the tested macOS host that:
 - committed inviter and joiner results survive close and reopen;
 - a wrong key is rejected and the closed database omits fixture plaintext and
   the normal SQLite header; and
-- SQLCipher's page-HMAC integrity check succeeds for retained fixtures.
+- SQLCipher's page-HMAC integrity check succeeds for retained fixtures; and
+- concurrent store handles cannot race the process-global provider lifecycle.
 
 This adapter is durability-laboratory evidence, not production storage. It has
 no platform keychain integration, rollback anchor, cross-platform build/fault
