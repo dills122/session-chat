@@ -106,10 +106,9 @@ and secure-deletion evidence remain outstanding. The separate SQLCipher
 laboratory adapter now commits the actual inviter MLS snapshot with bounded
 transaction-model invitation, replay/approval, and Welcome-outbox records, and
 separately commits joiner MLS state with exact one-time KeyPackage deletion.
-Tests cover rollback, ambiguous-result recovery, and close/reopen on the tested
-macOS host;
-the first required three-OS CI result, platform-vault, disk/power fault, and
-rollback-anchor gates remain.
+Tests cover rollback, ambiguous-result recovery, and close/reopen on the
+required Linux, macOS, and Windows CI runners. Platform-vault, disk/power fault,
+production packaging, and rollback-anchor gates remain.
 
 Contract hardening rules preserved by the current in-memory flow and required
 for the remaining headless and durable composition:

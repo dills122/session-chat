@@ -342,15 +342,15 @@ later packaging decision, not an initial requirement.
 - **Local compatibility spike completed:** the isolated
   [SQLCipher inviter-store spike](../spikes/sqlcipher-inviter-store/README.md)
   proves raw-key, wrong-key, copied-file, tamper, process-crash, and atomic MLS
-  plus inviter-join behavior on macOS Apple silicon. Production selection is
-  still blocked on the required three-OS CI result and broader faults, a
-  portable key-protection baseline, lifecycle and rollback policy, and
-  integration through the Session Chat MLS adapter.
+  plus inviter-join behavior on macOS Apple silicon. The integrated laboratory
+  below now supplies the required three-OS CI result; production selection is
+  still blocked on broader faults, a portable key-protection baseline,
+  lifecycle and rollback policy, and product-path integration.
 - **Durability laboratory selected and implemented:** ADR 0017 and
   `storage-sqlcipher` exercise the real inviter and joiner MLS storage calls in
-  encrypted owner-local transactions. Evidence is currently macOS-only and is
-  not a production dependency/platform claim; the new required CI matrix must
-  add Linux and Windows evidence before merge.
+  encrypted owner-local transactions. The required Linux, macOS, and Windows CI
+  matrix now retains build and execution evidence, but this is not a production
+  dependency, packaging, key-protector, or broader platform-compatibility claim.
 - **Platform capability decision recorded:** the
   [platform key-protector packet](research/PLATFORM_KEY_PROTECTOR.md) records why
   native stores cannot provide one uniform claim. ADR 0018 withdraws the

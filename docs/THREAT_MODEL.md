@@ -607,8 +607,9 @@ evidence for both real owner-local MLS transactions. The inviter snapshot and
 join/outbox state share one SQL commit; the joiner snapshot and exact one-time
 KeyPackage deletion share another. Wrong-key, pre-commit rollback,
 ambiguous-result recovery, close/reopen, and closed-file checks are retained on
-one macOS host. This does not establish a platform key protector, rollback
-resistance, cross-platform behavior, power-loss safety, or secure deletion.
+the required Linux, macOS, and Windows CI runners. This does not establish a
+platform key protector, rollback resistance, production packaging, behavior on
+broader hardware/OS versions, power-loss safety, or secure deletion.
 
 ### Realm replacement and disaster recovery
 

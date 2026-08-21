@@ -65,7 +65,8 @@ The checked-in runtime consists of:
   bounded canonical opaque-inbox conformance model with generation-bound local
   import, but no encrypted or durable persistence;
 - `storage-sqlcipher`: an encrypted file-backed laboratory adapter exercising
-  the real inviter and joiner MLS storage calls on one macOS host;
+  the real inviter and joiner MLS storage calls on the required Linux, macOS,
+  and Windows CI runners;
 - `sessionctl`: a headless two-client composition covering protected capability
   join, simulated approval, local Welcome delivery, bidirectional MLS messages,
   path update, removal, and post-removal rejection; and
@@ -145,7 +146,7 @@ flowchart LR
 | The Node simulator rejects unknown, cyclic, accessor-backed, symbol-keyed, deep, or oversized provider input before cloning or authorization | Implemented and tested | Retained non-production adversarial tests at directory and attestor entry points |
 | A sealed-session lifecycle and locked-mode capability matrix reject stale completion and gate privileged model operations | Implemented and tested in memory | ADR 0016 and `session-storage`; deterministic test protector only, with no durable or platform protection claim |
 | Sealed mode accepts only bounded canonical opaque receipt, and local import requires the exact open and insertion generations | Implemented and tested in memory | `session-storage` malformed, expiry, quota, all-state append, and vault/inbox ABA tests; local removal is not remote acknowledgement |
-| Inviter MLS/join/Welcome state and joiner MLS/KeyPackage deletion are each one owner-local encrypted file transaction | Implemented and tested on one host | ADR 0017 and `storage-sqlcipher` use the real MLS storage path with rollback, ambiguous-result, exact-retry, wrong-key, and close/reopen evidence |
+| Inviter MLS/join/Welcome state and joiner MLS/KeyPackage deletion are each one owner-local encrypted file transaction | Implemented and tested on three CI OS families | ADR 0017 and `storage-sqlcipher` use the real MLS storage path with rollback, ambiguous-result, exact-retry, wrong-key, and close/reopen evidence; hosted runners do not establish production packaging or broader platform support |
 | Key protector claims are factually capability-gated | Implemented and tested as a contract | `session-storage` rejects a protector weaker than `TestOnly`, `DeviceBound`, or `FreshUserPresence`; no native adapter exists |
 | Local-app foundations require one common macOS, Windows, and Linux baseline | Accepted contract; CI gate implemented | ADR 0018 and the required Rust matrix; no desktop shell or portable production key protector exists yet |
 | Client secrets are protected by a production platform vault when not active | Accepted contract, unimplemented | SQLCipher accepts an external raw key, but no native protector supplies it and no rollback anchor exists |

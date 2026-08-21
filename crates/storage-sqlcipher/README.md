@@ -9,8 +9,8 @@ The adapter retains SQLCipher's default memory policy: cryptographic allocations
 are locked and sanitized, while the optional process-wide wiping of every SQLite
 allocation remains disabled.
 
-Retained tests exercise the real `session-crypto-mls` storage path and prove on
-the tested macOS host that:
+Retained tests exercise the real `session-crypto-mls` storage path on the
+required Linux, macOS, and Windows CI runners and prove that:
 
 - the inviter's MLS snapshot, invitation consumption, replay/approval result,
   and pending encrypted Welcome commit or roll back together;
@@ -23,9 +23,10 @@ the tested macOS host that:
 - SQLCipher's page-HMAC integrity check succeeds for retained fixtures.
 
 This adapter is durability-laboratory evidence, not production storage. It has
-no platform keychain integration, rollback anchor, cross-platform build/fault
-evidence, disk-full or power-loss evidence, migration/rekey/backup/deletion
-policy, durable outbox leasing, or secure-erasure guarantee.
+no platform keychain integration, rollback anchor, disk-full or power-loss
+evidence, migration/rekey/backup/deletion policy, durable outbox leasing, or
+secure-erasure guarantee. Hosted-runner evidence is not a production packaging
+or broader hardware/OS compatibility claim.
 
 ```sh
 cargo test -p storage-sqlcipher --all-features --locked --offline

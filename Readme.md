@@ -41,7 +41,8 @@ The Rust workspace currently contains:
   import requires the exact open session and state generation
 - `storage-sqlcipher`, with a keyed file-backed laboratory adapter proving the
   real inviter MLS/join/outbox transaction and the separate joiner MLS plus
-  one-time-KeyPackage deletion transaction on the tested host
+  one-time-KeyPackage deletion transaction on required Linux, macOS, and
+  Windows CI runners
 - `sessionctl`, with a headless Alice/Bob conformance flow covering protected
   join, explicit approval, Welcome delivery, bidirectional MLS messages, path
   update, removal, and post-removal rejection over the in-memory adapters

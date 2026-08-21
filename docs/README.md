@@ -219,8 +219,9 @@ encrypted persistence, platform key protector, durability, rollback, or crash
 recovery claim.
 The separate `storage-sqlcipher` crate now exercises both owner-local
 transactions through the real MLS storage path and recovers them after close
-and reopen on the tested host. It is not wired to the vault lifecycle and adds
-no cross-platform, rollback-resistance, or production-storage claim.
+and reopen on the required Linux, macOS, and Windows CI runners. It is not wired
+to the vault lifecycle and adds no production packaging, broader platform,
+rollback-resistance, or production-storage claim.
 
 ## Reference standards and projects
 
