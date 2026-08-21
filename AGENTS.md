@@ -59,6 +59,8 @@ Current areas:
   not a durable storage implementation
 - `crates/session-storage`: deterministic sealed-session lifecycle and bounded
   opaque-inbox conformance model; not encrypted or durable storage
+- `crates/storage-sqlcipher`: file-backed encrypted durability-laboratory
+  adapter for the real inviter and joiner MLS transactions; not production storage
 - `apps/sessionctl`: headless two-client Phase 1 composition and conformance
   flow over the local adapters; not a networked or durable client
 - `spikes/`: disposable feasibility code; production packages must not depend on it

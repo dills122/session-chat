@@ -150,7 +150,7 @@ the chosen transport, but should not possess message keys or plaintext.
 
 ### Current Phase 1 evidence
 
-The active Rust laboratory now contains twelve narrow pieces of this architecture:
+The active Rust laboratory now contains thirteen narrow pieces of this architecture:
 
 - `session-protocol` encodes and strictly verifies deterministic signed
   secret-capability invitation v1/v2 layouts and owns ADR 0014's bounded
@@ -191,6 +191,9 @@ The active Rust laboratory now contains twelve narrow pieces of this architectur
 - `session-storage` is a deterministic in-memory conformance model for the
   session-scoped sealed-vault lifecycle and bounded canonical opaque receipt.
   It is not encrypted or durable storage and has no production key protector.
+- `storage-sqlcipher` is a file-backed encrypted durability-laboratory adapter
+  for the real inviter and joiner MLS persistence calls. It is not connected to
+  a platform key protector and provides no rollback or production claim.
 - `sessionctl` composes the current local pieces into one headless Alice/Bob
   flow: capability join, simulated approval, Welcome delivery, bidirectional
   application messages, path update, removal, and post-removal rejection. It
@@ -203,10 +206,11 @@ reservations, abandonment also clears the MLS pending Commit, and successful
 in-memory Add consumes the invitation before returning its outputs. This is
 sequential in-memory coordination, not one persistent, cross-process,
 crash-atomic, or rollback-resistant transaction. Human approval UX, durable
-membership/replay state and durable Welcome outbox processing do not exist. The
-separate conformance model exercises the required atomic visibility and
-ambiguous-result recovery semantics over memory records without connecting to
-the sequential join path. The in-memory committed join result now carries the
+membership/replay integration, and durable Welcome outbox processing do not
+exist in that product path. The separate memory conformance model and SQLCipher
+laboratory exercise atomic visibility and ambiguous-result recovery without
+connecting to the sequential join path. The in-memory committed join result
+now carries the
 exact authenticated deposit-only endpoint beside its MLS Welcome, and retained
 integration evidence delivers that Welcome through the local mailbox. No
 network transport exists. The headless composition retains an executable

@@ -44,9 +44,10 @@ foundational changes, an ADR.
   are stored and recovered.
 - **Isolated evidence retained:** `session-crypto-mls` now covers removal, a
   path update, out-of-order application delivery, a temporarily lost epoch
-  Commit, abandoned pending Commits, and explicit-only group-state writes.
-  Durable recovery, joining-KeyPackage deletion, and cross-layer atomicity are
-  still open.
+  Commit, abandoned pending Commits, and explicit-only group-state writes. The
+  SQLCipher laboratory adds close/reopen recovery, joining-KeyPackage deletion,
+  and owner-local transaction evidence; integrated product recovery,
+  rollback protection, and durable outbox delivery are still open.
 
 Immediate gate: retain the isolated ADR 0012 laboratory with exact KeyPackage
 ownership, two-party lifecycle, removal, reordered/lost message, and
@@ -275,6 +276,14 @@ Expected output: wire-format draft plus test vectors.
   still blocked on cross-platform builds and faults, a platform-vault adapter,
   lifecycle and rollback policy, and integration through the Session Chat MLS
   adapter.
+- **Durability laboratory selected and implemented:** ADR 0017 and
+  `storage-sqlcipher` exercise the real inviter and joiner MLS storage calls in
+  encrypted owner-local transactions. Evidence is currently macOS-only and is
+  not a production dependency/platform claim.
+- **Platform capability decision recorded:** the
+  [platform key-protector packet](research/PLATFORM_KEY_PROTECTOR.md) selects
+  macOS Keychain Services as the first fresh-user-presence probe and requires
+  separately measured Windows and Linux modes.
 - Evaluate Tauri and Rust integration with platform keychains and secure
   hardware.
 - Define database encryption, key hierarchy, lock behavior, and crash recovery.

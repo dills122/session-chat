@@ -100,8 +100,15 @@ The first `session-storage` increment now makes the selected sealed-vault
 lifecycle and locked-mode capability matrix executable. Its deterministic
 model permits bounded canonical opaque receipt in every state and binds local
 import to the exact open session, vault generation, and inbox insertion. A
-durable encrypted store, real MLS persistence, platform user-presence adapters,
-rollback resistance, crash recovery, and deletion evidence remain outstanding.
+platform-linked durable client store, integrated product MLS persistence,
+platform user-presence adapters, rollback resistance, broader crash recovery,
+and secure-deletion evidence remain outstanding. The separate SQLCipher
+laboratory adapter now commits the actual inviter MLS snapshot with bounded
+transaction-model invitation, replay/approval, and Welcome-outbox records, and
+separately commits joiner MLS state with exact one-time KeyPackage deletion.
+Tests cover
+rollback, ambiguous-result recovery, and close/reopen on the tested macOS host;
+cross-platform, platform-vault, disk/power fault, and rollback-anchor gates remain.
 
 Contract hardening rules preserved by the current in-memory flow and required
 for the remaining headless and durable composition:

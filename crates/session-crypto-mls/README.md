@@ -46,7 +46,9 @@ local group instance fails closed and becomes unusable.
 
 The selected upstream `BasicIdentityProvider` is only an MLS credential-format
 mechanism here. It does not authenticate a person or implement Session Chat
-admission. ADR 0009's admission proof and approval layer remains unimplemented.
+admission. The separate capability adapter implements the current exact-key
+admission proof and simulated approval path; external providers and human
+approval UX remain unimplemented.
 
 ## Evidence and limits
 
@@ -56,12 +58,13 @@ third-member, and removal cases. A recording storage provider verifies that
 create/prepare/apply cause no implicit group-state write and that an explicit
 provider write causes one write.
 
-All state is still process memory. The crate deliberately exposes no durable
-write API. A future inviter adapter must atomically coordinate its MLS state,
-invitation consumption, replay and approval state, and encrypted Welcome
-outbox. Separately, the joining client must atomically persist joined group
-state and delete or consume its one-time KeyPackage. Remote acknowledgement
-must not gate or roll back the inviter's committed membership.
+The default client helper still uses process memory. The crate now accepts
+caller-supplied MLS storage providers and exposes an explicit group-state write;
+the separate SQLCipher laboratory exercises that boundary for inviter and
+joiner transactions. This crate does not itself coordinate invitation, replay,
+approval, outbox, or KeyPackage-deletion transactions, and the headless product
+path remains in memory. Remote acknowledgement must not gate or roll back the
+inviter's committed membership.
 Cross-implementation fixtures, crash/rollback recovery, old-secret deletion,
 platform coverage, fuzzing, and an independent review of the exact
 `mls-rs`/AWS-LC boundary remain release gates.

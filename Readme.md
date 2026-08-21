@@ -39,15 +39,19 @@ The Rust workspace currently contains:
 - `session-storage`, with a deterministic session-scoped sealed-vault lifecycle,
   stale-completion rejection, and a bounded canonical opaque inbox whose local
   import requires the exact open session and state generation
+- `storage-sqlcipher`, with a keyed file-backed laboratory adapter proving the
+  real inviter MLS/join/outbox transaction and the separate joiner MLS plus
+  one-time-KeyPackage deletion transaction on the tested host
 - `sessionctl`, with a headless Alice/Bob conformance flow covering protected
   join, explicit approval, Welcome delivery, bidirectional MLS messages, path
   update, removal, and post-removal rejection over the in-memory adapters
 
 The signing key authenticates the invitation bytes, not a GitHub identity or
 person. The capability invitation is a secret bearer object and must not be
-posted publicly or placed in a transport envelope. The MLS adapter has no
-durable storage or network path; the capability adapter coordinates it only
-through the in-memory approval-gated path described below.
+posted publicly or placed in a transport envelope. The MLS adapter exposes a
+generic persistence boundary, but the capability adapter and headless client
+still coordinate it only through the in-memory approval-gated path described
+below; neither has a durable or network path.
 The protected-join and capability-admission adapters prove possession for one
 exact typed HPKE context, preserve the exact signed-invitation instance,
 independently validate and own the exact KeyPackage, and reserve replay values
@@ -57,9 +61,11 @@ expiry, pre-commit failure, or abandonment releases both reservations; a
 successful in-memory Add consumes invitation state. This sequencing is not a
 durable transaction. A separate conformance model now proves the required
 atomic visibility, ambiguous-commit recovery, and resumable Welcome-outbox
-semantics over bounded memory records. A durable adapter, real cross-layer
-persistence, durable or network mailbox behavior, human approval UX, and a
-user-facing chat interface remain unimplemented. The in-memory approved-join result now carries
+semantics over bounded memory records. The SQLCipher laboratory separately
+proves both owner-local transactions through actual MLS persistence calls.
+Integrated cross-layer product persistence, durable outbox delivery, network
+mailbox behavior, human approval UX, and a user-facing chat interface remain
+unimplemented. The in-memory approved-join result now carries
 only the exact authenticated deposit endpoint beside its MLS outputs, and a
 retained test delivers the encrypted Welcome through the local adapter. This
 sequential path is not evidence for a durable outbox or network profile.
@@ -68,10 +74,11 @@ two-client flow and prints only coarse milestones. It is retained integration
 evidence, not a deployable client, human approval UX, durable vault, hosted
 realm, or production transport.
 
-The `session-storage` model makes locked-mode capabilities and lifecycle races
-testable, but it retains data only in memory. It does not provide SQLCipher,
-platform user presence, encrypted persistence, rollback resistance, crash
-recovery, or production key protection.
+The `session-storage` model now rejects key protectors whose factual capability
+report is weaker than the selected policy. `storage-sqlcipher` adds encrypted
+file-backed transaction evidence, but no platform protector connects them.
+Cross-platform builds, rollback resistance, broader crash/fault testing, and
+production key protection remain unimplemented.
 
 ADR 0014 defines the exact local-only invitation-v2, HPKE capability-join, and
 one-Welcome response contract. Its canonical protocol value types are now

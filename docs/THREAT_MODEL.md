@@ -36,10 +36,11 @@ join path. A separate deterministic memory transport uses right-specific
 authorities and bounded explicit drop, duplicate, hold/release, retry, expiry,
 and capacity behavior for headless tests. It accepts structurally opaque bytes
 but neither encrypts them nor provides a network or privacy property. The MLS
-crate operates an in-memory two-party MLS 1.0 lifecycle
-behind the reduced-feature `mls-rs`/AWS-LC boundary selected by ADR 0012. It has
-no durable state, and upstream's missing full independent `mls-rs` audit remains
-a release risk rather than inherited assurance. The retired v1
+crate operates a two-party MLS 1.0 lifecycle behind the reduced-feature
+`mls-rs`/AWS-LC boundary selected by ADR 0012. Its default product path remains
+in memory; a generic persistence boundary is exercised only by the separate
+SQLCipher laboratory. Upstream's missing full independent `mls-rs` audit
+remains a release risk rather than inherited assurance. The retired v1
 Angular/NestJS application used a server-readable, server-authoritative model.
 The proposed v2 product replaces it with client-owned MLS sessions, encrypted
 pre-membership rendezvous, optional external admission evidence, and pluggable
@@ -557,6 +558,14 @@ different user-presence and unlock-sharing semantics, so production adapters
 must report and test their actual behavior. Database encryption does not
 establish rollback resistance, and malware controlling an unlocked session
 remains out of scope.
+
+ADR 0017's `storage-sqlcipher` adapter adds keyed, encrypted file-backed
+evidence for both real owner-local MLS transactions. The inviter snapshot and
+join/outbox state share one SQL commit; the joiner snapshot and exact one-time
+KeyPackage deletion share another. Wrong-key, pre-commit rollback,
+ambiguous-result recovery, close/reopen, and closed-file checks are retained on
+one macOS host. This does not establish a platform key protector, rollback
+resistance, cross-platform behavior, power-loss safety, or secure deletion.
 
 ### Realm replacement and disaster recovery
 

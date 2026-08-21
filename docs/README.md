@@ -67,6 +67,9 @@ all.
 - [Session-scoped sealed-vault decision](adr/0016-use-a-session-scoped-sealed-vault-contract.md)
   defines the locked-mode capability matrix, linear lifecycle transitions, and
   bounded opaque receipt contract without selecting durable storage.
+- [Durable storage laboratory decision](adr/0017-use-sqlcipher-for-the-durable-storage-laboratory.md)
+  selects the exact SQLCipher graph for real inviter/joiner MLS transaction
+  evidence without making a production or platform-vault claim.
 - [Protected capability join specification](specs/PROTECTED_CAPABILITY_JOIN_V1.md)
   assigns the fixed-array layouts, code points, cryptographic contexts, parsing
   order, mailbox lifecycle, and retained-evidence gates for ADR 0014.
@@ -82,6 +85,9 @@ all.
 - [Inviter storage and vault-key decision packet](research/INVITER_STORAGE_ENGINE.md)
   compares transaction engines and recommends a bounded SQLCipher compatibility
   spike without selecting a production storage dependency.
+- [Platform key-protector decision packet](research/PLATFORM_KEY_PROTECTOR.md)
+  separates macOS, Windows, and Linux protection semantics and selects the
+  first native fresh-user-presence probe.
 - [Superseded OpenMLS decision](adr/0011-select-openmls-for-the-phase-1-laboratory.md)
   retains the bounded OpenMLS evaluation and its dependency blocker.
 - [MLS implementation comparison](research/MLS_IMPLEMENTATION_COMPARISON.md)
@@ -193,6 +199,10 @@ model for one-session unsealing, forced relock events, stale-completion
 rejection, and bounded canonical opaque receipt/import. It provides no
 encrypted persistence, platform key protector, durability, rollback, or crash
 recovery claim.
+The separate `storage-sqlcipher` crate now exercises both owner-local
+transactions through the real MLS storage path and recovers them after close
+and reopen on the tested host. It is not wired to the vault lifecycle and adds
+no cross-platform, rollback-resistance, or production-storage claim.
 
 ## Reference standards and projects
 
