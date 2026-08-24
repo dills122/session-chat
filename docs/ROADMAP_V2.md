@@ -99,7 +99,9 @@ separate gates.
 The first `session-storage` increment now makes the selected sealed-vault
 lifecycle and locked-mode capability matrix executable. Its deterministic
 model permits bounded canonical opaque receipt in every state and binds local
-import to the exact open session, vault generation, and inbox insertion. A
+import to the exact open session, vault generation, and inbox insertion. It now
+rechecks the unlock deadline after provider completion and rejects a late result;
+the conformance test does not cancel in-flight provider work. A
 platform-linked durable client store, integrated product MLS persistence,
 platform user-presence adapters, rollback resistance, broader crash recovery,
 and secure-deletion evidence remain outstanding. The separate SQLCipher
@@ -109,6 +111,18 @@ separately commits joiner MLS state with exact one-time KeyPackage deletion.
 Tests cover rollback, ambiguous-result recovery, and close/reopen on the
 required Linux, macOS, and Windows CI runners. Platform-vault, disk/power fault,
 production packaging, and rollback-anchor gates remain.
+
+ADR 0019 and `key-protector-passphrase` now retain the bounded portable
+key-wrapper conformance experiment: exact Argon2id 0.5.3 and AWS-LC 1.16.3
+AES-256-GCM, one fixed measurement profile, a closed 102-byte record,
+authentication to the expected `SessionId`, coarse failures, and hostile-input
+pre-work bounds.
+This completes only the isolated construction checkpoint. The adapter does not
+implement the vault lifecycle protector, supply SQLCipher, or select a
+production portable baseline. Three-OS performance and memory measurements,
+credential acquisition, cancellation/result discard, atomic persistence and key
+handoff, recovery, rekey and rollback policy, offline-guessing UX, native
+enhancements, and independent boundary review remain gates.
 
 Contract hardening rules preserved by the current in-memory flow and required
 for the remaining headless and durable composition:
@@ -147,6 +161,7 @@ Create a Rust workspace containing:
 - `session-crypto-mls`
 - `session-inviter-transaction`
 - `session-transport`
+- `key-protector-passphrase`
 - Deterministic in-memory transport
 - `sessionctl` headless client
 
@@ -261,7 +276,9 @@ Exit criteria:
 - The same baseline workflow and canonical state pass required build, lint,
   and conformance gates on Linux, macOS, and Windows.
 - UI code cannot bypass core admission or MLS state transitions.
-- Secrets use appropriate OS storage and are excluded from browser storage.
+- Secrets use a reviewed protector whose measured capabilities satisfy the
+  selected mode and are excluded from browser storage; native enhancements do
+  not silently define the portable baseline.
 - Deep-link parsing is fuzzed and treats links as attacker-controlled.
 - Update signing and application provenance have a documented plan.
 

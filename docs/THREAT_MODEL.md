@@ -578,10 +578,12 @@ Relevant attacks include plaintext databases, weak local key derivation, key
 and ciphertext colocated without OS protection, backup retention, partial
 deletion, crash dumps, logs, and silent history retention.
 
-Required controls include a documented key hierarchy, OS-backed key wrapping,
-encrypted databases, lock and idle behavior, transactional deletion, log and
-panic redaction, backup analysis, and tests that map implementation behavior to
-the selected retention policy.
+Required controls include a documented key hierarchy, reviewed key wrapping
+with factual capability reporting, encrypted databases, lock and idle behavior,
+transactional deletion, log and panic redaction, backup analysis, and tests that
+map implementation behavior to the selected retention policy. A stronger mode
+may require OS-backed device binding or fresh user presence, but a platform name
+alone does not establish either property.
 
 ADR 0018 treats portability drift as a security risk. The baseline local vault,
 storage format, failure behavior, and lifecycle must pass the same conformance
@@ -610,6 +612,31 @@ ambiguous-result recovery, close/reopen, and closed-file checks are retained on
 the required Linux, macOS, and Windows CI runners. This does not establish a
 platform key protector, rollback resistance, production packaging, behavior on
 broader hardware/OS versions, power-loss safety, or secure deletion.
+
+ADR 0019 and `key-protector-passphrase` add only a bounded portable conformance
+construction. The fixed 102-byte record authenticates its complete public
+prefix and a caller-supplied expected `SessionId`; unknown versions, suites,
+profiles, parameter values, lengths, and trailing bytes fail before Argon2 work.
+Wrong passphrases, record tampering, and cross-session substitution expose only
+coarse failures. Passphrase size and concurrent work must be bounded before the
+synchronous KDF begins.
+
+A copied record still permits unlimited offline guesses, and Argon2id cannot
+create passphrase entropy. The fixed `m=65,536 KiB`, `t=3`, `p=4` profile is a
+three-OS measurement starting point, not a production parameter claim. Rust
+owners apply best-effort zeroization to the passphrase, KEK, caller-owned Argon2
+blocks, and temporary plaintext, but native AEAD key-schedule cleanup, registers,
+swap, dumps, UI copies, and OS snapshots remain unproved. Work already running
+cannot be cancelled preemptively; only a later lifecycle result may be rejected.
+The adapter provides no device binding, fresh user presence, recovery, rollback
+resistance, secure deletion, SQLCipher key handoff, or unlocked-endpoint
+protection, and no durable or product path currently uses it.
+
+The current deterministic `session-storage` model now rechecks the unlock
+deadline after a protector returns and remains sealed when completion is late.
+That is evidence for generation/deadline-bound result discard in the model only;
+it neither interrupts the synchronous KDF nor proves a production scheduler,
+threading, or process-isolation boundary.
 
 ### Realm replacement and disaster recovery
 

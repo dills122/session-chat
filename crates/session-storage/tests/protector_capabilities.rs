@@ -63,6 +63,40 @@ fn stronger_mode_requires_device_only_no_backup_and_fresh_presence_evidence() {
 }
 
 #[test]
+fn application_wrapping_reports_only_encryption_at_rest() {
+    let application_wrapped = ProtectorCapabilities::new(
+        KeyStorageProtection::ApplicationWrapped,
+        DeviceBinding::Unknown,
+        UserPresence::None,
+        BackupExposure::MayBackup,
+    );
+
+    assert!(application_wrapped.supports(ProtectionLevel::EncryptedAtRest));
+    assert!(!application_wrapped.supports(ProtectionLevel::DeviceBound));
+    assert!(!application_wrapped.supports(ProtectionLevel::FreshUserPresence));
+}
+
+#[test]
+fn application_wrapping_cannot_claim_os_protected_levels() {
+    let application_wrapped_device_only = ProtectorCapabilities::new(
+        KeyStorageProtection::ApplicationWrapped,
+        DeviceBinding::ThisDeviceOnly,
+        UserPresence::None,
+        BackupExposure::Excluded,
+    );
+    let application_wrapped_fresh = ProtectorCapabilities::new(
+        KeyStorageProtection::ApplicationWrapped,
+        DeviceBinding::ThisDeviceOnly,
+        UserPresence::FreshPrompt,
+        BackupExposure::Excluded,
+    );
+
+    assert!(application_wrapped_device_only.supports(ProtectionLevel::EncryptedAtRest));
+    assert!(!application_wrapped_device_only.supports(ProtectionLevel::DeviceBound));
+    assert!(!application_wrapped_fresh.supports(ProtectionLevel::FreshUserPresence));
+}
+
+#[test]
 fn vault_policy_records_the_minimum_protector_evidence() {
     assert_eq!(
         VaultPolicy::new(10, 60)

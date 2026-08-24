@@ -165,7 +165,7 @@ the chosen transport, but should not possess message keys or plaintext.
 
 ### Current Phase 1 evidence
 
-The active Rust laboratory now contains thirteen narrow pieces of this architecture:
+The active Rust laboratory now contains fourteen narrow pieces of this architecture:
 
 - `session-protocol` encodes and strictly verifies deterministic signed
   secret-capability invitation v1/v2 layouts and owns ADR 0014's bounded
@@ -208,7 +208,15 @@ The active Rust laboratory now contains thirteen narrow pieces of this architect
   visibility, exact retry recovery, and delivery leasing. It is not storage.
 - `session-storage` is a deterministic in-memory conformance model for the
   session-scoped sealed-vault lifecycle and bounded canonical opaque receipt.
-  It is not encrypted or durable storage and has no production key protector.
+  It rechecks the unlock deadline after provider completion and rejects a late
+  result, but does not cancel provider work. It is not encrypted or durable
+  storage and has no production key protector.
+- `key-protector-passphrase` is the bounded ADR 0019 conformance adapter. It
+  derives a KEK with exact RustCrypto Argon2id and wraps one random 32-byte key
+  with exact AWS-LC AES-256-GCM in a closed 102-byte record authenticated to an
+  out-of-band expected `SessionId`. It reuses `session-storage` factual
+  capability and secret-key types but does not implement `SessionKeyProtector`,
+  drive `SessionVaultModel`, or supply SQLCipher.
 - `storage-sqlcipher` is a file-backed encrypted durability-laboratory adapter
   for the real inviter and joiner MLS persistence calls. It is not connected to
   a platform key protector and provides no rollback or production claim.
@@ -404,6 +412,7 @@ session-chat/
 |   |-- admission-credential/
 |   |-- admission-capability/
 |   |-- session-storage/
+|   |-- key-protector-passphrase/
 |   |-- session-transport/
 |   |-- transport-memory/
 |   |-- transport-conformance/
