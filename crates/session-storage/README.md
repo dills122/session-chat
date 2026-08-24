@@ -5,7 +5,12 @@ contracts. Its first implementation is a deterministic in-memory conformance
 model for:
 
 - `Sealed -> Unlocking -> Open(session) -> Relocking -> Sealed` transitions;
-- linear generation tokens that reject stale unlock, relock, and import ABA;
+- linear vault-instance/session/generation-bound unlock completions that reject
+  stale, foreign-owner, relock, and import ABA;
+- provider work prepared outside the lifecycle owner, with a nonzero shared
+  concurrency bound and no internal queue;
+- exact-session one-shot credential acquisition that fails before provider work
+  when the request was cancelled or the selected protection is insufficient;
 - immediate sealing on explicit lock, timeout, screen lock, sleep, logout, or
   process-exit events;
 - rejection of decrypt, signing, admission, receive-capability read,
@@ -15,7 +20,9 @@ model for:
 
 The deterministic clock and key protector are test providers. The protector
 retains an unwrapped fixture key in memory and provides no at-rest or
-user-presence evidence.
+user-presence evidence. The orchestration model invalidates queued work and
+discards results that return after cancellation, replacement, or deadline; it
+does not preempt provider work already running.
 
 This crate does not provide encrypted persistence, SQLCipher integration,
 platform keychain or secure-hardware protection, a production inbox, durable

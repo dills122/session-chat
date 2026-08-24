@@ -96,12 +96,15 @@ retained test and coarse CLI output satisfy the no-GUI/no-network laboratory
 acceptance path. Durable state, human approval, and a network profile remain
 separate gates.
 
-The first `session-storage` increment now makes the selected sealed-vault
-lifecycle and locked-mode capability matrix executable. Its deterministic
+The first `session-storage` increments now make the selected sealed-vault
+lifecycle and locked-mode capability matrix executable. The deterministic
 model permits bounded canonical opaque receipt in every state and binds local
-import to the exact open session, vault generation, and inbox insertion. It now
-rechecks the unlock deadline after provider completion and rejects a late result;
-the conformance test does not cancel in-flight provider work. A
+import to the exact open session, vault generation, and inbox insertion. ADR
+0020 now moves protector work outside the lifecycle owner, binds every result
+to one vault instance/session/generation, bounds concurrent attempts, and uses
+exact-session one-shot credentials. Cancellation stops work that has not
+entered the provider and discards a late result; synchronous provider work
+already running cannot be preempted. A
 platform-linked durable client store, integrated product MLS persistence,
 platform user-presence adapters, rollback resistance, broader crash recovery,
 and secure-deletion evidence remain outstanding. The separate SQLCipher
@@ -117,12 +120,14 @@ key-wrapper conformance experiment: exact Argon2id 0.5.3 and AWS-LC 1.16.3
 AES-256-GCM, one fixed measurement profile, a closed 102-byte record,
 authentication to the expected `SessionId`, coarse failures, and hostile-input
 pre-work bounds.
-This completes only the isolated construction checkpoint. The adapter does not
-implement the vault lifecycle protector, supply SQLCipher, or select a
-production portable baseline. Three-OS performance and memory measurements,
-credential acquisition, cancellation/result discard, atomic persistence and key
-handoff, recovery, rekey and rollback policy, offline-guessing UX, native
-enhancements, and independent boundary review remain gates.
+This completes the isolated construction and bounded lifecycle-orchestration
+checkpoints. The adapter now implements the exact-session protector and consumes
+a one-shot credential without retaining it, but does not supply SQLCipher or
+select a production portable baseline. Three-OS performance and memory
+measurements, desktop credential acquisition, a production scheduler, atomic
+persistence and key handoff, recovery, rekey and rollback policy,
+offline-guessing UX, native enhancements, and independent boundary review
+remain gates.
 
 Contract hardening rules preserved by the current in-memory flow and required
 for the remaining headless and durable composition:

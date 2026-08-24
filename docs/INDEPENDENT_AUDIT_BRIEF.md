@@ -63,7 +63,11 @@ The checked-in runtime consists of:
   duplicate, hold/release reordering, retry, and acknowledgement behavior;
 - `session-storage`: a deterministic in-memory sealed-session lifecycle and
   bounded canonical opaque-inbox conformance model with generation-bound local
-  import, but no encrypted or durable persistence;
+  import plus bounded external unlock preparation, one-shot credentials, and
+  stale-result rejection, but no encrypted or durable persistence;
+- `key-protector-passphrase`: an exact-session non-production wrapped-key
+  protector using the fixed ADR 0019 construction through the ADR 0020 unlock
+  boundary, but no SQLCipher or desktop credential path;
 - `storage-sqlcipher`: an encrypted file-backed laboratory adapter exercising
   the real inviter and joiner MLS storage calls on the required Linux, macOS,
   and Windows CI runners;
@@ -144,10 +148,11 @@ flowchart LR
 | One headless two-client flow composes protected join through removal | Implemented and tested in memory | `sessionctl` creates fresh Alice/Bob state, explicitly approves the exact capability request, delivers the MLS Welcome and protected traffic through local adapters, updates the epoch, removes Bob, and observes post-removal rejection; no durability, network, hosting, or UX claim |
 | Reusable or network mailbox rotation is a separate non-interchangeable right | Accepted contract, unimplemented | ADR 0010; the one-use local profile deliberately has no rotation operation, and Node simulator evidence does not establish production transport |
 | The Node simulator rejects unknown, cyclic, accessor-backed, symbol-keyed, deep, or oversized provider input before cloning or authorization | Implemented and tested | Retained non-production adversarial tests at directory and attestor entry points |
-| A sealed-session lifecycle and locked-mode capability matrix reject stale completion and gate privileged model operations | Implemented and tested in memory | ADR 0016 and `session-storage`; deterministic test protector only, with no durable or platform protection claim |
+| A sealed-session lifecycle and locked-mode capability matrix reject stale completion and gate privileged model operations | Implemented and tested in memory | ADRs 0016/0020 and `session-storage`; exact vault-instance/session/generation result binding, pre-provider cancellation checks, one-shot credentials, and bounded work are retained without a durable or production-scheduler claim |
 | Sealed mode accepts only bounded canonical opaque receipt, and local import requires the exact open and insertion generations | Implemented and tested in memory | `session-storage` malformed, expiry, quota, all-state append, and vault/inbox ABA tests; local removal is not remote acknowledgement |
 | Inviter MLS/join/Welcome state and joiner MLS/KeyPackage deletion are each one owner-local encrypted file transaction | Implemented and tested on three CI OS families | ADR 0017 and `storage-sqlcipher` use the real MLS storage path with rollback, ambiguous-result, exact-retry, wrong-key, and close/reopen evidence; hosted runners do not establish production packaging or broader platform support |
 | Key protector claims are factually capability-gated | Implemented and tested as a contract | `session-storage` rejects a protector weaker than `TestOnly`, `DeviceBound`, or `FreshUserPresence`; no native adapter exists |
+| The portable wrapped-key protector can drive the deterministic lifecycle without retaining a passphrase | Implemented and tested as non-production conformance | `key-protector-passphrase` owns only the wrapped record, consumes one exact-session credential, reports `ApplicationWrapped`/`MayBackup`, and remains disconnected from SQLCipher |
 | Local-app foundations require one common macOS, Windows, and Linux baseline | Accepted contract; CI gate implemented | ADR 0018 and the required Rust matrix; no desktop shell or portable production key protector exists yet |
 | Client secrets are protected by a production platform vault when not active | Accepted contract, unimplemented | SQLCipher accepts an external raw key, but no native protector supplies it and no rollback anchor exists |
 | A realm can be replaced without giving its operator content or membership authority | Proposed experiment | Compose and signed-realm-descriptor proposal; no service exists |

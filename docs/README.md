@@ -88,6 +88,9 @@ all.
 - [Portable key-wrapper laboratory decision](adr/0019-use-argon2id-and-aes-gcm-for-the-portable-key-wrapper-laboratory.md)
   fixes one Argon2id/AES-256-GCM conformance construction and its limits without
   selecting a production key-protection baseline.
+- [Vault unlock orchestration decision](adr/0020-separate-vault-unlock-work-from-lifecycle-acceptance.md)
+  separates bounded credential/protector work from generation-bound lifecycle
+  acceptance without claiming preemptive KDF cancellation or durable key use.
 - [Protected capability join specification](specs/PROTECTED_CAPABILITY_JOIN_V1.md)
   assigns the fixed-array layouts, code points, cryptographic contexts, parsing
   order, mailbox lifecycle, and retained-evidence gates for ADR 0014.
@@ -219,19 +222,22 @@ simulated approval, Welcome delivery, bidirectional MLS application messages,
 path update, removal, and post-removal rejection. It prints only coarse
 milestones and is neither a durable nor networked client.
 The `session-storage` crate now retains a deterministic in-memory conformance
-model for one-session unsealing, forced relock events, stale-completion
-rejection, post-provider unlock-deadline enforcement, and bounded canonical
-opaque receipt/import. The late-unlock test proves only that the current
-deterministic lifecycle discards the result; it does not cancel in-flight
-provider work. The crate provides no
-encrypted persistence, platform key protector, durability, rollback, or crash
-recovery claim.
+model for one-session unsealing, bounded external unlock work, exact-session
+one-shot credential acquisition, forced relock events, stale/foreign-owner
+completion rejection, post-provider unlock-deadline enforcement, and bounded
+canonical opaque receipt/import. Cancellation invalidates work that has not
+entered the provider and discards a key returned by already-running work; it
+does not preempt that provider operation. The crate provides no encrypted
+persistence, production scheduler, durability, rollback, or crash-recovery
+claim.
 The separate `key-protector-passphrase` crate now retains ADR 0019's bounded
 portable wrapping experiment: one fixed Argon2id/AES-256-GCM construction and
 closed 102-byte record authenticated to an expected `SessionId`. It reports
 only `ApplicationWrapped`, device-binding `Unknown`, user-presence `None`, and
-`MayBackup` capabilities. It does not implement the vault lifecycle protector,
-supply SQLCipher, or establish a production key-protection baseline.
+`MayBackup` capabilities. Its exact-session protector owns the wrapped record
+and consumes one passphrase through ADR 0020's bounded lifecycle contract. It
+does not supply SQLCipher, provide product credential UI, or establish a
+production key-protection baseline.
 The separate `storage-sqlcipher` crate now exercises both owner-local
 transactions through the real MLS storage path and recovers them after close
 and reopen on the required Linux, macOS, and Windows CI runners. It is not wired

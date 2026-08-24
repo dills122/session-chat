@@ -1,6 +1,6 @@
 # ADR 0016: Use a session-scoped sealed-vault contract
 
-Status: accepted; deterministic lifecycle and opaque-inbox conformance model implemented
+Status: accepted; deterministic lifecycle, unlock orchestration, and opaque-inbox conformance implemented
 
 Date: 2026-08-20
 
@@ -44,9 +44,13 @@ Sealed -> Unlocking -> Open(session) -> Relocking -> Sealed
 - The UI is not a vault or membership authority. A later application boundary
   must expose narrow commands rather than generic key or database access.
 
-`session-storage` retains the first deterministic conformance model. Its clock
-and key protector are explicitly non-production test providers. The model
-stores no durable user data and exposes no network or UI path.
+`session-storage` retains the first deterministic conformance model. ADR 0020
+separates provider work from lifecycle acceptance: one non-cloneable request is
+bound to the exact vault instance, session, generation, and minimum policy;
+bounded work returns a candidate completion that the lifecycle independently
+accepts or discards. Its clock and deterministic protector remain explicitly
+non-production test providers. The model stores no durable user data and
+exposes no network or UI path.
 
 ## Required future gates
 

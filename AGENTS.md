@@ -57,8 +57,12 @@ Current areas:
 - `crates/session-inviter-transaction`: bounded, fault-injectable conformance
   model for inviter-local atomic join and Welcome-outbox recovery semantics;
   not a durable storage implementation
-- `crates/session-storage`: deterministic sealed-session lifecycle and bounded
-  opaque-inbox conformance model; not encrypted or durable storage
+- `crates/session-storage`: deterministic sealed-session lifecycle, bounded
+  external unlock-work/result orchestration, one-shot credential boundary, and
+  bounded opaque-inbox conformance model; not encrypted or durable storage
+- `crates/key-protector-passphrase`: exact-session portable wrapped-key
+  protector behind the shared bounded unlock contract; not production key
+  protection and not connected to SQLCipher
 - `crates/storage-sqlcipher`: file-backed encrypted durability-laboratory
   adapter for the real inviter and joiner MLS transactions; not production storage
 - `apps/sessionctl`: headless two-client Phase 1 composition and conformance

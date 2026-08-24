@@ -121,9 +121,13 @@ execution.
 - This decision adds no SQLCipher wiring, recovery, rekey transaction, rollback
   anchor, device binding, user presence, secure deletion, UI, or production
   storage claim.
+- ADR 0020 now permits only the deterministic lifecycle model to use an
+  exact-session protector backed by this construction. The protector owns the
+  wrapped record, consumes one passphrase credential per attempt, shares a
+  nonzero concurrency limit, and returns a generation-bound candidate result.
 - No durable or product path may use this construction until three-OS
-  measurements, dependency review, lifecycle cancellation/result-discard,
-  credential acquisition, atomic persistence and key handoff, rollback policy,
+  measurements, dependency review, desktop credential acquisition, production
+  scheduling/isolation, atomic persistence and key handoff, rollback policy,
   and independent boundary review are complete.
 
 ## Alternatives

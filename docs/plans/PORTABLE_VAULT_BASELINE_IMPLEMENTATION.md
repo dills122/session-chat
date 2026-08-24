@@ -1,6 +1,6 @@
 # Implementation plan: portable vault-key baseline
 
-Status: in progress; bounded non-production conformance adapter selected
+Status: completed checkpoint; bounded non-production conformance adapter selected
 
 Date: 2026-08-24
 
@@ -126,9 +126,11 @@ AES-256-GCM implementation. Version 1 accepts one fixed Argon2id v1.3
 measurement profile (`m=65,536 KiB`, `t=3`, `p=4`), a 16-byte random salt, a
 32-byte derived KEK, a 12-byte random nonce, and a random 32-byte wrapped key.
 The profile is an RFC 9106 measurement starting point, not a final performance
-or production parameter claim. The adapter remains outside the lifecycle and
-SQLCipher product paths until cancellation, credential acquisition, key
-handoff, persistence, rollback, and three-OS measurement gates are decided.
+or production parameter claim. ADR 0020 subsequently connects an exact-session
+protector only to the deterministic lifecycle model. The adapter remains
+outside SQLCipher and all product paths until desktop credential acquisition,
+production scheduling, key handoff, persistence, rollback, and three-OS
+measurement gates are decided.
 
 ### PV-05: provider-neutral contract and failing tests
 
@@ -176,7 +178,7 @@ final Clippy and whole-workspace evidence are recorded under PV-07.
 
 **Owner:** lead agent
 
-**Status:** in progress
+**Status:** completed
 
 **Dependencies:** PV-06
 
@@ -187,6 +189,13 @@ review before declaring the checkpoint ready.
 **Verification:** Run repository policy checks, complete Rust format/Clippy/
 test/rustdoc gates, dependency policy, and the Linux/macOS/Windows CI matrix.
 Report any check that can only be completed by CI.
+
+**Evidence:** The merged checkpoint passed repository policy, Rust format,
+Clippy, test, rustdoc, dependency policy, retained Node tests, CodeQL, and the
+required Linux/macOS/Windows matrix. Independent security and maintainer review
+found and then verified the capability-lattice correction before merge. This
+closes only the isolated construction plan; ADR 0020 owns the subsequent
+lifecycle-orchestration increment.
 
 ## Decision constraints carried forward
 

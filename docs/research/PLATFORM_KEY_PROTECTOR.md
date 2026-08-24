@@ -31,11 +31,13 @@ AWS-LC 1.16.3 AES-256-GCM then wraps one random 32-byte vault/database key with
 a 16-byte random salt and 12-byte random nonce. The fixed authenticated record
 is bound to a caller-supplied expected `SessionId`.
 
-This does not select the production portable baseline. Parameter measurement,
-offline-guessing exposure, credential acquisition, cancellation, recovery,
-rekey and rollback behavior, secret-memory limits, atomic database-key handoff,
-and cross-platform UX still need retained evidence. No SQLCipher or product path
-uses the adapter.
+This does not select the production portable baseline. ADR 0020 now supplies a
+bounded process-local lifecycle contract for one-shot credential handoff,
+pre-provider cancellation checks, concurrent-work rejection, and stale-result
+discard. Parameter measurement, offline-guessing exposure, desktop credential
+capture, production scheduling/isolation, recovery, rekey and rollback
+behavior, secret-memory limits, atomic database-key handoff, and cross-platform
+UX still need retained evidence. No SQLCipher or product path uses the adapter.
 
 ## Evidence
 
