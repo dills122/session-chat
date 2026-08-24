@@ -2,6 +2,7 @@
 members = [
   "apps/sessionctl",
   "crates/admission-capability",
+  "crates/key-protector-passphrase",
   "crates/session-admission",
   "crates/session-core",
   "crates/session-crypto",
@@ -21,6 +22,7 @@ edition = "2024"
 license = "MIT"
 
 [workspace.dependencies]
+argon2 = { version = "=0.5.3", default-features = false, features = ["zeroize"] }
 ed25519-dalek = { version = "=3.0.0", default-features = false, features = ["fast", "zeroize"] }
 aws-lc-rs = { version = "=1.16.3", default-features = false, features = ["non-fips"] }
 minicbor = { version = "=2.3.0", features = ["std"] }

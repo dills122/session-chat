@@ -356,10 +356,24 @@ later packaging decision, not an initial requirement.
   native stores cannot provide one uniform claim. ADR 0018 withdraws the
   macOS-first order and requires a portable baseline plus Linux/macOS/Windows
   CI before native enhanced modes.
-- Evaluate the portable passphrase-derived KEK candidate with RFC 9106 Argon2id
-  test vectors and a reviewed AEAD for wrapping a random vault key. Measure
-  parameters, cancellation, offline-guessing cost, memory clearing, rekey,
-  recovery, and equivalent UX on all three supported families before selection.
+- **Bounded construction selected for conformance only:** ADR 0019 and
+  `key-protector-passphrase` fix exact RustCrypto `argon2` 0.5.3 with only its
+  `zeroize` feature, AWS-LC 1.16.3 AES-256-GCM, one fixed RFC 9106-derived
+  measurement profile, and a closed expected-`SessionId`-bound 102-byte record.
+  This is not the selected production baseline and is not wired to the vault
+  lifecycle or SQLCipher.
+- Measure the fixed Argon2id `m=65,536 KiB`, `t=3`, `p=4` profile's wall-clock
+  latency and peak memory on minimum supported Linux, macOS, and Windows
+  hardware, including low-memory and concurrent-load behavior. CI conformance
+  alone is not representative endpoint performance evidence.
+- Decide credential acquisition, offline-guessing UX and cost assumptions,
+  bounded concurrency, result discard after lifecycle cancellation, atomic
+  database-key handoff, rekey, recovery, and rollback behavior before selecting
+  a production portable baseline. The synchronous KDF cannot be preemptively
+  cancelled once started.
+- Independently review RustCrypto `argon2` 0.5.3 or retain the explicit unknown;
+  no primary-source independent audit was found. Decide whether the incomplete
+  evidence for native AWS-LC AEAD key-schedule cleanup is acceptable.
 - Evaluate Tauri and Rust integration with platform keychains and secure
   hardware.
 - Define database encryption, key hierarchy, lock behavior, and crash recovery.

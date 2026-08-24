@@ -1,8 +1,10 @@
-use std::cell::Cell;
+use std::{cell::Cell, rc::Rc};
 
 use session_storage::{
-    DeterministicClock, DeterministicKeyProtector, LockEvent, OpaqueInboxPolicy, SessionId,
-    SessionVaultModel, VaultError, VaultOperation, VaultPolicy, VaultState,
+    BackupExposure, DeterministicClock, DeterministicKeyProtector, DeterministicProtectorError,
+    DeviceBinding, KeyStorageProtection, LockEvent, OpaqueInboxPolicy, ProtectorCapabilities,
+    SessionId, SessionKeyProtector, SessionVaultModel, UnsealedSessionKey, UserPresence,
+    VaultClock, VaultError, VaultOperation, VaultPolicy, VaultState,
 };
 
 const NOW: u64 = 2_000_000_000;
@@ -32,6 +34,50 @@ fn unlock(
     vault
         .complete_unlock(attempt)
         .expect("complete deterministic unlock");
+}
+
+#[derive(Clone)]
+struct SharedClock(Rc<Cell<u64>>);
+
+impl VaultClock for SharedClock {
+    fn now_unix_seconds(&self) -> u64 {
+        self.0.get()
+    }
+}
+
+struct TimeAdvancingProtector {
+    clock: SharedClock,
+    session_id: SessionId,
+}
+
+impl SessionKeyProtector for TimeAdvancingProtector {
+    type Error = DeterministicProtectorError;
+
+    fn capabilities(&self) -> ProtectorCapabilities {
+        ProtectorCapabilities::new(
+            KeyStorageProtection::TestOnly,
+            DeviceBinding::Unknown,
+            UserPresence::None,
+            BackupExposure::Unknown,
+        )
+    }
+
+    fn unseal_session_key(
+        &mut self,
+        session_id: SessionId,
+    ) -> Result<UnsealedSessionKey, Self::Error> {
+        if session_id != self.session_id {
+            return Err(DeterministicProtectorError);
+        }
+        self.clock.0.set(
+            self.clock
+                .0
+                .get()
+                .checked_add(30)
+                .expect("test time does not overflow"),
+        );
+        UnsealedSessionKey::from_provider_bytes([0x31; 32]).map_err(|_| DeterministicProtectorError)
+    }
 }
 
 #[test]
@@ -134,6 +180,26 @@ fn stale_unlock_completion_cannot_open_a_new_generation() {
         .complete_unlock(current)
         .expect("current generation still opens");
     assert_eq!(vault.state(), VaultState::Open);
+}
+
+#[test]
+fn unlock_expiring_during_unseal_does_not_open() {
+    let selected = session_id(0x11);
+    let clock = SharedClock(Rc::new(Cell::new(NOW)));
+    let protector = TimeAdvancingProtector {
+        clock: clock.clone(),
+        session_id: selected,
+    };
+    let mut vault = SessionVaultModel::new(
+        VaultPolicy::new(30, 60).expect("valid vault policy"),
+        OpaqueInboxPolicy::new(300, 4, 256 * 1024).expect("valid inbox policy"),
+        clock,
+        protector,
+    );
+    let attempt = vault.begin_unlock(selected).expect("begin unlock");
+
+    assert_eq!(vault.complete_unlock(attempt), Err(VaultError::Rejected));
+    assert_eq!(vault.state(), VaultState::Sealed);
 }
 
 #[test]

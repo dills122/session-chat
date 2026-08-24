@@ -60,6 +60,8 @@ impl SessionId {
 pub enum ProtectionLevel {
     /// Deterministic conformance tests may use an in-memory protector.
     TestOnly,
+    /// The key is encrypted at rest without claiming device binding or presence.
+    EncryptedAtRest,
     /// The key is OS-protected, device-only, and excluded from migration/backup.
     DeviceBound,
     /// Device-bound protection additionally requires a fresh platform prompt.
@@ -71,6 +73,8 @@ pub enum ProtectionLevel {
 pub enum KeyStorageProtection {
     /// Plain fixture material retained only for deterministic tests.
     TestOnly,
+    /// The application stores only a cryptographically wrapped key.
+    ApplicationWrapped,
     /// An operating-system credential or protected-data service.
     OperatingSystem,
     /// Hardware-backed protection demonstrated by the concrete adapter.
@@ -141,9 +145,17 @@ impl ProtectorCapabilities {
     pub const fn supports(self, level: ProtectionLevel) -> bool {
         match level {
             ProtectionLevel::TestOnly => true,
+            ProtectionLevel::EncryptedAtRest => matches!(
+                self.key_storage,
+                KeyStorageProtection::ApplicationWrapped
+                    | KeyStorageProtection::OperatingSystem
+                    | KeyStorageProtection::SecureHardware
+            ),
             ProtectionLevel::DeviceBound => {
-                !matches!(self.key_storage, KeyStorageProtection::TestOnly)
-                    && matches!(self.device_binding, DeviceBinding::ThisDeviceOnly)
+                matches!(
+                    self.key_storage,
+                    KeyStorageProtection::OperatingSystem | KeyStorageProtection::SecureHardware
+                ) && matches!(self.device_binding, DeviceBinding::ThisDeviceOnly)
                     && matches!(self.backup_exposure, BackupExposure::Excluded)
             }
             ProtectionLevel::FreshUserPresence => {
@@ -588,7 +600,11 @@ impl<C: VaultClock, P: SessionKeyProtector> SessionVaultModel<C, P> {
             .protector
             .unseal_session_key(session_id)
             .map_err(|_| VaultError::ProviderFailure)?;
-        let idle_expires_at_unix_seconds = now
+        let completed_at_unix_seconds = self.clock.now_unix_seconds();
+        if expires_at_unix_seconds <= completed_at_unix_seconds {
+            return Err(VaultError::Rejected);
+        }
+        let idle_expires_at_unix_seconds = completed_at_unix_seconds
             .checked_add(self.policy.idle_timeout_seconds)
             .ok_or(VaultError::Rejected)?;
         self.state = LifecycleState::Open {

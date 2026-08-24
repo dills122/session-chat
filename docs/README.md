@@ -85,6 +85,9 @@ all.
 - [Cross-platform local-app decision](adr/0018-require-cross-platform-local-app-baselines.md)
   requires one common macOS, Windows, and Linux baseline and merge gate before
   any native local capability is considered implemented.
+- [Portable key-wrapper laboratory decision](adr/0019-use-argon2id-and-aes-gcm-for-the-portable-key-wrapper-laboratory.md)
+  fixes one Argon2id/AES-256-GCM conformance construction and its limits without
+  selecting a production key-protection baseline.
 - [Protected capability join specification](specs/PROTECTED_CAPABILITY_JOIN_V1.md)
   assigns the fixed-array layouts, code points, cryptographic contexts, parsing
   order, mailbox lifecycle, and retained-evidence gates for ADR 0014.
@@ -102,7 +105,10 @@ all.
   spike without selecting a production storage dependency.
 - [Platform key-protector decision packet](research/PLATFORM_KEY_PROTECTOR.md)
   separates macOS, Windows, and Linux protection semantics and frames the
-  portable-baseline decision that must precede native enhancements.
+  bounded portable laboratory and remaining production decision gates.
+- [Portable vault-key baseline implementation plan](plans/PORTABLE_VAULT_BASELINE_IMPLEMENTATION.md)
+  tracks the decision, closed format, hostile-input tests, three-OS evidence,
+  and explicit stop before SQLCipher or product wiring.
 - [Superseded OpenMLS decision](adr/0011-select-openmls-for-the-phase-1-laboratory.md)
   retains the bounded OpenMLS evaluation and its dependency blocker.
 - [MLS implementation comparison](research/MLS_IMPLEMENTATION_COMPARISON.md)
@@ -214,9 +220,18 @@ path update, removal, and post-removal rejection. It prints only coarse
 milestones and is neither a durable nor networked client.
 The `session-storage` crate now retains a deterministic in-memory conformance
 model for one-session unsealing, forced relock events, stale-completion
-rejection, and bounded canonical opaque receipt/import. It provides no
+rejection, post-provider unlock-deadline enforcement, and bounded canonical
+opaque receipt/import. The late-unlock test proves only that the current
+deterministic lifecycle discards the result; it does not cancel in-flight
+provider work. The crate provides no
 encrypted persistence, platform key protector, durability, rollback, or crash
 recovery claim.
+The separate `key-protector-passphrase` crate now retains ADR 0019's bounded
+portable wrapping experiment: one fixed Argon2id/AES-256-GCM construction and
+closed 102-byte record authenticated to an expected `SessionId`. It reports
+only `ApplicationWrapped`, device-binding `Unknown`, user-presence `None`, and
+`MayBackup` capabilities. It does not implement the vault lifecycle protector,
+supply SQLCipher, or establish a production key-protection baseline.
 The separate `storage-sqlcipher` crate now exercises both owner-local
 transactions through the real MLS storage path and recovers them after close
 and reopen on the required Linux, macOS, and Windows CI runners. It is not wired
