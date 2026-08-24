@@ -10,6 +10,8 @@
 - [ ] Security-boundary changes include the applicable expired, replayed, duplicated, reordered, unauthorized, rollback, and resource-exhaustion tests.
 - [ ] Admission changes bind the exact KeyPackage, credential identity, and leaf key; transport changes preserve right-specific authority and private-mode no-downgrade.
 - [ ] A consequential security or protocol decision updates its ADR and the threat model.
+- [ ] Local-app changes preserve one macOS/Windows/Linux baseline and keep
+  native enhancements behind provider-neutral capability contracts.
 - [ ] No plaintext, key, bearer capability, provider token, or stable external identity was added to envelopes, logs, fixtures, or CI artifacts.
 
 ## Verification

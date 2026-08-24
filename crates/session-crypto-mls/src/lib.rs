@@ -18,6 +18,7 @@ use mls_rs::{
         basic::{BasicCredential, BasicIdentityProvider},
     },
 };
+use mls_rs_core::{group::GroupStateStorage, key_package::KeyPackageStorage};
 use mls_rs_crypto_awslc::AwsLcCryptoProvider;
 use session_crypto::{
     ApplicationMessage, MessageEvent, MessageSession, MessageSessionError, ProtectedMessage,
@@ -103,7 +104,7 @@ fn nonzero<const N: usize>(bytes: [u8; N]) -> Result<[u8; N], MlsAdapterError> {
         .ok_or(MlsAdapterError::InvalidIdentifier)
 }
 
-/// A client whose MLS state is isolated to in-memory provider repositories.
+/// A client whose MLS state is isolated behind configured provider repositories.
 pub struct SessionMlsClient<C: MlsConfig> {
     inner: Client<C>,
     credential_identity: SessionCredentialId,
@@ -151,6 +152,53 @@ pub fn create_client() -> Result<SessionMlsClient<impl MlsConfig>, MlsAdapterErr
     }
 
     create_client_with_credential_identity(SessionCredentialId(bytes), crypto)
+}
+
+/// Creates a Phase 1 client with caller-owned MLS group and KeyPackage stores.
+///
+/// The stores remain separate provider types because `mls-rs` invokes them
+/// separately. A durable implementation that needs one joiner-local transaction
+/// must coordinate those two trait calls behind shared provider state.
+pub fn create_client_with_storage<G, K>(
+    group_state_storage: G,
+    key_package_storage: K,
+) -> Result<SessionMlsClient<impl MlsConfig>, MlsAdapterError>
+where
+    G: GroupStateStorage + Clone,
+    K: KeyPackageStorage + Clone,
+{
+    let crypto = AwsLcCryptoProvider::default();
+    let cipher_suite = crypto
+        .cipher_suite_provider(CIPHERSUITE)
+        .ok_or(MlsAdapterError::UnexpectedProviderOutput)?;
+    let mut credential_identity = [0; SESSION_CREDENTIAL_ID_BYTES];
+    cipher_suite
+        .random_bytes(&mut credential_identity)
+        .map_err(|_| MlsAdapterError::ProtocolRejected)?;
+    if credential_identity.iter().all(|byte| *byte == 0) {
+        return Err(MlsAdapterError::UnexpectedProviderOutput);
+    }
+    let (secret, public) = cipher_suite
+        .signature_key_generate()
+        .map_err(|_| MlsAdapterError::ProtocolRejected)?;
+    let identity = SigningIdentity::new(
+        BasicCredential::new(credential_identity.to_vec()).into_credential(),
+        public,
+    );
+    let inner = Client::builder()
+        .identity_provider(BasicIdentityProvider)
+        .crypto_provider(crypto)
+        .key_package_repo(key_package_storage)
+        .group_state_storage(group_state_storage)
+        .protocol_version(ProtocolVersion::MLS_10)
+        .key_package_lifetime(KEY_PACKAGE_LIFETIME)
+        .signing_identity(identity, secret, CIPHERSUITE)
+        .build();
+
+    Ok(SessionMlsClient {
+        inner,
+        credential_identity: SessionCredentialId(credential_identity),
+    })
 }
 
 /// Bounded serialized KeyPackage produced by a Session Chat client.
@@ -514,6 +562,17 @@ impl<C: MlsConfig> SessionMlsGroup<C> {
     #[must_use]
     pub const fn group_id(&self) -> &[u8; SESSION_GROUP_ID_BYTES] {
         self.group_id.as_bytes()
+    }
+
+    /// Persists the provider's complete current snapshot and pending epochs.
+    ///
+    /// For a joining client, `mls-rs` subsequently asks its configured
+    /// KeyPackage store to delete the exact one-time KeyPackage. A durable
+    /// provider must make those owner-local effects atomic.
+    pub fn write_to_storage(&mut self) -> Result<(), MlsAdapterError> {
+        self.inner
+            .write_to_storage()
+            .map_err(|_| MlsAdapterError::ProtocolRejected)
     }
 
     /// Prepares an Add without applying its pending group state.

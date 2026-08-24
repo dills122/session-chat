@@ -17,26 +17,42 @@ The Rust workspace currently contains:
   protected-join outer, inner, AAD, and local deposit-endpoint value types
 - `session-core`, with configurable expiration checks and a bounded inviter-owned
   v1/v2 availability, reservation, release, and post-membership consumption lifecycle
+- `session-admission`, with an object-safe, provider-neutral approval context
+  that exposes no proof, bearer capability, parsed KeyPackage, or membership authority
 - `session-crypto-hpke`, with provider-neutral one-shot RFC 9180 PSK join
   protection, an AWS-LC implementation, an RFC known-answer vector, and an
   independent-provider interoperability test, plus provider-owned creation of
   every random invitation-v2 field
 - `admission-capability`, with HPKE-proof provenance, exact provider-validated
   KeyPackage ownership, bounded in-memory request-ID/nonce replay reservation,
-  exact v2 invitation binding, explicit simulated approval, and
+  exact v2 invitation binding, the shared non-authorizing approval seam, and
   ownership-preserving invitation/MLS prepare/apply coordination
 - `session-crypto-mls`, with an isolated in-memory two-party MLS 1.0 adapter for
   bounded KeyPackage validation, Add/Welcome, messages, path updates, and removal
 - `session-transport`, with provider-generated, right-specific local Welcome
-  mailboxes, one-envelope idempotency, expiry, and bounded in-memory state
+  mailboxes, one-envelope idempotency, expiry, bounded in-memory state, and the
+  provider-neutral right-specific opaque-envelope transport contract
+- `transport-memory`, with bounded deterministic drop, hold, duplicate,
+  reordering, retry, and acknowledgement controls for headless protocol tests
 - `session-inviter-transaction`, with a bounded fault-injectable conformance
   model for atomic invitation/replay/approval/MLS-snapshot/Welcome-outbox state
+- `session-storage`, with a deterministic session-scoped sealed-vault lifecycle,
+  stale-completion rejection, and a bounded canonical opaque inbox whose local
+  import requires the exact open session and state generation
+- `storage-sqlcipher`, with a keyed file-backed laboratory adapter proving the
+  real inviter MLS/join/outbox transaction and the separate joiner MLS plus
+  one-time-KeyPackage deletion transaction on required Linux, macOS, and
+  Windows CI runners
+- `sessionctl`, with a headless Alice/Bob conformance flow covering protected
+  join, explicit approval, Welcome delivery, bidirectional MLS messages, path
+  update, removal, and post-removal rejection over the in-memory adapters
 
 The signing key authenticates the invitation bytes, not a GitHub identity or
 person. The capability invitation is a secret bearer object and must not be
-posted publicly or placed in a transport envelope. The MLS adapter has no
-durable storage or network path; the capability adapter coordinates it only
-through the in-memory approval-gated path described below.
+posted publicly or placed in a transport envelope. The MLS adapter exposes a
+generic persistence boundary, but the capability adapter and headless client
+still coordinate it only through the in-memory approval-gated path described
+below; neither has a durable or network path.
 The protected-join and capability-admission adapters prove possession for one
 exact typed HPKE context, preserve the exact signed-invitation instance,
 independently validate and own the exact KeyPackage, and reserve replay values
@@ -46,12 +62,30 @@ expiry, pre-commit failure, or abandonment releases both reservations; a
 successful in-memory Add consumes invitation state. This sequencing is not a
 durable transaction. A separate conformance model now proves the required
 atomic visibility, ambiguous-commit recovery, and resumable Welcome-outbox
-semantics over bounded memory records. A durable adapter, real cross-layer
-persistence, durable or network mailbox behavior, human UI approval, and a user
-interface remain unimplemented. The in-memory approved-join result now carries
+semantics over bounded memory records. The SQLCipher laboratory separately
+proves both owner-local transactions through actual MLS persistence calls.
+Integrated cross-layer product persistence, durable outbox delivery, network
+mailbox behavior, human approval UX, and a user-facing chat interface remain
+unimplemented. The in-memory approved-join result now carries
 only the exact authenticated deposit endpoint beside its MLS outputs, and a
 retained test delivers the encrypted Welcome through the local adapter. This
 sequential path is not evidence for a durable outbox or network profile.
+The `sessionctl` binary composes those present pieces into one executable
+two-client flow and prints only coarse milestones. It is retained integration
+evidence, not a deployable client, human approval UX, durable vault, hosted
+realm, or production transport.
+
+The `session-storage` model now rejects key protectors whose factual capability
+report is weaker than the selected policy. `storage-sqlcipher` adds encrypted
+file-backed transaction evidence, but no platform protector connects them.
+The required cross-platform build matrix is now configured; rollback
+resistance, broader crash/fault testing, packaging, and production key
+protection remain unimplemented.
+
+ADR 0018 makes macOS, Windows, and Linux a single local-app delivery gate. The
+required Rust CI matrix now builds, lints, and tests the workspace on all three;
+native capabilities may add stronger modes behind shared interfaces, but a
+platform-only implementation is not considered a completed feature.
 
 ADR 0014 defines the exact local-only invitation-v2, HPKE capability-join, and
 one-Welcome response contract. Its canonical protocol value types are now
@@ -68,6 +102,7 @@ cargo clippy --workspace --all-targets --all-features --locked --offline -- -D w
 cargo test --workspace --all-features --locked --offline
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps --locked --offline
 cargo deny --all-features --locked check
+cargo run -p sessionctl --locked --offline
 ```
 
 The retained JavaScript research and repository tooling have no third-party
@@ -81,6 +116,7 @@ node scripts/check-repository.mjs
 
 ## Repository map
 
+- `apps/` contains headless composition and conformance clients.
 - `crates/` contains retained Rust protocol code.
 - `docs/` contains the product definition, architecture, threat model, roadmap,
   research, ADRs, and legacy evidence.

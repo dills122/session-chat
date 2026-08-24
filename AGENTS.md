@@ -40,6 +40,8 @@ Current areas:
 - `crates/session-protocol`: versioned wire objects and canonical serialization
 - `crates/session-core`: bounded inviter-owned invitation lifecycle state; descriptor
   validation is read-only and consumption follows successful membership
+- `crates/session-admission`: provider-neutral, non-authorizing approval context
+  and decision contract; concrete providers retain proof and membership authority
 - `crates/session-crypto-hpke`: provider-neutral one-shot capability join
   protection with a pinned AWS-LC implementation and fixed typed contexts
 - `crates/admission-capability`: automated capability-proof verification, exact
@@ -48,10 +50,19 @@ Current areas:
 - `crates/session-crypto-mls`: isolated in-memory two-party MLS adapter with
   bounded exact KeyPackage ownership and explicit prepare/apply transitions
 - `crates/session-transport`: bounded local one-Welcome mailbox with distinct
-  deposit, receive, and acknowledgement authorities
+  deposit, receive, and acknowledgement authorities plus the provider-neutral
+  right-specific opaque-envelope transport trait
+- `crates/transport-memory`: bounded deterministic delivery-fault adapter for
+  opaque-envelope headless and conformance tests; not a network transport
 - `crates/session-inviter-transaction`: bounded, fault-injectable conformance
   model for inviter-local atomic join and Welcome-outbox recovery semantics;
   not a durable storage implementation
+- `crates/session-storage`: deterministic sealed-session lifecycle and bounded
+  opaque-inbox conformance model; not encrypted or durable storage
+- `crates/storage-sqlcipher`: file-backed encrypted durability-laboratory
+  adapter for the real inviter and joiner MLS transactions; not production storage
+- `apps/sessionctl`: headless two-client Phase 1 composition and conformance
+  flow over the local adapters; not a networked or durable client
 - `spikes/`: disposable feasibility code; production packages must not depend on it
 - `docs/`: canonical v2 product, architecture, threat-model, protocol, ADR, and legacy-evidence baseline
 - `scripts/`: tested repository and AI Central setup tooling
@@ -65,7 +76,6 @@ Planned v2 areas:
   replay/result, invitation, membership, and Welcome-outbox state
 - later `session-transport` increments: durable outbox delivery and
   network-profile adapters
-- `apps/sessionctl`: headless protocol and conformance client
 
 When a change spans areas, update the shared contract first and preserve the
 dependency direction described in `docs/ARCHITECTURE_V2.md`.
@@ -87,6 +97,10 @@ dependency direction described in `docs/ARCHITECTURE_V2.md`.
   cryptographic primitives.
 - Record consequential security or protocol changes in an ADR and update the
   threat model in the same change.
+- Treat macOS, Windows, and Linux as supported local-app families from the
+  first retained increment. Keep native integrations behind provider-neutral
+  contracts, require one common baseline workflow, and do not call a
+  platform-only implementation complete.
 
 ## Contract-First Files
 
@@ -123,6 +137,9 @@ requires compatibility fixtures and negative tests before it is considered done.
 - Follow the pinned Rust toolchain and workspace lints. Retained Node scripts use
   ESM and built-in modules so they can be tested without an npm install.
 - Prefer deterministic, offline unit and integration tests for protocol work.
+- Build, lint, and test every local-app foundation on Linux, macOS, and Windows
+  CI from its first retained increment; platform-specific positive evidence is
+  additional, not a substitute for the common matrix.
 - Add malformed, expired, replayed, duplicated, reordered, unauthorized, and
   persistence-rollback cases at every untrusted boundary where they apply.
 - Update docs whenever setup, commands, contracts, wire behavior, or security

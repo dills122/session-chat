@@ -1,5 +1,8 @@
-use session_protocol::OpaqueEnvelope;
-use session_transport::{LocalMailboxPolicy, LocalMemoryWelcomeTransport, LocalTransportError};
+use session_protocol::{LocalWelcomeDepositEndpoint, OpaqueEnvelope};
+use session_transport::{
+    DeliveryId, EnvelopeTransport, LocalMailboxPolicy, LocalMemoryWelcomeTransport,
+    LocalTransportError, LocalWelcomeAcknowledgementCapability, LocalWelcomeReceiveCapability,
+};
 
 const NOW: u64 = 1_700_000_000;
 
@@ -15,6 +18,22 @@ fn envelope(id: u8, ciphertext: u8, expires_at: u64) -> OpaqueEnvelope {
         .expect("bounded opaque envelope")
 }
 
+fn deposit_through_contract<T>(
+    transport: &mut T,
+    endpoint: &LocalWelcomeDepositEndpoint,
+    envelope: OpaqueEnvelope,
+) -> Result<DeliveryId, LocalTransportError>
+where
+    T: EnvelopeTransport<
+            DepositEndpoint = LocalWelcomeDepositEndpoint,
+            ReceiveCapability = LocalWelcomeReceiveCapability,
+            AcknowledgementCapability = LocalWelcomeAcknowledgementCapability,
+            Error = LocalTransportError,
+        >,
+{
+    transport.deposit(endpoint, envelope, NOW)
+}
+
 #[test]
 fn one_mailbox_uses_distinct_deposit_receive_and_acknowledgement_authorities() {
     let mut transport = test_transport(2);
@@ -24,8 +43,7 @@ fn one_mailbox_uses_distinct_deposit_receive_and_acknowledgement_authorities() {
     let (deposit, receive, acknowledgement) = mailbox.into_parts();
     let expected = envelope(0x11, 0x21, NOW + 60);
 
-    let delivery_id = transport
-        .deposit(&deposit, expected.clone(), NOW)
+    let delivery_id = deposit_through_contract(&mut transport, &deposit, expected.clone())
         .expect("deposit with sender authority");
     let received = transport
         .receive(&receive, NOW)

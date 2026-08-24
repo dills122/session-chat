@@ -179,6 +179,8 @@ deployment claim. Its results inform, but cannot bypass, core policy.
 Included:
 
 - Desktop application around the proven headless client
+- One common desktop baseline on macOS, Windows, and Linux from the first
+  retained local-app increment
 - Local device storage and session-scoped member keys
 - Targeted GitHub admission
 - Secret-capability admission with no external provider calls
@@ -192,7 +194,9 @@ Included:
 
 The desktop shell and UI framework remain research until a dedicated ADR
 selects them. Tauri with a Rust security core is the leading boundary, but
-Angular is neither selected nor required by this product definition.
+Angular is neither selected nor required by this product definition. ADR 0018
+requires the selected shell, storage, vault, deep-link, update, and packaging
+boundaries to be designed and gated across macOS, Windows, and Linux together.
 
 Designed but initially experimental:
 

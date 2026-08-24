@@ -3,6 +3,12 @@
 `admission-capability` implements the in-memory admission and explicit simulated
 approval boundary for ADR 0014's local secret-capability profile.
 
+Pending requests implement ADR 0015's provider-neutral `PendingAdmission`
+observation seam. The returned approval context contains only redacted,
+non-authorizing metadata; the capability adapter retains its original exact
+proof, KeyPackage, and reservation authorities. The shared approval decision
+therefore does not create a detachable or reconstructible membership token.
+
 The verifier accepts only an `OpenedCapabilityJoinRequest` privately produced
 by the HPKE PSK adapter. It independently validates the request's exact MLS
 KeyPackage through the pinned MLS provider, compares the canonical reference,

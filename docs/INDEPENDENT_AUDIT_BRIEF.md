@@ -6,8 +6,8 @@ This brief is the entry point for an independent review of Session Chat 2.0.
 It deliberately separates code-backed evidence from accepted design contracts,
 research proposals, and deferred work. It is suitable for an architecture and
 protocol review now. It is not a request to certify a production application,
-because no production client, integrated MLS product path, durable store,
-network service, or deployable realm exists.
+because no production client, integrated MLS product path, production durable
+store, network service, or deployable realm exists.
 
 An auditor should record the exact Git commit, parent or comparison base,
 `Cargo.lock` digest, enabled Cargo features, and tool versions used for the
@@ -44,29 +44,45 @@ The checked-in runtime consists of:
   issuance accepts only the provider-generated complete invitation wrapper;
 - `session-crypto-hpke`: a provider-neutral one-shot RFC 9180 PSK join adapter
   with a pinned AWS-LC implementation, typed contexts, and coarse errors;
+- `session-admission`: a provider-neutral, display-only approval context and
+  decision contract with no proof, bearer, reservation, or membership authority;
 - `admission-capability`: an in-memory capability verifier and simulated
   approval coordinator that retains exact HPKE-opened invitation provenance,
   owns the exact provider KeyPackage, reserves request-ID/nonce and local v2
-  state, and permits only an approved one-shot value to enter MLS;
+  state, implements the shared observation seam, and permits only its original
+  approved one-shot value to enter MLS;
 - `session-crypto-mls`: an isolated, in-memory two-party MLS 1.0 adapter with
   bounded KeyPackage/Welcome/message inputs, exact KeyPackage ownership,
   Add/Welcome, application messages, path updates, removal, and explicit
   prepare/apply stages;
 - `session-transport`: a bounded, single-process local one-Welcome mailbox with
   provider-generated, separate deposit, receive, and acknowledgement authority,
-  exact-retry idempotency, expiry, and coarse errors; and
+  exact-retry idempotency, expiry, coarse errors, and a provider-neutral
+  right-specific opaque-envelope trait;
+- `transport-memory`: a bounded deterministic test adapter for explicit drop,
+  duplicate, hold/release reordering, retry, and acknowledgement behavior;
+- `session-storage`: a deterministic in-memory sealed-session lifecycle and
+  bounded canonical opaque-inbox conformance model with generation-bound local
+  import, but no encrypted or durable persistence;
+- `storage-sqlcipher`: an encrypted file-backed laboratory adapter exercising
+  the real inviter and joiner MLS storage calls on the required Linux, macOS,
+  and Windows CI runners;
+- `sessionctl`: a headless two-client composition covering protected capability
+  join, simulated approval, local Welcome delivery, bidirectional MLS messages,
+  path update, removal, and post-removal rejection; and
 - a disposable Node.js sealed-post-office simulator used only to test boundary
   semantics such as schema rejection, right-specific authorization ordering,
   rotation, and capacity limits.
 
-There is no human approval UX, durable transaction, network or production
-transport, client vault, desktop shell, hosted realm, or headless end-to-end
-client. The
+There is no human approval UX, integrated durable product transaction, network
+or production transport, production client vault, desktop shell, or hosted
+realm. The
 HPKE adapter proves PSK possession only for its exact typed context; the
 capability adapter performs automated verification, explicit simulated
 approval, exact v2/replay reservation, and in-memory MLS coordination. The
-isolated MLS adapter uses exact `mls-rs` 0.56.0 and AWS-LC 0.25.0 dependencies,
-but exposes no durable or network path. The superseded OpenMLS selection remains
+isolated MLS adapter uses exact `mls-rs` 0.56.0 and AWS-LC 0.25.0 dependencies
+and exposes a generic persistence boundary, but the headless product path does
+not use it. The superseded OpenMLS selection remains
 blocked by repository dependency policy. The Node simulator's custom
 composition of platform crypto and placeholder address control is explicitly
 non-production.
@@ -88,13 +104,17 @@ flowchart LR
   I --> R["Implemented: in-memory lifecycle"]
   E["Implemented: bounded opaque envelope"]
   M["Implemented: isolated in-memory MLS lifecycle"]
+  D["Implemented: deterministic opaque-envelope transport"]
   N["Non-production Node boundary simulator"]
-  C --> A["Implemented: simulated approval and in-memory invitation/MLS coordination"]
+  C --> O["Implemented: display-only approval context"]
+  O --> A["Implemented: simulated approval and in-memory invitation/MLS coordination"]
   R --> A
   A --> M
   M --> T["Implemented: local right-specific Welcome delivery"]
   E --> T
-  A -. future .-> V["Atomic durable state and sealed vault"]
+  E --> D
+  E --> V["Implemented: sealed lifecycle and bounded opaque inbox model"]
+  A -. future .-> S["Atomic durable state and platform-protected vault"]
   T -. proposed .-> H["Portable self-hosted realm"]
 ```
 
@@ -110,18 +130,26 @@ flowchart LR
 | Invitation state is durable or rollback resistant | Accepted contract, unimplemented | ADR 0008 and the roadmap require a later cross-layer transaction |
 | Isolated MLS validation owns the exact KeyPackage, credential identity, leaf key, and reference through Add/Welcome | Implemented and tested | Private non-`Clone` adapter value and retained lifecycle tests; this is not admission |
 | Automated capability verification owns the exact validated MLS value after HPKE proof | Implemented and tested | Private non-cloneable proof/provider object retains exact invitation signature; exact tuple and verifier-owned reservation checks reject substitution and foreign authority |
+| Pending approval has a provider-neutral observation and decision seam | Implemented and tested | ADR 0015 and `session-admission` expose only redacted, non-authorizing context; the capability provider retains exact proof, KeyPackage, and reservations |
 | Explicit approval gates exact v2 invitation, replay, and MLS Add sequencing | Implemented and tested in memory | One-shot simulated `Approve`/`Reject`; direct verified-to-MLS API removed; rejection, expiry, failed prepare, and abandonment release both reservations; success consumes invitation after Add |
-| Approval, invitation state, replay state, MLS Add, and Welcome outbox form one durable product transaction | Accepted contract, unimplemented | ADRs 0008/0009/0012; current apply/consume coordination is sequential and in memory, with no durable store or outbox |
+| Approval, invitation state, replay state, MLS Add, and Welcome outbox form one durable product transaction | Accepted contract, unimplemented | ADRs 0008/0009/0012; the product path remains sequential and in memory, while the separate SQLCipher adapter supplies transaction-mechanics evidence |
 | Capability possession is HPKE-protected and bound to the exact local join context | Implemented and tested | Typed one-shot AWS-LC adapter, official RFC PSK vector, independent-provider opening, wrong-key/context and tampering rejection |
 | Request ID and nonce are replay-reserved within one invitation generation | Implemented and tested | Bounded in-memory reservations cover same-generation replay, expiry/reissue independence, stale-release ABA, and capacity preservation; not durable or rollback resistant |
 | Two-party MLS Add/Welcome, application messages, path updates, removal, replay/reordering, and delayed-Commit handling work in memory | Implemented and tested | `session-crypto-mls` lifecycle and hostile-member tests with exact pinned provider graph |
 | Product-level forward secrecy, post-compromise security, durable removal isolation, and interoperability | Accepted contract, unimplemented | Requires cross-implementation fixtures, durable state, deletion/rollback evidence, and independent boundary review |
 | Approved in-memory join returns the exact deposit endpoint beside the encrypted MLS Welcome | Implemented and tested | The endpoint moves from the HPKE-authenticated request through approval and MLS apply; expiry is checked before reservation and MLS mutation, while local delivery and non-rollback after delivery failure are retained integration evidence |
-| Welcome outbox delivery is atomic with MLS, replay, approval, and invitation state | Accepted contract, unimplemented | Architecture transaction invariant; no durable store or outbox exists |
+| Welcome outbox delivery is atomic with MLS, replay, approval, and invitation state | Accepted contract, unimplemented | The SQLCipher laboratory atomically creates a pending outbox record with MLS state, but durable leasing/delivery is not connected to the product path |
 | Local deposit, receive, and acknowledge rights are non-interchangeable | Implemented and tested | `session-transport` uses separately typed provider-generated authorities, commitment checks, hostile authority tests, and an approved-join integration test |
+| Deterministic memory delivery models loss, duplication, reordering, replay, retry, expiry, and bounded capacity | Implemented and tested | `transport-memory` fault-plan and hostile-authority tests over `OpaqueEnvelope`; this is neither encryption nor a network/privacy claim |
+| One headless two-client flow composes protected join through removal | Implemented and tested in memory | `sessionctl` creates fresh Alice/Bob state, explicitly approves the exact capability request, delivers the MLS Welcome and protected traffic through local adapters, updates the epoch, removes Bob, and observes post-removal rejection; no durability, network, hosting, or UX claim |
 | Reusable or network mailbox rotation is a separate non-interchangeable right | Accepted contract, unimplemented | ADR 0010; the one-use local profile deliberately has no rotation operation, and Node simulator evidence does not establish production transport |
 | The Node simulator rejects unknown, cyclic, accessor-backed, symbol-keyed, deep, or oversized provider input before cloning or authorization | Implemented and tested | Retained non-production adversarial tests at directory and attestor entry points |
-| Client secrets are sealed when not in an active user-approved session | Proposed experiment | Session-scoped vault proposal with whole-store fallback; no dependency selected |
+| A sealed-session lifecycle and locked-mode capability matrix reject stale completion and gate privileged model operations | Implemented and tested in memory | ADR 0016 and `session-storage`; deterministic test protector only, with no durable or platform protection claim |
+| Sealed mode accepts only bounded canonical opaque receipt, and local import requires the exact open and insertion generations | Implemented and tested in memory | `session-storage` malformed, expiry, quota, all-state append, and vault/inbox ABA tests; local removal is not remote acknowledgement |
+| Inviter MLS/join/Welcome state and joiner MLS/KeyPackage deletion are each one owner-local encrypted file transaction | Implemented and tested on three CI OS families | ADR 0017 and `storage-sqlcipher` use the real MLS storage path with rollback, ambiguous-result, exact-retry, wrong-key, and close/reopen evidence; hosted runners do not establish production packaging or broader platform support |
+| Key protector claims are factually capability-gated | Implemented and tested as a contract | `session-storage` rejects a protector weaker than `TestOnly`, `DeviceBound`, or `FreshUserPresence`; no native adapter exists |
+| Local-app foundations require one common macOS, Windows, and Linux baseline | Accepted contract; CI gate implemented | ADR 0018 and the required Rust matrix; no desktop shell or portable production key protector exists yet |
+| Client secrets are protected by a production platform vault when not active | Accepted contract, unimplemented | SQLCipher accepts an external raw key, but no native protector supplies it and no rollback anchor exists |
 | A realm can be replaced without giving its operator content or membership authority | Proposed experiment | Compose and signed-realm-descriptor proposal; no service exists |
 | GitHub and credential admission, recovery, multi-device, mixnets, and federation | Deferred | Later roadmap phases |
 

@@ -18,7 +18,10 @@ capability-admission adapter accepts only proven HPKE opens, owns the exact
 provider-validated KeyPackage, and performs bounded in-memory request-ID/nonce
 replay reservation for one invitation generation. It retains the exact opened
 invitation signature, binds the admission to local v2 state, and consumes an
-explicit simulated approval decision before MLS preparation. Rejection and
+explicit simulated approval decision before MLS preparation. Its pending value
+implements a provider-neutral, display-only approval context while retaining
+the exact provider evidence, KeyPackage, and reservation authorities. Copying
+that context or its decision grants no membership authority. Rejection and
 pre-commit failure release invitation and replay state; successful in-memory
 Add consumes the invitation. It does not perform human UI approval or
 rollback-resistant persistence. A local transport adapter implements
@@ -34,10 +37,15 @@ delivery trait, binder, coordinator, or network authority. A separate bounded,
 fault-injectable model exercises
 all-or-nothing inviter state, ambiguous-result recovery, and Welcome-outbox
 leasing semantics without providing storage or connecting to that sequential
-join path. The MLS crate operates an in-memory two-party MLS 1.0 lifecycle
-behind the reduced-feature `mls-rs`/AWS-LC boundary selected by ADR 0012. It has
-no durable state, and upstream's missing full independent `mls-rs` audit remains
-a release risk rather than inherited assurance. The retired v1
+join path. A separate deterministic memory transport uses right-specific
+authorities and bounded explicit drop, duplicate, hold/release, retry, expiry,
+and capacity behavior for headless tests. It accepts structurally opaque bytes
+but neither encrypts them nor provides a network or privacy property. The MLS
+crate operates a two-party MLS 1.0 lifecycle behind the reduced-feature
+`mls-rs`/AWS-LC boundary selected by ADR 0012. Its default product path remains
+in memory; a generic persistence boundary is exercised only by the separate
+SQLCipher laboratory. Upstream's missing full independent `mls-rs` audit
+remains a release risk rather than inherited assurance. The retired v1
 Angular/NestJS application used a server-readable, server-authoritative model.
 The proposed v2 product replaces it with client-owned MLS sessions, encrypted
 pre-membership rendezvous, optional external admission evidence, and pluggable
@@ -495,7 +503,11 @@ parsing, retained KeyPackage ownership through Add and Welcome targeting,
 two-member roster enforcement, explicit prepare/apply and abandoned-pending
 handling, replay, reordering, temporarily lost epoch commits, path updates,
 removal, explicit-only group-state writes, and the provider-neutral established-
-session message interface from ADR 0013. The separate inviter-transaction model
+session message interface from ADR 0013. The headless `sessionctl` acceptance
+flow now composes fresh capability admission, Welcome delivery, bidirectional
+protected messages, path update, removal, and post-removal rejection across the
+local adapters. It adds integration evidence, not persistence or networking.
+The separate inviter-transaction model
 covers only the application-level all-or-nothing and recovery semantics over
 bounded memory records. Current evidence does not cover durable recovery,
 cross-implementation fixtures, a real inviter-local MLS/join/outbox storage
@@ -571,14 +583,33 @@ encrypted databases, lock and idle behavior, transactional deletion, log and
 panic redaction, backup analysis, and tests that map implementation behavior to
 the selected retention policy.
 
-The [client-vault design spike](spikes/client-vault-portable-hosting/proposals/client-state-vault.md)
-adds a proposed test boundary, not a current guarantee: sealed mode may append
-only bounded opaque envelopes, while decrypt, signing, admission, MLS mutation,
-acknowledgement, and rotation require explicit unsealing. Platform key stores
-have different user-presence and unlock-sharing semantics, so adapters must
-report and test their actual behavior. Database encryption does not establish
-rollback resistance, and malware controlling an unlocked session remains out
-of scope.
+ADR 0018 treats portability drift as a security risk. The baseline local vault,
+storage format, failure behavior, and lifecycle must pass the same conformance
+suite on macOS, Windows, and Linux before being called implemented. Native
+enhancements remain isolated adapters and cannot silently alter the core format
+or lower the selected policy on one platform. A missing platform implementation
+blocks the feature gate; it is not deferred as a later port.
+
+ADR 0016 and `session-storage` now make part of the client-vault proposal a
+deterministic conformance boundary: sealed mode may append only bounded
+canonical opaque envelopes, while decrypt, signing, admission, MLS mutation,
+acknowledgement, and rotation require the exact open session. Linear vault and
+inbox generations reject delayed completion and identifier-reuse ABA in the
+model. This is not encrypted or durable storage, and the deterministic key
+protector is not platform protection evidence. Platform key stores have
+different user-presence and unlock-sharing semantics, so production adapters
+must report and test their actual behavior. Database encryption does not
+establish rollback resistance, and malware controlling an unlocked session
+remains out of scope.
+
+ADR 0017's `storage-sqlcipher` adapter adds keyed, encrypted file-backed
+evidence for both real owner-local MLS transactions. The inviter snapshot and
+join/outbox state share one SQL commit; the joiner snapshot and exact one-time
+KeyPackage deletion share another. Wrong-key, pre-commit rollback,
+ambiguous-result recovery, close/reopen, and closed-file checks are retained on
+the required Linux, macOS, and Windows CI runners. This does not establish a
+platform key protector, rollback resistance, production packaging, behavior on
+broader hardware/OS versions, power-loss safety, or secure deletion.
 
 ### Realm replacement and disaster recovery
 

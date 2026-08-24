@@ -74,12 +74,44 @@ retained local Welcome-delivery evidence. A separate bounded conformance model
 now exercises the accepted inviter transaction's atomic visibility, exact retry,
 ambiguous-result recovery, and Welcome-outbox leasing semantics under injected
 memory-model faults. Human approval UX, durable cross-layer state and outbox
-processing, integration of that transaction with MLS/admission/transport, the
-headless end-to-end flow, and network transport work listed below remain
+processing, integration of that transaction with MLS/admission/transport, and
+network transport work listed below remain
 outstanding.
 
-Contract hardening rules to preserve before wiring HPKE and the isolated MLS
-laboratory into a join flow:
+The provider-neutral right-specific transport trait and its separate
+`transport-memory` adapter now retain deterministic drop, duplicate,
+hold/release reordering, exact-retry, expiry, authority, and capacity evidence.
+This completes the Phase 1 memory-transport test control, not network delivery.
+
+The implementation-free `session-admission` crate now supplies the
+provider-neutral, non-authorizing approval context and decision from ADR 0015.
+It deliberately does not generalize provider proof verification or the exact
+one-shot membership authority.
+
+The `sessionctl` binary now completes the headless in-memory Phase 1
+composition: a fresh Alice/Bob capability invitation and protected request,
+explicit simulated approval, exact MLS Add and Welcome delivery, bidirectional
+application messages, path update, removal, and post-removal rejection. Its
+retained test and coarse CLI output satisfy the no-GUI/no-network laboratory
+acceptance path. Durable state, human approval, and a network profile remain
+separate gates.
+
+The first `session-storage` increment now makes the selected sealed-vault
+lifecycle and locked-mode capability matrix executable. Its deterministic
+model permits bounded canonical opaque receipt in every state and binds local
+import to the exact open session, vault generation, and inbox insertion. A
+platform-linked durable client store, integrated product MLS persistence,
+platform user-presence adapters, rollback resistance, broader crash recovery,
+and secure-deletion evidence remain outstanding. The separate SQLCipher
+laboratory adapter now commits the actual inviter MLS snapshot with bounded
+transaction-model invitation, replay/approval, and Welcome-outbox records, and
+separately commits joiner MLS state with exact one-time KeyPackage deletion.
+Tests cover rollback, ambiguous-result recovery, and close/reopen on the
+required Linux, macOS, and Windows CI runners. Platform-vault, disk/power fault,
+production packaging, and rollback-anchor gates remain.
+
+Contract hardening rules preserved by the current in-memory flow and required
+for the remaining headless and durable composition:
 
 - Descriptor validation is read-only and only local issuance creates lifecycle state.
 - Invitation reservation and consumption follow ADR 0008.
@@ -209,7 +241,9 @@ Exit criteria:
 
 Create the desktop shell selected by its dedicated ADR around the Rust core.
 Tauri is the leading privilege boundary; Angular or another UI framework is not
-selected by the retirement history or this roadmap.
+selected by the retirement history or this roadmap. ADR 0018 requires the
+common local-app baseline to be implemented and tested across macOS, Windows,
+and Linux together rather than treating ports as later phases.
 
 Initial UX:
 
@@ -224,6 +258,8 @@ Initial UX:
 
 Exit criteria:
 
+- The same baseline workflow and canonical state pass required build, lint,
+  and conformance gates on Linux, macOS, and Windows.
 - UI code cannot bypass core admission or MLS state transitions.
 - Secrets use appropriate OS storage and are excluded from browser storage.
 - Deep-link parsing is fuzzed and treats links as attacker-controlled.

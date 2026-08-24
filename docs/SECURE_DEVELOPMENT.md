@@ -10,7 +10,7 @@ does not certify future architecture or make a test build production-ready.
 
 | Job | Enforced evidence |
 | --- | --- |
-| Rust | Exact toolchain, locked dependency graph, formatting, all-target/all-feature Clippy, tests, doctests, and warning-free rustdoc |
+| Rust | Exact toolchain and locked graph; all-target/all-feature Clippy and tests on pinned Linux, macOS, and Windows runners; formatting, doctests, and warning-free rustdoc on Linux |
 | Retained Node tools | Exact Node patch and all dependency-free repository/provider tests |
 | Repository policy | Local Markdown links, JSON parsing, evidence-manifest references/digests, absence of developer-local paths/placeholders, and immutable action references |
 | Rust dependency policy | RustSec advisories/yanks, reviewed license allowlist, crates.io-only sources, and no wildcard requirements |
@@ -21,7 +21,9 @@ The workflow has no path filters: a documentation-only security-contract change
 must produce the same stable required check as a code change. Every job has a
 timeout. Pull-request jobs receive no secrets, checkout does not retain GitHub
 credentials, workflow permissions are read-only, and every external action is
-pinned to a full commit.
+pinned to a full commit. The Rust matrix makes the common local-app foundation
+an all-platform merge requirement; a matrix failure fails the aggregate Rust
+job and therefore the final gate.
 
 Run the equivalent local gate with:
 
@@ -64,7 +66,8 @@ capture the settings through GitHub when preparing an audit or release.
 
 - Fuzzing, model/property tests, crash injection, Miri, and sanitizers become
   required when their parser, persistence, FFI, or state-machine surfaces land.
-- Native macOS and Windows tests begin with platform vault adapters.
+- Platform-native macOS, Windows, and Linux behavior tests begin with their
+  adapters; the shared workspace build/lint/test matrix is already required.
 - Image scanning begins with deployable OCI images.
 - SBOMs, artifact attestations, signed reproducible updates, and protected
   release environments begin when a user-runnable artifact exists.

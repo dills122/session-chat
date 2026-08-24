@@ -147,6 +147,13 @@ storage adapter and tested on every supported platform.
 graph is locally reproducible, but its Linux and Windows native-provider,
 packaging, advisory, and license behavior still require CI evidence.
 
+**Subsequent workspace decision.** ADR 0017 uses rusqlite's documented
+`bundled-sqlcipher-vendored-openssl` feature for the retained adapter because
+the system-provider form fails closed on Windows when `OPENSSL_DIR` is absent.
+The locked workspace graph now includes exact `openssl-sys` 0.9.117 and
+`openssl-src` 300.6.1+3.6.3. This removes ambient provider discovery from the
+three-OS build but enlarges the audited native dependency surface.
+
 ### redb
 
 **Documented fact.** redb describes itself as a stable, pure-Rust, ACID,
