@@ -193,6 +193,37 @@ fn insufficient_capabilities_fail_before_credential_or_provider_work() {
 }
 
 #[test]
+fn cancellation_before_work_preserves_the_credential_and_skips_the_provider() {
+    let selected = session_id(0x18);
+    let mut vault = vault(ProtectionLevel::TestOnly);
+    let limiter = UnlockWorkLimiter::new(1).expect("nonzero work limit");
+    let mut credential = OneShotUnlockCredential::new(selected, ());
+    let calls = Cell::new(0);
+    let mut protector = CountingProtector {
+        calls: &calls,
+        capabilities: ProtectorCapabilities::new(
+            KeyStorageProtection::TestOnly,
+            DeviceBinding::Unknown,
+            UserPresence::None,
+            BackupExposure::Unknown,
+        ),
+    };
+    let request = vault.begin_unlock(selected).expect("begin unlock");
+
+    vault.force_lock(LockEvent::Explicit);
+    let completion = request.prepare_with(&limiter, &mut credential, &mut protector);
+
+    assert_eq!(calls.get(), 0);
+    assert!(credential.acquire(selected).is_ok());
+    assert_eq!(limiter.in_flight(), 0);
+    assert_eq!(
+        vault.complete_unlock(completion),
+        Err(VaultError::ReservationMismatch)
+    );
+    assert_eq!(vault.state(), VaultState::Sealed);
+}
+
+#[test]
 fn zero_work_limit_is_rejected() {
     assert!(matches!(
         UnlockWorkLimiter::new(0),

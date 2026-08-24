@@ -7,7 +7,7 @@ use std::{
     error::Error,
     sync::{
         Arc,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicU64, AtomicUsize, Ordering},
     },
 };
 
@@ -586,9 +586,13 @@ impl Drop for DeterministicKeyProtector {
     }
 }
 
+struct VaultInstance {
+    active_unlock_generation: AtomicU64,
+}
+
 /// Linear authority to complete one exact unlock generation.
 pub struct UnlockAttempt {
-    vault_instance: Arc<()>,
+    vault_instance: Arc<VaultInstance>,
     session_id: SessionId,
     generation: u64,
     minimum_protection: ProtectionLevel,
@@ -612,20 +616,35 @@ impl UnlockAttempt {
         P: SessionKeyProtector,
     {
         let capabilities = protector.capabilities();
-        let outcome = if !capabilities.supports(self.minimum_protection) {
+        let outcome = if !self.is_current() {
+            UnlockOutcome::Failed(VaultError::ReservationMismatch)
+        } else if !capabilities.supports(self.minimum_protection) {
             UnlockOutcome::Failed(VaultError::ProviderFailure)
         } else {
             match limiter.try_reserve() {
                 Err(error) => UnlockOutcome::Failed(error),
-                Ok(_permit) => match credential_source.acquire(self.session_id) {
-                    Err(_) => UnlockOutcome::Failed(VaultError::ProviderFailure),
-                    Ok(credential) => {
-                        match protector.unseal_session_key(self.session_id, credential) {
-                            Ok(key) => UnlockOutcome::Ready { capabilities, key },
+                Ok(_permit) => {
+                    if !self.is_current() {
+                        UnlockOutcome::Failed(VaultError::ReservationMismatch)
+                    } else {
+                        match credential_source.acquire(self.session_id) {
                             Err(_) => UnlockOutcome::Failed(VaultError::ProviderFailure),
+                            Ok(credential) => {
+                                if !self.is_current() {
+                                    UnlockOutcome::Failed(VaultError::ReservationMismatch)
+                                } else {
+                                    match protector.unseal_session_key(self.session_id, credential)
+                                    {
+                                        Ok(key) => UnlockOutcome::Ready { capabilities, key },
+                                        Err(_) => {
+                                            UnlockOutcome::Failed(VaultError::ProviderFailure)
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
-                },
+                }
             }
         };
         UnlockCompletion {
@@ -635,13 +654,20 @@ impl UnlockAttempt {
             outcome,
         }
     }
+
+    fn is_current(&self) -> bool {
+        self.vault_instance
+            .active_unlock_generation
+            .load(Ordering::Acquire)
+            == self.generation
+    }
 }
 
 /// Linear provider result for one exact unlock generation.
 ///
 /// This type intentionally implements neither `Clone`, `Debug`, nor `Display`.
 pub struct UnlockCompletion {
-    vault_instance: Arc<()>,
+    vault_instance: Arc<VaultInstance>,
     session_id: SessionId,
     generation: u64,
     outcome: UnlockOutcome,
@@ -685,7 +711,7 @@ enum LifecycleState {
 /// This model proves transition and capability-matrix semantics only. It is not
 /// encrypted persistence, a platform vault, or a rollback-resistance claim.
 pub struct SessionVaultModel<C: VaultClock> {
-    vault_instance: Arc<()>,
+    vault_instance: Arc<VaultInstance>,
     policy: VaultPolicy,
     inbox_policy: OpaqueInboxPolicy,
     clock: C,
@@ -701,7 +727,9 @@ impl<C: VaultClock> SessionVaultModel<C> {
     #[must_use]
     pub fn new(policy: VaultPolicy, inbox_policy: OpaqueInboxPolicy, clock: C) -> Self {
         Self {
-            vault_instance: Arc::new(()),
+            vault_instance: Arc::new(VaultInstance {
+                active_unlock_generation: AtomicU64::new(0),
+            }),
             policy,
             inbox_policy,
             clock,
@@ -746,6 +774,9 @@ impl<C: VaultClock> SessionVaultModel<C> {
             generation,
             expires_at_unix_seconds,
         };
+        self.vault_instance
+            .active_unlock_generation
+            .store(generation, Ordering::Release);
         Ok(UnlockAttempt {
             vault_instance: Arc::clone(&self.vault_instance),
             session_id,
@@ -772,6 +803,9 @@ impl<C: VaultClock> SessionVaultModel<C> {
             return Err(VaultError::ReservationMismatch);
         }
         self.state = LifecycleState::Sealed;
+        self.vault_instance
+            .active_unlock_generation
+            .store(0, Ordering::Release);
         if expires_at_unix_seconds <= now {
             return Err(VaultError::Rejected);
         }
@@ -873,6 +907,9 @@ impl<C: VaultClock> SessionVaultModel<C> {
     pub fn force_lock(&mut self, event: LockEvent) {
         let _ = event;
         self.state = LifecycleState::Sealed;
+        self.vault_instance
+            .active_unlock_generation
+            .store(0, Ordering::Release);
     }
 
     /// Applies pending unlock and idle deadlines without running privileged work.
@@ -891,6 +928,9 @@ impl<C: VaultClock> SessionVaultModel<C> {
         };
         if expired {
             self.state = LifecycleState::Sealed;
+            self.vault_instance
+                .active_unlock_generation
+                .store(0, Ordering::Release);
         }
         self.prune_expired_inbox(now);
     }
