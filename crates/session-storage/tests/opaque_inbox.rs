@@ -1,8 +1,8 @@
 use session_protocol::{MAX_ENVELOPE_CIPHERTEXT_BYTES, OpaqueEnvelope};
 use session_storage::{
     DeterministicClock, DeterministicKeyProtector, InboxAppendOutcome,
-    MAX_ENCODED_OPAQUE_ENVELOPE_BYTES, OpaqueInboxPolicy, SessionId, SessionVaultModel, VaultError,
-    VaultPolicy, VaultState,
+    MAX_ENCODED_OPAQUE_ENVELOPE_BYTES, OneShotUnlockCredential, OpaqueInboxPolicy, SessionId,
+    SessionVaultModel, UnlockWorkLimiter, VaultError, VaultPolicy, VaultState,
 };
 
 const NOW: u64 = 2_000_000_000;
@@ -14,14 +14,12 @@ fn session_id() -> SessionId {
 fn model(
     maximum_envelopes: usize,
     maximum_total_encoded_bytes: usize,
-) -> SessionVaultModel<DeterministicClock, DeterministicKeyProtector> {
+) -> SessionVaultModel<DeterministicClock> {
     SessionVaultModel::new(
         VaultPolicy::new(30, 60).expect("valid vault policy"),
         OpaqueInboxPolicy::new(300, maximum_envelopes, maximum_total_encoded_bytes)
             .expect("valid inbox policy"),
         DeterministicClock::new(NOW),
-        DeterministicKeyProtector::new(session_id(), [0x21; 32])
-            .expect("valid deterministic protector"),
     )
 }
 
@@ -32,9 +30,14 @@ fn encoded_envelope(id: u8, ciphertext: u8, expires_at: u64) -> Vec<u8> {
         .expect("canonical envelope")
 }
 
-fn unlock(vault: &mut SessionVaultModel<DeterministicClock, DeterministicKeyProtector>) {
+fn unlock(vault: &mut SessionVaultModel<DeterministicClock>) {
+    let limiter = UnlockWorkLimiter::new(1).expect("test work limit");
+    let mut credential = OneShotUnlockCredential::new(session_id(), ());
+    let mut protector = DeterministicKeyProtector::new(session_id(), [0x21; 32])
+        .expect("valid deterministic protector");
     let attempt = vault.begin_unlock(session_id()).expect("begin unlock");
-    vault.complete_unlock(attempt).expect("complete unlock");
+    let completion = attempt.prepare_with(&limiter, &mut credential, &mut protector);
+    vault.complete_unlock(completion).expect("complete unlock");
 }
 
 #[test]
@@ -54,7 +57,12 @@ fn bounded_opaque_append_is_the_only_operation_available_in_every_vault_state() 
     );
     assert_eq!(vault.state(), VaultState::Unlocking);
 
-    vault.complete_unlock(unlock).expect("complete unlock");
+    let limiter = UnlockWorkLimiter::new(1).expect("test work limit");
+    let mut credential = OneShotUnlockCredential::new(session_id(), ());
+    let mut protector = DeterministicKeyProtector::new(session_id(), [0x21; 32])
+        .expect("valid deterministic protector");
+    let completion = unlock.prepare_with(&limiter, &mut credential, &mut protector);
+    vault.complete_unlock(completion).expect("complete unlock");
     assert_eq!(
         vault.append_opaque(&encoded_envelope(0x33, 0x43, NOW + 120)),
         Ok(InboxAppendOutcome::Stored)
