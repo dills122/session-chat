@@ -1014,6 +1014,7 @@ dependencies = [
 name = "session-inviter-transaction"
 version = "0.1.0"
 dependencies = [
+ "session-protocol",
  "thiserror",
  "zeroize",
 ]

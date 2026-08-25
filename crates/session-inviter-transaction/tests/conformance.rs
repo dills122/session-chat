@@ -2,6 +2,7 @@ use session_inviter_transaction::{
     CommitFault, CommitOutcome, InMemoryInviterJoinStore, InvitationState, InviterJoinCommit,
     OutboxState, ReservedInvitation, TransactionError, TransactionPolicy,
 };
+use session_protocol::{DepositCapability, LocalWelcomeDepositEndpoint, OpaqueEnvelope};
 
 const NOW: u64 = 1_000;
 
@@ -25,18 +26,57 @@ fn reservation(generation: u8, request: u8) -> ReservedInvitation {
 }
 
 fn commit(transaction: u8, generation: u8, request: u8) -> InviterJoinCommit {
-    sized_commit(
+    commit_with_delivery_material(
         transaction,
         generation,
         request,
-        16,
-        32,
-        512,
-        256,
-        64,
+        canonical_welcome(NOW + 180),
+        canonical_endpoint(NOW + 240),
+        NOW + 120,
+    )
+}
+
+fn canonical_welcome(expires_at_unix_seconds: u64) -> Vec<u8> {
+    OpaqueEnvelope::new([8; 16], expires_at_unix_seconds, vec![8; 32])
+        .expect("valid envelope")
+        .encode_canonical()
+        .expect("canonical envelope")
+}
+
+fn canonical_endpoint(expires_at_unix_seconds: u64) -> Vec<u8> {
+    LocalWelcomeDepositEndpoint::new(
+        [9; 16],
+        [10; 16],
+        DepositCapability::new([11; 32]).expect("valid capability"),
+        expires_at_unix_seconds,
+    )
+    .expect("valid endpoint")
+    .encode_canonical()
+    .expect("canonical endpoint")
+}
+
+fn commit_with_delivery_material(
+    transaction: u8,
+    generation: u8,
+    request: u8,
+    welcome_envelope: Vec<u8>,
+    deposit_endpoint: Vec<u8>,
+    outbox_expires_at_unix_seconds: u64,
+) -> InviterJoinCommit {
+    InviterJoinCommit::new(
+        [transaction; 16],
+        [1; 16],
+        [generation; 64],
+        [request; 16],
+        [4; 32],
+        vec![5; 16],
         7,
         8,
-        NOW + 120,
+        vec![6; 32],
+        vec![7; 512],
+        welcome_envelope,
+        deposit_endpoint,
+        outbox_expires_at_unix_seconds,
     )
 }
 
@@ -149,8 +189,8 @@ fn conflicting_retry_and_stale_generation_fail_closed() {
         8,
         vec![6; 32],
         vec![7; 512],
-        vec![8; 256],
-        vec![9; 64],
+        canonical_welcome(NOW + 180),
+        canonical_endpoint(NOW + 240),
         NOW + 120,
     );
     assert_eq!(
@@ -209,8 +249,8 @@ fn conflicting_retry_and_stale_generation_fail_closed() {
         2,
         vec![55],
         vec![56],
-        vec![57],
-        vec![58],
+        canonical_welcome(NOW + 180),
+        canonical_endpoint(NOW + 240),
         NOW + 120,
     );
     assert_eq!(
@@ -228,14 +268,14 @@ fn delivery_failure_and_expired_lease_preserve_atomic_commit() {
     assert_eq!(store.pending_transaction_ids(NOW), vec![[10; 16]]);
 
     let lease = store
-        .lease_delivery([10; 16], [20; 16], NOW, 10)
+        .lease_delivery([10; 16], NOW, 10)
         .expect("lease succeeds");
     assert!(store.pending_transaction_ids(NOW + 1).is_empty());
     let payload = store
         .delivery_payload(&lease, NOW + 1)
         .expect("payload available");
-    assert_eq!(payload.welcome_envelope, vec![8; 256]);
-    assert_eq!(payload.deposit_endpoint, vec![9; 64]);
+    assert_eq!(payload.welcome_envelope, canonical_welcome(NOW + 180));
+    assert_eq!(payload.deposit_endpoint, canonical_endpoint(NOW + 240));
     store.fail_delivery(&lease).expect("failure returns item");
     assert_eq!(
         store.recover(&[10; 16]).expect("record").outbox_state,
@@ -243,7 +283,7 @@ fn delivery_failure_and_expired_lease_preserve_atomic_commit() {
     );
 
     let expired = store
-        .lease_delivery([10; 16], [21; 16], NOW + 2, 10)
+        .lease_delivery([10; 16], NOW + 2, 10)
         .expect("second lease succeeds");
     assert_eq!(
         store.delivery_payload(&expired, NOW + 12).err(),
@@ -255,7 +295,7 @@ fn delivery_failure_and_expired_lease_preserve_atomic_commit() {
     );
     assert_eq!(store.pending_transaction_ids(NOW + 12), vec![[10; 16]]);
     let replacement = store
-        .lease_delivery([10; 16], [22; 16], NOW + 12, 10)
+        .lease_delivery([10; 16], NOW + 12, 10)
         .expect("expired lease can be replaced");
     store
         .complete_delivery(&replacement, NOW + 13)
@@ -323,7 +363,14 @@ fn bounds_capacity_and_attempt_limits_fail_closed() {
         store.commit_with_fault(&invalid_epoch, NOW, CommitFault::None),
         Err(TransactionError::InvalidInput)
     );
-    let expired_outbox = sized_commit(10, 2, 3, 1, 1, 1, 1, 1, 7, 8, NOW);
+    let expired_outbox = commit_with_delivery_material(
+        10,
+        2,
+        3,
+        canonical_welcome(NOW + 180),
+        canonical_endpoint(NOW + 240),
+        NOW,
+    );
     assert_eq!(
         store.commit_with_fault(&expired_outbox, NOW, CommitFault::None),
         Err(TransactionError::Expired)
@@ -338,12 +385,20 @@ fn bounds_capacity_and_attempt_limits_fail_closed() {
         .expect("valid commit");
     for attempt in 0..3_u8 {
         let lease = store
-            .lease_delivery([10; 16], [30 + attempt; 16], NOW + u64::from(attempt), 1)
+            .lease_delivery([10; 16], NOW + u64::from(attempt), 1)
             .expect("bounded attempt");
         store.fail_delivery(&lease).expect("return pending");
     }
+    assert!(store.pending_transaction_ids(NOW + 4).is_empty());
     assert_eq!(
-        store.lease_delivery([10; 16], [40; 16], NOW + 4, 1).err(),
+        store
+            .recover(&[10; 16])
+            .expect("record retained")
+            .outbox_state,
+        OutboxState::AttemptsExhausted
+    );
+    assert_eq!(
+        store.lease_delivery([10; 16], NOW + 4, 1).err(),
         Some(TransactionError::AttemptsExhausted)
     );
 
@@ -370,8 +425,8 @@ fn bounds_capacity_and_attempt_limits_fail_closed() {
         2,
         vec![17],
         vec![18],
-        vec![19],
-        vec![20],
+        canonical_welcome(NOW + 180),
+        canonical_endpoint(NOW + 240),
         NOW + 120,
     );
     assert_eq!(
@@ -382,4 +437,110 @@ fn bounds_capacity_and_attempt_limits_fail_closed() {
         capacity_store.invitation_state(&[11; 16]),
         Some(InvitationState::Reserved)
     );
+}
+
+#[test]
+fn stale_and_foreign_leases_cannot_complete_current_work() {
+    let mut store = seeded_store();
+    store
+        .commit_with_fault(&commit(10, 2, 3), NOW, CommitFault::None)
+        .expect("commit succeeds");
+
+    let stale = store.lease_delivery([10; 16], NOW, 1).expect("first lease");
+    store.fail_delivery(&stale).expect("release first lease");
+    let current = store
+        .lease_delivery([10; 16], NOW + 1, 10)
+        .expect("replacement lease");
+    assert_eq!(
+        store.complete_delivery(&stale, NOW + 2),
+        Err(TransactionError::LeaseMismatch)
+    );
+
+    let mut foreign_store = seeded_store();
+    foreign_store
+        .commit_with_fault(&commit(10, 2, 3), NOW, CommitFault::None)
+        .expect("foreign commit succeeds");
+    let foreign = foreign_store
+        .lease_delivery([10; 16], NOW, 10)
+        .expect("foreign lease");
+    assert_eq!(
+        store.complete_delivery(&foreign, NOW + 2),
+        Err(TransactionError::LeaseMismatch)
+    );
+    store
+        .complete_delivery(&current, NOW + 2)
+        .expect("exact current lease completes");
+}
+
+#[test]
+fn commit_rejects_invalid_delivery_material_and_expiry_scope() {
+    let mut noncanonical_welcome = canonical_welcome(NOW + 180);
+    noncanonical_welcome.push(0);
+    let zero_id_welcome = OpaqueEnvelope::new([0; 16], NOW + 180, vec![8])
+        .expect("protocol object")
+        .encode_canonical()
+        .expect("canonical protocol bytes");
+    let cases = [
+        commit_with_delivery_material(
+            10,
+            2,
+            3,
+            vec![0xff],
+            canonical_endpoint(NOW + 240),
+            NOW + 120,
+        ),
+        commit_with_delivery_material(
+            10,
+            2,
+            3,
+            noncanonical_welcome,
+            canonical_endpoint(NOW + 240),
+            NOW + 120,
+        ),
+        commit_with_delivery_material(
+            10,
+            2,
+            3,
+            zero_id_welcome,
+            canonical_endpoint(NOW + 240),
+            NOW + 120,
+        ),
+        commit_with_delivery_material(
+            10,
+            2,
+            3,
+            canonical_welcome(NOW + 180),
+            vec![0xff],
+            NOW + 120,
+        ),
+        commit_with_delivery_material(
+            10,
+            2,
+            3,
+            canonical_welcome(NOW + 110),
+            canonical_endpoint(NOW + 240),
+            NOW + 120,
+        ),
+        commit_with_delivery_material(
+            10,
+            2,
+            3,
+            canonical_welcome(NOW + 250),
+            canonical_endpoint(NOW + 240),
+            NOW + 120,
+        ),
+    ];
+
+    for invalid in cases {
+        let mut store = seeded_store();
+        assert_eq!(
+            store.commit_with_fault(&invalid, NOW, CommitFault::None),
+            Err(TransactionError::InvalidInput)
+        );
+        assert_eq!(
+            store.invitation_state(&[1; 16]),
+            Some(InvitationState::Reserved)
+        );
+        assert_eq!(store.committed_count(), 0);
+    }
 }

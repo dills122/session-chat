@@ -132,7 +132,8 @@ remains in `transport-memory`.
 | `R5-TRACE` | Read-only research | Task 4 | Complete | Versioned trace ownership, vocabulary, bounds, redaction, determinism, and test seams are recorded from the accepted contracts and official Rust runtime sources. |
 | `T5-TRACE` | Lead implementation | `R5-TRACE` | Complete | A strict canonical v1 trace parser rejects unknown/noncanonical/oversized input and round-trips one secret-free golden fixture byte-for-byte. |
 | `T5-MEMORY-FAULTS` | Lead implementation | `T5-TRACE` | Complete | The memory provider supplies bounded outage, corruption, exact-byte stale-replay, acknowledgement-loss, release, and secret-free probe controls without weakening existing semantics. |
-| `T6-HARNESS` | Lead implementation | `T5-MEMORY-FAULTS` | In progress | The first normalized runner slice replays one trace twice against fresh memory adapters with exact-byte alias normalization and quiescence. Common verdict cases and deliberately defective adapters remain. |
+| `T6-HARNESS` | Lead implementation | `T5-MEMORY-FAULTS` | Complete | The bounded wake-aware runner replays retained traces twice against fresh memory adapters; common verdicts, exact retry identity, drop/quiescence, redaction, and deliberately defective bridges are covered. |
+| `T8-OWNER-PREREQS` | Lead implementation | `R7-COORD` | Complete | The inviter model issues scoped leases, terminalizes exhausted work, validates canonical LocalV1 delivery material and expiry scope, and rejects stale or foreign lease results. |
 | `R7-COORD` | Read-only research | Tasks 5-6 contracts | Complete | Exact deposit-only coordinator/outbox ownership, recovery transitions, and five blocking contract defects are mapped for later Tasks 8-9. |
 | `R7-CURSOR` | Read-only research | ADRs 0010/0015 | Complete | Generation-bound cursor, persist-before-acknowledge, mailbox rotation, restart, and stale-state requirements are recorded without selecting a provider. |
 
@@ -525,6 +526,17 @@ envelope/endpoint/expiry relationships, define reconstructible LocalV1 deposit
 material, and assign pending-future wake/drop supervision to the composition
 root. Do not connect SQLCipher or claim durable restart in this slice.
 
+**Prerequisite checkpoint (2026-08-25):**
+
+- [x] Inviter lease-token ABA is removed by store-issued scoped lease identity.
+- [x] Attempt-exhausted work is terminal and absent from eligible enumeration.
+- [x] Committed envelope/endpoint bytes and their expiry relationship are
+  canonically validated.
+- [x] LocalV1 deposit material uses the reconstructible canonical
+  `LocalWelcomeDepositEndpoint` schema.
+- [ ] The coordinator composition root supplies bounded wake/deadline/cancel
+  supervision and drops unfinished adapter futures.
+
 **Acceptance criteria:**
 
 - [ ] Duplicate delivery never emits two accepted core events.
@@ -537,7 +549,7 @@ root. Do not connect SQLCipher or claim durable restart in this slice.
 - [ ] Model or property tests exercise arbitrary duplicate/reorder/loss traces.
 - [ ] Tests distinguish deposit acceptance, receipt, acknowledgement, and
   application processing.
-- [ ] A deliberately stale or foreign lease cannot report delivery state.
+- [x] A deliberately stale or foreign lease cannot report delivery state.
 - [ ] `cargo test -p session-transport coordinator`
 
 **Dependencies:** Tasks 5, 6, and 7

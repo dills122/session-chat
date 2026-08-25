@@ -1,6 +1,6 @@
 # Welcome delivery coordinator research
 
-Status: implementation map; spec corrections required before coordinator code
+Status: implementation map; inviter-model corrections complete, coordinator pending
 
 Date: 2026-08-25
 
@@ -27,17 +27,17 @@ processing.
 
 ## Required corrections first
 
-1. The inviter model currently accepts caller-selected lease IDs and can reuse
-   an expired ID, allowing a stale lease-token ABA. The store must issue unique
-   tokens or durably reject reuse.
-2. Attempt-exhausted jobs remain in pending enumeration and could be hot-looped.
-   Eligibility must exclude or explicitly terminalize them.
-3. Committed Welcome and endpoint bytes are only length-checked. Commit must
-   validate canonical envelope and endpoint/profile scope plus
+1. **Corrected in the inviter conformance model.** The store issues scoped,
+   monotonic lease identities; callers cannot select or reuse one, and leases
+   from another store instance fail closed.
+2. **Corrected in the inviter conformance model.** Attempt-exhausted jobs enter
+   an explicit retained terminal state and are excluded from pending work.
+3. **Corrected in the inviter conformance model.** Commit decodes exact canonical
+   envelope and LocalV1 endpoint bytes and enforces
    `outbox_expiry <= envelope_expiry <= endpoint_expiry`.
-4. The generalized memory deposit material cannot be reconstructed from stored
-   bytes. LocalV1 should reuse the existing canonical transferable Welcome
-   endpoint schema rather than inventing a second format.
+4. **Corrected in the inviter conformance model.** Retained LocalV1 destination
+   bytes are the existing canonical transferable Welcome endpoint schema and
+   can be decoded without inventing a second format.
 5. `DispatchControl` observes clocks/cancellation but does not supply wakeups.
    The composition root must explicitly supervise deadline/cancellation and
    drop the returned future; no active-preemption claim is allowed.
