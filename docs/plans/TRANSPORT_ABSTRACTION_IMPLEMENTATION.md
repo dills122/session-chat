@@ -1,8 +1,9 @@
 # Implementation plan: profile-bound transport abstraction
 
 Status: active staged implementation plan; ADR 0015 is accepted, Task 3 is
-partial, and Task 9's durable owner-store plus capability-admission/MLS
-composition checkpoints are complete before independent-process or network work
+partial, Task 9's durable owner-store plus capability-admission/MLS composition
+checkpoints are complete, and durable headless composition is active before
+independent-process or network work
 
 Date: 2026-08-20
 
@@ -98,6 +99,24 @@ Iroh Fast adapter       Tor/Arti spike        SimpleX SMP spike
 
 The external adapter spikes can run independently only after the common
 contract and harness are stable.
+
+## Active execution slice: durable headless composition
+
+This slice begins only after the separately owned `sessionctl` orchestration
+fault seams and memory/inviter schedule models merged to `master`. It reuses
+those seams and does not reinterpret their pre-merge files.
+
+| Work item | Delivery unit | Depends on | Status | Completion boundary |
+| --- | --- | --- | --- | --- |
+| `T9-SQL-OWNER` | Durable owner store | Task 8 | Complete | SQLCipher schema v2 is the sole Welcome ledger across migration, restart, leases, terminal states, and exact retry. |
+| `T9-REAL-COMPOSITION` | Admission/MLS integration | `T9-SQL-OWNER` | Complete | Real capability admission holds a one-shot durability-pending MLS result until transaction-ID recovery proves commit or rollback, then delivery restarts without another Add. |
+| `T9-SESSIONCTL` | Headless integration | merged orchestration fault seams | In progress | The existing Alice/Bob flow uses the real SQLCipher inviter transaction and reconstructed coordinator owner while preserving its coarse fault and output contracts. |
+| `L1-PROCESS` | Independent-process runner | `T9-SESSIONCTL` | Pending | Separate client and untrusted-service processes exchange only public wire objects under bounded lifecycle control and emit a redacted evidence manifest. |
+
+Full client restart is not claimed by `T9-SESSIONCTL`: the current MLS adapter
+does not persist and reload the client signing identity required to continue as
+the same Alice process after reopening the group. That missing contract must be
+resolved before `L1-PROCESS` can claim durable client recovery.
 
 ## Active execution slice: generalized dispatch boundary
 
