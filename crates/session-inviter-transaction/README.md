@@ -14,9 +14,11 @@ invitation consumption.
 
 Committed delivery material must be the exact canonical `OpaqueEnvelope` and
 `LocalWelcomeDepositEndpoint` encodings. The model rejects invalid material and
-requires `outbox expiry <= envelope expiry <= endpoint expiry`, so the retained
-payload can be reconstructed by the future LocalV1 coordinator without a
-second destination schema.
+requires `outbox expiry <= envelope expiry <= endpoint expiry`. The model now
+implements the LocalV1 coordinator's sole-owner port, so retained payloads are
+reconstructed and delivered without a second destination schema or outbox
+ledger. Integration evidence covers normal acceptance, adapter failure, and an
+ambiguous prior remote acceptance reconciled by exact retry.
 
 This crate is not a database and provides no disk durability, process-crash
 recovery, at-rest encryption, vault integration, rollback resistance, or

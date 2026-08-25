@@ -204,9 +204,12 @@ The active Rust laboratory now contains fourteen narrow pieces of this architect
   accepts only an exact no-network LocalV1 manifest and emits a non-secret local
   binding record. A deposit-only LocalV1 coordinator contract now consumes one
   authoritative owner lease, reconstructs the canonical endpoint/envelope, and
-  makes one bounded adapter call through a sender-only interface. It is not yet
-  integrated with the inviter store or a runtime deadline supervisor; Fast,
-  Private, network authority, and network adapters remain unavailable.
+  makes one bounded adapter call through a sender-only interface. The in-memory
+  inviter transaction model implements the sole-owner port, with retained
+  evidence for acceptance, failure, and exact ambiguous-result retry without
+  repeating membership. A runtime deadline supervisor and durable owner-store
+  adapter do not exist; Fast, Private, network authority, and network adapters
+  remain unavailable.
 - `transport-memory` implements both traits with bounded deterministic drop,
   hold/release, duplication, reordering, retry, outage, one-shot corruption,
   exact-byte stale replay, acknowledgement-result loss, poll-page, exact-set

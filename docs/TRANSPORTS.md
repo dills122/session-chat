@@ -269,8 +269,10 @@ invokes only the narrow sender-side `EnvelopeDeposit` surface. Adapter success
 means deposit acceptance only—not receipt, acknowledgement, or application
 processing. Adapter failure releases only the exact owner lease; dropping a
 pending coordinator future drops adapter-owned work and leaves authoritative
-recovery to lease expiry. The port is not yet implemented by the inviter store,
-and no runtime deadline supervisor or durable-restart evidence exists.
+recovery to lease expiry. The in-memory inviter transaction model implements
+the port and proves normal acceptance, adapter failure, and exact retry after an
+unrecorded remote acceptance without repeating membership. No runtime deadline
+supervisor or durable-restart evidence exists.
 
 `RetryAdvice::Never` ends attempts under the current budget. It does not assert
 that a deposit did not commit; the coordinator may reconcile an ambiguous

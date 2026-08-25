@@ -134,7 +134,8 @@ remains in `transport-memory`.
 | `T5-MEMORY-FAULTS` | Lead implementation | `T5-TRACE` | Complete | The memory provider supplies bounded outage, corruption, exact-byte stale-replay, acknowledgement-loss, release, and secret-free probe controls without weakening existing semantics. |
 | `T6-HARNESS` | Lead implementation | `T5-MEMORY-FAULTS` | Complete | The bounded wake-aware runner replays retained traces twice against fresh memory adapters; common verdicts, exact retry identity, drop/quiescence, redaction, and deliberately defective bridges are covered. |
 | `T8-OWNER-PREREQS` | Lead implementation | `R7-COORD` | Complete | The inviter model issues scoped leases, terminalizes exhausted work, validates canonical LocalV1 delivery material and expiry scope, and rejects stale or foreign lease results. |
-| `T8-COORDINATOR` | Lead implementation | `T8-OWNER-PREREQS` | In progress | The deposit-only port, one-attempt policy executor, LocalV1 endpoint resolver/adapter bridge, and pending-drop evidence exist; inviter-store integration and a runtime supervisor remain. |
+| `T8-COORDINATOR` | Lead implementation | `T8-OWNER-PREREQS` | In progress | The deposit-only port, one-attempt policy executor, LocalV1 resolver/adapter bridge, inviter-store integration, and pending-drop evidence exist; a runtime supervisor remains. |
+| `T9-INMEMORY-INTEGRATION` | Lead implementation | `T8-COORDINATOR` | Complete | The atomic inviter outbox drives the real LocalV1 mailbox; acceptance, adapter failure, and ambiguous exact retry preserve one membership commit and one authoritative ledger. |
 | `R7-COORD` | Read-only research | Tasks 5-6 contracts | Complete | Exact deposit-only coordinator/outbox ownership, recovery transitions, and five blocking contract defects are mapped for later Tasks 8-9. |
 | `R7-CURSOR` | Read-only research | ADRs 0010/0015 | Complete | Generation-bound cursor, persist-before-acknowledge, mailbox rotation, restart, and stale-state requirements are recorded without selecting a provider. |
 
@@ -541,12 +542,16 @@ root. Do not connect SQLCipher or claim durable restart in this slice.
 
 **Acceptance criteria:**
 
-- [ ] Duplicate delivery never emits two accepted core events.
-- [x] Retry never exceeds attempts, bytes, deadline, or envelope expiration.
-- [ ] Adapter success/failure cannot reopen invitation or MLS membership state.
-- [ ] There is exactly one authoritative outbox/lease record for a Welcome.
+- [x] Duplicate delivery never emits two accepted core events.
+- [ ] Retry never exceeds attempts, bytes, deadline, or envelope expiration.
+- [x] Adapter success/failure cannot reopen invitation or MLS membership state.
+- [x] There is exactly one authoritative outbox/lease record for a Welcome.
 
 **Verification:**
+
+- [x] Each retained coordinator dispatch uses one attempt, bounded bytes, and a
+  deadline subordinate to the owner lease.
+- [ ] A real composition root wakes and drops pending work at that deadline.
 
 - [ ] Model or property tests exercise arbitrary duplicate/reorder/loss traces.
 - [ ] Tests distinguish deposit acceptance, receipt, acknowledgement, and
@@ -584,11 +589,24 @@ idempotent and cannot repeat MLS Add or Commit.
 - [ ] Coordinator state can be discarded and reconstructed without losing or
   contradicting authoritative outbox state.
 
+**In-memory checkpoint (2026-08-25):**
+
+- [x] The inviter transaction model implements the same sole-owner port used by
+  the coordinator; no coordinator ledger is introduced.
+- [x] Normal adapter acceptance marks only the exact lease delivered and leaves
+  invitation consumption plus the committed MLS epoch unchanged.
+- [x] Adapter failure returns only the exact outbox lease to pending.
+- [x] A prior unrecorded adapter acceptance is retried with byte-identical
+  envelope/endpoint identity, yields the same mailbox delivery, and does not
+  repeat the atomic commit.
+- [ ] A durable implementation proves the same properties across process
+  restart and storage faults.
+
 **Verification:**
 
 - [ ] Crash tests cover every write boundary before and after commit.
 - [ ] Duplicate, lost, reordered, and delayed Welcome delivery remains safe.
-- [ ] The in-memory conformance model passes before a durable adapter is wired.
+- [x] The in-memory conformance model passes before a durable adapter is wired.
 - [ ] Exact storage command from the selected adapter is retained in test
   evidence.
 

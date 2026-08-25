@@ -5,6 +5,7 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use session_protocol::{LocalWelcomeDepositEndpoint, OpaqueEnvelope};
+use session_transport::{LeasedWelcome, OutboxPortError, WelcomeOutboxPort};
 use thiserror::Error;
 use zeroize::Zeroize;
 
@@ -232,6 +233,8 @@ pub struct DeliveryPayload<'a> {
     pub welcome_envelope: &'a [u8],
     /// Byte-identical deposit-only endpoint.
     pub deposit_endpoint: &'a [u8],
+    /// Owner-store expiry that remains subordinate to envelope and endpoint expiry.
+    pub outbox_expires_at_unix_seconds: u64,
 }
 
 /// Deterministic failure points used to prove recovery semantics.
@@ -642,6 +645,7 @@ impl InMemoryInviterJoinStore {
                 Ok(DeliveryPayload {
                     welcome_envelope: &record.welcome_envelope,
                     deposit_endpoint: &record.deposit_endpoint,
+                    outbox_expires_at_unix_seconds: record.outbox_expires_at_unix_seconds,
                 })
             }
             _ => Err(TransactionError::LeaseMismatch),
@@ -747,6 +751,68 @@ impl InMemoryInviterJoinStore {
         } else {
             Err(TransactionError::LeaseMismatch)
         }
+    }
+}
+
+impl WelcomeOutboxPort for InMemoryInviterJoinStore {
+    type Lease = DeliveryLease;
+
+    fn lease_next(
+        &mut self,
+        now_unix_seconds: u64,
+        lease_seconds: u64,
+    ) -> Result<Option<LeasedWelcome<Self::Lease>>, OutboxPortError> {
+        let Some(transaction_id) = self
+            .pending_transaction_ids(now_unix_seconds)
+            .into_iter()
+            .next()
+        else {
+            return Ok(None);
+        };
+        let lease = self
+            .lease_delivery(transaction_id, now_unix_seconds, lease_seconds)
+            .map_err(map_outbox_port_error)?;
+        let payload = match self.delivery_payload(&lease, now_unix_seconds) {
+            Ok(payload) => payload,
+            Err(error) => {
+                let _ = self.fail_delivery(&lease);
+                return Err(map_outbox_port_error(error));
+            }
+        };
+        Ok(Some(LeasedWelcome::from_owner(
+            lease,
+            payload.welcome_envelope.to_vec(),
+            payload.deposit_endpoint.to_vec(),
+            payload.outbox_expires_at_unix_seconds,
+        )))
+    }
+
+    fn report_accepted(
+        &mut self,
+        lease: Self::Lease,
+        now_unix_seconds: u64,
+    ) -> Result<(), OutboxPortError> {
+        self.complete_delivery(&lease, now_unix_seconds)
+            .map_err(map_outbox_port_error)
+    }
+
+    fn report_failed(&mut self, lease: Self::Lease) -> Result<(), OutboxPortError> {
+        self.fail_delivery(&lease).map_err(map_outbox_port_error)
+    }
+}
+
+fn map_outbox_port_error(error: TransactionError) -> OutboxPortError {
+    match error {
+        TransactionError::DeliveryUnavailable
+        | TransactionError::LeaseMismatch
+        | TransactionError::AttemptsExhausted
+        | TransactionError::Expired => OutboxPortError::Conflict,
+        TransactionError::CapacityExceeded => OutboxPortError::Unavailable,
+        TransactionError::InvalidInput
+        | TransactionError::ReservationMismatch
+        | TransactionError::Conflict
+        | TransactionError::InjectedFailure
+        | TransactionError::OutcomeUnknown => OutboxPortError::Internal,
     }
 }
 

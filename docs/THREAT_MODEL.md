@@ -268,8 +268,9 @@ Assumptions:
   competing outbox ledger.
 - The retained LocalV1 coordinator slice is deposit-only. Its sender-only
   adapter surface, exact canonical reconstruction, one-attempt budget, coarse
-  failures, and drop-on-supervision evidence do not yet prove owner-store
-  integration, automatic deadline wakeups, restart recovery, receipt, or
+  failures, and drop-on-supervision evidence now include the in-memory inviter
+  owner port and exact retry after an unrecorded remote acceptance. They do not
+  prove automatic deadline wakeups, durable restart recovery, receipt, or
   recipient processing.
 
 ### Trust boundary: local persistent storage and operating system
