@@ -29,11 +29,14 @@ bounded one-Welcome deposit, receive, and acknowledgement with independent
 provider-generated authorities. The approved in-memory join result carries only
 the authenticated deposit endpoint beside its MLS outputs, and a retained test
 delivers the encrypted Welcome through that mailbox. This provides no durable
-outbox or network behavior. The first generalized transport values now use a
-closed profile set, bounded local adapter identifiers, exact canonical-envelope
+outbox or network behavior. The generalized transport contract now has a closed
+profile set, bounded local adapter identifiers, exact canonical-envelope
 ownership without ordinary debug output, finite operation budgets, bounded
-retry advice, and context-free failures. They add no capability erasure,
-delivery trait, binder, coordinator, or network authority. A separate bounded,
+retry advice, context-free failures, bounded operation requests and receipts,
+and post-receive batch validation. An earlier Phase 1 increment also added a
+narrow synchronous delivery trait and deterministic memory adapter. The full
+budget-aware dispatch boundary still has no generalized capability erasure,
+profile binder, coordinator, or network authority. A separate bounded,
 fault-injectable model exercises
 all-or-nothing inviter state, ambiguous-result recovery, and Welcome-outbox
 leasing semantics without providing storage or connecting to that sequential
@@ -542,6 +545,18 @@ and use of a delivery identifier as authority, and a seeded foreign-deposit
 fixture proves coarse diagnostics omit known authority and ciphertext bytes.
 These checks do not establish provider-neutral capability issuance, operating-
 system memory erasure, process isolation, or network-metadata privacy.
+
+The additive generalized operation values reject empty or oversized cursors,
+zero or excessive poll counts, aggregate poll-byte limits above either the 4 MiB
+contract ceiling or the caller's total operation budget, waits above 60 seconds,
+deposit bytes above their operation budget, and acknowledgement batches outside
+one to 64 identifiers. Cursor, request, bounded-ID, and deposit-receipt types
+that own full identifiers or ciphertext omit ordinary diagnostics. Received
+batches also reject excess items, excess aggregate canonical bytes, and locally
+expired envelopes before crossing the contract. These are contract-value and
+post-receive validation controls; no generalized capability issuance, lifecycle
+implementation, cancellation, incremental remote-response parser, or adapter
+dispatch claim follows from them.
 
 Attacker story: an unauthenticated sender floods a public request mailbox with
 maximum-sized objects. The service must bound per-invitation and global storage,

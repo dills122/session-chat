@@ -1,7 +1,7 @@
 # Implementation plan: profile-bound transport abstraction
 
-Status: proposed stabilization plan; generalized transport API and network
-adapter work must not begin until ADR 0015 and the version 1 contract are reviewed
+Status: active staged implementation plan; ADR 0015 is accepted, Tasks 1 and 2
+are complete, Task 3 is partial, and later dispatch and network work remain gated
 
 Date: 2026-08-20
 
@@ -33,9 +33,10 @@ network, packet-capture, and release gates are defined in
 - `session-inviter-transaction` models atomic membership/outbox visibility,
   ambiguous commit recovery, bounded delivery leasing, and exact retry in
   memory.
-- The local adapter has no common `EnvelopeDelivery` trait, profile binder,
-  general queue/poll model, adverse-network scheduler, network path, or durable
-  storage claim.
+- A narrow synchronous `EnvelopeTransport` trait and deterministic memory
+  adapter exist for bounded conformance work. They are not the complete
+  budget-aware polling, cursor, lifecycle, profile-binder, coordinator, network,
+  or durable-storage boundary.
 
 The plan extends this baseline. It does not recreate these crates or relabel
 their current evidence as durable or production-ready.
@@ -192,8 +193,18 @@ acknowledgement authority behind private fields and crate-only constructors,
 retains the sender-facing canonical deposit endpoint, adds a compile-fail
 wrong-right matrix, and seeds authority/ciphertext bytes into a coarse-error
 redaction fixture. This proves the local adoption boundary only; generalized
-capability issuance, rotation, requests, receipts, batches, and dispatch remain
+capability issuance, rotation, receive-batch dispatch, and cursor state remain
 open.
+
+The bounded-operation sub-increment adds opaque cursors, poll count/byte/wait
+limits, canonical deposit requests, bounded acknowledgement identifiers, and
+identifier-minimal receipts. It enforces provider-neutral hard ceilings and the
+caller's total byte budget before dispatch and keeps ciphertext/full identifiers
+out of ordinary diagnostics. It deliberately does not stabilize dispatch,
+async/clock mechanics, capabilities, or lifecycle operations. A follow-up
+receive-batch sub-increment enforces request-specific item/byte ceilings and
+local post-receive expiry without claiming incremental remote parsing or cursor
+state semantics.
 
 **Acceptance criteria:**
 
@@ -201,7 +212,7 @@ open.
 - [ ] A delivery ID or cursor cannot authorize acknowledgement.
 - [ ] Secret-bearing values have reviewed ownership, cloning, serialization,
   zeroization, and redaction behavior.
-- [ ] The contract accepts only canonical bounded envelope objects or validated
+- [x] Deposit requests accept only canonical bounded envelope objects or validated
   views derived from `session-protocol` bytes.
 - [ ] Existing local callers remain covered while migration to the common trait
   is explicit and reviewable.
@@ -213,6 +224,9 @@ open.
 - [ ] Generalized wrong-right tests cover the eventual common trait.
 - [x] The local rejection fixture contains none of the seeded authority or
   ciphertext bytes.
+- [x] Generalized value tests cover cursor, poll, deposit-byte, acknowledgement-
+  batch, and receipt bounds before dispatch.
+- [x] Receive-batch tests cover request count/bytes and post-receive expiry.
 - [ ] Generalized adapter error/log fixtures cover every authority type.
 - [x] `cargo test -p session-transport`
 
@@ -234,8 +248,12 @@ open.
 
 - [x] ADR 0015 is accepted for implementation.
 - [x] The crate builds without a network dependency.
-- [ ] Authority and redaction tests pass.
-- [ ] Review before adding mutable delivery state.
+- [x] Local authority-separation and seeded-redaction tests pass.
+- [x] Existing local and deterministic-memory delivery state has retained test
+  and review evidence.
+- [ ] Generalized authority, lifecycle, and provider-wide redaction tests pass.
+- [ ] Review the completed generalized contract before adding coordinator or
+  network state.
 
 ## Phase C: deterministic memory control path
 

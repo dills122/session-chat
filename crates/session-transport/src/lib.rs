@@ -9,9 +9,12 @@ pub use capability::{
     LocalWelcomeAcknowledgementCapability, LocalWelcomeMailbox, LocalWelcomeReceiveCapability,
 };
 pub use contract::{
-    AdapterId, BoundedRetryDelay, CanonicalEnvelope, EnvelopeId, MAX_ADAPTER_ID_BYTES,
-    MAX_RETRY_DELAY_SECONDS, OperationBudget, RetryAdvice, TransportContractError,
-    TransportFailure, TransportFailureCode, TransportProfileId,
+    AcknowledgementReceipt, AcknowledgementRequest, AdapterId, BoundedDeliveryIds,
+    BoundedRetryDelay, CanonicalEnvelope, Cursor, DepositReceipt, DepositRequest, EnvelopeId,
+    MAX_ACKNOWLEDGEMENT_IDS, MAX_ADAPTER_ID_BYTES, MAX_CURSOR_BYTES, MAX_POLL_ENCODED_BYTES,
+    MAX_POLL_ENVELOPES, MAX_POLL_WAIT_SECONDS, MAX_RETRY_DELAY_SECONDS, OperationBudget,
+    PollRequest, PollWait, ReceiveBatch, ReceivedCanonicalEnvelope, RetryAdvice,
+    TransportContractError, TransportFailure, TransportFailureCode, TransportProfileId,
 };
 
 use std::{collections::BTreeMap, error::Error};
