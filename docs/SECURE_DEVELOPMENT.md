@@ -22,16 +22,19 @@ The workflow has no path filters: a documentation-only security-contract change
 must produce the same stable required check as a code change. Every job has a
 timeout. Pull-request jobs receive no secrets, checkout does not retain GitHub
 credentials, workflow permissions are read-only, and every external action is
-pinned to a full commit. The Rust matrix makes the common local-app foundation
-an all-platform merge requirement; a matrix failure fails the aggregate Rust
-job and therefore the final gate.
+pinned to a full commit. The Rust matrix restores an OS-, toolchain-, and locked-
+graph-specific dependency build cache; it does not cache workspace crates,
+credentials, or installed binaries, and a cache miss never skips compilation.
+The matrix makes the common local-app foundation an all-platform merge
+requirement; a matrix failure fails the aggregate Rust job and therefore the
+final gate.
 
 Run the equivalent local gate with:
 
 ```sh
 cargo fetch --locked
 cargo fmt --all --check
-cargo clippy --workspace --all-targets --all-features --locked --offline -- -D warnings
+cargo clippy --workspace --all-targets --all-features --locked --offline -- -D warnings --no-deps
 cargo test --workspace --all-features --locked --offline
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps --locked --offline
 node --test scripts/check-rust-coverage.test.mjs scripts/setup-codex-links.test.mjs spikes/sealed-invitation-provider/test/provider.test.mjs
