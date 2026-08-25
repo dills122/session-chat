@@ -85,9 +85,9 @@ records, roadmap gates, and external audit findings can refer to the same case.
 | `admission-capability` | Exact binding, replay, expiry, and reservation tests | Full hostile first-contact scenario through the headless client and transaction boundary |
 | `session-crypto-hpke` | RFC and independent-provider vectors plus hostile context rejection | Cross-process protected join with captured ciphertext inspection |
 | `session-crypto-mls` | Two-party lifecycle, replay/reorder, update/removal, and storage-call evidence | Cross-implementation vectors where available, process restart, durable state, and corrupted-state tests |
-| `session-inviter-transaction` | Deterministic atomicity and fault model | Real database process-kill, disk-full/I/O failure, restore, and stale-snapshot evidence |
+| `session-inviter-transaction` | Deterministic atomicity/fault model plus LocalV1 coordinator owner-port acceptance, failure, and ambiguous exact-retry integration | Real database process-kill, disk-full/I/O failure, restore, and stale-snapshot evidence |
 | `storage-sqlcipher` | Real inviter and joiner MLS transaction, rollback, ambiguous-result, and close/reopen laboratory tests | Product composition, process-kill, disk/power fault, restore, and stale-snapshot evidence |
-| `session-transport` and `transport-memory` | Local and provider-neutral right separation, bounds, idempotency, canonical opaque envelopes, and deterministic drop/duplicate/hold/release evidence | Full adverse scheduler, reusable conformance harness, profile binder, coordinator, and packet-captured adapters |
+| `session-transport`, `transport-memory`, and `transport-conformance` | Local and provider-neutral right separation, bounds, idempotency, canonical opaque envelopes, deterministic adverse controls, strict bounded double-replay conformance with defective bridges, fail-closed LocalV1 binding, a deposit-only coordinator, and cross-platform blocking supervision | Provider-wide conformance, durable owner-store composition, real network adapters, and packet-captured evidence |
 | `sessionctl` | In-process two-client capability join, simulated approval, Welcome delivery, messaging, update, removal, and coarse output | Independent-process L1 runner and machine-readable redacted evidence producer |
 | Client vault | Sealed lifecycle, opaque locked inbox, bounded unlock orchestration, and portable passphrase laboratory | Product storage composition, OS credential input, process isolation, crash-dump, rollback, recovery, and deletion evidence |
 | Realm services | Design and disposable invitation-provider spike only | Container isolation, quotas, migration/restore, and operational redaction tests |
@@ -177,17 +177,16 @@ passes a happy path.
 
 ## Implementation order
 
-1. Finish the remaining transport Task 3 budget-aware request/receipt, polling,
-   lifecycle, and provider-wide redaction boundaries.
-2. Extend the existing deterministic `transport-memory` adapter into the full
-   adverse scheduler required by the version 1 contract.
-3. Extract the shared adapter conformance harness, including deliberately
-   defective adapters.
-4. Extend the existing in-process `sessionctl` composition into the canonical
+1. Connect the real SQLCipher transactions through the same sole-owner
+   coordinator port, with process/disk-fault evidence before any durability
+   claim.
+2. Integrate the atomic inviter transaction and coordinator into the real
+   admission/MLS product composition without repeating the existing MLS
+   transition.
+3. Extend the existing in-process `sessionctl` composition into the canonical
    independent-process L1 runner and redacted evidence producer.
-5. Connect the real SQLCipher transactions through the durable Phase 1
-   admission/MLS/invitation/Welcome-outbox composition, then add process and
-   disk-fault runners before claiming product durability.
+4. Add provider-wide lifecycle/cursor conformance and only then retain a
+   packet-captured network adapter experiment.
 6. Add the containerized realm runner before deployment claims.
 7. Evaluate Fast, Tor/Arti, SMP, and mixnet candidates through the same scenario
    IDs, evidence schema, and packet-capture policy.
@@ -199,8 +198,11 @@ passes a happy path.
 - No independent-process two-client/service runner or machine-readable evidence
   bundle exists; current `sessionctl` evidence is in process.
 - The deterministic memory adapter covers explicit delivery, loss, duplication,
-  hold/release reordering, retry, expiry, authority, and capacity, but no full
-  adverse scheduler or reusable adapter-conformance crate exists.
+  hold/release reordering, retry, expiry, authority, capacity, outage,
+  corruption, stale replay, and acknowledgement-result loss. The publish-disabled
+  conformance crate parses retained traces and executes one normalized
+  double-replay memory lifecycle, but no complete reusable adapter verdict or
+  deliberately defective-adapter suite exists.
 - SQLCipher transaction evidence exists, but no product-integrated durable flow,
   process-crash, disk/power-fault, restore, or stale-snapshot harness exists.
 - The supported-platform CI matrix exists for current Rust foundations, but no

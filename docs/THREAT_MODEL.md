@@ -266,6 +266,13 @@ Assumptions:
   coordinator, not the adapter, owns total retry policy, expiry checks,
   deduplication, cursor, and acknowledgement execution without maintaining a
   competing outbox ledger.
+- The retained LocalV1 coordinator slice is deposit-only. Its sender-only
+  adapter surface, exact canonical reconstruction, one-attempt budget, coarse
+  failures, and drop-on-supervision evidence now include the in-memory inviter
+  owner port and exact retry after an unrecorded remote acceptance. They do not
+  now include cross-platform wake/cancel/deadline supervision and pending-work
+  drop for the standard-library blocking baseline. They do not prove durable
+  restart recovery, receipt, recipient processing, or future UI-runtime wiring.
 
 ### Trust boundary: local persistent storage and operating system
 
@@ -550,13 +557,68 @@ The additive generalized operation values reject empty or oversized cursors,
 zero or excessive poll counts, aggregate poll-byte limits above either the 4 MiB
 contract ceiling or the caller's total operation budget, waits above 60 seconds,
 deposit bytes above their operation budget, and acknowledgement batches outside
-one to 64 identifiers. Cursor, request, bounded-ID, and deposit-receipt types
+one to 64 distinct identifiers. Cursor, request, bounded-ID, and deposit-receipt types
 that own full identifiers or ciphertext omit ordinary diagnostics. Received
 batches also reject excess items, excess aggregate canonical bytes, and locally
-expired envelopes before crossing the contract. These are contract-value and
-post-receive validation controls; no generalized capability issuance, lifecycle
-implementation, cancellation, incremental remote-response parser, or adapter
-dispatch claim follows from them.
+expired envelopes before crossing the contract. The subsequent generalized
+dispatch boundary preserves distinct provider authority types and supplies
+bounded requests through runtime-neutral standard-library futures. Explicit
+checkpoints separate monotonic deadlines, fallible local wall time, and
+cooperative cancellation; pre-entry evidence rejects mutation, while a staged
+test adapter proves it can recheck cancellation before its own local commit and
+a pending test future runs cleanup on drop. Remote or already-applied provider
+mutation remains explicitly ambiguous. The deterministic memory adapter now
+adopts this boundary with fixed
+configuration and live-byte ceilings, exact-byte delivery, normalized
+idempotency conflict, exact-set idempotent acknowledgement, cursor rejection,
+final-observation expiry revalidation, and seeded diagnostic redaction evidence
+while retaining the narrow fault tests. Provider-neutral outer right wrappers
+prevent direct positional substitution even if an implementation aliases its
+inner provider material. They do not prevent a defective provider from cloning,
+forging, or reminting that material into another right, so conformance must
+prevent cross-right derivation, validate exact scope, and review duplication
+policy per right. Controlled deposit transfer remains allowed; receive and
+acknowledgement authority should be non-cloneable by default. The current
+memory provider retains three private, distinct capability types and
+domain-separated commitments. Ambiguous post-commit cancellation, deadline,
+and clock failure are reconciled only with the exact same idempotency identity
+under a fresh budget; `RetryAdvice::Never` ends the current budget rather than
+asserting non-commit.
+The adverse-control increment remains test-only: `transport-memory` can
+script persistent outage, one normalized corrupt poll, digest-checked stale
+replay, and acknowledgement-result loss before or after deletion. Its snapshot
+contains counts and enums only. The publish-disabled conformance crate parses a
+strict 64 KiB/256-step canonical trace whose aliases, relative clocks, fixture
+sizes, controls, and normalized expectations contain no raw protocol or
+authority bytes. Unknown, noncanonical, forward-referenced, and oversized input
+fails before retention. Its first normalized runner generates fixtures only in
+memory, keeps rights behind adapter aliases, compares canonical bytes exactly,
+replays one trace against two fresh memory adapters, and rejects non-quiescent
+adapter-reported state. It accepts only LocalV1 and rejects unbound profile
+labels. A stale replay is an explicitly injected provider response and
+never restores acknowledged provider-owned state. A composed verdict and
+paired defective bridges exercise the retained adverse slice, but the full
+common verdict matrix remains incomplete and this is not a complete
+adapter-conformance claim.
+
+Within the retained runner, exact retries reuse one mailbox/envelope-bound
+receipt alias; poll normalization rejects a known receipt crossing mailbox
+scope or carrying another fixture's bytes. A pending future must arrange a wake
+before the bounded driver may drop it.
+
+These checks do not prove remote rollback after ambiguous deposit,
+preemptive cancellation inside a provider library, a trusted or rollback-safe
+wall clock, generalized capability issuance, mailbox lifecycle, incremental
+remote-response parsing, durable cursor recovery, or any network adapter.
+
+The first binder slice reduces local misbinding risk without granting network
+authority: it accepts only LocalV1, one exact no-egress manifest/configuration
+schema, coordinator-owned retries, complete local mailbox operations, no cursor
+support, no background work, and in-process no-network enforcement. Unknown
+versions, nonlocal profiles, broader limits, ambient egress, adapter-managed
+retry, and zero binding fingerprints fail closed. The resulting record is
+non-secret local evidence, not proof of adapter behavior or wire-level profile
+negotiation.
 
 Attacker story: an unauthenticated sender floods a public request mailbox with
 maximum-sized objects. The service must bound per-invitation and global storage,

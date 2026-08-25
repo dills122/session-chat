@@ -198,11 +198,35 @@ The active Rust laboratory now contains fourteen narrow pieces of this architect
   expiry, and no ambient credentials. Its additive generalized values provide
   closed profile IDs, bounded local adapter IDs, exact canonical-envelope
   ownership, finite operation budgets, bounded retry advice, and context-free
-  failures. It also defines the provider-neutral right-specific opaque-envelope
-  transport trait; no profile binder, coordinator, or network adapter exists.
-- `transport-memory` implements that trait with bounded deterministic drop,
-  hold/release, duplication, reordering, retry, and acknowledgement controls
-  for headless tests. It is not a network transport.
+  failures. It also defines the narrow compatibility trait and generalized
+  runtime-neutral `EnvelopeDelivery` trait with right-specific authority and
+  explicit clock/cancellation checkpoints. Its first profile-binding slice
+  accepts only an exact no-network LocalV1 manifest and emits a non-secret local
+  binding record. A deposit-only LocalV1 coordinator contract now consumes one
+  authoritative owner lease, reconstructs the canonical endpoint/envelope, and
+  makes one bounded adapter call through a sender-only interface. The in-memory
+  inviter transaction model implements the sole-owner port, with retained
+  evidence for acceptance, failure, and exact ambiguous-result retry without
+  repeating membership. A cross-platform standard-library blocking supervisor
+  retains wake, cancellation, deadline, and pending-drop evidence for headless
+  or worker-thread composition; a future UI may replace it behind the same
+  runtime-neutral future contract. A durable owner-store adapter does not
+  exist; Fast, Private, network authority, and network adapters remain
+  unavailable.
+- `transport-memory` implements both traits with bounded deterministic drop,
+  hold/release, duplication, reordering, retry, outage, one-shot corruption,
+  exact-byte stale replay, acknowledgement-result loss, poll-page, exact-set
+  acknowledgement, cursor-rejection, and secret-free probe controls for
+  headless tests.
+  It is not a network transport.
+- `transport-conformance` is a publish-disabled offline test-support crate. Its
+  first increment owns the strict, bounded, canonical, secret-free adverse
+  trace v1 schema and hostile parser fixtures. Its next retained slice adds a
+  normalized virtual-control runner, fresh-adapter double replay, exact-byte
+  alias normalization, and adapter-reported quiescence evidence for LocalV1
+  memory traces. A composed verdict and paired defective bridges cover the
+  retained adverse slice; the exhaustive common adapter verdict suite remains
+  incomplete.
 - `session-inviter-transaction` is a bounded, fault-injectable conformance model
   for all-or-nothing invitation/replay/approval/MLS-snapshot/Welcome-outbox
   visibility, exact retry recovery, and delivery leasing. It is not storage.
@@ -356,20 +380,20 @@ trait AdmissionVerifier {
 trait EnvelopeDelivery {
     async fn deposit(
         &self,
-        destination: &DepositEndpoint,
+        destination: &DepositRight<ProviderDepositMaterial>,
         envelope: &CanonicalEnvelope,
         budget: OperationBudget,
     ) -> Result<DepositReceipt, TransportFailure>;
 
     async fn poll(
         &self,
-        authority: &ReceiveCapability,
+        authority: &ReceiveRight<ProviderReceiveMaterial>,
         request: PollRequest,
     ) -> Result<ReceiveBatch, TransportFailure>;
 
     async fn acknowledge(
         &self,
-        authority: &AcknowledgementCapability,
+        authority: &AcknowledgementRight<ProviderAcknowledgementMaterial>,
         deliveries: BoundedDeliveryIds,
         budget: OperationBudget,
     ) -> Result<AcknowledgementReceipt, TransportFailure>;
@@ -383,8 +407,14 @@ return a detachable reference that can be reused with another request or
 reconstructed KeyPackage, and the membership API accepts no separately supplied
 KeyPackage or invitation/request context.
 
-`DepositEndpoint`, `ReceiveCapability`, `AcknowledgementCapability`, and
-`RotationCapability` are distinct authority-bearing types under ADR 0010.
+`DepositRight`, `ReceiveRight`, `AcknowledgementRight`, and the future
+`RotationRight` are distinct provider-neutral authority-bearing wrappers under
+ADR 0010. An already-issued wrapper cannot directly occupy a different
+operation position even when inner provider types alias. The wrappers do not
+prevent cross-right derivation: adapters must ensure material for one right
+cannot produce another, validate exact scope, and review cloning/serialization
+policy per right. Deposit endpoints may support controlled transfer; receive,
+acknowledgement, and rotation authority should be non-cloneable by default.
 Secret-bearing variants do not implement `Debug` or enter transport metadata.
 `CanonicalEnvelope` is one validated view of the exact deterministic bytes
 owned by `session-protocol`; adapters do not create alternative envelope

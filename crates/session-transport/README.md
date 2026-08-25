@@ -13,12 +13,40 @@ poll count/bytes/wait, acknowledgement batches, and deposit bytes against one
 operation budget. Request and receipt types omit ordinary diagnostics when they
 own ciphertext or full identifiers. `ReceiveBatch` validates item count,
 aggregate canonical bytes, and local post-receive expiry against its exact poll
-request before the result crosses the contract. The provider-neutral `EnvelopeTransport`
-trait keeps associated deposit, receive, and acknowledgement authority types
-distinct instead of erasing them into generic credentials. Reviewed adapters
-are selected at composition time; the trait does not load code or grant ambient
-authority. No complete request dispatch, lifecycle boundary, profile binder,
-coordinator, or network adapter exists yet.
+request before the result crosses the contract. The narrow provider-neutral
+`EnvelopeTransport` compatibility trait and the generalized `EnvelopeDelivery`
+dispatch trait both keep deposit, receive, and acknowledgement operations
+distinct instead of erasing them into generic credentials. The generalized
+trait adds provider-neutral outer right wrappers, so an already-issued wrapper
+cannot directly occupy another operation position even if inner provider types
+alias. This positional check is not an issuance proof: each adapter must still
+ensure one right cannot derive another, validate exact scope, and review
+cloning/serialization policy per right. Transferable deposit endpoints remain
+allowed; receive and acknowledgement authority should be non-cloneable by
+default. It returns runtime-neutral
+standard-library futures and receives explicit monotonic-deadline,
+fallible-wall-clock, and cooperative-cancellation observations. Reviewed
+adapters are selected at composition time; neither trait loads code or grants
+ambient authority.
+
+The additive `EnvelopeDeposit` surface gives the LocalV1 Welcome coordinator
+only sender-side deposit authority. `WelcomeDeliveryCoordinator` consumes one
+lease from an owner-store port, rebuilds exact canonical envelope and endpoint
+values, creates a one-attempt finite budget, and reports only adapter acceptance
+or failure back to that same owner. The encoded endpoint is zeroized and never
+implements ordinary diagnostics. The real local mailbox implements this narrow
+surface. The optional standard-library blocking supervisor provides a
+cross-platform headless/worker-thread baseline that waits on proper future
+wakes, external cancellation, or a monotonic deadline and drops unfinished
+adapter work. UI runtimes may supply a non-blocking equivalent without changing
+the coordinator contract. The LocalV1 profile binder, non-secret binding
+record, and in-memory owner-store integration exist; durable storage, headless
+product-flow adoption, and network adapters remain later work.
+
+`RetryAdvice::Never` ends attempts under the current operation budget. If a
+deposit may already have committed, a coordinator may reconcile only the exact
+same idempotency identity under a fresh budget while owner-local state still
+marks that operation eligible; it must not create a competing operation.
 
 `LocalMemoryWelcomeTransport` creates fresh mailbox identifiers and independent
 deposit, receive, and acknowledgement authorities with AWS-LC's CSPRNG. Only

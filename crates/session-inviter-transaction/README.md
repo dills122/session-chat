@@ -5,10 +5,20 @@ inviter-local join transaction. It proves that invitation consumption, replay
 retention, approval state, one advanced MLS snapshot, and one encrypted Welcome
 outbox item have only an all-or-nothing visible outcome.
 
-It also models exact retry recovery and bounded outbox leasing. A lost commit
-response recovers by transaction ID without repeating MLS Add. Delivery
-failure, lease expiry, and retry never undo membership or invitation
-consumption.
+It also models exact retry recovery and bounded outbox leasing. The store, not
+the caller, issues lease identity; stale and foreign leases cannot mutate a
+replacement lease, and attempt-exhausted work is retained but no longer
+eligible. A lost commit response recovers by transaction ID without repeating
+MLS Add. Delivery failure, lease expiry, and retry never undo membership or
+invitation consumption.
+
+Committed delivery material must be the exact canonical `OpaqueEnvelope` and
+`LocalWelcomeDepositEndpoint` encodings. The model rejects invalid material and
+requires `outbox expiry <= envelope expiry <= endpoint expiry`. The model now
+implements the LocalV1 coordinator's sole-owner port, so retained payloads are
+reconstructed and delivered without a second destination schema or outbox
+ledger. Integration evidence covers normal acceptance, adapter failure, and an
+ambiguous prior remote acceptance reconciled by exact retry.
 
 This crate is not a database and provides no disk durability, process-crash
 recovery, at-rest encryption, vault integration, rollback resistance, or

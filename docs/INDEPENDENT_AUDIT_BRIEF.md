@@ -57,10 +57,22 @@ The checked-in runtime consists of:
   prepare/apply stages;
 - `session-transport`: a bounded, single-process local one-Welcome mailbox with
   provider-generated, separate deposit, receive, and acknowledgement authority,
-  exact-retry idempotency, expiry, coarse errors, and a provider-neutral
-  right-specific opaque-envelope trait;
+  exact-retry idempotency, expiry, coarse errors, a narrow provider-neutral
+  right-specific opaque-envelope trait, and an additive generalized static
+  dispatch boundary with bounded requests, explicit deadline/wall-clock/
+  cancellation observations, and positional right wrappers;
 - `transport-memory`: a bounded deterministic test adapter for explicit drop,
-  duplicate, hold/release reordering, retry, and acknowledgement behavior;
+  duplicate, hold/release reordering, retry, and acknowledgement behavior that
+  also adopts the generalized cursorless boundary with exact canonical bytes,
+  final-observation expiry checks, fixed live-state ceilings, and exact-set
+  idempotent acknowledgement; its additive test-only controls model bounded
+  outage, corrupt polling, exact-byte stale replay, and acknowledgement-result
+  loss with a secret-free snapshot;
+- `transport-conformance`: a publish-disabled offline test-support crate whose
+  current increments strictly parse and canonically re-encode bounded,
+  alias-only adverse trace v1 fixtures and run one normalized trace twice
+  against fresh memory adapters with exact-byte and quiescence checks; its
+  reusable adapter verdict suite is not complete;
 - `session-storage`: a deterministic in-memory sealed-session lifecycle and
   bounded canonical opaque-inbox conformance model with generation-bound local
   import plus bounded external unlock preparation, one-shot credentials, and
@@ -144,7 +156,12 @@ flowchart LR
 | Approved in-memory join returns the exact deposit endpoint beside the encrypted MLS Welcome | Implemented and tested | The endpoint moves from the HPKE-authenticated request through approval and MLS apply; expiry is checked before reservation and MLS mutation, while local delivery and non-rollback after delivery failure are retained integration evidence |
 | Welcome outbox delivery is atomic with MLS, replay, approval, and invitation state | Accepted contract, unimplemented | The SQLCipher laboratory atomically creates a pending outbox record with MLS state, but durable leasing/delivery is not connected to the product path |
 | Local deposit, receive, and acknowledge rights are non-interchangeable | Implemented and tested | `session-transport` uses separately typed provider-generated authorities, commitment checks, hostile authority tests, and an approved-join integration test |
-| Deterministic memory delivery models loss, duplication, reordering, replay, retry, expiry, and bounded capacity | Implemented and tested | `transport-memory` fault-plan and hostile-authority tests over `OpaqueEnvelope`; this is neither encryption nor a network/privacy claim |
+| Generalized dispatch keeps already-issued right wrappers out of other operation positions | Implemented and tested as a positional contract | `EnvelopeDelivery` compile-fail tests include aliased inner associated types, delivery IDs, and cursors. Wrappers alone do not prevent cross-right derivation; every provider must validate exact scope and document duplication policy per right. Deposit endpoints may support controlled transfer, while receive and acknowledgement authority should be non-cloneable by default. The memory provider supplies three private non-`Clone` types with domain-separated commitments. |
+| Generalized operations separate monotonic deadlines, fallible wall time, and cooperative cancellation | Implemented and tested as a local dispatch contract | Pre-entry rejection, post-provider checkpoints, and clock-failure tests are joined by a standard-library blocking supervisor that accepts legal delayed wakeups, wakes on external cancellation/deadline, and drops pending work. It is a cross-platform headless/worker-thread baseline, not provider preemption or a future UI-runtime selection. |
+| Ambiguous committed deposits can be reconciled without a second logical delivery | Implemented and tested in memory | The inviter model is the sole owner of attempts and leases. A simulated unrecorded LocalV1 remote acceptance expires, retries the exact canonical envelope and endpoint through a fresh lease, returns the same logical mailbox delivery, and leaves one membership commit. Durable coordinator recovery remains unimplemented. |
+| Deterministic memory delivery models loss, duplication, reordering, replay, retry, expiry, and bounded capacity | Implemented and tested | `transport-memory` fault-plan and hostile-authority tests over `OpaqueEnvelope`; generalized tests preserve exact canonical bytes, reject changed-byte retries and every cursor, enforce count/byte/live-state ceilings, normalize unknown/repeated exact-set acknowledgement, and revalidate expiry at the final checkpoint. This is neither encryption nor a network/privacy claim. |
+| Test-only memory controls model outage, corrupt polling, stale replay, and lost acknowledgement results | Implemented and tested in memory | One-shot/persistent controls are bounded, unavailable deposit preserves the next fault, corrupt poll does not dequeue, stale replay requires the exact retained digest without restoring acknowledged state, and acknowledgement loss distinguishes before- from after-commit through secret-free counts. No remote or coordinator claim follows. |
+| Adverse trace v1 is canonical, versioned, bounded, and secret-free | Reusable runner and verdict slice implemented and tested | `transport-conformance` rejects unknown/noncanonical/oversized input, duplicate/forward aliases, excessive lines/steps/checkpoints, unreachable pending expectations, and seeded diagnostics. Executable fixtures drive the retained adverse vocabulary twice through fresh LocalV1 memory adapters; output is alias-only, exact bindings and canonical bytes are enforced, delayed wake/drop and quiescence are bounded, and deliberately defective bridges prove failure detection. Network, durability, and provider-wide conformance remain unimplemented. |
 | One headless two-client flow composes protected join through removal | Implemented and tested in memory | `sessionctl` creates fresh Alice/Bob state, explicitly approves the exact capability request, delivers the MLS Welcome and protected traffic through local adapters, updates the epoch, removes Bob, and observes post-removal rejection; no durability, network, hosting, or UX claim |
 | Reusable or network mailbox rotation is a separate non-interchangeable right | Accepted contract, unimplemented | ADR 0010; the one-use local profile deliberately has no rotation operation, and Node simulator evidence does not establish production transport |
 | The Node simulator rejects unknown, cyclic, accessor-backed, symbol-keyed, deep, or oversized provider input before cloning or authorization | Implemented and tested | Retained non-production adversarial tests at directory and attestor entry points |

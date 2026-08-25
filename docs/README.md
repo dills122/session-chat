@@ -39,8 +39,21 @@ all.
   defines the accepted, partially implemented profile-bound and right-specific
   envelope-delivery contract.
 - [Transport and security technology landscape](research/TRANSPORT_SECURITY_LANDSCAPE_2026-08-20.md)
-  retains the August 2026 evidence, candidate comparison, limitations, and
-  experiment recommendations.
+  compares candidate transport families, threat assumptions, and evidence gaps
+  without selecting a production provider.
+- [Transport dispatch and mailbox semantics research](research/TRANSPORT_DISPATCH_AND_MAILBOX_SEMANTICS_2026-08-24.md)
+  records the runtime-neutral dispatch, clock/cancellation, acknowledgement,
+  cursor, rotation, and restart decisions behind the current increment.
+- [Adverse trace and conformance research](research/TRANSPORT_ADVERSE_TRACE_AND_CONFORMANCE_2026-08-25.md)
+  records the strict secret-free trace schema, ownership, bounds, and runner
+  seams used to build Tasks 5 and 6.
+- [Receive cursor and mailbox lifecycle research](research/TRANSPORT_RECEIVE_CURSOR_LIFECYCLE_2026-08-25.md)
+  records generation-bound cursor, persist-before-acknowledge, rotation, and
+  restart requirements without selecting a network provider.
+- [Welcome delivery coordinator research](research/WELCOME_DELIVERY_COORDINATOR_2026-08-25.md)
+  maps the implemented deposit-only coordinator and standard-library
+  supervision baseline to the inviter-owned outbox while preserving the
+  remaining durable-storage and UI-runtime gaps.
 - [Transport abstraction implementation plan](plans/TRANSPORT_ABSTRACTION_IMPLEMENTATION.md)
   sequences stabilization of the existing local adapter and outbox model, the
   generalized contract, conformance harness, coordinator, and later
@@ -54,6 +67,10 @@ all.
 - [Local transport capability-boundary evidence](evidence/transport-capability-boundaries.md)
   records ownership, movement, redaction, zeroization, and compile-time
   right-separation evidence without claiming a generalized provider contract.
+- `transport-conformance` retains the canonical adverse-trace parser, hostile
+  fixtures, and a first normalized double-replay runner over the real memory
+  adapter. The complete common verdict and deliberately defective-adapter suite
+  remain future work.
 - [Threat model](THREAT_MODEL.md) defines assets, trust boundaries, attackers,
   invariants, and severity calibration.
 - [Roadmap](ROADMAP_V2.md) proposes an incremental implementation and validation
@@ -220,10 +237,11 @@ claiming disk durability. A right-specific local one-Welcome mailbox now has
 bounded in-memory evidence, and the committed approved-join result carries its
 exact deposit-only endpoint beside the encrypted MLS Welcome. The current
 sequential delivery path is not a durability or crash-atomicity claim.
-The separate `transport-memory` adapter now implements the right-specific
-opaque-envelope trait with bounded deterministic loss, duplication, reordering,
-retry, expiry, and acknowledgement controls for headless tests. It is not a
-network, encryption, or privacy implementation.
+The separate `transport-memory` adapter now implements both the narrow and
+generalized right-specific opaque-envelope traits with bounded deterministic
+loss, duplication, reordering, retry, expiry, clock/cancellation, cursor
+rejection, exact-set acknowledgement, and redaction controls for headless tests.
+It is not a network, encryption, or privacy implementation.
 The `sessionctl` binary now composes the implemented local boundaries into one
 fresh two-client run covering protected capability admission, explicit
 simulated approval, Welcome delivery, bidirectional MLS application messages,

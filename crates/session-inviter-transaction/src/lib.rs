@@ -2,8 +2,10 @@
 
 //! Bounded conformance model for ADR 0008's inviter-local join transaction.
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
+use session_protocol::{LocalWelcomeDepositEndpoint, OpaqueEnvelope};
+use session_transport::{LeasedWelcome, OutboxPortError, WelcomeOutboxPort};
 use thiserror::Error;
 use zeroize::Zeroize;
 
@@ -203,6 +205,8 @@ pub enum OutboxState {
     Leased,
     /// Delivery completed.
     Delivered,
+    /// The configured delivery-attempt bound was reached without acceptance.
+    AttemptsExhausted,
 }
 
 /// Secret-free recovery view for one transaction.
@@ -218,8 +222,9 @@ pub struct TransactionView {
 
 /// Opaque authority for reporting one leased delivery result.
 pub struct DeliveryLease {
+    store_scope: Arc<()>,
     transaction_id: [u8; IDENTIFIER_BYTES],
-    lease_id: [u8; IDENTIFIER_BYTES],
+    lease_sequence: u64,
 }
 
 /// Borrowed secret-bearing payload available only under an exact live lease.
@@ -228,6 +233,8 @@ pub struct DeliveryPayload<'a> {
     pub welcome_envelope: &'a [u8],
     /// Byte-identical deposit-only endpoint.
     pub deposit_endpoint: &'a [u8],
+    /// Owner-store expiry that remains subordinate to envelope and endpoint expiry.
+    pub outbox_expires_at_unix_seconds: u64,
 }
 
 /// Deterministic failure points used to prove recovery semantics.
@@ -287,6 +294,8 @@ pub enum TransactionError {
 /// Bounded in-memory conformance model. This type is not durable storage.
 pub struct InMemoryInviterJoinStore {
     policy: TransactionPolicy,
+    lease_scope: Arc<()>,
+    next_lease_sequence: u64,
     reservations: BTreeMap<[u8; IDENTIFIER_BYTES], ReservationRecord>,
     commits: BTreeMap<[u8; IDENTIFIER_BYTES], CommittedRecord>,
 }
@@ -345,20 +354,23 @@ impl Drop for CommittedRecord {
 enum StoredOutboxState {
     Pending,
     Leased {
-        lease_id: [u8; IDENTIFIER_BYTES],
+        lease_sequence: u64,
         expires_at_unix_seconds: u64,
     },
     Delivered {
-        lease_id: [u8; IDENTIFIER_BYTES],
+        lease_sequence: u64,
     },
+    AttemptsExhausted,
 }
 
 impl InMemoryInviterJoinStore {
     /// Creates an empty conformance model.
     #[must_use]
-    pub const fn new(policy: TransactionPolicy) -> Self {
+    pub fn new(policy: TransactionPolicy) -> Self {
         Self {
             policy,
+            lease_scope: Arc::new(()),
+            next_lease_sequence: 1,
             reservations: BTreeMap::new(),
             commits: BTreeMap::new(),
         }
@@ -516,6 +528,7 @@ impl InMemoryInviterJoinStore {
                     StoredOutboxState::Pending => OutboxState::Pending,
                     StoredOutboxState::Leased { .. } => OutboxState::Leased,
                     StoredOutboxState::Delivered { .. } => OutboxState::Delivered,
+                    StoredOutboxState::AttemptsExhausted => OutboxState::AttemptsExhausted,
                 },
                 delivery_attempts: record.delivery_attempts,
             })
@@ -530,13 +543,18 @@ impl InMemoryInviterJoinStore {
                 if record.outbox_expires_at_unix_seconds <= now_unix_seconds {
                     return None;
                 }
+                if record.delivery_attempts >= self.policy.maximum_delivery_attempts {
+                    return None;
+                }
                 match record.outbox {
                     StoredOutboxState::Pending => Some(*transaction_id),
                     StoredOutboxState::Leased {
                         expires_at_unix_seconds,
                         ..
                     } if expires_at_unix_seconds <= now_unix_seconds => Some(*transaction_id),
-                    StoredOutboxState::Leased { .. } | StoredOutboxState::Delivered { .. } => None,
+                    StoredOutboxState::Leased { .. }
+                    | StoredOutboxState::Delivered { .. }
+                    | StoredOutboxState::AttemptsExhausted => None,
                 }
             })
             .collect()
@@ -546,12 +564,10 @@ impl InMemoryInviterJoinStore {
     pub fn lease_delivery(
         &mut self,
         transaction_id: [u8; IDENTIFIER_BYTES],
-        lease_id: [u8; IDENTIFIER_BYTES],
         now_unix_seconds: u64,
         lease_seconds: u64,
     ) -> Result<DeliveryLease, TransactionError> {
         if all_zero(&transaction_id)
-            || all_zero(&lease_id)
             || lease_seconds == 0
             || lease_seconds > self.policy.maximum_lease_seconds
         {
@@ -569,6 +585,9 @@ impl InMemoryInviterJoinStore {
         {
             return Err(TransactionError::Expired);
         }
+        if matches!(record.outbox, StoredOutboxState::AttemptsExhausted) {
+            return Err(TransactionError::AttemptsExhausted);
+        }
 
         let available = match record.outbox {
             StoredOutboxState::Pending => true,
@@ -576,23 +595,29 @@ impl InMemoryInviterJoinStore {
                 expires_at_unix_seconds,
                 ..
             } => expires_at_unix_seconds <= now_unix_seconds,
-            StoredOutboxState::Delivered { .. } => false,
+            StoredOutboxState::Delivered { .. } | StoredOutboxState::AttemptsExhausted => false,
         };
         if !available {
             return Err(TransactionError::DeliveryUnavailable);
         }
         if record.delivery_attempts >= self.policy.maximum_delivery_attempts {
-            record.outbox = StoredOutboxState::Pending;
+            record.outbox = StoredOutboxState::AttemptsExhausted;
             return Err(TransactionError::AttemptsExhausted);
         }
+        let lease_sequence = self.next_lease_sequence;
+        self.next_lease_sequence = self
+            .next_lease_sequence
+            .checked_add(1)
+            .ok_or(TransactionError::DeliveryUnavailable)?;
         record.delivery_attempts += 1;
         record.outbox = StoredOutboxState::Leased {
-            lease_id,
+            lease_sequence,
             expires_at_unix_seconds: lease_expires_at,
         };
         Ok(DeliveryLease {
+            store_scope: Arc::clone(&self.lease_scope),
             transaction_id,
-            lease_id,
+            lease_sequence,
         })
     }
 
@@ -602,6 +627,7 @@ impl InMemoryInviterJoinStore {
         lease: &DeliveryLease,
         now_unix_seconds: u64,
     ) -> Result<DeliveryPayload<'_>, TransactionError> {
+        self.require_local_lease(lease)?;
         let record = self
             .commits
             .get(&lease.transaction_id)
@@ -611,12 +637,15 @@ impl InMemoryInviterJoinStore {
         }
         match record.outbox {
             StoredOutboxState::Leased {
-                lease_id,
+                lease_sequence,
                 expires_at_unix_seconds,
-            } if lease_id == lease.lease_id && expires_at_unix_seconds > now_unix_seconds => {
+            } if lease_sequence == lease.lease_sequence
+                && expires_at_unix_seconds > now_unix_seconds =>
+            {
                 Ok(DeliveryPayload {
                     welcome_envelope: &record.welcome_envelope,
                     deposit_endpoint: &record.deposit_endpoint,
+                    outbox_expires_at_unix_seconds: record.outbox_expires_at_unix_seconds,
                 })
             }
             _ => Err(TransactionError::LeaseMismatch),
@@ -625,13 +654,21 @@ impl InMemoryInviterJoinStore {
 
     /// Reports a failed attempt, returning the Welcome to pending.
     pub fn fail_delivery(&mut self, lease: &DeliveryLease) -> Result<(), TransactionError> {
+        self.require_local_lease(lease)?;
         let record = self
             .commits
             .get_mut(&lease.transaction_id)
             .ok_or(TransactionError::LeaseMismatch)?;
         match record.outbox {
-            StoredOutboxState::Leased { lease_id, .. } if lease_id == lease.lease_id => {
-                record.outbox = StoredOutboxState::Pending;
+            StoredOutboxState::Leased { lease_sequence, .. }
+                if lease_sequence == lease.lease_sequence =>
+            {
+                record.outbox = if record.delivery_attempts >= self.policy.maximum_delivery_attempts
+                {
+                    StoredOutboxState::AttemptsExhausted
+                } else {
+                    StoredOutboxState::Pending
+                };
                 Ok(())
             }
             _ => Err(TransactionError::LeaseMismatch),
@@ -644,22 +681,27 @@ impl InMemoryInviterJoinStore {
         lease: &DeliveryLease,
         now_unix_seconds: u64,
     ) -> Result<(), TransactionError> {
+        self.require_local_lease(lease)?;
         let record = self
             .commits
             .get_mut(&lease.transaction_id)
             .ok_or(TransactionError::LeaseMismatch)?;
         match record.outbox {
             StoredOutboxState::Leased {
-                lease_id,
+                lease_sequence,
                 expires_at_unix_seconds,
-            } if lease_id == lease.lease_id
+            } if lease_sequence == lease.lease_sequence
                 && expires_at_unix_seconds > now_unix_seconds
                 && record.outbox_expires_at_unix_seconds > now_unix_seconds =>
             {
-                record.outbox = StoredOutboxState::Delivered { lease_id };
+                record.outbox = StoredOutboxState::Delivered { lease_sequence };
                 Ok(())
             }
-            StoredOutboxState::Delivered { lease_id } if lease_id == lease.lease_id => Ok(()),
+            StoredOutboxState::Delivered { lease_sequence }
+                if lease_sequence == lease.lease_sequence =>
+            {
+                Ok(())
+            }
             _ => Err(TransactionError::LeaseMismatch),
         }
     }
@@ -690,7 +732,87 @@ impl InMemoryInviterJoinStore {
         {
             return Err(TransactionError::InvalidInput);
         }
+        let envelope = OpaqueEnvelope::decode_canonical(&commit.welcome_envelope)
+            .map_err(|_| TransactionError::InvalidInput)?;
+        let endpoint = LocalWelcomeDepositEndpoint::decode_canonical(&commit.deposit_endpoint)
+            .map_err(|_| TransactionError::InvalidInput)?;
+        if all_zero(envelope.envelope_id())
+            || commit.outbox_expires_at_unix_seconds > envelope.expires_at_unix_seconds()
+            || envelope.expires_at_unix_seconds() > endpoint.expires_at_unix_seconds()
+        {
+            return Err(TransactionError::InvalidInput);
+        }
         Ok(())
+    }
+
+    fn require_local_lease(&self, lease: &DeliveryLease) -> Result<(), TransactionError> {
+        if Arc::ptr_eq(&self.lease_scope, &lease.store_scope) {
+            Ok(())
+        } else {
+            Err(TransactionError::LeaseMismatch)
+        }
+    }
+}
+
+impl WelcomeOutboxPort for InMemoryInviterJoinStore {
+    type Lease = DeliveryLease;
+
+    fn lease_next(
+        &mut self,
+        now_unix_seconds: u64,
+        lease_seconds: u64,
+    ) -> Result<Option<LeasedWelcome<Self::Lease>>, OutboxPortError> {
+        let Some(transaction_id) = self
+            .pending_transaction_ids(now_unix_seconds)
+            .into_iter()
+            .next()
+        else {
+            return Ok(None);
+        };
+        let lease = self
+            .lease_delivery(transaction_id, now_unix_seconds, lease_seconds)
+            .map_err(map_outbox_port_error)?;
+        let payload = match self.delivery_payload(&lease, now_unix_seconds) {
+            Ok(payload) => payload,
+            Err(error) => {
+                let _ = self.fail_delivery(&lease);
+                return Err(map_outbox_port_error(error));
+            }
+        };
+        Ok(Some(LeasedWelcome::from_owner(
+            lease,
+            payload.welcome_envelope.to_vec(),
+            payload.deposit_endpoint.to_vec(),
+            payload.outbox_expires_at_unix_seconds,
+        )))
+    }
+
+    fn report_accepted(
+        &mut self,
+        lease: Self::Lease,
+        now_unix_seconds: u64,
+    ) -> Result<(), OutboxPortError> {
+        self.complete_delivery(&lease, now_unix_seconds)
+            .map_err(map_outbox_port_error)
+    }
+
+    fn report_failed(&mut self, lease: Self::Lease) -> Result<(), OutboxPortError> {
+        self.fail_delivery(&lease).map_err(map_outbox_port_error)
+    }
+}
+
+fn map_outbox_port_error(error: TransactionError) -> OutboxPortError {
+    match error {
+        TransactionError::DeliveryUnavailable
+        | TransactionError::LeaseMismatch
+        | TransactionError::AttemptsExhausted
+        | TransactionError::Expired => OutboxPortError::Conflict,
+        TransactionError::CapacityExceeded => OutboxPortError::Unavailable,
+        TransactionError::InvalidInput
+        | TransactionError::ReservationMismatch
+        | TransactionError::Conflict
+        | TransactionError::InjectedFailure
+        | TransactionError::OutcomeUnknown => OutboxPortError::Internal,
     }
 }
 

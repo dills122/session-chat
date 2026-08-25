@@ -302,6 +302,11 @@ fn acknowledgement_request_bounds_identifiers_without_turning_them_into_authorit
         BoundedDeliveryIds::new(Vec::new()).err(),
         Some(TransportContractError::InvalidAcknowledgementBatch)
     );
+    let duplicate = DeliveryId::from_provider_bytes([0x45; 16]).expect("delivery ID");
+    assert_eq!(
+        BoundedDeliveryIds::new(vec![duplicate, duplicate]).err(),
+        Some(TransportContractError::InvalidAcknowledgementBatch)
+    );
 
     let oversized = (0..=MAX_ACKNOWLEDGEMENT_IDS)
         .map(|value| {

@@ -178,14 +178,34 @@ Expected output: wire-format draft plus test vectors.
 - **Decision and first increments retained:**
   [ADR 0015](adr/0015-bind-transport-adapters-to-versioned-profiles.md) is
   accepted. Closed profile and adapter identifiers, bounded contract values, a
-  narrow right-specific `EnvelopeTransport` trait, local capability-boundary
-  evidence, and a separate deterministic `transport-memory` adapter now exist.
-  The owner-local transaction store remains authoritative for Welcome-outbox
-  truth and leases.
-- Finish the budget-aware request/receipt, polling/cursor, mailbox-lifecycle,
-  and provider-wide redaction boundary before adding a real network adapter.
-- Extend `transport-memory` into the complete deterministic adverse-network
-  control path and add the shared conformance harness.
+  narrow right-specific `EnvelopeTransport` trait, generalized runtime-neutral
+  `EnvelopeDelivery` trait, local capability-boundary evidence, and a separate
+  deterministic `transport-memory` implementation now exist. The owner-local
+  transaction store remains authoritative for Welcome-outbox truth and leases.
+- The first dispatch decision is resolved as static standard-library futures
+  with explicit monotonic deadline, fallible wall time, and cancellation
+  observations. Exact-set acknowledgement remains separately authorized;
+  cursors and delivery identifiers remain non-authority. Provider-specific
+  receipt handles stay protected inside acknowledgement state.
+- Finish valid persisted cursor state, mailbox lifecycle/rotation,
+  provider-wide capability issuance, and the reusable conformance boundary
+  before adding a real network adapter.
+- The strict secret-free adverse-trace v1 parser and bounded memory outage,
+  corruption, stale-replay, acknowledgement-loss, and probe controls now exist.
+  A first normalized virtual-control runner now provides exact-byte alias
+  normalization, fresh-adapter double replay, and quiescence evidence for one
+  memory trace. Finish the common verdict cases and deliberately defective
+  adapters before calling the shared harness complete.
+- Apply the 2026-08-25
+  [receive lifecycle recommendation](research/TRANSPORT_RECEIVE_CURSOR_LIFECYCLE_2026-08-25.md):
+  owner-transaction persist-before-acknowledge, exact generation/epoch binding,
+  explicit resync, and compare-and-swap rotation. The current memory profile
+  continues to reject every cursor.
+- Apply the 2026-08-25
+  [Welcome coordinator map](research/WELCOME_DELIVERY_COORDINATOR_2026-08-25.md)
+  only after fixing lease-token ABA, exhausted-work enumeration, canonical
+  committed payload validation, endpoint reconstruction, and composition-root
+  wake/drop responsibility.
 - Decide which adapters can use a scoped in-process network broker and which
   require process/OS-level egress isolation.
 - Retain the exact adverse-network trace and redacted evidence format used by
@@ -193,9 +213,9 @@ Expected output: wire-format draft plus test vectors.
 
 Remaining expected output: the completed version 1 contract, a reusable
 conformance harness, and the Phase 1 headless flow through the complete common
-boundary. The existing `transport-memory` extraction is retained implementation
-evidence, not completion of the polling, lifecycle, scheduling, or conformance
-work.
+boundary. The retained trace parser and `transport-memory` fault controls are
+implementation evidence, not completion of the runner, lifecycle, durable
+coordination, or network work.
 
 ### Spike completed: sealed invitation post office
 

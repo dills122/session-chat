@@ -73,9 +73,11 @@ result now carries its exact deposit endpoint beside the MLS outputs, with
 retained local Welcome-delivery evidence. A separate bounded conformance model
 now exercises the accepted inviter transaction's atomic visibility, exact retry,
 ambiguous-result recovery, and Welcome-outbox leasing semantics under injected
-memory-model faults. Human approval UX, durable cross-layer state and outbox
-processing, integration of that transaction with MLS/admission/transport, and
-network transport work listed below remain
+memory-model faults. The in-memory inviter outbox now implements the LocalV1
+coordinator owner port and retains exact acceptance/failure/ambiguous-retry
+evidence against the real local mailbox. Human approval UX, integration of the
+transaction with the real MLS/admission product path, durable cross-layer state
+and outbox processing, and network transport work listed below remain
 outstanding.
 
 The provider-neutral right-specific transport trait and its separate
@@ -85,8 +87,21 @@ This completes the Phase 1 memory-transport test control, not network delivery.
 The additive generalized contract values now also bound opaque cursors, poll
 count/bytes/wait, deposit bytes, acknowledgement batches, and identifier-minimal
 receipts before dispatch, while received batches enforce the originating poll's
-count/byte limits and local expiry. Complete request dispatch, lifecycle,
-provider-wide capability issuance/redaction, and conformance remain open.
+count/byte limits and local expiry. The runtime-neutral generalized dispatch
+trait and its deterministic memory adoption now add explicit clock/cancellation,
+exact-set acknowledgement, fail-closed cursor, idempotency-conflict, and
+provider-redaction evidence. Lifecycle, valid cursor persistence, and
+provider-wide capability issuance remain open.
+A new publish-disabled `transport-conformance` crate now retains the strict
+bounded adverse-trace v1 parser, hostile fixtures, and a first normalized
+double-replay memory runner, while `transport-memory` adds
+bounded outage, corrupt-poll, exact-byte stale-replay, acknowledgement-loss,
+and secret-free state-probe controls. The retained runner proves deterministic,
+quiescent adverse delivery, exact bindings, redaction, bounded wake/drop
+behavior, and common-suite detection of deliberately defective bridges. The
+LocalV1 deposit-only coordinator adds one-attempt owner-store policy plus a
+cross-platform blocking wake/cancel/deadline supervisor; neither is a network
+or production-runtime claim.
 
 The implementation-free `session-admission` crate now supplies the
 provider-neutral, non-authorizing approval context and decision from ADR 0015.

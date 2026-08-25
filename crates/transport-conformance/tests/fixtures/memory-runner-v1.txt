@@ -1,0 +1,10 @@
+session-chat.transport.adverse-trace/v1
+profile|local
+wall-start|1700000000
+envelope|1|1|1|32|120
+step|1|open-mailbox|1|180|expect|mailbox-opened|1
+step|2|arm-deposit|hold|expect|fault-applied
+step|3|deposit|1|1|5000|4096|1|live:0:0;live:0:0|ready|expect|deposit-accepted|1
+step|4|release-held|0|expect|fault-applied
+step|5|poll|1|none|4|4096|0|5000|4096|1|live:0:0;live:0:0|ready|expect|poll-accepted|1:1|none
+step|6|ack|1|1|5000|4096|1|live:0:0;live:0:0|ready|expect|ack-accepted
