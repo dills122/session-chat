@@ -669,10 +669,10 @@ and the future durable MLS/storage increment governed by ADRs 0008 and 0015
   transitions.
 - [x] The owner-local transaction store is the sole durable outbox and lease
   authority; coordinator restart does not create a second ledger.
-- [ ] `cargo fmt --all --check`
-- [ ] `cargo clippy --workspace --all-targets -- -D warnings`
-- [ ] `cargo test --workspace`
-- [ ] Review retained evidence before any real network adapter.
+- [x] `cargo fmt --all --check`
+- [x] `cargo clippy --workspace --all-targets -- -D warnings`
+- [x] `cargo test --workspace`
+- [x] Review retained evidence before any real network adapter.
 
 ## Phase E: real-network experiments
 
