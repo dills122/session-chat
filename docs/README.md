@@ -66,9 +66,10 @@ all.
 - [Local transport capability-boundary evidence](evidence/transport-capability-boundaries.md)
   records ownership, movement, redaction, zeroization, and compile-time
   right-separation evidence without claiming a generalized provider contract.
-- `transport-conformance` currently retains only the canonical adverse-trace
-  parser and hostile fixtures; its runner and reusable adapter verdict remain
-  future work.
+- `transport-conformance` retains the canonical adverse-trace parser, hostile
+  fixtures, and a first normalized double-replay runner over the real memory
+  adapter. The complete common verdict and deliberately defective-adapter suite
+  remain future work.
 - [Threat model](THREAT_MODEL.md) defines assets, trust boundaries, attackers,
   invariants, and severity calibration.
 - [Roadmap](ROADMAP_V2.md) proposes an incremental implementation and validation

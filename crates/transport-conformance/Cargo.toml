@@ -9,5 +9,8 @@ publish = false
 session-protocol = { version = "=0.1.0", path = "../session-protocol" }
 session-transport = { version = "=0.1.0", path = "../session-transport" }
 
+[dev-dependencies]
+transport-memory = { path = "../transport-memory" }
+
 [lints]
 workspace = true

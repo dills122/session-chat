@@ -16,13 +16,31 @@ only a category and line number and never echo the rejected input.
 The trace never stores plaintext, ciphertext, canonical envelope bytes, raw
 mailbox/delivery/envelope/cursor identifiers, routes, capabilities, provider
 errors, admission data, or stable identities. Envelope and cursor fixtures are
-described by bounded numeric aliases and sizes; a later runner will generate
-their test-only bytes in memory.
+described by bounded numeric aliases and sizes. The runner generates their
+test-only bytes in memory and compares received canonical bytes exactly before
+normalizing randomized provider values back to aliases.
 
-The normalized runner, adapter factory seam, virtual control, alias normalizer,
-memory integration, deliberately defective adapters, and double-replay evidence
-remain the next increment. Passing this parser does not establish adapter
-conformance, network privacy, durability, or production readiness.
+The first runner increment adds a provider-specific bridge that retains all
+rights behind mailbox aliases, checked virtual clocks, a bounded waitable-waker
+driver, canonical normalized reports, end-state quiescence, and two fresh
+memory-adapter replays. Its runner test suite covers hold/release, deposit, poll,
+acknowledgement, cancellation, deadline, wall-clock failure, exact-retry receipt
+identity, mailbox/envelope-bound poll normalization, exact canonical bytes, and
+adapter-reported leftover-work rejection. The driver allows a wake
+to arrive for up to one second after a pending poll, including before a
+`poll-once-drop` future is dropped; a non-waking future fails closed. Exact retry
+delays use bounded `after-ns:<nanoseconds>` tokens so every valid transport
+duration remains distinguishable. This first runner accepts only `LocalV1`; it
+cannot mint evidence for an unbound Fast or Private profile.
+
+The composed LocalV1 verdict fixture additionally covers duplicate delivery,
+stale replay, one-shot corruption, before/after-commit acknowledgement loss,
+outage recovery, invalid cursors, and expiry. Deliberately defective bridges
+prove detection of changed exact-retry receipts, cross-mailbox receive batches,
+ignored deadline checkpoints, leaked drop work, and seeded provider failures.
+Exhaustive common-case coverage and profile-specific evidence remain open.
+Passing the parser or this first memory trace does not establish complete
+adapter conformance, network privacy, durability, or production readiness.
 
 ## Verification
 

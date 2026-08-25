@@ -132,7 +132,7 @@ remains in `transport-memory`.
 | `R5-TRACE` | Read-only research | Task 4 | Complete | Versioned trace ownership, vocabulary, bounds, redaction, determinism, and test seams are recorded from the accepted contracts and official Rust runtime sources. |
 | `T5-TRACE` | Lead implementation | `R5-TRACE` | Complete | A strict canonical v1 trace parser rejects unknown/noncanonical/oversized input and round-trips one secret-free golden fixture byte-for-byte. |
 | `T5-MEMORY-FAULTS` | Lead implementation | `T5-TRACE` | Complete | The memory provider supplies bounded outage, corruption, exact-byte stale-replay, acknowledgement-loss, release, and secret-free probe controls without weakening existing semantics. |
-| `T6-HARNESS` | Lead implementation | `T5-MEMORY-FAULTS` | Pending | A normalized runner replays the same trace twice and detects deliberately defective adapters without serializing provider identifiers or secret material. |
+| `T6-HARNESS` | Lead implementation | `T5-MEMORY-FAULTS` | In progress | The first normalized runner slice replays one trace twice against fresh memory adapters with exact-byte alias normalization and quiescence. Common verdict cases and deliberately defective adapters remain. |
 | `R7-COORD` | Read-only research | Tasks 5-6 contracts | Complete | Exact deposit-only coordinator/outbox ownership, recovery transitions, and five blocking contract defects are mapped for later Tasks 8-9. |
 | `R7-CURSOR` | Read-only research | ADRs 0010/0015 | Complete | Generation-bound cursor, persist-before-acknowledge, mailbox rotation, restart, and stale-state requirements are recorded without selecting a provider. |
 
@@ -381,10 +381,12 @@ before/after-commit acknowledgement-result loss, and a secret-free bounded
 snapshot. The publish-disabled `transport-conformance` crate owns a strict
 64 KiB/256-step canonical adverse-trace v1 parser with closed tokens, numeric
 aliases, bounded fixtures/checkpoints, hostile cases, redacted errors, and an
-exact round-trip fixture. Cursor invalidation remains fail-closed because the
-memory profile rejects every cursor. The normalized runner, double replay,
-virtual-control driver, and deliberately defective adapters remain Task 6, so
-Task 5 is not complete as an executable end-to-end schedule.
+exact round-trip fixture. Its first normalized runner slice adds in-memory
+fixture generation, virtual controls, bounded future driving, exact-byte alias
+normalization, fresh-adapter double replay, and quiescence for a hold/release
+memory trace plus fail-closed checkpoint cases. Cursor invalidation remains
+fail-closed because the memory profile rejects every cursor. Full adverse-action
+execution and deliberately defective adapters remain Task 6.
 
 **Acceptance criteria:**
 
@@ -395,8 +397,8 @@ Task 5 is not complete as an executable end-to-end schedule.
 
 **Verification:**
 
-- [ ] Golden traces replay identically across repeated test runs.
-- [ ] Tests prove no work remains after cancellation or deadline.
+- [x] The first executable golden trace replays identically across fresh runs.
+- [x] Memory-runner tests prove quiescence after cancellation and deadline.
 - [x] `cargo test -p transport-conformance --test trace_v1`
 - [x] `cargo test -p transport-memory --test adverse_schedule`
 
@@ -418,18 +420,38 @@ Task 5 is not complete as an executable end-to-end schedule.
 memory adapter is the first implementation and supplies controllable failure
 injection.
 
+**Progress (updated 2026-08-25):** A versioned provider-specific bridge keeps
+rights inside adapter implementations while the provider-neutral runner owns
+deterministic fixture generation, operation budgets, scripted checkpoints,
+bounded waitable-waker polling, alias normalization, expected-event comparison,
+canonical reports, double replay, and final quiescence. The retained memory
+fixture covers one complete hold/release delivery lifecycle and fail-closed
+checkpoint outcomes. The runner accepts only LocalV1 and rejects unbound profile
+labels. Exact retries reuse one mailbox/envelope-bound receipt alias, poll
+normalization rejects foreign-mailbox or swapped-envelope pairs, and pending
+futures may wake after polling returns within the one-second harness bound.
+Bridge-level coverage proves delayed-wake drop cleanup reaches final quiescence,
+while a non-waking future fails closed. Retry-delay reports preserve every valid
+duration exactly in nanoseconds. A composed LocalV1 fixture now covers
+duplication, stale replay, corruption, both acknowledgement-loss points, outage
+recovery, cursor rejection, and expiry. Deliberately defective bridges prove
+that changed retry receipts, cross-mailbox batches, ignored deadlines, leaked
+drop work, and seeded provider failures fail closed. Factory freshness and
+snapshot truth remain adapter obligations; arbitrary delay, queue saturation,
+and the exhaustive authority/resource matrix remain before Task 6 is complete.
+
 **Acceptance criteria:**
 
 - [ ] The harness covers every common test in the transport specification.
-- [ ] Adapter-specific tests can add evidence without weakening common tests.
-- [ ] Failure output identifies normalized codes without printing secret data.
+- [x] Adapter-specific tests can add evidence without weakening common tests.
+- [x] Failure output identifies normalized codes without printing secret data.
 
 **Verification:**
 
-- [ ] The memory adapter passes the harness.
-- [ ] A deliberately defective test adapter fails idempotency, redaction, and
+- [x] The memory adapter passes the retained LocalV1 verdict fixtures.
+- [x] A deliberately defective test adapter fails idempotency, redaction, and
   deadline tests for the expected reasons.
-- [ ] `cargo test -p transport-conformance`
+- [x] `cargo test -p transport-conformance`
 
 **Dependencies:** Tasks 4 and 5
 
@@ -450,19 +472,27 @@ injection.
 binding validation, and non-secret binding records. Start with Local only; do
 not enable Fast or Private profiles merely because their types exist.
 
+**Progress (updated 2026-08-25):** The first slice implements one exact
+LocalV1-only manifest and binding record. It rejects unknown manifest and
+configuration versions, nonlocal profiles, broader byte/count limits, cursor
+support, ambient egress, background work, adapter-managed retries, incomplete
+mailbox operations, mismatched enforcement, and invalid record inputs. The API
+binds one selected profile and accepts no fallback list. Network declarations,
+brokers, authenticated negotiation, and every nonlocal profile remain open.
+
 **Acceptance criteria:**
 
-- [ ] Unknown profile/manifest versions and contradictory requirements fail
+- [x] Unknown profile/manifest versions and contradictory requirements fail
   closed.
-- [ ] Adapter IDs never substitute for profile IDs.
-- [ ] No API accepts a generic fallback list.
+- [x] Adapter IDs never substitute for profile IDs.
+- [x] No API accepts a generic fallback list.
 
 **Verification:**
 
-- [ ] Tests reject undeclared egress, excessive sizes, unsupported operations,
+- [x] Tests reject ambient egress, excessive sizes, unsupported operations,
   broader retry behavior, and unknown versions.
-- [ ] Snapshot tests show binding records contain no routes or authority bytes.
-- [ ] `cargo test -p session-transport profile`
+- [x] Snapshot tests show binding records contain no routes or authority bytes.
+- [x] `cargo test -p session-transport --test profile_binding`
 
 **Dependencies:** Tasks 3 and 6
 

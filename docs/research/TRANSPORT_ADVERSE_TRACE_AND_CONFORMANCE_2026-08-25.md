@@ -1,7 +1,7 @@
 # Transport adverse trace and conformance research
 
-Status: accepted implementation input; trace parser and memory fault controls
-implemented, normalized runner and reusable suite still open
+Status: accepted implementation input; trace parser, memory fault controls, and
+first normalized double-replay memory runner implemented; reusable suite open
 
 Date: 2026-08-25
 
@@ -77,15 +77,45 @@ The separate replay queue is bounded and counted but never restores
 acknowledged provider state. Before/after-commit acknowledgement loss remains
 distinguishable only through the secret-free conformance snapshot.
 
+## Retained runner increment
+
+The first runner slice now exposes a versioned adapter bridge that keeps rights
+behind numeric mailbox aliases. The provider-neutral harness owns checked
+fixture generation, virtual checkpoint observations, bounded wake-aware future
+driving, exact canonical-byte normalization, expected-event comparison,
+canonical report bytes, two fresh-adapter replays, and a secret-free final
+adapter-reported quiescence check. The runner accepts only LocalV1 until a
+reviewed profile binder exists. One retained memory trace covers hold/release
+through exact-set acknowledgement, while focused traces cover cancellation,
+deadline, wall-clock failure, unbound-profile rejection, and non-quiescent
+rejection. The factory contract requires independent instances; the type system
+cannot prove absence of shared provider state.
+
+Exact retries must reuse the same alias, mailbox, envelope, and raw provider
+receipt; a raw receipt cannot be introduced under another alias. Poll
+normalization binds that receipt to its deposited mailbox and exact deposited
+envelope instead of independently matching global alias maps. `poll-once-drop`
+accepts only the terminal `future-dropped` expectation. The driver waits at
+most one second for a wake after a pending poll, so legal delayed wakes are not
+mistaken for missing wake registration while non-waking work remains bounded.
+An adapter-bridge test proves that delayed-wake drop cleanup releases active
+work before final quiescence. Retry-delay normalization uses exact bounded
+nanoseconds rather than truncating valid fractional seconds.
+
+The composed LocalV1 verdict fixture covers duplicate delivery, stale replay,
+one-shot corrupt polling, before/after-commit acknowledgement loss, persistent
+outage recovery, invalid cursors, and expiry. Paired conforming/defective bridge
+tests prove detection of changed retry receipts, cross-mailbox poll results,
+ignored deadline checkpoints, and active work retained after future drop. A
+seeded provider context remains structurally unable to cross the closed bridge
+error and snapshot types into runner diagnostics.
+
 ## Remaining implementation
 
-1. Expose a generic adapter factory and adverse-control seam to the harness.
-2. Add a virtual `DispatchControl`, counting waker, and explicit drop driver.
-3. Generate test-only envelope/cursor bytes from aliases in memory.
-4. Normalize randomized receipts and batches back to aliases.
-5. Run every golden trace twice and require quiescence and identical output.
-6. Add deliberately defective idempotency, redaction, and deadline/drop
-   adapters to prove the suite detects violations.
+1. Complete arbitrary-delay, queue-saturation, and exhaustive
+   authority/resource-bound verdict coverage.
+2. Add profile-specific verdict suites only after their reviewed binding
+   contracts exist.
 
 The implemented parser and provider controls are evidence inputs, not yet a
 conformance verdict for any adapter.

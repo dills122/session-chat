@@ -248,8 +248,19 @@ Its additive adverse controls model persistent outage, one normalized corrupt
 poll, digest-checked exact-byte stale replay, and acknowledgement-result loss
 before or after deletion, all behind bounded test-only queues and secret-free
 count snapshots. The publish-disabled conformance crate now parses a strict,
-bounded, canonical, alias-only trace v1, but its normalized runner and reusable
-adapter verdict remain unimplemented.
+bounded, canonical, alias-only trace v1 and runs a first exact-byte normalized
+trace twice against fresh memory adapters. A composed verdict covers the
+retained adverse vocabulary, and paired deliberately defective bridges prove
+receipt, scope, deadline, drop-cleanup, and redaction enforcement. Exhaustive
+common verdict coverage remains incomplete.
+
+The first profile-binding implementation is intentionally LocalV1-only. It
+accepts one exact versioned memory-adapter manifest with full mailbox
+operations, coordinator-owned retries, no cursor support, no background work,
+no egress, and in-process no-network enforcement. It produces a non-secret
+binding record containing only profile, adapter/version, configuration
+fingerprint, enforcement mode, and selection time. Reserved Fast and Private
+IDs are rejected by the binder and no API accepts a fallback list.
 
 `RetryAdvice::Never` ends attempts under the current budget. It does not assert
 that a deposit did not commit; the coordinator may reconcile an ambiguous

@@ -1,6 +1,6 @@
 # ADR 0015: Bind transport adapters to versioned profiles
 
-Status: accepted; generalized dispatch and cursorless memory-adapter adoption implemented
+Status: accepted; generalized dispatch, memory conformance, and first LocalV1 binding slice implemented
 
 Date: 2026-08-20
 
@@ -172,6 +172,14 @@ right remains statically distinct. Initial profile IDs use the closed reserved
 version 1 set; authenticated wire negotiation requires a later protocol schema.
 Network-broker and process-isolation choices remain deferred until a network
 adapter spike can produce direct evidence.
+
+The first retained binder is deliberately narrower than the eventual manifest
+schema. It binds one exact LocalV1 no-network declaration, rejects all nonlocal
+profiles and fallback lists, requires coordinator-owned retries and no
+background work, and records only non-secret adapter/version, configuration
+fingerprint, enforcement, and selection-time evidence. This does not enable a
+network profile, authenticate profile negotiation, or prove that the adapter
+behaved as declared.
 
 ## Sources reviewed
 

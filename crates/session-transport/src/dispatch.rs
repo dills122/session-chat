@@ -16,6 +16,21 @@ pub struct DispatchObservation {
 }
 
 impl DispatchObservation {
+    /// Constructs one caller-owned checkpoint observation.
+    ///
+    /// Custom controls use this only when overriding [`DispatchControl::checkpoint`]
+    /// to provide deterministic virtual time. The control remains responsible
+    /// for cancellation, deadline, and wall-clock fail-closed behavior. An
+    /// observation grants no mailbox right, profile binding, or mutation
+    /// authority.
+    #[must_use]
+    pub const fn new(monotonic_now: Instant, wall_now_unix_seconds: u64) -> Self {
+        Self {
+            monotonic_now,
+            wall_now_unix_seconds,
+        }
+    }
+
     /// Returns the monotonic time observed for the operation budget.
     #[must_use]
     pub const fn monotonic_now(self) -> Instant {

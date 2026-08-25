@@ -124,3 +124,52 @@ fn parser_diagnostics_never_echo_the_untrusted_line() {
 
     assert!(!diagnostics.contains(seeded));
 }
+
+#[test]
+fn parser_requires_exact_retry_to_reuse_one_bound_delivery_alias() {
+    let exact_retry = b"session-chat.transport.adverse-trace/v1\nprofile|local\nwall-start|1700000000\nenvelope|1|1|1|32|120\nstep|1|open-mailbox|1|180|expect|mailbox-opened|1\nstep|2|deposit|1|1|5000|4096|1|live:0:0;live:0:0|ready|expect|deposit-accepted|1\nstep|3|deposit|1|1|5000|4096|1|live:0:0;live:0:0|ready|expect|deposit-accepted|1\n";
+    AdverseTraceV1::parse(exact_retry).expect("exact retry reuses its delivery alias");
+
+    let changed_envelope = b"session-chat.transport.adverse-trace/v1\nprofile|local\nwall-start|1700000000\nenvelope|1|1|1|32|120\nenvelope|2|2|1|32|120\nstep|1|open-mailbox|1|180|expect|mailbox-opened|1\nstep|2|deposit|1|1|5000|4096|1|live:0:0;live:0:0|ready|expect|deposit-accepted|1\nstep|3|deposit|1|2|5000|4096|1|live:0:0;live:0:0|ready|expect|deposit-accepted|1\n";
+    assert_eq!(
+        AdverseTraceV1::parse(changed_envelope)
+            .expect_err("one delivery alias cannot bind another envelope")
+            .category(),
+        TraceErrorCategory::InvalidRecord
+    );
+
+    let changed_alias = b"session-chat.transport.adverse-trace/v1\nprofile|local\nwall-start|1700000000\nenvelope|1|1|1|32|120\nstep|1|open-mailbox|1|180|expect|mailbox-opened|1\nstep|2|deposit|1|1|5000|4096|1|live:0:0;live:0:0|ready|expect|deposit-accepted|1\nstep|3|deposit|1|1|5000|4096|1|live:0:0;live:0:0|ready|expect|deposit-accepted|2\n";
+    assert_eq!(
+        AdverseTraceV1::parse(changed_alias)
+            .expect_err("one exact deposit identity cannot mint another alias")
+            .category(),
+        TraceErrorCategory::InvalidRecord
+    );
+}
+
+#[test]
+fn parser_rejects_the_unreachable_future_pending_expectation() {
+    let bytes = b"session-chat.transport.adverse-trace/v1\nprofile|local\nwall-start|1700000000\nenvelope|1|1|1|32|120\nstep|1|open-mailbox|1|180|expect|mailbox-opened|1\nstep|2|deposit|1|1|5000|4096|1|live:0:0|poll-once-drop|expect|future-pending\n";
+
+    assert_eq!(
+        AdverseTraceV1::parse(bytes)
+            .expect_err("poll-once-drop has only one terminal dropped outcome")
+            .category(),
+        TraceErrorCategory::InvalidRecord
+    );
+}
+
+#[test]
+fn parser_preserves_exact_bounded_retry_nanoseconds() {
+    let exact = b"session-chat.transport.adverse-trace/v1\nprofile|local\nwall-start|1700000000\nstep|1|open-mailbox|1|180|expect|mailbox-opened|1\nstep|2|set-availability|unavailable|expect|fault-applied\nstep|3|poll|1|none|1|4096|0|5000|4096|1|live:0:0|ready|expect|failed|unavailable|after-ns:500000000\n";
+    let parsed = AdverseTraceV1::parse(exact).expect("subsecond advice is representable exactly");
+    assert_eq!(parsed.encode_canonical(), exact);
+
+    let lossy_seconds = b"session-chat.transport.adverse-trace/v1\nprofile|local\nwall-start|1700000000\nstep|1|open-mailbox|1|180|expect|mailbox-opened|1\nstep|2|set-availability|unavailable|expect|fault-applied\nstep|3|poll|1|none|1|4096|0|5000|4096|1|live:0:0|ready|expect|failed|unavailable|after:1\n";
+    assert_eq!(
+        AdverseTraceV1::parse(lossy_seconds)
+            .expect_err("v1 must not accept a lossy retry-delay unit")
+            .category(),
+        TraceErrorCategory::InvalidValue
+    );
+}

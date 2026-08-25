@@ -192,8 +192,10 @@ Expected output: wire-format draft plus test vectors.
   before adding a real network adapter.
 - The strict secret-free adverse-trace v1 parser and bounded memory outage,
   corruption, stale-replay, acknowledgement-loss, and probe controls now exist.
-  Finish the normalized virtual-control runner, double-replay evidence, and
-  deliberately defective adapters before calling the shared harness complete.
+  A first normalized virtual-control runner now provides exact-byte alias
+  normalization, fresh-adapter double replay, and quiescence evidence for one
+  memory trace. Finish the common verdict cases and deliberately defective
+  adapters before calling the shared harness complete.
 - Apply the 2026-08-25
   [receive lifecycle recommendation](research/TRANSPORT_RECEIVE_CURSOR_LIFECYCLE_2026-08-25.md):
   owner-transaction persist-before-acknowledge, exact generation/epoch binding,

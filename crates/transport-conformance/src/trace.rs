@@ -1,9 +1,20 @@
-use std::{collections::BTreeSet, fmt};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt,
+};
 
 use session_protocol::MAX_ENVELOPE_CIPHERTEXT_BYTES;
 use session_transport::{
     MAX_ACKNOWLEDGEMENT_IDS, MAX_CURSOR_BYTES, MAX_POLL_ENCODED_BYTES, MAX_POLL_ENVELOPES,
     TransportProfileId,
+};
+
+mod runner;
+
+pub use runner::{
+    AcknowledgementLossFaultV1, AdapterControlErrorV1, AdapterSnapshotV1, AdverseTraceAdapterV1,
+    AvailabilityFaultV1, ConformanceFuture, DepositFaultV1, RunErrorCategoryV1, RunErrorV1,
+    RunReportV1, run_adverse_trace_twice_v1,
 };
 
 pub const MAX_TRACE_BYTES: usize = 64 * 1024;
@@ -14,6 +25,7 @@ const MAX_CHECKPOINTS: usize = 8;
 const MAX_DEADLINE_OFFSET_MILLISECONDS: u32 = 120_000;
 const MAX_CLOCK_ADVANCE_MILLISECONDS: u32 = 24 * 60 * 60 * 1_000;
 const MAX_WALL_ADVANCE_SECONDS: i32 = 24 * 60 * 60;
+const MAX_RETRY_DELAY_NANOSECONDS: u64 = 3_600_000_000_000;
 const HEADER: &str = "session-chat.transport.adverse-trace/v1";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -190,7 +202,6 @@ enum ExpectedEventV1 {
         code: Box<str>,
         retry: Box<str>,
     },
-    FuturePending,
     FutureDropped,
     Quiescent,
 }
@@ -262,6 +273,8 @@ impl AdverseTraceV1 {
         let mut cursor_aliases = BTreeSet::new();
         let mut mailbox_aliases = BTreeSet::new();
         let mut delivery_aliases = BTreeSet::new();
+        let mut delivery_bindings = BTreeMap::new();
+        let mut deposit_bindings = BTreeMap::new();
         let mut saw_step = false;
 
         for (index, line) in lines.iter().enumerate().skip(3) {
@@ -297,6 +310,8 @@ impl AdverseTraceV1 {
                         &cursor_aliases,
                         &mut mailbox_aliases,
                         &mut delivery_aliases,
+                        &mut delivery_bindings,
+                        &mut deposit_bindings,
                     )?;
                     steps.push(step);
                 }
@@ -464,6 +479,8 @@ fn parse_step(
     cursor_aliases: &BTreeSet<Alias>,
     mailbox_aliases: &mut BTreeSet<Alias>,
     delivery_aliases: &mut BTreeSet<Alias>,
+    delivery_bindings: &mut BTreeMap<Alias, (Alias, Alias)>,
+    deposit_bindings: &mut BTreeMap<(Alias, Alias), Alias>,
 ) -> Result<TraceStepV1, TraceError> {
     if fields.len() < 6 {
         return Err(error(TraceErrorCategory::InvalidRecord, line));
@@ -496,6 +513,8 @@ fn parse_step(
         cursor_aliases,
         mailbox_aliases,
         delivery_aliases,
+        delivery_bindings,
+        deposit_bindings,
     )?;
     Ok(TraceStepV1 {
         index,
@@ -642,7 +661,6 @@ fn parse_expected(fields: &[&str], line: u16) -> Result<ExpectedEventV1, TraceEr
                 retry: fields[2].into(),
             })
         }
-        Some("future-pending") if fields.len() == 1 => Ok(ExpectedEventV1::FuturePending),
         Some("future-dropped") if fields.len() == 1 => Ok(ExpectedEventV1::FutureDropped),
         Some("quiescent") if fields.len() == 1 => Ok(ExpectedEventV1::Quiescent),
         _ => Err(error(TraceErrorCategory::InvalidRecord, line)),
@@ -658,6 +676,8 @@ fn validate_references_and_introductions(
     cursor_aliases: &BTreeSet<Alias>,
     mailbox_aliases: &mut BTreeSet<Alias>,
     delivery_aliases: &mut BTreeSet<Alias>,
+    delivery_bindings: &mut BTreeMap<Alias, (Alias, Alias)>,
+    deposit_bindings: &mut BTreeMap<(Alias, Alias), Alias>,
 ) -> Result<(), TraceError> {
     if let TraceActionV1::OpenMailbox { mailbox, .. } = action {
         if !matches!(expected, ExpectedEventV1::MailboxOpened(alias) if alias == mailbox) {
@@ -667,11 +687,24 @@ fn validate_references_and_introductions(
             return Err(error(TraceErrorCategory::DuplicateAlias, line));
         }
     }
-    if let TraceActionV1::Deposit { .. } = action
+    if let TraceActionV1::Deposit {
+        mailbox, envelope, ..
+    } = action
         && let ExpectedEventV1::DepositAccepted(delivery) = expected
-        && !delivery_aliases.insert(*delivery)
     {
-        return Err(error(TraceErrorCategory::DuplicateAlias, line));
+        let binding = (*mailbox, *envelope);
+        if delivery_bindings
+            .get(delivery)
+            .is_some_and(|existing| *existing != binding)
+            || deposit_bindings
+                .get(&binding)
+                .is_some_and(|existing| existing != delivery)
+        {
+            return Err(error(TraceErrorCategory::InvalidRecord, line));
+        }
+        delivery_aliases.insert(*delivery);
+        delivery_bindings.insert(*delivery, binding);
+        deposit_bindings.insert(binding, *delivery);
     }
     if let ExpectedEventV1::PollAccepted { items, cursor } = expected {
         for (delivery, envelope) in items {
@@ -841,9 +874,9 @@ fn validate_retry(value: &str, line: u16) -> Result<(), TraceError> {
     if matches!(value, "never" | "backoff") {
         return Ok(());
     }
-    if let Some(seconds) = value.strip_prefix("after:") {
-        let seconds = parse_u32(seconds, line)?;
-        if (1..=3_600).contains(&seconds) {
+    if let Some(nanoseconds) = value.strip_prefix("after-ns:") {
+        let nanoseconds = parse_u64(nanoseconds, line)?;
+        if (1..=MAX_RETRY_DELAY_NANOSECONDS).contains(&nanoseconds) {
             return Ok(());
         }
     }
@@ -1009,7 +1042,6 @@ fn encode_expected(expected: &ExpectedEventV1, output: &mut String) {
         ExpectedEventV1::Failed { code, retry } => {
             output.push_str(&format!("failed|{code}|{retry}"));
         }
-        ExpectedEventV1::FuturePending => output.push_str("future-pending"),
         ExpectedEventV1::FutureDropped => output.push_str("future-dropped"),
         ExpectedEventV1::Quiescent => output.push_str("quiescent"),
     }

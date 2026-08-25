@@ -277,6 +277,14 @@ the budget-aware `EnvelopeDelivery` trait below in that memory adapter while
 retaining the narrow compatibility surface. Lifecycle, binding, coordination,
 durability, and networking remain separate work.
 
+The first binding increment adds a LocalV1-only manifest and binder. It admits
+exactly one selected profile and no fallback list; requires schema version 1,
+the exact local byte/count ceilings, full deposit/poll/acknowledgement support,
+coordinator-owned retries, zero cursor support, no egress, no background work,
+and in-process no-network enforcement; and emits a non-secret binding record.
+All reserved nonlocal profiles remain rejected until their own reviewed
+requirements and enforcement exist.
+
 ### First local capability-boundary evidence
 
 The next internal sub-increment extracts the existing local receive and
@@ -689,16 +697,35 @@ also supplies bounded persistent outage, one-shot corrupt polling, exact-byte
 stale replay, before/after-commit acknowledgement-result loss, and a
 secret-free count snapshot. It rejects every supplied cursor until persisted
 cursor state is implemented. The publish-disabled conformance crate owns the
-strict canonical adverse-trace v1 parser and hostile fixtures. The complete
-adverse-network controller still requires the normalized virtual-control runner
-and shared verdict suite to execute:
+strict canonical adverse-trace v1 parser, hostile fixtures, and a first
+normalized virtual-control runner. That runner generates test-only fixtures in
+memory, maps randomized provider values to aliases only after exact canonical
+byte comparison, replays one retained lifecycle trace twice against fresh
+memory adapters, and rejects non-quiescent adapter-reported completion. It is
+LocalV1-only and rejects other profile labels until binding exists.
+
+Receipt aliases are exact bindings: an idempotent retry reuses the same alias,
+mailbox, envelope, and provider receipt. Poll normalization verifies that exact
+binding before emitting an alias pair. `poll-once-drop` has one terminal
+`future-dropped` expectation. The bounded driver waits up to one second for a
+wake after `Poll::Pending`, including before that drop, and rejects a
+future that does not wake within the harness bound. Adapter snapshots include
+active operations so drop cleanup participates in final quiescence. Normalized
+retry delays use the exact closed token `after-ns:<nanoseconds>`, bounded from 1
+through 3,600,000,000,000, rather than a lossy whole-second representation.
+
+The composed LocalV1 verdict fixture now executes corruption, stale replay,
+cursor invalidation, both acknowledgement-loss points, total unavailability,
+duplication, and expiry. Deliberately defective adapter bridges prove that the
+runner rejects changed exact-retry receipts, cross-mailbox batches, skipped
+deadline checkpoints, and leaked work after drop; seeded provider context
+cannot enter its closed diagnostics. The complete shared verdict suite still
+needs executable cases for:
 
 - arbitrary delay;
-- corruption and stale replay through normalized trace aliases;
 - queue saturation;
-- cursor invalidation;
-- acknowledgement loss; and
-- total unavailability.
+- exhaustive authority and resource-bound combinations; and
+- profile-specific cases once bindings exist.
 
 The same scripted trace format should drive later adapter integration tests
 where practical.
@@ -710,7 +737,8 @@ kind, and eight checkpoint directives per operation. It contains no raw
 plaintext, ciphertext, canonical envelope bytes, identifiers, routes,
 capabilities, provider errors, admission data, or stable identities. Unknown,
 noncanonical, duplicate, forward-referenced, and oversized input fails before
-retention. This parser contract does not itself establish adapter conformance.
+retention. This parser contract and first memory runner do not by themselves
+establish complete adapter conformance.
 
 ## Versioning and compatibility
 

@@ -87,7 +87,7 @@ records, roadmap gates, and external audit findings can refer to the same case.
 | `session-crypto-mls` | Two-party lifecycle, replay/reorder, update/removal, and storage-call evidence | Cross-implementation vectors where available, process restart, durable state, and corrupted-state tests |
 | `session-inviter-transaction` | Deterministic atomicity and fault model | Real database process-kill, disk-full/I/O failure, restore, and stale-snapshot evidence |
 | `storage-sqlcipher` | Real inviter and joiner MLS transaction, rollback, ambiguous-result, and close/reopen laboratory tests | Product composition, process-kill, disk/power fault, restore, and stale-snapshot evidence |
-| `session-transport`, `transport-memory`, and `transport-conformance` | Local and provider-neutral right separation, bounds, idempotency, canonical opaque envelopes, deterministic drop/duplicate/hold/release/outage/corruption/stale-replay/acknowledgement-loss controls, and a strict bounded secret-free trace parser | Normalized double-replay runner, reusable verdict suite with defective adapters, profile binder, coordinator, and packet-captured adapters |
+| `session-transport`, `transport-memory`, and `transport-conformance` | Local and provider-neutral right separation, bounds, idempotency, canonical opaque envelopes, deterministic drop/duplicate/hold/release/outage/corruption/stale-replay/acknowledgement-loss controls, a strict bounded secret-free trace parser, and one normalized quiescent double-replay memory trace | Complete reusable verdict suite with defective adapters, profile binder, coordinator, and packet-captured adapters |
 | `sessionctl` | In-process two-client capability join, simulated approval, Welcome delivery, messaging, update, removal, and coarse output | Independent-process L1 runner and machine-readable redacted evidence producer |
 | Client vault | Sealed lifecycle, opaque locked inbox, bounded unlock orchestration, and portable passphrase laboratory | Product storage composition, OS credential input, process isolation, crash-dump, rollback, recovery, and deletion evidence |
 | Realm services | Design and disposable invitation-provider spike only | Container isolation, quotas, migration/restore, and operational redaction tests |
@@ -201,8 +201,9 @@ passes a happy path.
 - The deterministic memory adapter covers explicit delivery, loss, duplication,
   hold/release reordering, retry, expiry, authority, capacity, outage,
   corruption, stale replay, and acknowledgement-result loss. The publish-disabled
-  conformance crate parses retained traces, but no normalized double-replay
-  runner or reusable adapter verdict exists.
+  conformance crate parses retained traces and executes one normalized
+  double-replay memory lifecycle, but no complete reusable adapter verdict or
+  deliberately defective-adapter suite exists.
 - SQLCipher transaction evidence exists, but no product-integrated durable flow,
   process-crash, disk/power-fault, restore, or stale-snapshot harness exists.
 - The supported-platform CI matrix exists for current Rust foundations, but no

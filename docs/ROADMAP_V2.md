@@ -89,12 +89,14 @@ count/byte limits and local expiry. The runtime-neutral generalized dispatch
 trait and its deterministic memory adoption now add explicit clock/cancellation,
 exact-set acknowledgement, fail-closed cursor, idempotency-conflict, and
 provider-redaction evidence. Lifecycle, valid cursor persistence, provider-wide
-capability issuance, and the reusable conformance runner remain open. A new
-publish-disabled `transport-conformance` crate now retains the strict bounded
-adverse-trace v1 parser and hostile fixtures, while `transport-memory` adds
+capability issuance, and the complete reusable conformance verdict remain open.
+A new publish-disabled `transport-conformance` crate now retains the strict
+bounded adverse-trace v1 parser, hostile fixtures, and a first normalized
+double-replay memory runner, while `transport-memory` adds
 bounded outage, corrupt-poll, exact-byte stale-replay, acknowledgement-loss,
-and secret-free state-probe controls. Those increments do not yet prove
-double-replay determinism or common-suite detection of defective adapters.
+and secret-free state-probe controls. The first runner proves deterministic,
+quiescent hold/release delivery and fail-closed virtual checkpoints; it does not
+yet prove common-suite detection of defective adapters.
 
 The implementation-free `session-admission` crate now supplies the
 provider-neutral, non-authorizing approval context and decision from ADR 0015.

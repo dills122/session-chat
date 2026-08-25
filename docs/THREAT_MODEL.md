@@ -577,21 +577,41 @@ domain-separated commitments. Ambiguous post-commit cancellation, deadline,
 and clock failure are reconciled only with the exact same idempotency identity
 under a fresh budget; `RetryAdvice::Never` ends the current budget rather than
 asserting non-commit.
-The next adverse-control increment remains test-only: `transport-memory` can
+The adverse-control increment remains test-only: `transport-memory` can
 script persistent outage, one normalized corrupt poll, digest-checked stale
 replay, and acknowledgement-result loss before or after deletion. Its snapshot
 contains counts and enums only. The publish-disabled conformance crate parses a
 strict 64 KiB/256-step canonical trace whose aliases, relative clocks, fixture
 sizes, controls, and normalized expectations contain no raw protocol or
 authority bytes. Unknown, noncanonical, forward-referenced, and oversized input
-fails before retention. A stale replay is an explicitly injected provider
-response and never restores acknowledged provider-owned state. The common
-runner and deliberately defective adapters are not implemented yet, so this is
-not a complete adapter-conformance or cancellation/quiescence claim.
+fails before retention. Its first normalized runner generates fixtures only in
+memory, keeps rights behind adapter aliases, compares canonical bytes exactly,
+replays one trace against two fresh memory adapters, and rejects non-quiescent
+adapter-reported state. It accepts only LocalV1 and rejects unbound profile
+labels. A stale replay is an explicitly injected provider response and
+never restores acknowledged provider-owned state. A composed verdict and
+paired defective bridges exercise the retained adverse slice, but the full
+common verdict matrix remains incomplete and this is not a complete
+adapter-conformance claim.
+
+Within the retained runner, exact retries reuse one mailbox/envelope-bound
+receipt alias; poll normalization rejects a known receipt crossing mailbox
+scope or carrying another fixture's bytes. A pending future must arrange a wake
+before the bounded driver may drop it.
+
 These checks do not prove remote rollback after ambiguous deposit,
 preemptive cancellation inside a provider library, a trusted or rollback-safe
 wall clock, generalized capability issuance, mailbox lifecycle, incremental
 remote-response parsing, durable cursor recovery, or any network adapter.
+
+The first binder slice reduces local misbinding risk without granting network
+authority: it accepts only LocalV1, one exact no-egress manifest/configuration
+schema, coordinator-owned retries, complete local mailbox operations, no cursor
+support, no background work, and in-process no-network enforcement. Unknown
+versions, nonlocal profiles, broader limits, ambient egress, adapter-managed
+retry, and zero binding fingerprints fail closed. The resulting record is
+non-secret local evidence, not proof of adapter behavior or wire-level profile
+negotiation.
 
 Attacker story: an unauthenticated sender floods a public request mailbox with
 maximum-sized objects. The service must bound per-invitation and global storage,

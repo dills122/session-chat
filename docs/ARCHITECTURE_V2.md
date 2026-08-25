@@ -200,8 +200,10 @@ The active Rust laboratory now contains fourteen narrow pieces of this architect
   ownership, finite operation budgets, bounded retry advice, and context-free
   failures. It also defines the narrow compatibility trait and generalized
   runtime-neutral `EnvelopeDelivery` trait with right-specific authority and
-  explicit clock/cancellation checkpoints; no profile binder, coordinator, or
-  network adapter exists.
+  explicit clock/cancellation checkpoints. Its first profile-binding slice
+  accepts only an exact no-network LocalV1 manifest and emits a non-secret local
+  binding record; Fast, Private, network authority, coordinator, and network
+  adapters remain unavailable.
 - `transport-memory` implements both traits with bounded deterministic drop,
   hold/release, duplication, reordering, retry, outage, one-shot corruption,
   exact-byte stale replay, acknowledgement-result loss, poll-page, exact-set
@@ -210,8 +212,12 @@ The active Rust laboratory now contains fourteen narrow pieces of this architect
   It is not a network transport.
 - `transport-conformance` is a publish-disabled offline test-support crate. Its
   first increment owns the strict, bounded, canonical, secret-free adverse
-  trace v1 schema and hostile parser fixtures; the reusable runner and common
-  adapter suite remain incomplete.
+  trace v1 schema and hostile parser fixtures. Its next retained slice adds a
+  normalized virtual-control runner, fresh-adapter double replay, exact-byte
+  alias normalization, and adapter-reported quiescence evidence for LocalV1
+  memory traces. A composed verdict and paired defective bridges cover the
+  retained adverse slice; the exhaustive common adapter verdict suite remains
+  incomplete.
 - `session-inviter-transaction` is a bounded, fault-injectable conformance model
   for all-or-nothing invitation/replay/approval/MLS-snapshot/Welcome-outbox
   visibility, exact retry recovery, and delivery leasing. It is not storage.

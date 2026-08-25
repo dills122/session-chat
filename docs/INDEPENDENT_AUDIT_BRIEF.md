@@ -69,9 +69,10 @@ The checked-in runtime consists of:
   outage, corrupt polling, exact-byte stale replay, and acknowledgement-result
   loss with a secret-free snapshot;
 - `transport-conformance`: a publish-disabled offline test-support crate whose
-  current increment strictly parses and canonically re-encodes bounded,
-  alias-only adverse trace v1 fixtures; its normalized runner and reusable
-  adapter verdict suite are not implemented;
+  current increments strictly parse and canonically re-encode bounded,
+  alias-only adverse trace v1 fixtures and run one normalized trace twice
+  against fresh memory adapters with exact-byte and quiescence checks; its
+  reusable adapter verdict suite is not complete;
 - `session-storage`: a deterministic in-memory sealed-session lifecycle and
   bounded canonical opaque-inbox conformance model with generation-bound local
   import plus bounded external unlock preparation, one-shot credentials, and
@@ -160,7 +161,7 @@ flowchart LR
 | Ambiguous committed deposits can be reconciled without a second logical delivery | Implemented and tested in memory | Post-commit cancellation, deadline, and wall-clock-failure regressions retry only the exact same idempotency identity under a fresh budget. `RetryAdvice::Never` ends the current budget; it is not proof of non-commit. Durable coordinator recovery remains unimplemented. |
 | Deterministic memory delivery models loss, duplication, reordering, replay, retry, expiry, and bounded capacity | Implemented and tested | `transport-memory` fault-plan and hostile-authority tests over `OpaqueEnvelope`; generalized tests preserve exact canonical bytes, reject changed-byte retries and every cursor, enforce count/byte/live-state ceilings, normalize unknown/repeated exact-set acknowledgement, and revalidate expiry at the final checkpoint. This is neither encryption nor a network/privacy claim. |
 | Test-only memory controls model outage, corrupt polling, stale replay, and lost acknowledgement results | Implemented and tested in memory | One-shot/persistent controls are bounded, unavailable deposit preserves the next fault, corrupt poll does not dequeue, stale replay requires the exact retained digest without restoring acknowledged state, and acknowledgement loss distinguishes before- from after-commit through secret-free counts. No remote or coordinator claim follows. |
-| Adverse trace v1 is canonical, versioned, bounded, and secret-free | Implemented and tested as a parser contract | `transport-conformance` rejects unknown/noncanonical/oversized input, duplicate/forward aliases, excessive lines/steps/checkpoints, and seeded diagnostics; the golden fixture re-encodes byte-for-byte. The runner, double replay, and defective-adapter detection are unimplemented. |
+| Adverse trace v1 is canonical, versioned, bounded, and secret-free | Parser contract and first runner slice implemented and tested | `transport-conformance` rejects unknown/noncanonical/oversized input, duplicate/forward aliases, excessive lines/steps/checkpoints, unreachable pending expectations, and seeded diagnostics. Executable fixtures drive hold/release, exact-retry deposit, poll, acknowledgement, cancellation, deadline, and wall-clock outcomes twice through fresh LocalV1 memory adapters; output is alias-only, receipt normalization is mailbox/envelope-bound, canonical bytes are matched exactly, and leftover work fails adapter-reported quiescence. The full common verdict and end-to-end defective-adapter detection remain unimplemented. |
 | One headless two-client flow composes protected join through removal | Implemented and tested in memory | `sessionctl` creates fresh Alice/Bob state, explicitly approves the exact capability request, delivers the MLS Welcome and protected traffic through local adapters, updates the epoch, removes Bob, and observes post-removal rejection; no durability, network, hosting, or UX claim |
 | Reusable or network mailbox rotation is a separate non-interchangeable right | Accepted contract, unimplemented | ADR 0010; the one-use local profile deliberately has no rotation operation, and Node simulator evidence does not establish production transport |
 | The Node simulator rejects unknown, cyclic, accessor-backed, symbol-keyed, deep, or oversized provider input before cloning or authorization | Implemented and tested | Retained non-production adversarial tests at directory and attestor entry points |

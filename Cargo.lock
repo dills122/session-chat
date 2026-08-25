@@ -1179,6 +1179,7 @@ version = "0.1.0"
 dependencies = [
  "session-protocol",
  "session-transport",
+ "transport-memory",
 ]
 
 [[package]]

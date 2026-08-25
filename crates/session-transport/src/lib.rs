@@ -5,6 +5,7 @@
 mod capability;
 mod contract;
 mod dispatch;
+mod profile;
 
 pub use capability::{
     LocalWelcomeAcknowledgementCapability, LocalWelcomeMailbox, LocalWelcomeReceiveCapability,
@@ -20,6 +21,11 @@ pub use contract::{
 pub use dispatch::{
     AcknowledgementRight, DepositRight, DispatchControl, DispatchObservation, EnvelopeDelivery,
     ReceiveRight,
+};
+pub use profile::{
+    AdapterExecutionV1, AdapterLimitsV1, AdapterManifestV1, AdapterOperationsV1, AdapterVersionV1,
+    BackgroundWorkV1, BindingErrorV1, EgressDeclarationV1, EnforcementModeV1, InternalRetryV1,
+    TransportBindingRecordV1, bind_transport_v1,
 };
 
 use std::{collections::BTreeMap, error::Error};
