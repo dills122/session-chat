@@ -1,7 +1,7 @@
 # Spec: inviter join transaction v1
 
 Status: implementation contract; fault-injectable in-memory conformance model
-implemented before any durable storage adapter
+and SQLCipher durable Welcome-owner subset implemented
 
 ## Objective
 
@@ -20,10 +20,10 @@ acknowledgement failure cannot release the invitation, erase replay state, or
 roll back the MLS epoch.
 
 The first implementation is a deterministic, bounded, fault-injectable memory
-model. It is conformance evidence for ownership and recovery semantics, not a
-claim of disk durability, encrypted persistence, rollback resistance, or
-production readiness. A later adapter must pass the same behavior before it can
-replace the model.
+model. The later `storage-sqlcipher` laboratory now passes the durable
+Welcome-owner subset across close/reopen and schema migration. Neither adapter
+establishes rollback resistance, production readiness, or product-path
+integration.
 
 ## Assumptions
 
@@ -99,6 +99,13 @@ delivery attempt and then report either outcome:
 - success marks it `Delivered`; and
 - duplicate success for the same transaction is idempotent.
 
+The durable SQLCipher adapter additionally retains `AttemptsExhausted` and
+`Expired` terminal states so restart enumeration cannot resurrect work after
+its configured attempt or lifetime bound. Its version-2 row persists the
+attempt count, monotonically renewed lease generation, opaque lease identity,
+and lease expiry. A result must match the exact persistent store identity plus
+transaction/generation/lease tuple.
+
 Leasing, retrying, expiring, or completing delivery never mutates invitation,
 replay, approval, or MLS state. Delivery uses the transaction ID as the stable
 local idempotency key. The remote transport still enforces its own exact
@@ -110,7 +117,7 @@ Recovery accepts only the exact transaction ID and returns a secret-free view:
 
 - whether the atomic commit exists;
 - the committed epoch;
-- whether the outbox is pending, leased, or delivered; and
+- whether the outbox is pending, leased, delivered, exhausted, or expired; and
 - the current delivery-attempt count.
 
 The full stored record is borrowed only by the delivery integration. It does

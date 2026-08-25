@@ -4,6 +4,7 @@ use mls_rs_core::group::GroupStateStorage;
 use session_crypto_mls::{
     SessionGroupId, create_client, create_client_with_storage, create_key_package_validator,
 };
+use session_protocol::{DepositCapability, LocalWelcomeDepositEndpoint, OpaqueEnvelope};
 use storage_sqlcipher::{
     InvitationState, InviterJoinTransaction, PersistenceFault, SqlCipherStorage, VaultKey,
 };
@@ -96,6 +97,19 @@ fn actual_inviter_mls_write_is_atomic_with_join_and_welcome_outbox_state() {
         .expect("prepared Add")
         .apply()
         .expect("applied Add");
+    let welcome = OpaqueEnvelope::new([8; 16], NOW + 180, addition.welcome().as_bytes().to_vec())
+        .expect("Welcome envelope")
+        .encode_canonical()
+        .expect("canonical Welcome");
+    let endpoint = LocalWelcomeDepositEndpoint::new(
+        [9; 16],
+        [10; 16],
+        DepositCapability::new([11; 32]).expect("deposit capability"),
+        NOW + 240,
+    )
+    .expect("endpoint")
+    .encode_canonical()
+    .expect("canonical endpoint");
     let transaction = InviterJoinTransaction::new(
         [4; 16],
         [1; 16],
@@ -106,8 +120,8 @@ fn actual_inviter_mls_write_is_atomic_with_join_and_welcome_outbox_state() {
         0,
         1,
         vec![7; 32],
-        addition.welcome().as_bytes().to_vec(),
-        vec![8; 64],
+        welcome.clone(),
+        endpoint.clone(),
         NOW + 120,
     )
     .expect("bounded transaction");
@@ -145,8 +159,8 @@ fn actual_inviter_mls_write_is_atomic_with_join_and_welcome_outbox_state() {
         0,
         1,
         vec![7; 32],
-        addition.welcome().as_bytes().to_vec(),
-        vec![8; 64],
+        welcome,
+        endpoint,
         NOW + 120,
     )
     .expect("bounded retry");
@@ -174,7 +188,11 @@ fn actual_inviter_mls_write_is_atomic_with_join_and_welcome_outbox_state() {
         .expect("recovery lookup")
         .expect("transaction committed");
     assert_eq!(recovered.epoch_after, 1);
-    assert!(recovered.welcome_pending);
+    assert_eq!(
+        recovered.outbox_state,
+        storage_sqlcipher::WelcomeOutboxState::Pending
+    );
+    assert_eq!(recovered.delivery_attempts, 0);
 
     drop(alice_group);
     drop(alice);

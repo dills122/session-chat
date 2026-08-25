@@ -165,10 +165,10 @@ does not edit those files before their changes merge.
 
 | Work item | Delivery unit | Depends on | Status | Completion boundary |
 | --- | --- | --- | --- | --- |
-| `D9-SCHEMA-V2` | Lead storage contract | In-memory Task 9 checkpoint | Active | A versioned SQLCipher schema and explicit v1 compatibility fixture retain one nonzero durable store identity, exact canonical Welcome/endpoint bytes, bounded attempt count, monotonic lease generation, opaque lease identity, lease expiry, and pending/leased/delivered/exhausted/expired states. Migration is one atomic transaction and unknown schemas fail closed. |
-| `D9-RECOVERY-TESTS` | Lead storage evidence | `D9-SCHEMA-V2` design | Pending | Failing-first tests cover close/reopen coordination, stale re-lease, foreign-store leases, expiry, attempt exhaustion, ambiguous remote acceptance with byte-identical retry, and invisibility of rolled-back membership/outbox work. |
-| `D9-OWNER-PORT` | Lead storage implementation | `D9-RECOVERY-TESTS` | Pending | `SqlCipherStorage` implements `WelcomeOutboxPort`; each lease, accepted result, and failed result uses one immediate SQL transaction and validates the exact live store/transaction/generation/lease identity. |
-| `D9-DURABLE-COMPOSITION` | Lead integration | `D9-OWNER-PORT` | Pending | The real capability-admission and MLS Add path commits once through SQLCipher, reconstructs the stateless coordinator after close/reopen, and retries delivery without repeating MLS membership or reopening invitation state. |
+| `D9-SCHEMA-V2` | Lead storage contract | In-memory Task 9 checkpoint | Complete | A versioned SQLCipher schema and explicit v1 compatibility fixture retain one nonzero durable store identity, exact canonical Welcome/endpoint bytes, bounded attempt count, monotonic lease generation, opaque lease identity, lease expiry, and pending/leased/delivered/exhausted/expired states. Migration is one atomic transaction and unknown schemas fail closed. |
+| `D9-RECOVERY-TESTS` | Lead storage evidence | `D9-SCHEMA-V2` design | Complete | Failing-first tests cover close/reopen coordination, stale re-lease, foreign-store leases, expiry, attempt exhaustion, ambiguous remote acceptance with byte-identical retry, and invisibility of rolled-back membership/outbox work. |
+| `D9-OWNER-PORT` | Lead storage implementation | `D9-RECOVERY-TESTS` | Complete | `SqlCipherStorage` implements `WelcomeOutboxPort`; each lease, accepted result, and failed result uses one immediate SQL transaction and validates the exact live store/transaction/generation/lease identity. |
+| `D9-DURABLE-COMPOSITION` | Lead integration | `D9-OWNER-PORT` | Active | The real capability-admission and MLS Add path commits once through SQLCipher, reconstructs the stateless coordinator after close/reopen, and retries delivery without repeating MLS membership or reopening invitation state. |
 | `D9-FAULT-EVIDENCE` | Lead verification | `D9-DURABLE-COMPOSITION` | Pending | Retained adapter-proportionate restart and storage-fault evidence passes targeted tests, production coverage ratchets, and full repository gates; stronger process-kill, disk/power, rollback, and production claims remain explicitly gated unless separately proven. |
 
 The initial schema-v2 state codes and migration are storage-internal, not wire
@@ -613,11 +613,12 @@ idempotent and cannot repeat MLS Add or Commit.
 
 **Acceptance criteria:**
 
-- [ ] A committed membership transition always has recoverable outbox work.
-- [ ] An uncommitted transition exposes no deliverable job.
-- [ ] Restart recovery retries delivery without repeating MLS membership
+- [x] A committed membership transition always has recoverable outbox work in
+  the SQLCipher inviter transaction.
+- [x] An uncommitted SQLCipher transition exposes no deliverable job.
+- [x] SQLCipher restart recovery retries delivery without repeating MLS membership
   mutation or releasing the invitation.
-- [ ] Coordinator state can be discarded and reconstructed without losing or
+- [x] Coordinator state can be discarded and reconstructed without losing or
   contradicting authoritative outbox state.
 
 **In-memory checkpoint (2026-08-25):**
@@ -630,16 +631,16 @@ idempotent and cannot repeat MLS Add or Commit.
 - [x] A prior unrecorded adapter acceptance is retried with byte-identical
   envelope/endpoint identity, yields the same mailbox delivery, and does not
   repeat the atomic commit.
-- [ ] A durable implementation proves the same properties across process
-  restart and storage faults.
+- [x] The SQLCipher adapter proves the owner-port properties across close/reopen
+  and its retained pre/post-commit storage faults. Process-kill and disk/power
+  evidence remain separate L2 gates.
 
 **Verification:**
 
-- [ ] Crash tests cover every write boundary before and after commit.
+- [ ] Process-crash tests cover every write boundary before and after commit.
 - [ ] Duplicate, lost, reordered, and delayed Welcome delivery remains safe.
 - [x] The in-memory conformance model passes before a durable adapter is wired.
-- [ ] Exact storage command from the selected adapter is retained in test
-  evidence.
+- [x] The exact targeted SQLCipher storage command is retained in test evidence.
 
 **Dependencies:** Task 8, the existing inviter-transaction conformance model,
 and the future durable MLS/storage increment governed by ADRs 0008 and 0015

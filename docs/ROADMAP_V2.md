@@ -76,9 +76,11 @@ ambiguous-result recovery, and Welcome-outbox leasing semantics under injected
 memory-model faults. The in-memory inviter outbox now implements the LocalV1
 coordinator owner port and retains exact acceptance/failure/ambiguous-retry
 evidence against the real local mailbox. Human approval UX, integration of the
-transaction with the real MLS/admission product path, durable cross-layer state
-and outbox processing, and network transport work listed below remain
-outstanding.
+transaction with the real MLS/admission product path, and network transport
+work listed below remain outstanding. The separate SQLCipher laboratory now
+implements the same sole-owner coordinator port with version-2 migration,
+close/reopen leases, terminal states, and ambiguous exact-retry evidence; it is
+not yet the admission product path.
 
 The provider-neutral right-specific transport trait and its separate
 `transport-memory` adapter now retain deterministic drop, duplicate,
@@ -142,9 +144,13 @@ and secure-deletion evidence remain outstanding. The separate SQLCipher
 laboratory adapter now commits the actual inviter MLS snapshot with bounded
 transaction-model invitation, replay/approval, and Welcome-outbox records, and
 separately commits joiner MLS state with exact one-time KeyPackage deletion.
-Tests cover rollback, ambiguous-result recovery, and close/reopen on the
-required Linux, macOS, and Windows CI runners. Platform-vault, disk/power fault,
-production packaging, and rollback-anchor gates remain.
+Its version-2 schema is also the sole Welcome-delivery ledger and implements the
+coordinator owner port with persistent store identity, bounded attempts,
+generation/identity-bound leases, explicit terminal states, and version-1
+migration fixtures. Tests cover rollback, stale/foreign leases, ambiguous
+byte-identical delivery recovery, and close/reopen on the required Linux,
+macOS, and Windows CI runners. Product admission composition, platform-vault,
+disk/power fault, production packaging, and rollback-anchor gates remain.
 
 ADR 0019 and `key-protector-passphrase` now retain the bounded portable
 key-wrapper conformance experiment: exact Argon2id 0.5.3 and AWS-LC 1.16.3

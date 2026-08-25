@@ -5,6 +5,7 @@ use mls_rs_core::{
     group::GroupStateStorage,
     key_package::{KeyPackageData, KeyPackageStorage},
 };
+use session_protocol::{DepositCapability, LocalWelcomeDepositEndpoint, OpaqueEnvelope};
 use storage_sqlcipher::{
     InviterJoinTransaction, JoinerTransaction, PersistenceFault, SqlCipherStorage, StoreError,
     VaultKey,
@@ -41,6 +42,19 @@ fn create_storage(name: &str) -> (TestDatabase, SqlCipherStorage) {
 }
 
 fn inviter_transaction(transaction_id: u8) -> InviterJoinTransaction {
+    let welcome = OpaqueEnvelope::new([8; 16], NOW + 50, vec![8])
+        .expect("Welcome")
+        .encode_canonical()
+        .expect("canonical Welcome");
+    let endpoint = LocalWelcomeDepositEndpoint::new(
+        [9; 16],
+        [10; 16],
+        DepositCapability::new([11; 32]).expect("capability"),
+        NOW + 55,
+    )
+    .expect("endpoint")
+    .encode_canonical()
+    .expect("canonical endpoint");
     InviterJoinTransaction::new(
         [transaction_id; 16],
         [2; 16],
@@ -51,9 +65,9 @@ fn inviter_transaction(transaction_id: u8) -> InviterJoinTransaction {
         0,
         1,
         vec![7],
-        vec![8],
-        vec![9],
-        NOW + 60,
+        welcome,
+        endpoint,
+        NOW + 40,
     )
     .expect("bounded inviter transaction")
 }

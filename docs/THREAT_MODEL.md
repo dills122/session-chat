@@ -29,18 +29,19 @@ bounded one-Welcome deposit, receive, and acknowledgement with independent
 provider-generated authorities. The approved in-memory join result carries only
 the authenticated deposit endpoint beside its MLS outputs, and a retained test
 delivers the encrypted Welcome through that mailbox. This provides no durable
-outbox or network behavior. The generalized transport contract now has a closed
+outbox or network behavior in the sequential admission path. The generalized transport contract now has a closed
 profile set, bounded local adapter identifiers, exact canonical-envelope
 ownership without ordinary debug output, finite operation budgets, bounded
 retry advice, context-free failures, bounded operation requests and receipts,
-and post-receive batch validation. An earlier Phase 1 increment also added a
-narrow synchronous delivery trait and deterministic memory adapter. The full
-budget-aware dispatch boundary still has no generalized capability erasure,
-profile binder, coordinator, or network authority. A separate bounded,
-fault-injectable model exercises
+and post-receive batch validation. Later Phase 1 increments added the
+runtime-neutral dispatch trait, deterministic memory adapter, LocalV1 binder,
+and deposit-only coordinator. Generalized capability issuance and network
+authority remain absent. A separate bounded, fault-injectable model exercises
 all-or-nothing inviter state, ambiguous-result recovery, and Welcome-outbox
 leasing semantics without providing storage or connecting to that sequential
-join path. A separate deterministic memory transport uses right-specific
+join path. The SQLCipher laboratory now implements the same sole-owner port
+with versioned migration and close/reopen lease recovery, while remaining
+disconnected from the sequential admission path. A separate deterministic memory transport uses right-specific
 authorities and bounded explicit drop, duplicate, hold/release, retry, expiry,
 and capacity behavior for headless tests. It accepts structurally opaque bytes
 but neither encrypts them nor provides a network or privacy property. The MLS
@@ -444,11 +445,12 @@ approval path applies MLS and then consumes invitation state before returning
 the committed outputs, but that sequencing is not crash-atomic. A separate
 conformance model tests the accepted inviter transaction's all-or-nothing
 components, exact retries, stale-generation rejection, ambiguous commit
-recovery, and bounded outbox leases over in-memory records. It is not durable
-and is not wired to MLS, admission, or transport. Remaining requirements include
-human approval UX, a real shared MLS/Session Chat storage transaction, durable
-replay and rollback protection, vault-backed confidentiality, and crash-safe
-mutation ordering.
+recovery, and bounded outbox leases over in-memory records. The SQLCipher
+laboratory now supplies the corresponding real MLS transaction and durable
+coordinator owner port, but is not wired to capability admission. Remaining
+requirements include human approval UX, product-path integration, durable
+rollback protection, vault-backed confidentiality, and broader process/disk
+crash evidence.
 
 Attacker story: Mallory captures a protected request and resubmits it after the
 invitation expires and is reissued with the same invitation and request IDs.
@@ -699,9 +701,15 @@ evidence for both real owner-local MLS transactions. The inviter snapshot and
 join/outbox state share one SQL commit; the joiner snapshot and exact one-time
 KeyPackage deletion share another. Wrong-key, pre-commit rollback,
 ambiguous-result recovery, close/reopen, and closed-file checks are retained on
-the required Linux, macOS, and Windows CI runners. This does not establish a
-platform key protector, rollback resistance, production packaging, behavior on
-broader hardware/OS versions, power-loss safety, or secure deletion.
+the required Linux, macOS, and Windows CI runners. Schema version 2 also makes
+that inviter row the sole Welcome-delivery ledger with persistent store
+identity, exact canonical material, bounded attempts, generation/identity-bound
+leases, and delivered/exhausted/expired terminal states. Retained tests reject
+stale and foreign results and reconcile an ambiguous prior adapter acceptance
+byte-identically after reopen. This does not establish product admission
+integration, a platform key protector, rollback resistance, production
+packaging, behavior on broader hardware/OS versions, power-loss safety, or
+secure deletion.
 
 ADR 0019 and `key-protector-passphrase` add only a bounded portable conformance
 construction, now connected to the deterministic ADR 0020 lifecycle boundary.

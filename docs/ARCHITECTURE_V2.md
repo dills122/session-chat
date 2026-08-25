@@ -210,9 +210,9 @@ The active Rust laboratory now contains fourteen narrow pieces of this architect
   repeating membership. A cross-platform standard-library blocking supervisor
   retains wake, cancellation, deadline, and pending-drop evidence for headless
   or worker-thread composition; a future UI may replace it behind the same
-  runtime-neutral future contract. A durable owner-store adapter does not
-  exist; Fast, Private, network authority, and network adapters remain
-  unavailable.
+  runtime-neutral future contract. The SQLCipher laboratory now implements the
+  same sole-owner port with schema-v2 lease/restart evidence. Fast, Private,
+  network authority, and network adapters remain unavailable.
 - `transport-memory` implements both traits with bounded deterministic drop,
   hold/release, duplication, reordering, retry, outage, one-shot corruption,
   exact-byte stale replay, acknowledgement-result loss, poll-page, exact-set
@@ -245,8 +245,11 @@ The active Rust laboratory now contains fourteen narrow pieces of this architect
   shared one-shot credential boundary and drives the deterministic vault model,
   but it does not supply SQLCipher or a production credential-acquisition UI.
 - `storage-sqlcipher` is a file-backed encrypted durability-laboratory adapter
-  for the real inviter and joiner MLS persistence calls. It is not connected to
-  a platform key protector and provides no rollback or production claim.
+  for the real inviter and joiner MLS persistence calls. Its version-2 schema
+  also owns exact Welcome work, bounded attempt/lease state, and terminal
+  delivery state through the coordinator's sole-owner port across close/reopen.
+  It is not connected to a platform key protector and provides no rollback or
+  production claim.
 - `sessionctl` composes the current local pieces into one headless Alice/Bob
   flow: capability join, simulated approval, Welcome delivery, bidirectional
   application messages, path update, removal, and post-removal rejection. It
@@ -258,11 +261,11 @@ an approval-gated one-shot API: rejection and pre-commit failure release both
 reservations, abandonment also clears the MLS pending Commit, and successful
 in-memory Add consumes the invitation before returning its outputs. This is
 sequential in-memory coordination, not one persistent, cross-process,
-crash-atomic, or rollback-resistant transaction. Human approval UX, durable
-membership/replay integration, and durable Welcome outbox processing do not
-exist in that product path. The separate memory conformance model and SQLCipher
-laboratory exercise atomic visibility and ambiguous-result recovery without
-connecting to the sequential join path. The in-memory committed join result
+crash-atomic, or rollback-resistant transaction. Human approval UX and durable
+membership/replay integration do not exist in that product path. The separate
+memory conformance model and SQLCipher laboratory exercise atomic visibility,
+durable Welcome-owner recovery, and ambiguous-result retry without yet
+connecting that store to the sequential admission path. The in-memory committed join result
 now carries the
 exact authenticated deposit-only endpoint beside its MLS Welcome, and retained
 integration evidence delivers that Welcome through the local mailbox. No

@@ -270,9 +270,12 @@ does not supply SQLCipher, provide product credential UI, or establish a
 production key-protection baseline.
 The separate `storage-sqlcipher` crate now exercises both owner-local
 transactions through the real MLS storage path and recovers them after close
-and reopen on the required Linux, macOS, and Windows CI runners. It is not wired
-to the vault lifecycle and adds no production packaging, broader platform,
-rollback-resistance, or production-storage claim.
+and reopen on the required Linux, macOS, and Windows CI runners. Schema version
+2 also implements the coordinator's sole-owner Welcome port with explicit v1
+migration fixtures, restart leasing, terminal states, and ambiguous exact retry.
+It is not wired to capability admission or the vault lifecycle and adds no
+production packaging, broader platform, rollback-resistance, or
+production-storage claim.
 
 ## Reference standards and projects
 

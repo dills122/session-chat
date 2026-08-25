@@ -1,6 +1,7 @@
 # ADR 0017: Use SQLCipher for the durable storage laboratory
 
-Status: accepted for a bounded durable laboratory; not production storage
+Status: accepted for a bounded durable laboratory; inviter/joiner transactions
+and durable Welcome-owner port implemented; not production storage
 
 Date: 2026-08-20
 
@@ -32,6 +33,15 @@ libraries across the three required CI operating systems.
   is idempotent and conflicting state fails closed.
 - Secret-bearing input types omit `Clone`, `Debug`, and `Display`, and retained
   Rust buffers use zeroization where their types permit it.
+- Schema version 2 persists one nonzero store identity and the exact canonical
+  Welcome/LocalV1 endpoint beside bounded delivery state, attempt count,
+  monotonic lease generation, opaque lease identity, and lease expiry. Valid
+  version-1 pending rows migrate atomically; invalid legacy delivery material
+  rolls the migration back.
+- The adapter implements the sole-owner `WelcomeOutboxPort`. Each lease,
+  acceptance, and failure transition uses one immediate SQL transaction;
+  restart reconstructs work from this ledger, and stale or foreign lease
+  results fail closed.
 - The adapter retains SQLCipher's default memory policy, which locks and
   sanitizes its internal cryptographic allocations without enabling the
   optional process-wide wiping of every SQLite allocation.
@@ -58,7 +68,8 @@ and Linux before adding any native enhanced protector.
   Linux Secret Service implementations in parallel;
 - test process kill at every production adapter write boundary, disk full,
   truncation, tampering, migration, rekey, backup, and deletion;
-- add durable Welcome leasing/delivery state and recovery;
+- integrate the durable inviter transaction and Welcome coordinator with the
+  real capability-admission product path;
 - select or explicitly defer a trusted monotonic rollback anchor; and
 - independently review the exact MLS, SQLCipher, and platform-protector boundary.
 

@@ -22,9 +22,20 @@ required Linux, macOS, and Windows CI runners and prove that:
   the normal SQLite header; and
 - SQLCipher's page-HMAC integrity check succeeds for retained fixtures.
 
+Schema version 2 now makes the same database the sole Welcome-outbox owner. It
+persists one nonzero store identity, exact canonical Welcome and LocalV1
+endpoint bytes, delivery state, bounded attempts, monotonic lease generation,
+opaque lease identity, and lease expiry. `SqlCipherStorage` implements the
+coordinator's `WelcomeOutboxPort` with one immediate SQL transaction per lease,
+accepted result, or failed result. Explicit schema-v1 fixtures prove atomic
+migration of valid pending work and rollback of invalid legacy delivery
+material. Close/reopen tests cover stale and foreign leases, expiry, exhaustion,
+and byte-identical retry after an unrecorded remote acceptance without repeating
+the retained MLS epoch or reopening invitation state.
+
 This adapter is durability-laboratory evidence, not production storage. It has
 no platform keychain integration, rollback anchor, disk-full or power-loss
-evidence, migration/rekey/backup/deletion policy, durable outbox leasing, or
+evidence, rekey/backup/deletion policy, product admission composition, or
 secure-erasure guarantee. Hosted-runner evidence is not a production packaging
 or broader hardware/OS compatibility claim.
 

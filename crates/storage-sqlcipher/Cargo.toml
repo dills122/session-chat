@@ -9,6 +9,8 @@ publish = false
 [dependencies]
 mls-rs-core.workspace = true
 rusqlite.workspace = true
+session-protocol = { version = "=0.1.0", path = "../session-protocol" }
+session-transport = { version = "=0.1.0", path = "../session-transport" }
 thiserror.workspace = true
 zeroize.workspace = true
 

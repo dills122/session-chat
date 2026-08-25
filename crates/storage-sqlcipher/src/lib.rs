@@ -14,6 +14,8 @@ use mls_rs_core::{
     key_package::{KeyPackageData, KeyPackageStorage},
 };
 use rusqlite::{Connection, OpenFlags, OptionalExtension, TransactionBehavior, params};
+use session_protocol::{LocalWelcomeDepositEndpoint, OpaqueEnvelope};
+use session_transport::{LeasedWelcome, OutboxPortError, WelcomeOutboxPort};
 use thiserror::Error;
 use zeroize::{Zeroize, Zeroizing};
 
@@ -22,6 +24,18 @@ const MAX_MLS_STATE_BYTES: usize = 2 * 1024 * 1024;
 const MAX_EPOCH_WRITES: usize = 64;
 const MAX_KEY_PACKAGE_BYTES: usize = 16 * 1024;
 const MAX_SECRET_KEY_BYTES: usize = 4 * 1024;
+const SCHEMA_VERSION: u32 = 2;
+const STORE_ID_BYTES: usize = 16;
+const LEASE_ID_BYTES: usize = 16;
+const OUTBOX_PENDING: i64 = 1;
+const OUTBOX_LEASED: i64 = 2;
+const OUTBOX_DELIVERED: i64 = 3;
+const OUTBOX_ATTEMPTS_EXHAUSTED: i64 = 4;
+const OUTBOX_EXPIRED: i64 = 5;
+const MAXIMUM_LEASE_SECONDS: u64 = 3_600;
+
+/// Persisted delivery-attempt bound for the initial durable LocalV1 outbox.
+pub const MAXIMUM_WELCOME_DELIVERY_ATTEMPTS: u32 = 3;
 
 /// Exact raw database key released only while the client vault is unsealed.
 ///
@@ -104,13 +118,42 @@ pub enum InvitationState {
     Consumed,
 }
 
+/// Secret-free durable Welcome-outbox lifecycle.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WelcomeOutboxState {
+    /// Committed and eligible for a delivery lease.
+    Pending,
+    /// Owned temporarily by one exact live lease.
+    Leased,
+    /// The adapter accepted the exact Welcome deposit.
+    Delivered,
+    /// The persisted delivery-attempt bound was reached.
+    AttemptsExhausted,
+    /// The owner-local Welcome lifetime elapsed.
+    Expired,
+}
+
 /// Secret-free recovery view for one inviter transaction.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct InviterRecovery {
     /// Committed MLS epoch after the Add.
     pub epoch_after: u64,
-    /// Whether the encrypted Welcome awaits delivery.
-    pub welcome_pending: bool,
+    /// Durable Welcome delivery state.
+    pub outbox_state: WelcomeOutboxState,
+    /// Number of authoritative leases issued.
+    pub delivery_attempts: u32,
+}
+
+/// Opaque authority for one exact SQLCipher-owned Welcome lease.
+///
+/// This value intentionally implements neither diagnostics nor cloning. A
+/// result is accepted only by the same persistent store identity and exact
+/// live transaction/generation/lease tuple that issued it.
+pub struct SqlCipherWelcomeLease {
+    store_id: [u8; STORE_ID_BYTES],
+    transaction_id: [u8; 16],
+    generation: u64,
+    lease_id: [u8; LEASE_ID_BYTES],
 }
 
 /// Secret-free recovery view for one joining-client transaction.
@@ -361,22 +404,42 @@ impl SqlCipherStorage {
         self.lock()?
             .connection
             .query_row(
-                "SELECT epoch_after, outbox_state
+                "SELECT epoch_after, outbox_state, delivery_attempts
                  FROM inviter_joins WHERE transaction_id = ?1",
                 params![transaction_id],
-                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+                |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, i64>(2)?,
+                    ))
+                },
             )
             .optional()?
-            .map(|(epoch_after, outbox_state)| {
-                if epoch_after < 0 || outbox_state != 1 {
+            .map(|(epoch_after, outbox_state, delivery_attempts)| {
+                if epoch_after < 0
+                    || delivery_attempts < 0
+                    || delivery_attempts > i64::from(MAXIMUM_WELCOME_DELIVERY_ATTEMPTS)
+                {
                     return Err(StoreError::Rejected);
                 }
                 Ok(InviterRecovery {
                     epoch_after: epoch_after as u64,
-                    welcome_pending: true,
+                    outbox_state: decode_outbox_state(outbox_state)?,
+                    delivery_attempts: delivery_attempts as u32,
                 })
             })
             .transpose()
+    }
+
+    /// Returns the exact storage schema version after keying and migration.
+    pub fn schema_version(&self) -> Result<u32, StoreError> {
+        let version = self.lock()?.connection.query_row(
+            "SELECT schema_version FROM storage_metadata",
+            [],
+            |row| row.get::<_, i64>(0),
+        )?;
+        u32::try_from(version).map_err(|_| StoreError::Rejected)
     }
 
     /// Recovers a committed joiner transaction without returning key material.
@@ -473,10 +536,13 @@ impl SqlCipherStorage {
                 connection.query_row("SELECT schema_version FROM storage_metadata", [], |row| {
                     row.get(0)
                 })?;
-            if version != 1 {
-                return Err(StoreError::Rejected);
+            match version {
+                1 => migrate_schema_v1_to_v2(&connection)?,
+                version if version == i64::from(SCHEMA_VERSION) => {}
+                _ => return Err(StoreError::Rejected),
             }
         }
+        validate_schema_v2(&connection)?;
 
         Ok(Self {
             inner: Arc::new(Mutex::new(StorageInner {
@@ -486,6 +552,259 @@ impl SqlCipherStorage {
                 pending_joiner: None,
             })),
         })
+    }
+}
+
+impl WelcomeOutboxPort for SqlCipherStorage {
+    type Lease = SqlCipherWelcomeLease;
+
+    fn lease_next(
+        &mut self,
+        now_unix_seconds: u64,
+        lease_seconds: u64,
+    ) -> Result<Option<LeasedWelcome<Self::Lease>>, OutboxPortError> {
+        if now_unix_seconds > i64::MAX as u64
+            || lease_seconds == 0
+            || lease_seconds > MAXIMUM_LEASE_SECONDS
+        {
+            return Err(OutboxPortError::Conflict);
+        }
+        let lease_expires_at = now_unix_seconds
+            .checked_add(lease_seconds)
+            .filter(|value| *value <= i64::MAX as u64)
+            .ok_or(OutboxPortError::Conflict)?;
+        let mut inner = self.lock().map_err(map_outbox_store_error)?;
+        let transaction = inner
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|_| OutboxPortError::Internal)?;
+        transaction
+            .execute(
+                "UPDATE inviter_joins
+                 SET outbox_state = ?1, lease_id = NULL, lease_expires_at = NULL
+                 WHERE outbox_state IN (?2, ?3) AND outbox_expires_at <= ?4",
+                params![
+                    OUTBOX_EXPIRED,
+                    OUTBOX_PENDING,
+                    OUTBOX_LEASED,
+                    now_unix_seconds as i64
+                ],
+            )
+            .map_err(|_| OutboxPortError::Internal)?;
+        transaction
+            .execute(
+                "UPDATE inviter_joins
+                 SET outbox_state = ?1, lease_id = NULL, lease_expires_at = NULL
+                 WHERE delivery_attempts >= ?2 AND outbox_expires_at > ?3
+                   AND (
+                       outbox_state = ?4
+                       OR (outbox_state = ?5 AND lease_expires_at <= ?3)
+                   )",
+                params![
+                    OUTBOX_ATTEMPTS_EXHAUSTED,
+                    i64::from(MAXIMUM_WELCOME_DELIVERY_ATTEMPTS),
+                    now_unix_seconds as i64,
+                    OUTBOX_PENDING,
+                    OUTBOX_LEASED
+                ],
+            )
+            .map_err(|_| OutboxPortError::Internal)?;
+
+        let candidate = transaction
+            .query_row(
+                "SELECT transaction_id, welcome, endpoint, outbox_expires_at, lease_generation
+                 FROM inviter_joins
+                 WHERE outbox_expires_at >= ?1 AND delivery_attempts < ?2
+                   AND (
+                       outbox_state = ?3
+                       OR (outbox_state = ?4 AND lease_expires_at <= ?5)
+                   )
+                 ORDER BY transaction_id
+                 LIMIT 1",
+                params![
+                    lease_expires_at as i64,
+                    i64::from(MAXIMUM_WELCOME_DELIVERY_ATTEMPTS),
+                    OUTBOX_PENDING,
+                    OUTBOX_LEASED,
+                    now_unix_seconds as i64
+                ],
+                |row| {
+                    Ok((
+                        row.get::<_, Vec<u8>>(0)?,
+                        row.get::<_, Vec<u8>>(1)?,
+                        row.get::<_, Vec<u8>>(2)?,
+                        row.get::<_, i64>(3)?,
+                        row.get::<_, i64>(4)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(|_| OutboxPortError::Internal)?;
+        let Some((transaction_id, welcome, endpoint, outbox_expires_at, generation)) = candidate
+        else {
+            transaction
+                .commit()
+                .map_err(|_| OutboxPortError::Internal)?;
+            return Ok(None);
+        };
+        let transaction_id: [u8; 16] = transaction_id
+            .try_into()
+            .map_err(|_| OutboxPortError::Internal)?;
+        let outbox_expires_at =
+            u64::try_from(outbox_expires_at).map_err(|_| OutboxPortError::Internal)?;
+        validate_delivery_material(&welcome, &endpoint, outbox_expires_at)
+            .map_err(map_outbox_store_error)?;
+        let generation = u64::try_from(generation)
+            .ok()
+            .and_then(|value| value.checked_add(1))
+            .filter(|value| *value <= i64::MAX as u64)
+            .ok_or(OutboxPortError::Internal)?;
+        let lease_id = random_nonzero_identifier(&transaction).map_err(map_outbox_store_error)?;
+        let store_id = store_id_on(&transaction).map_err(map_outbox_store_error)?;
+        let changed = transaction
+            .execute(
+                "UPDATE inviter_joins
+                 SET outbox_state = ?1,
+                     delivery_attempts = delivery_attempts + 1,
+                     lease_generation = ?2,
+                     lease_id = ?3,
+                     lease_expires_at = ?4
+                 WHERE transaction_id = ?5 AND lease_generation = ?6
+                   AND outbox_expires_at >= ?4 AND delivery_attempts < ?7
+                   AND (
+                       outbox_state = ?8
+                       OR (outbox_state = ?9 AND lease_expires_at <= ?10)
+                   )",
+                params![
+                    OUTBOX_LEASED,
+                    generation as i64,
+                    lease_id,
+                    lease_expires_at as i64,
+                    transaction_id,
+                    (generation - 1) as i64,
+                    i64::from(MAXIMUM_WELCOME_DELIVERY_ATTEMPTS),
+                    OUTBOX_PENDING,
+                    OUTBOX_LEASED,
+                    now_unix_seconds as i64
+                ],
+            )
+            .map_err(|_| OutboxPortError::Internal)?;
+        if changed != 1 {
+            return Err(OutboxPortError::Conflict);
+        }
+        transaction
+            .commit()
+            .map_err(|_| OutboxPortError::Internal)?;
+        Ok(Some(LeasedWelcome::from_owner(
+            SqlCipherWelcomeLease {
+                store_id,
+                transaction_id,
+                generation,
+                lease_id,
+            },
+            welcome,
+            endpoint,
+            outbox_expires_at,
+        )))
+    }
+
+    fn report_accepted(
+        &mut self,
+        lease: Self::Lease,
+        now_unix_seconds: u64,
+    ) -> Result<(), OutboxPortError> {
+        if now_unix_seconds > i64::MAX as u64 {
+            return Err(OutboxPortError::Conflict);
+        }
+        let mut inner = self.lock().map_err(map_outbox_store_error)?;
+        let transaction = inner
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|_| OutboxPortError::Internal)?;
+        if store_id_on(&transaction).map_err(map_outbox_store_error)? != lease.store_id {
+            return Err(OutboxPortError::Conflict);
+        }
+        let changed = transaction
+            .execute(
+                "UPDATE inviter_joins
+                 SET outbox_state = ?1, lease_id = NULL, lease_expires_at = NULL
+                 WHERE transaction_id = ?2 AND outbox_state = ?3
+                   AND lease_generation = ?4 AND lease_id = ?5
+                   AND lease_expires_at > ?6 AND outbox_expires_at > ?6",
+                params![
+                    OUTBOX_DELIVERED,
+                    lease.transaction_id,
+                    OUTBOX_LEASED,
+                    lease.generation as i64,
+                    lease.lease_id,
+                    now_unix_seconds as i64
+                ],
+            )
+            .map_err(|_| OutboxPortError::Internal)?;
+        if changed == 1 {
+            transaction
+                .commit()
+                .map_err(|_| OutboxPortError::Internal)?;
+            return Ok(());
+        }
+        transaction
+            .execute(
+                "UPDATE inviter_joins
+                 SET outbox_state = ?1, lease_id = NULL, lease_expires_at = NULL
+                 WHERE transaction_id = ?2 AND outbox_state = ?3
+                   AND lease_generation = ?4 AND lease_id = ?5
+                   AND outbox_expires_at <= ?6",
+                params![
+                    OUTBOX_EXPIRED,
+                    lease.transaction_id,
+                    OUTBOX_LEASED,
+                    lease.generation as i64,
+                    lease.lease_id,
+                    now_unix_seconds as i64
+                ],
+            )
+            .map_err(|_| OutboxPortError::Internal)?;
+        transaction
+            .commit()
+            .map_err(|_| OutboxPortError::Internal)?;
+        Err(OutboxPortError::Conflict)
+    }
+
+    fn report_failed(&mut self, lease: Self::Lease) -> Result<(), OutboxPortError> {
+        let mut inner = self.lock().map_err(map_outbox_store_error)?;
+        let transaction = inner
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|_| OutboxPortError::Internal)?;
+        if store_id_on(&transaction).map_err(map_outbox_store_error)? != lease.store_id {
+            return Err(OutboxPortError::Conflict);
+        }
+        let changed = transaction
+            .execute(
+                "UPDATE inviter_joins
+                 SET outbox_state = CASE
+                         WHEN delivery_attempts >= ?1 THEN ?2
+                         ELSE ?3
+                     END,
+                     lease_id = NULL,
+                     lease_expires_at = NULL
+                 WHERE transaction_id = ?4 AND outbox_state = ?5
+                   AND lease_generation = ?6 AND lease_id = ?7",
+                params![
+                    i64::from(MAXIMUM_WELCOME_DELIVERY_ATTEMPTS),
+                    OUTBOX_ATTEMPTS_EXHAUSTED,
+                    OUTBOX_PENDING,
+                    lease.transaction_id,
+                    OUTBOX_LEASED,
+                    lease.generation as i64,
+                    lease.lease_id
+                ],
+            )
+            .map_err(|_| OutboxPortError::Internal)?;
+        if changed != 1 {
+            return Err(OutboxPortError::Conflict);
+        }
+        transaction.commit().map_err(|_| OutboxPortError::Internal)
     }
 }
 
@@ -679,12 +998,14 @@ impl KeyPackageStorage for SqlCipherStorage {
 }
 
 fn create_schema(connection: &Connection) -> Result<(), StoreError> {
+    let store_id = random_nonzero_identifier(connection)?;
     connection.execute_batch(
         "BEGIN IMMEDIATE;
          CREATE TABLE storage_metadata (
-             schema_version INTEGER NOT NULL CHECK(schema_version = 1)
+             singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
+             schema_version INTEGER NOT NULL CHECK(schema_version = 2),
+             store_id BLOB NOT NULL UNIQUE CHECK(length(store_id) = 16)
          ) STRICT;
-         INSERT INTO storage_metadata(schema_version) VALUES (1);
 
          CREATE TABLE reservations (
              invitation_id BLOB PRIMARY KEY CHECK(length(invitation_id) = 16),
@@ -707,7 +1028,16 @@ fn create_schema(connection: &Connection) -> Result<(), StoreError> {
              welcome BLOB NOT NULL CHECK(length(welcome) BETWEEN 1 AND 65536),
              endpoint BLOB NOT NULL CHECK(length(endpoint) BETWEEN 1 AND 4096),
              outbox_expires_at INTEGER NOT NULL CHECK(outbox_expires_at > 0),
-             outbox_state INTEGER NOT NULL CHECK(outbox_state = 1)
+             outbox_state INTEGER NOT NULL CHECK(outbox_state BETWEEN 1 AND 5),
+             delivery_attempts INTEGER NOT NULL
+                 CHECK(delivery_attempts BETWEEN 0 AND 3),
+             lease_generation INTEGER NOT NULL CHECK(lease_generation >= 0),
+             lease_id BLOB CHECK(lease_id IS NULL OR length(lease_id) = 16),
+             lease_expires_at INTEGER CHECK(lease_expires_at IS NULL OR lease_expires_at > 0),
+             CHECK(
+                 (outbox_state = 2 AND lease_id IS NOT NULL AND lease_expires_at IS NOT NULL)
+                 OR (outbox_state IN (1, 3, 4, 5) AND lease_id IS NULL AND lease_expires_at IS NULL)
+             )
          ) STRICT;
 
          CREATE TABLE mls_groups (
@@ -734,10 +1064,188 @@ fn create_schema(connection: &Connection) -> Result<(), StoreError> {
              transaction_id BLOB PRIMARY KEY CHECK(length(transaction_id) = 16),
              group_id BLOB NOT NULL UNIQUE CHECK(length(group_id) = 32),
              key_package_ref BLOB NOT NULL UNIQUE CHECK(length(key_package_ref) = 32)
-         ) STRICT;
-         COMMIT;",
+         ) STRICT;",
     )?;
+    if connection
+        .execute(
+            "INSERT INTO storage_metadata(singleton, schema_version, store_id) VALUES (1, 2, ?1)",
+            params![store_id],
+        )
+        .is_err()
+    {
+        rollback(connection);
+        return Err(StoreError::Rejected);
+    }
+    connection.execute_batch("COMMIT;")?;
     Ok(())
+}
+
+fn migrate_schema_v1_to_v2(connection: &Connection) -> Result<(), StoreError> {
+    let store_id = random_nonzero_identifier(connection)?;
+    connection.execute_batch(
+        "BEGIN IMMEDIATE;
+         ALTER TABLE storage_metadata RENAME TO storage_metadata_v1;
+         CREATE TABLE storage_metadata (
+             singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
+             schema_version INTEGER NOT NULL CHECK(schema_version = 2),
+             store_id BLOB NOT NULL UNIQUE CHECK(length(store_id) = 16)
+         ) STRICT;
+
+         ALTER TABLE inviter_joins RENAME TO inviter_joins_v1;
+         CREATE TABLE inviter_joins (
+             transaction_id BLOB PRIMARY KEY CHECK(length(transaction_id) = 16),
+             invitation_id BLOB NOT NULL UNIQUE REFERENCES reservations(invitation_id),
+             generation BLOB NOT NULL CHECK(length(generation) = 64),
+             join_request_id BLOB NOT NULL UNIQUE CHECK(length(join_request_id) = 16),
+             request_fingerprint BLOB NOT NULL CHECK(length(request_fingerprint) = 32),
+             group_id BLOB NOT NULL CHECK(length(group_id) = 32),
+             epoch_before INTEGER NOT NULL CHECK(epoch_before >= 0),
+             epoch_after INTEGER NOT NULL CHECK(epoch_after = epoch_before + 1),
+             approval_record BLOB NOT NULL CHECK(length(approval_record) BETWEEN 1 AND 4096),
+             welcome BLOB NOT NULL CHECK(length(welcome) BETWEEN 1 AND 65536),
+             endpoint BLOB NOT NULL CHECK(length(endpoint) BETWEEN 1 AND 4096),
+             outbox_expires_at INTEGER NOT NULL CHECK(outbox_expires_at > 0),
+             outbox_state INTEGER NOT NULL CHECK(outbox_state BETWEEN 1 AND 5),
+             delivery_attempts INTEGER NOT NULL
+                 CHECK(delivery_attempts BETWEEN 0 AND 3),
+             lease_generation INTEGER NOT NULL CHECK(lease_generation >= 0),
+             lease_id BLOB CHECK(lease_id IS NULL OR length(lease_id) = 16),
+             lease_expires_at INTEGER CHECK(lease_expires_at IS NULL OR lease_expires_at > 0),
+             CHECK(
+                 (outbox_state = 2 AND lease_id IS NOT NULL AND lease_expires_at IS NOT NULL)
+                 OR (outbox_state IN (1, 3, 4, 5) AND lease_id IS NULL AND lease_expires_at IS NULL)
+             )
+         ) STRICT;",
+    )?;
+    let migration = (|| {
+        connection.execute(
+            "INSERT INTO storage_metadata(singleton, schema_version, store_id)
+             VALUES (1, 2, ?1)",
+            params![store_id],
+        )?;
+        connection.execute_batch(
+            "INSERT INTO inviter_joins(
+                 transaction_id, invitation_id, generation, join_request_id,
+                 request_fingerprint, group_id, epoch_before, epoch_after,
+                 approval_record, welcome, endpoint, outbox_expires_at, outbox_state,
+                 delivery_attempts, lease_generation, lease_id, lease_expires_at
+             )
+             SELECT transaction_id, invitation_id, generation, join_request_id,
+                    request_fingerprint, group_id, epoch_before, epoch_after,
+                    approval_record, welcome, endpoint, outbox_expires_at, 1,
+                    0, 0, NULL, NULL
+             FROM inviter_joins_v1;",
+        )?;
+        {
+            let mut statement = connection
+                .prepare("SELECT welcome, endpoint, outbox_expires_at FROM inviter_joins")?;
+            let mut rows = statement.query([])?;
+            while let Some(row) = rows.next()? {
+                let welcome = row.get::<_, Vec<u8>>(0)?;
+                let endpoint = row.get::<_, Vec<u8>>(1)?;
+                let outbox_expires_at =
+                    u64::try_from(row.get::<_, i64>(2)?).map_err(|_| StoreError::Rejected)?;
+                validate_delivery_material(&welcome, &endpoint, outbox_expires_at)?;
+            }
+        }
+        connection.execute_batch(
+            "DROP TABLE inviter_joins_v1;
+             DROP TABLE storage_metadata_v1;
+             COMMIT;",
+        )?;
+        Ok(())
+    })();
+    if migration.is_err() {
+        rollback(connection);
+    }
+    migration
+}
+
+fn validate_schema_v2(connection: &Connection) -> Result<(), StoreError> {
+    let rows = connection.query_row(
+        "SELECT count(*), min(schema_version), max(schema_version), min(store_id)
+         FROM storage_metadata",
+        [],
+        |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, Option<i64>>(1)?,
+                row.get::<_, Option<i64>>(2)?,
+                row.get::<_, Option<Vec<u8>>>(3)?,
+            ))
+        },
+    )?;
+    let store_id = rows.3.ok_or(StoreError::Rejected)?;
+    if rows.0 != 1
+        || rows.1 != Some(i64::from(SCHEMA_VERSION))
+        || rows.2 != Some(i64::from(SCHEMA_VERSION))
+        || store_id.len() != STORE_ID_BYTES
+        || all_zero(&store_id)
+    {
+        return Err(StoreError::Rejected);
+    }
+    Ok(())
+}
+
+fn random_nonzero_identifier(connection: &Connection) -> Result<[u8; 16], StoreError> {
+    for _ in 0..4 {
+        let bytes: Vec<u8> = connection.query_row("SELECT randomblob(16)", [], |row| row.get(0))?;
+        let identifier: [u8; 16] = bytes.try_into().map_err(|_| StoreError::Rejected)?;
+        if !all_zero(&identifier) {
+            return Ok(identifier);
+        }
+    }
+    Err(StoreError::Rejected)
+}
+
+fn decode_outbox_state(value: i64) -> Result<WelcomeOutboxState, StoreError> {
+    match value {
+        OUTBOX_PENDING => Ok(WelcomeOutboxState::Pending),
+        OUTBOX_LEASED => Ok(WelcomeOutboxState::Leased),
+        OUTBOX_DELIVERED => Ok(WelcomeOutboxState::Delivered),
+        OUTBOX_ATTEMPTS_EXHAUSTED => Ok(WelcomeOutboxState::AttemptsExhausted),
+        OUTBOX_EXPIRED => Ok(WelcomeOutboxState::Expired),
+        _ => Err(StoreError::Rejected),
+    }
+}
+
+fn store_id_on(connection: &Connection) -> Result<[u8; STORE_ID_BYTES], StoreError> {
+    let bytes: Vec<u8> = connection.query_row(
+        "SELECT store_id FROM storage_metadata WHERE singleton = 1",
+        [],
+        |row| row.get(0),
+    )?;
+    let store_id: [u8; STORE_ID_BYTES] = bytes.try_into().map_err(|_| StoreError::Rejected)?;
+    if all_zero(&store_id) {
+        return Err(StoreError::Rejected);
+    }
+    Ok(store_id)
+}
+
+fn validate_delivery_material(
+    welcome: &[u8],
+    endpoint: &[u8],
+    outbox_expires_at: u64,
+) -> Result<(), StoreError> {
+    let envelope = OpaqueEnvelope::decode_canonical(welcome).map_err(|_| StoreError::Rejected)?;
+    let endpoint = LocalWelcomeDepositEndpoint::decode_canonical(endpoint)
+        .map_err(|_| StoreError::Rejected)?;
+    if all_zero(envelope.envelope_id())
+        || outbox_expires_at > envelope.expires_at_unix_seconds()
+        || envelope.expires_at_unix_seconds() > endpoint.expires_at_unix_seconds()
+    {
+        return Err(StoreError::Rejected);
+    }
+    Ok(())
+}
+
+fn map_outbox_store_error(error: StoreError) -> OutboxPortError {
+    match error {
+        StoreError::Conflict => OutboxPortError::Conflict,
+        StoreError::Rejected | StoreError::InjectedFailure | StoreError::OutcomeUnknown => {
+            OutboxPortError::Internal
+        }
+    }
 }
 
 fn commit_inviter(
@@ -822,8 +1330,12 @@ fn commit_inviter(
         "INSERT INTO inviter_joins(
              transaction_id, invitation_id, generation, join_request_id,
              request_fingerprint, group_id, epoch_before, epoch_after,
-             approval_record, welcome, endpoint, outbox_expires_at, outbox_state
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 1)",
+             approval_record, welcome, endpoint, outbox_expires_at, outbox_state,
+             delivery_attempts, lease_generation, lease_id, lease_expires_at
+         ) VALUES (
+             ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
+             1, 0, 0, NULL, NULL
+         )",
         params![
             commit.transaction_id,
             commit.invitation_id,
@@ -1010,7 +1522,11 @@ fn validate_inviter(
     {
         return Err(StoreError::Rejected);
     }
-    Ok(())
+    validate_delivery_material(
+        &transaction.welcome,
+        &transaction.endpoint,
+        transaction.outbox_expires_at,
+    )
 }
 
 fn validate_mls_write(

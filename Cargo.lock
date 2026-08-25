@@ -1117,6 +1117,8 @@ dependencies = [
  "mls-rs-core",
  "rusqlite",
  "session-crypto-mls",
+ "session-protocol",
+ "session-transport",
  "thiserror",
  "zeroize",
 ]
