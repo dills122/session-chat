@@ -1,8 +1,9 @@
 # Implementation plan: profile-bound transport abstraction
 
-Status: active staged implementation plan; ADR 0015 is accepted, Tasks 1 and 2
-and the cursorless Task 4 control path are complete, Task 3 is partial, and
-later lifecycle, coordinator, conformance, and network work remain gated
+Status: active staged implementation plan; ADR 0015 is accepted, the LocalV1
+in-memory coordinator checkpoint is complete, Task 3 is partial, and Task 9's
+durable owner-store increment is active before product composition or network
+work
 
 Date: 2026-08-20
 
@@ -148,6 +149,34 @@ errors. Queue saturation is induced through bounded ordinary operations rather
 than a state-forging action. Positive persisted cursor issuance, rotation,
 restart, concurrency, network timing, and profile-specific privacy faults remain
 outside this slice.
+
+## Active execution slice: durable Welcome owner store
+
+This is the authoritative sequential backbone after the completed in-memory
+Task 9 checkpoint. It evolves the existing SQLCipher inviter transaction rather
+than wrapping the memory model or introducing coordinator persistence. The
+`storage-sqlcipher` database remains the sole authority for membership,
+invitation consumption, replay/approval result, exact Welcome work, attempts,
+leases, and terminal delivery state.
+
+Parallel work may own `apps/sessionctl`, new test-only property/model files for
+the existing memory paths, and a SQLCipher fault-research document. This slice
+does not edit those files before their changes merge.
+
+| Work item | Delivery unit | Depends on | Status | Completion boundary |
+| --- | --- | --- | --- | --- |
+| `D9-SCHEMA-V2` | Lead storage contract | In-memory Task 9 checkpoint | Active | A versioned SQLCipher schema and explicit v1 compatibility fixture retain one nonzero durable store identity, exact canonical Welcome/endpoint bytes, bounded attempt count, monotonic lease generation, opaque lease identity, lease expiry, and pending/leased/delivered/exhausted/expired states. Migration is one atomic transaction and unknown schemas fail closed. |
+| `D9-RECOVERY-TESTS` | Lead storage evidence | `D9-SCHEMA-V2` design | Pending | Failing-first tests cover close/reopen coordination, stale re-lease, foreign-store leases, expiry, attempt exhaustion, ambiguous remote acceptance with byte-identical retry, and invisibility of rolled-back membership/outbox work. |
+| `D9-OWNER-PORT` | Lead storage implementation | `D9-RECOVERY-TESTS` | Pending | `SqlCipherStorage` implements `WelcomeOutboxPort`; each lease, accepted result, and failed result uses one immediate SQL transaction and validates the exact live store/transaction/generation/lease identity. |
+| `D9-DURABLE-COMPOSITION` | Lead integration | `D9-OWNER-PORT` | Pending | The real capability-admission and MLS Add path commits once through SQLCipher, reconstructs the stateless coordinator after close/reopen, and retries delivery without repeating MLS membership or reopening invitation state. |
+| `D9-FAULT-EVIDENCE` | Lead verification | `D9-DURABLE-COMPOSITION` | Pending | Retained adapter-proportionate restart and storage-fault evidence passes targeted tests, production coverage ratchets, and full repository gates; stronger process-kill, disk/power, rollback, and production claims remain explicitly gated unless separately proven. |
+
+The initial schema-v2 state codes and migration are storage-internal, not wire
+objects. Changing their observable recovery semantics requires compatibility
+fixtures and negative tests. A lease is authoritative only when its persistent
+store identity, transaction ID, generation, and opaque lease identity all match
+the currently leased row. Reopen preserves the store identity; re-lease changes
+both generation and lease identity so stale or foreign results fail closed.
 
 ## Phase A: contract adoption
 
