@@ -1,0 +1,152 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { sitePath } from '../lib/paths';
+---
+
+<BaseLayout
+  title="Session Chat · Private conversations without permanent accounts"
+  description="Session Chat is an experimental system for temporary, end-to-end encrypted conversations between two people without permanent chat accounts."
+>
+  <div class="status-rail">
+    <aside class="status-note" aria-label="Current project status">
+      <strong>Phase 1: protocol prototype</strong>
+      <p>The encrypted join and messaging flow runs in tests and a command-line demo. There is no installable app or online service yet. Do not use it for real conversations.</p>
+    </aside>
+  </div>
+
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="hero-copy">
+      <h1 id="hero-title">Private conversations without permanent accounts.</h1>
+      <p class="lede">
+        Session Chat is being built as a temporary, encrypted room for two people. One person creates the room, shares a private invitation, approves the other device, and ends the session when the conversation is over.
+      </p>
+      <div class="hero-actions">
+        <a class="button primary" href="#session-flow">See the session flow</a>
+        <a class="button" href={sitePath('/project/')}>Inspect current evidence</a>
+      </div>
+    </div>
+
+    <aside class="hero-proof instrument" aria-label="Current prototype profile">
+      <div class="instrument-head">
+        <span>Current profile</span>
+        <span class="instrument-status">Prototype</span>
+      </div>
+      <dl class="instrument-list">
+        <div><dt>Participants</dt><dd>2 devices</dd></div>
+        <div><dt>Access</dt><dd>private invitation + approval</dd></div>
+        <div><dt>Encryption</dt><dd>MLS 1.0</dd></div>
+        <div><dt>Join proof</dt><dd>one-shot HPKE</dd></div>
+        <div><dt>Delivery</dt><dd>local test adapter</dd></div>
+        <div><dt>Interface</dt><dd>command-line demo</dd></div>
+      </dl>
+    </aside>
+  </section>
+
+  <section class="section dark" id="session-flow" aria-labelledby="flow-title">
+    <div class="section-inner">
+      <div class="section-head">
+        <h2 id="flow-title">How one conversation moves through the system.</h2>
+        <p class="section-lede">
+          Creating an invitation, approving a device, adding it to the encrypted group, delivering messages, and ending the session are separate actions. A copied link or compromised service should not gain all of those powers at once.
+        </p>
+      </div>
+
+      <ol class="workflow">
+        <li class="workflow-stage">
+          <span class="stage-number">1.0 · invite</span>
+          <div class="stage-copy">
+            <h3>Alice creates a short-lived invitation.</h3>
+            <p>The signed invitation tells Bob how to ask for access, but it does not contain the conversation keys. Its capability is the secret value that grants the right to make that request, so Alice must share it privately.</p>
+          </div>
+          <div class="stage-proof"><span class="proof-label">Boundary</span><code>InvitationDescriptor</code></div>
+        </li>
+        <li class="workflow-stage">
+          <span class="stage-number">2.0 · request</span>
+          <div class="stage-copy">
+            <h3>Bob asks to join with one exact device key.</h3>
+            <p>His request is tied to the invitation and to one exact MLS KeyPackage: the public cryptographic material for that device. Replaying the request or substituting another key must fail.</p>
+          </div>
+          <div class="stage-proof"><span class="proof-label">Current evidence</span><code>RFC 9180 PSK open</code></div>
+        </li>
+        <li class="workflow-stage">
+          <span class="stage-number">3.0 · approve</span>
+          <div class="stage-copy">
+            <h3>Alice reviews the request and chooses.</h3>
+            <p>A valid proof shows that the request matches the invitation and device key. It does not prove Bob is trustworthy or add him to the group. The prototype simulates Alice’s decision because the approval screen is not built yet.</p>
+          </div>
+          <div class="stage-proof"><span class="proof-label">Authority</span><code>ApprovalContext ≠ membership</code></div>
+        </li>
+        <li class="workflow-stage">
+          <span class="stage-number">4.0 · join</span>
+          <div class="stage-copy">
+            <h3>The encrypted group adds only the approved device.</h3>
+            <p>Messaging Layer Security (MLS) consumes the approved KeyPackage once, adds that device, and creates its encrypted Welcome message. The invitation protects first contact; MLS protects group membership and later messages.</p>
+          </div>
+          <div class="stage-proof"><span class="proof-label">Current evidence</span><code>Add → Commit → Welcome</code></div>
+        </li>
+        <li class="workflow-stage">
+          <span class="stage-number">5.0 · talk</span>
+          <div class="stage-copy">
+            <h3>Transport carries encrypted envelopes, not chat text.</h3>
+            <p>A transport can move data but cannot approve a person or add a device. The current adapter only runs in memory and tests loss, duplication, delay, reordering, retry, expiry, and separate mailbox rights.</p>
+          </div>
+          <div class="stage-proof"><span class="proof-label">Current limit</span><code>no network transport</code></div>
+        </li>
+        <li class="workflow-stage">
+          <span class="stage-number">6.0 · end</span>
+          <div class="stage-copy">
+            <h3>Removing a device blocks it from future messages.</h3>
+            <p>The in-memory MLS test proves that a removed device cannot derive later message keys. A future app may delete its own keys and stored copies, but it cannot erase plaintext that another participant saved.</p>
+          </div>
+          <div class="stage-proof"><span class="proof-label">Current evidence</span><code>remove → update → reject</code></div>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="promise-title">
+    <div class="section-inner">
+      <div class="section-head">
+        <h2 id="promise-title">What the design protects—and what it cannot.</h2>
+        <p class="section-lede">
+          Message encryption, identity evidence, network privacy, and local deletion solve different problems. The product must explain each guarantee on its own.
+        </p>
+      </div>
+
+      <div class="split-argument">
+        <article class="argument-pane">
+          <h3>Target protections for the finished product</h3>
+          <ul>
+            <li>Keep message content hidden from mailbox, relay, and realm services.</li>
+            <li>Stop copied invitations or substituted device keys from silently changing membership.</li>
+            <li>Never let Private mode silently fall back to a more revealing transport.</li>
+            <li>Use a new cryptographic identity for each session instead of a permanent chat identity.</li>
+            <li>Limit how much parsing, storage, retry, and unauthenticated work hostile input can trigger.</li>
+          </ul>
+        </article>
+        <article class="argument-pane">
+          <h3>Limits that remain</h3>
+          <ul>
+            <li>A participant can copy, export, photograph, or screenshot plaintext.</li>
+            <li>Malware controlling an unlocked device can read what the user can read.</li>
+            <li>Proof that someone controls an account does not prove they are trustworthy.</li>
+            <li>Different transport modes expose different amounts of IP, timing, and volume metadata.</li>
+            <li>A network or service operator can still refuse or disrupt service.</li>
+          </ul>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section tight-top" aria-labelledby="proof-title">
+    <div class="section-inner">
+      <div class="trust-line">
+        <strong id="proof-title">Check the evidence behind each claim.</strong>
+        <p>
+          The repository marks each property as implemented and tested, required but unimplemented, proposed, deferred, or out of scope. This site uses the same evidence states.
+        </p>
+        <a class="text-link" href={sitePath('/security/')}>Read the security model →</a>
+      </div>
+    </div>
+  </section>
+</BaseLayout>

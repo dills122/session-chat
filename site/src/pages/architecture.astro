@@ -1,0 +1,132 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout
+  title="Architecture · Session Chat"
+  description="How Session Chat keeps conversation keys, access decisions, mailboxes, and message delivery under separate authorities."
+>
+  <div class="page-shell">
+    <header class="route-hero">
+      <div class="route-title">
+        <p class="route-kicker">Architecture</p>
+        <h1>The clients keep the keys. Each support service gets one narrow job.</h1>
+      </div>
+      <p class="lede">
+        Clients own the session keys and decide membership. Identity providers supply evidence, mailboxes hold bounded ciphertext, and transports carry encrypted envelopes. Replacing one service should not change the authority of another.
+      </p>
+    </header>
+  </div>
+
+  <section class="section" aria-labelledby="layers-title">
+    <div class="section-inner">
+      <div class="section-head">
+        <h2 id="layers-title">Three services support the conversation without owning it.</h2>
+        <p class="section-lede">Each boundary exposes only the authority needed for one job, even when a provider or transport changes.</p>
+      </div>
+
+      <div class="system-map" role="img" aria-label="The session protocol core connects independently to admission, opaque rendezvous, and envelope delivery">
+        <article class="map-core">
+          <span class="map-owner">Client-owned authority</span>
+          <h3>Session protocol core</h3>
+          <p>Creates and expires invitations, approves exact device keys, owns MLS group state, rejects replay, and manages local encrypted state.</p>
+        </article>
+        <div class="map-branches">
+          <article class="map-branch">
+            <span class="map-owner">Evidence</span>
+            <h3>Admission</h3>
+            <p>Checks whether one exact device key may be considered. The prototype supports private capability invitations; other evidence types come later.</p>
+            <code>may approve one KeyPackage</code>
+          </article>
+          <article class="map-branch">
+            <span class="map-owner">Storage edge</span>
+            <h3>Rendezvous mailbox</h3>
+            <p>Temporarily stores bounded ciphertext in mailboxes addressed by separate secret capabilities.</p>
+            <code>may retain ciphertext</code>
+          </article>
+          <article class="map-branch">
+            <span class="map-owner">Network edge</span>
+            <h3>Envelope delivery</h3>
+            <p>Moves opaque encrypted envelopes. The current adapter is local; real Fast and Private network profiles come later.</p>
+            <code>may move opaque bytes</code>
+          </article>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section dark" aria-labelledby="join-title">
+    <div class="section-inner">
+      <div class="section-head">
+        <h2 id="join-title">A join request passes through five guarded steps.</h2>
+        <p class="section-lede">Each step owns the exact value it checked. A later caller cannot swap the device key or treat successful delivery as proof of membership.</p>
+      </div>
+
+      <ol class="workflow">
+        <li class="workflow-stage">
+          <span class="stage-number">1.0 · parse</span>
+          <div class="stage-copy"><h3>Reject bad input before it reaches state.</h3><p>Oversized, malformed, non-canonical, unknown-version, expired, or context-mismatched objects stop here.</p></div>
+          <div class="stage-proof"><span class="proof-label">Owner</span><code>session-protocol</code></div>
+        </li>
+        <li class="workflow-stage">
+          <span class="stage-number">2.0 · verify</span>
+          <div class="stage-copy"><h3>Tie the proof to one invitation and one device.</h3><p>The verifier owns the exact parsed KeyPackage and checks its invitation, challenge, replay context, credential identity, leaf key, version, and ciphersuite.</p></div>
+          <div class="stage-proof"><span class="proof-label">Owner</span><code>admission-capability</code></div>
+        </li>
+        <li class="workflow-stage">
+          <span class="stage-number">3.0 · decide</span>
+          <div class="stage-copy"><h3>Show Alice enough evidence to approve or reject.</h3><p>The approval view cannot add a member. The provider keeps the proof, replay reservation, and exact one-shot MLS input.</p></div>
+          <div class="stage-proof"><span class="proof-label">Seam</span><code>session-admission</code></div>
+        </li>
+        <li class="workflow-stage">
+          <span class="stage-number">4.0 · commit</span>
+          <div class="stage-copy"><h3>Add the approved device once.</h3><p>The MLS adapter consumes the approved value, creates Add and Welcome, advances the group, and later protects messages, updates, and removal.</p></div>
+          <div class="stage-proof"><span class="proof-label">Owner</span><code>session-crypto-mls</code></div>
+        </li>
+        <li class="workflow-stage">
+          <span class="stage-number">5.0 · deliver</span>
+          <div class="stage-copy"><h3>Retry delivery without adding the device twice.</h3><p>The accepted design commits the MLS snapshot, replay state, consumed invitation, decision, and encrypted Welcome outbox as one transaction. The product path does not implement that durable transaction yet.</p></div>
+          <div class="stage-proof"><span class="proof-label">State</span><code>accepted contract</code></div>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="authority-title">
+    <div class="section-inner">
+      <div class="section-head">
+        <h2 id="authority-title">Each mailbox key grants one action.</h2>
+        <p class="section-lede">Deposit, receive, acknowledge, and rotate use separate capabilities. Knowing a delivery identifier never grants permission to delete it.</p>
+      </div>
+
+      <dl class="authority-table">
+        <div class="authority-row"><dt>Deposit</dt><dd>Place one bounded opaque envelope into the addressed mailbox.</dd><dd>Cannot read, acknowledge, or rotate.</dd></div>
+        <div class="authority-row"><dt>Receive</dt><dd>Read a bounded batch from one mailbox under the selected profile.</dd><dd>Cannot deposit, delete, or rotate.</dd></div>
+        <div class="authority-row"><dt>Acknowledge</dt><dd>Confirm or delete the relevant delivery scope.</dd><dd>Cannot receive new objects or rotate.</dd></div>
+        <div class="authority-row"><dt>Rotate</dt><dd>Change continuity for a reusable network mailbox.</dd><dd>Never supplied to normal delivery calls.</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <section class="section tight-top" id="crate-map" aria-labelledby="crate-title">
+    <div class="section-inner">
+      <div class="section-head">
+        <h2 id="crate-title">How the Rust code maps to those jobs.</h2>
+        <p class="section-lede">Each crate implements a narrow protocol or storage boundary. The names below describe tested laboratory components, not a finished security product.</p>
+      </div>
+      <dl class="crate-map">
+        <div class="crate-row"><dt>Wire + lifecycle</dt><dd><code>session-protocol</code> · <code>session-core</code></dd><dd class="crate-state">implemented in memory</dd></div>
+        <div class="crate-row"><dt>Admission</dt><dd><code>session-admission</code> · <code>admission-capability</code> · <code>session-crypto-hpke</code></dd><dd class="crate-state">capability profile only</dd></div>
+        <div class="crate-row"><dt>Group security</dt><dd><code>session-crypto</code> · <code>session-crypto-mls</code></dd><dd class="crate-state">two-party lifecycle</dd></div>
+        <div class="crate-row"><dt>Delivery</dt><dd><code>session-transport</code> · <code>transport-memory</code></dd><dd class="crate-state">no network adapter</dd></div>
+        <div class="crate-row"><dt>Transactions + storage</dt><dd><code>session-inviter-transaction</code> · <code>session-storage</code> · <code>storage-sqlcipher</code></dd><dd class="crate-state">separate laboratories</dd></div>
+        <div class="crate-row"><dt>Headless composition</dt><dd><code>sessionctl</code></dd><dd class="crate-state">retained integration evidence</dd></div>
+      </dl>
+      <div class="trust-line">
+        <strong>Use the architecture document for exact contracts.</strong>
+        <p>This page provides the mental model. The repository document defines the detailed invariants, object contracts, and current evidence boundary.</p>
+        <a class="text-link" href="https://github.com/dills122/session-chat/blob/master/docs/ARCHITECTURE_V2.md">Open architecture ↗</a>
+      </div>
+    </div>
+  </section>
+</BaseLayout>

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <style>:root{--color-ink:oklch(20% 0.022 258);--color-paper:oklch(98.5% 0.004 250);--color-accent:oklch(52% 0.2 256)}</style>
+  <title id="title">Session Chat mark</title>
+  <rect width="64" height="64" rx="8" fill="var(--color-ink)"/>
+  <path d="M17 19h30v20H31l-9 8v-8h-5V19Z" fill="none" stroke="var(--color-paper)" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M24 28h16" stroke="var(--color-accent)" stroke-width="4" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,119 @@
+---
+import { sitePath } from '../lib/paths';
+
+const commands = [
+  { href: '/', group: 'Start', title: 'Overview', detail: 'What Session Chat is meant to do' },
+  { href: '/#session-flow', group: 'Start', title: 'Session flow', detail: 'How a device joins, talks, and leaves' },
+  { href: '/architecture/', group: 'Technical', title: 'Architecture', detail: 'Who owns keys, decisions, storage, and delivery' },
+  { href: '/architecture/#crate-map', group: 'Technical', title: 'Crate map', detail: 'How the Rust workspace implements those jobs' },
+  { href: '/security/', group: 'Evidence', title: 'Security model', detail: 'What is proven, missing, and impossible to promise' },
+  { href: '/security/#claim-ledger', group: 'Evidence', title: 'Claim ledger', detail: 'Evidence status for each security property' },
+  { href: '/project/', group: 'Project', title: 'Current status', detail: 'What can be run today' },
+  { href: '/project/#roadmap', group: 'Project', title: 'Roadmap', detail: 'What must happen before people can use it' },
+];
+---
+
+<dialog class="command-dialog" data-command-dialog aria-labelledby="command-title">
+  <div class="command-surface">
+    <div class="command-head">
+      <label id="command-title" for="command-search">Search Session Chat</label>
+      <button class="command-close" type="button" data-command-close aria-label="Close search">Esc</button>
+    </div>
+    <input id="command-search" class="command-input" type="search" placeholder="Try “security” or “flow”" autocomplete="off" />
+    <p class="sr-only" data-command-status aria-live="polite"></p>
+    <div class="command-results" role="listbox" aria-label="Site destinations">
+      {commands.map((command, index) => (
+        <a
+          class="command-item"
+          href={sitePath(command.href)}
+          data-command-item
+          data-search={`${command.group} ${command.title} ${command.detail}`.toLowerCase()}
+          role="option"
+          aria-selected={index === 0 ? 'true' : 'false'}
+        >
+          <span class="command-group">{command.group}</span>
+          <strong>{command.title}</strong>
+          <small>{command.detail}</small>
+        </a>
+      ))}
+    </div>
+    <div class="command-hints" aria-hidden="true">
+      <span>↑↓ move</span><span>↵ open</span><span>esc close</span>
+    </div>
+  </div>
+</dialog>
+
+<script>
+  const dialog = document.querySelector('[data-command-dialog]');
+  const input = dialog?.querySelector('#command-search');
+  const items = Array.from(dialog?.querySelectorAll('[data-command-item]') ?? []);
+  const status = dialog?.querySelector('[data-command-status]');
+  let activeIndex = 0;
+
+  const visibleItems = () => items.filter((item) => !item.hasAttribute('hidden'));
+
+  const selectItem = (index: number) => {
+    const visible = visibleItems();
+    if (visible.length === 0) return;
+    activeIndex = (index + visible.length) % visible.length;
+    visible.forEach((item, itemIndex) => item.setAttribute('aria-selected', String(itemIndex === activeIndex)));
+    visible[activeIndex]?.scrollIntoView({ block: 'nearest' });
+  };
+
+  const openDialog = () => {
+    if (!(dialog instanceof HTMLDialogElement) || !(input instanceof HTMLInputElement)) return;
+    dialog.showModal();
+    input.value = '';
+    items.forEach((item) => item.removeAttribute('hidden'));
+    selectItem(0);
+    input.focus({ preventScroll: true });
+  };
+
+  document.querySelectorAll('[data-command-open]').forEach((trigger) => {
+    trigger.addEventListener('click', openDialog);
+  });
+
+  document.querySelector('[data-command-close]')?.addEventListener('click', () => {
+    if (dialog instanceof HTMLDialogElement) dialog.close();
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+      event.preventDefault();
+      openDialog();
+    }
+  });
+
+  dialog?.addEventListener('click', (event) => {
+    if (event.target === dialog && dialog instanceof HTMLDialogElement) dialog.close();
+  });
+
+  input?.addEventListener('input', () => {
+    if (!(input instanceof HTMLInputElement)) return;
+    const query = input.value.trim().toLowerCase();
+    items.forEach((item) => {
+      const haystack = item.getAttribute('data-search') ?? '';
+      item.toggleAttribute('hidden', query.length > 0 && !haystack.includes(query));
+    });
+    const count = visibleItems().length;
+    if (status) status.textContent = `${count} destination${count === 1 ? '' : 's'} found`;
+    selectItem(0);
+  });
+
+  input?.addEventListener('keydown', (event) => {
+    if (!(event instanceof KeyboardEvent)) return;
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      selectItem(activeIndex + 1);
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      selectItem(activeIndex - 1);
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      const target = visibleItems()[activeIndex];
+      if (target instanceof HTMLAnchorElement) target.click();
+    }
+  });
+</script>
