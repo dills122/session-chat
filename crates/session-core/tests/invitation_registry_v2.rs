@@ -57,6 +57,12 @@ fn generated_v2_invitation_uses_the_existing_reserve_release_consume_lifecycle()
         .validate_descriptor_v2(&encoded, NOW)
         .expect("issued descriptor validates read-only");
 
+    assert_eq!(issued.invitation_id(), &invitation_id);
+    assert_eq!(issued.invitation().invitation_id(), &invitation_id);
+    assert_eq!(validated.invitation_id(), &invitation_id);
+    assert_eq!(validated.expires_at_unix_seconds(), NOW + 300);
+    assert_eq!(validated.invitation().invitation_id(), &invitation_id);
+
     let first = registry
         .reserve_v2_after_admission(&validated, [0x51; 16], NOW)
         .expect("verified request reserves v2 invitation");

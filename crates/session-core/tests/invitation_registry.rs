@@ -60,6 +60,8 @@ fn validating_an_invitation_is_read_only_and_does_not_consume_it() {
 
     assert_eq!(first.invitation_id(), &[0x11; 16]);
     assert_eq!(second.invitation_id(), &[0x11; 16]);
+    assert_eq!(first.expires_at_unix_seconds(), NOW + 300);
+    assert_eq!(first.invitation().invitation_id(), &[0x11; 16]);
     assert_eq!(
         registry.lifecycle(&[0x11; 16]),
         Some(InvitationLifecycle::Available)

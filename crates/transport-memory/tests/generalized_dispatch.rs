@@ -447,6 +447,48 @@ fn generalized_memory_deposit_reports_idempotency_conflict_without_overwrite() {
 }
 
 #[test]
+fn generalized_deposit_normalizes_scheduling_capacity_without_consuming_state() {
+    let start = Instant::now();
+    let control = TestControl {
+        monotonic_now: start,
+        wall_now_unix_seconds: Some(NOW),
+        cancelled: false,
+    };
+    let mut transport = DeterministicMemoryTransport::new(
+        MemoryMailboxPolicy::new(300, 1, 1, 1).expect("bounded policy"),
+    )
+    .expect("memory transport");
+    let (deposit, _, _) = transport
+        .create_mailbox(NOW + 180, NOW)
+        .expect("mailbox")
+        .into_dispatch_parts();
+    let original = envelope(0x5a, 0x6a);
+    transport
+        .queue_action(DeliveryAction::Duplicate)
+        .expect("fill both scheduled-copy slots");
+    ready(EnvelopeDelivery::deposit(
+        &mut transport,
+        &deposit,
+        deposit_request(original.clone(), start + Duration::from_secs(5)),
+        &control,
+    ))
+    .expect("first delivery fills the schedule");
+
+    let Err(failure) = ready(EnvelopeDelivery::deposit(
+        &mut transport,
+        &deposit,
+        deposit_request(original, start + Duration::from_secs(5)),
+        &control,
+    )) else {
+        panic!("exact retry cannot exceed the schedule bound");
+    };
+    assert_eq!(failure.code(), TransportFailureCode::QueueFull);
+    let snapshot = transport.conformance_snapshot();
+    assert_eq!(snapshot.live_envelopes(), 1);
+    assert_eq!(snapshot.visible_copies(), 2);
+}
+
+#[test]
 fn memory_cursor_is_non_authorizing_and_invalid_until_state_semantics_are_implemented() {
     let start = Instant::now();
     let control = TestControl {

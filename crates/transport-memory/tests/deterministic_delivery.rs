@@ -1,9 +1,10 @@
 use session_protocol::OpaqueEnvelope;
 use session_transport::EnvelopeTransport;
 use transport_memory::{
-    DeliveryAction, DeterministicMemoryTransport, MAX_MEMORY_DELIVERY_ATTEMPTS_PER_ENVELOPE,
-    MAX_MEMORY_ENVELOPES_PER_MAILBOX, MAX_MEMORY_LIVE_MAILBOXES,
-    MAX_MEMORY_MAILBOX_LIFETIME_SECONDS, MemoryMailboxPolicy, MemoryTransportError,
+    AcknowledgementLoss, DeliveryAction, DeterministicMemoryTransport,
+    MAX_MEMORY_DELIVERY_ATTEMPTS_PER_ENVELOPE, MAX_MEMORY_ENVELOPES_PER_MAILBOX,
+    MAX_MEMORY_LIVE_MAILBOXES, MAX_MEMORY_MAILBOX_LIFETIME_SECONDS, MemoryAvailability,
+    MemoryMailboxPolicy, MemoryTransportError,
 };
 
 const NOW: u64 = 1_700_000_000;
@@ -220,6 +221,108 @@ fn invalid_held_release_does_not_consume_a_full_held_queue() {
             .delivery_id(),
         &delivery_id
     );
+}
+
+#[test]
+fn controller_and_expiry_bounds_preserve_existing_queued_state() {
+    let policy = MemoryMailboxPolicy::new(60, 1, 1, 1).expect("bounded policy");
+    let mut transport = DeterministicMemoryTransport::new(policy).expect("memory transport");
+    let empty = transport.conformance_snapshot();
+    assert_eq!(empty.live_encoded_bytes(), 0);
+    assert!(!empty.acknowledgement_loss_armed());
+    assert_eq!(empty.availability(), MemoryAvailability::Available);
+    transport.set_availability(MemoryAvailability::Unavailable);
+    assert_eq!(
+        transport.conformance_snapshot().availability(),
+        MemoryAvailability::Unavailable
+    );
+    transport.set_availability(MemoryAvailability::Available);
+    transport
+        .lose_next_acknowledgement(AcknowledgementLoss::BeforeCommit)
+        .expect("arm bounded acknowledgement fault");
+    assert!(
+        transport
+            .conformance_snapshot()
+            .acknowledgement_loss_armed()
+    );
+    transport
+        .queue_action(DeliveryAction::Deliver)
+        .expect("one action slot");
+    assert_eq!(
+        transport.queue_action(DeliveryAction::Drop),
+        Err(MemoryTransportError::CapacityExceeded)
+    );
+    assert!(matches!(
+        transport.create_mailbox(NOW, NOW),
+        Err(MemoryTransportError::Rejected)
+    ));
+
+    let (deposit, receive, _) = transport
+        .create_mailbox(NOW + 30, NOW)
+        .expect("one live mailbox")
+        .into_parts();
+    assert!(matches!(
+        transport.create_mailbox(NOW + 30, NOW),
+        Err(MemoryTransportError::CapacityExceeded)
+    ));
+    let expiring = OpaqueEnvelope::new([0x4a; 16], NOW + 1, vec![0x5a; 32])
+        .expect("bounded expiring envelope");
+    transport
+        .deposit(&deposit, expiring, NOW)
+        .expect("delivery accepted");
+    assert!(
+        transport
+            .receive(&receive, NOW + 1)
+            .expect("expired delivery is pruned")
+            .is_none()
+    );
+
+    let mut corrupt_transport =
+        DeterministicMemoryTransport::new(policy).expect("memory transport");
+    let (corrupt_deposit, corrupt_receive, corrupt_acknowledgement) = corrupt_transport
+        .create_mailbox(NOW + 30, NOW)
+        .expect("mailbox")
+        .into_parts();
+    let corruptible =
+        OpaqueEnvelope::new([0x4c; 16], NOW + 20, vec![0x5c; 32]).expect("bounded envelope");
+    let delivery_id = corrupt_transport
+        .deposit(&corrupt_deposit, corruptible, NOW)
+        .expect("visible delivery");
+    let corrupt_receive = session_transport::ReceiveRight::from_provider(corrupt_receive);
+    corrupt_transport
+        .corrupt_next_poll(&corrupt_receive, delivery_id)
+        .expect("known delivery arms corruption");
+    assert_eq!(
+        corrupt_transport.corrupt_next_poll(&corrupt_receive, delivery_id),
+        Err(MemoryTransportError::CapacityExceeded)
+    );
+    corrupt_transport
+        .acknowledge(&corrupt_acknowledgement, delivery_id, NOW)
+        .expect("legacy acknowledgement clears the exact armed fault");
+    assert!(
+        !corrupt_transport
+            .conformance_snapshot()
+            .corrupt_poll_armed()
+    );
+
+    let mut held_transport = DeterministicMemoryTransport::new(policy).expect("memory transport");
+    held_transport
+        .queue_action(DeliveryAction::Hold)
+        .expect("hold next delivery");
+    let (held_deposit, _, _) = held_transport
+        .create_mailbox(NOW + 30, NOW)
+        .expect("mailbox")
+        .into_parts();
+    let expiring = OpaqueEnvelope::new([0x4b; 16], NOW + 1, vec![0x5b; 32])
+        .expect("bounded expiring envelope");
+    held_transport
+        .deposit(&held_deposit, expiring, NOW)
+        .expect("held delivery accepted");
+    assert_eq!(
+        held_transport.release_held(0, NOW + 1),
+        Err(MemoryTransportError::Rejected)
+    );
+    assert_eq!(held_transport.conformance_snapshot().held_copies(), 1);
 }
 
 #[test]
