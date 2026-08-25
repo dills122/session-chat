@@ -175,23 +175,27 @@ Expected output: wire-format draft plus test vectors.
 
 ### P0: profile-bound transport abstraction
 
-- Review and accept or revise proposed
-  [ADR 0015](adr/0015-bind-transport-adapters-to-versioned-profiles.md) before
-  publishing the Rust API.
-- Resolve the first Rust API shape, coordinator-storage ownership,
-  acknowledgement-capability issuance model, and local profile-ID encoding.
-- Generalize the existing local one-Welcome adapter into the deterministic
-  adverse-network control path and add the shared conformance harness before a
-  real network adapter.
+- **Decision and first increments retained:**
+  [ADR 0015](adr/0015-bind-transport-adapters-to-versioned-profiles.md) is
+  accepted. Closed profile and adapter identifiers, bounded contract values, a
+  narrow right-specific `EnvelopeTransport` trait, local capability-boundary
+  evidence, and a separate deterministic `transport-memory` adapter now exist.
+  The owner-local transaction store remains authoritative for Welcome-outbox
+  truth and leases.
+- Finish the budget-aware request/receipt, polling/cursor, mailbox-lifecycle,
+  and provider-wide redaction boundary before adding a real network adapter.
+- Extend `transport-memory` into the complete deterministic adverse-network
+  control path and add the shared conformance harness.
 - Decide which adapters can use a scoped in-process network broker and which
   require process/OS-level egress isolation.
 - Retain the exact adverse-network trace and redacted evidence format used by
   every later adapter.
 
-Expected output: the accepted version 1 contract, a stabilized
-`session-transport`, a reusable conformance harness, and the Phase 1 headless
-flow through that boundary. Extracting a separate `transport-memory` crate is a
-later packaging decision, not an initial requirement.
+Remaining expected output: the completed version 1 contract, a reusable
+conformance harness, and the Phase 1 headless flow through the complete common
+boundary. The existing `transport-memory` extraction is retained implementation
+evidence, not completion of the polling, lifecycle, scheduling, or conformance
+work.
 
 ### Spike completed: sealed invitation post office
 

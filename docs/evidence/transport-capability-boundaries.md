@@ -1,8 +1,8 @@
 # Local transport capability-boundary evidence
 
-Status: implemented local evidence beside the narrow provider-neutral trait;
-generalized request/receipt capability representation and network-provider
-issuance remain unimplemented
+Status: implemented local evidence beside the narrow provider-neutral trait and
+bounded operation-request values; generalized capability representation,
+dispatch, and network-provider issuance remain unimplemented
 
 Date: 2026-08-20
 
@@ -65,7 +65,8 @@ cargo fmt --all --check
   budget-aware request/receipt, polling, cursor, or mailbox-lifecycle boundary
   exists.
 - The local profile issues no rotation capability.
-- No cursor, receipt, batch, profile binder, coordinator, durable adapter, or
-  network adapter is exercised.
+- Cursor, request, receipt, and receive-batch values have contract tests but are
+  not yet exercised through adapter dispatch. No profile binder, coordinator,
+  durable adapter, or network adapter is exercised.
 - Rust type and diagnostic evidence does not prove process isolation, packet
   privacy, revocation, crash recovery, or production secret erasure.
