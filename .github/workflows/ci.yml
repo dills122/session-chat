@@ -82,6 +82,38 @@ jobs:
       - name: Test retained Node tooling
         run: node --test scripts/setup-codex-links.test.mjs spikes/sealed-invitation-provider/test/provider.test.mjs
 
+  site:
+    name: Astro project site
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out source without retained credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Install repository-pinned Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - name: Install the locked site dependency graph
+        run: npm ci --prefix site
+
+      - name: Type-check Astro components
+        run: npm run check --prefix site
+
+      - name: Build the static GitHub Pages artifact
+        run: npm run build --prefix site
+
+      - name: Generate the text-only site copy
+        run: npm run dump:copy --prefix site
+
+      - name: Reject a stale text-only copy dump
+        run: git diff --exit-code -- site/CONTENT_DUMP.md
+
   repository-policy:
     name: Repository policy
     runs-on: ubuntu-24.04
@@ -141,6 +173,7 @@ jobs:
     needs:
       - rust
       - node
+      - site
       - repository-policy
       - dependency-policy
       - dependency-review
@@ -152,12 +185,14 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           RUST_RESULT: ${{ needs.rust.result }}
           NODE_RESULT: ${{ needs.node.result }}
+          SITE_RESULT: ${{ needs.site.result }}
           REPOSITORY_POLICY_RESULT: ${{ needs.repository-policy.result }}
           DEPENDENCY_POLICY_RESULT: ${{ needs.dependency-policy.result }}
           DEPENDENCY_REVIEW_RESULT: ${{ needs.dependency-review.result }}
         run: |
           test "$RUST_RESULT" = success
           test "$NODE_RESULT" = success
+          test "$SITE_RESULT" = success
           test "$REPOSITORY_POLICY_RESULT" = success
           test "$DEPENDENCY_POLICY_RESULT" = success
           if test "$EVENT_NAME" = pull_request; then

@@ -1,0 +1,76 @@
+---
+import { sitePath } from '../lib/paths';
+
+interface Props {
+  currentPath: string;
+}
+
+const { currentPath } = Astro.props;
+const items = [
+  { href: '/', label: 'Overview', description: 'What Session Chat is meant to do.' },
+  { href: '/architecture/', label: 'Architecture', description: 'Who owns keys, decisions, storage, and delivery.' },
+  { href: '/security/', label: 'Security', description: 'What is proven, missing, and impossible to promise.' },
+  { href: '/project/', label: 'Project', description: 'What runs today and what comes next.' },
+];
+---
+
+<header class="site-header" data-site-header>
+  <div class="nav-shell">
+    <a class="brand" href={sitePath('/')} aria-label="Session Chat home">
+      <span class="brand-mark" aria-hidden="true">SC</span>
+      <span class="brand-copy">
+        <strong>Session Chat</strong>
+        <span>Private chat research</span>
+      </span>
+    </a>
+
+    <nav class="primary-nav" aria-label="Primary navigation">
+      <a class:list={["nav-link", { active: currentPath === sitePath('/') }]} href={sitePath('/')}>Overview</a>
+      <details class="nav-menu">
+        <summary class="nav-link">Explore <span aria-hidden="true">↓</span></summary>
+        <div class="mega-panel">
+          <div class="mega-panel-inner">
+            <div class="mega-intro">
+              <p>Choose the level of detail.</p>
+              <strong>Start with the product overview, then inspect the architecture, security evidence, or current status.</strong>
+            </div>
+            <div class="mega-links">
+              {items.slice(1).map((item) => (
+                <a class:list={["mega-link", { active: currentPath === sitePath(item.href) }]} href={sitePath(item.href)}>
+                  <span>{item.label}</span>
+                  <small>{item.description}</small>
+                </a>
+              ))}
+            </div>
+          </div>
+        </div>
+      </details>
+      <a class:list={["nav-link", { active: currentPath === sitePath('/project/') }]} href={sitePath('/project/')}>Status</a>
+    </nav>
+
+    <div class="nav-actions">
+      <button class="command-trigger" type="button" data-command-open aria-label="Search this site">
+        <span>Search</span><kbd data-command-shortcut>Ctrl K</kbd>
+      </button>
+      <a class="nav-github" href="https://github.com/dills122/session-chat">GitHub ↗</a>
+    </div>
+  </div>
+</header>
+
+<script>
+  const header = document.querySelector('[data-site-header]');
+  const menu = header?.querySelector('.nav-menu');
+  const shortcut = header?.querySelector('[data-command-shortcut]');
+
+  if (shortcut) shortcut.textContent = /Mac|iPhone|iPad/.test(navigator.userAgent) ? '⌘ K' : 'Ctrl K';
+
+  document.addEventListener('click', (event) => {
+    if (menu instanceof HTMLDetailsElement && event.target instanceof Node && !menu.contains(event.target)) {
+      menu.open = false;
+    }
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && menu instanceof HTMLDetailsElement) menu.open = false;
+  });
+</script>

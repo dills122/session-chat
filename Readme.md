@@ -121,6 +121,29 @@ node --test spikes/sealed-invitation-provider/test/provider.test.mjs
 node scripts/check-repository.mjs
 ```
 
+## Project site
+
+The Astro project under [`site/`](site/) presents the product thesis, protocol
+flow, security claim ledger, current implementation, and roadmap. GitHub Pages
+publishes it at [dills122.github.io/session-chat](https://dills122.github.io/session-chat/).
+
+```sh
+cd site
+npm ci
+npm run check
+npm run build
+npm run dump:copy
+npm run dev
+```
+
+`npm run dump:copy` regenerates `site/CONTENT_DUMP.md` from the production
+build so reviewers can assess every route without the visual layout. CI rejects
+copy changes that leave this generated review artifact stale.
+
+The site must preserve the same implemented, accepted-but-unimplemented,
+proposed, deferred, and out-of-scope claim boundaries as the canonical v2
+documents. The Pages workflow builds only static output from `master`.
+
 ## Repository map
 
 - `apps/` contains headless composition and conformance clients.
@@ -130,6 +153,7 @@ node scripts/check-repository.mjs
 - `spikes/` contains disposable feasibility experiments; production crates must
   not depend on them.
 - `scripts/` contains tested repository setup tooling.
+- `site/` contains the static Astro project and its portable design tokens.
 
 Start with [the v2 document index](docs/README.md). Security claims are bounded
 by the evidence recorded there and in the tests. The

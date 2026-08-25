@@ -1,0 +1,100 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { sitePath } from '../lib/paths';
+---
+
+<BaseLayout
+  title="Security model · Session Chat"
+  description="A plain-language ledger of what Session Chat proves today, what remains unimplemented, and which risks encryption cannot remove."
+>
+  <div class="page-shell">
+    <header class="route-hero">
+      <div class="route-title">
+        <p class="route-kicker">Security model</p>
+        <h1>What is proven today—and what is still only a design.</h1>
+      </div>
+      <p class="lede">
+        The repository is ready for architecture and protocol review. It is not ready to protect real conversations because it has no production client, integrated durable state, network service, or hosted realm.
+      </p>
+    </header>
+  </div>
+
+  <section class="section" id="claim-ledger" aria-labelledby="claims-title">
+    <div class="section-inner">
+      <div class="section-head">
+        <h2 id="claims-title">Read every security claim with its evidence status.</h2>
+        <p class="section-lede">“Implemented and tested” describes a bounded laboratory result. It does not mean the complete product or deployment is secure.</p>
+      </div>
+
+      <dl class="claim-ledger">
+        <div class="claim-row"><dt>Invitation and join formats</dt><dd>Versioned, size-bounded formats reject malformed, expired, unknown, and context-mismatched input before state changes.</dd><dd class="claim-state implemented">Implemented + tested</dd></div>
+        <div class="claim-row"><dt>Private invitation proof bound to one device</dt><dd>A one-shot HPKE check ties the exact signed invitation to one exact MLS KeyPackage, reserves replay values, and records a simulated approval decision.</dd><dd class="claim-state implemented">Implemented + tested</dd></div>
+        <div class="claim-row"><dt>Two-device MLS lifecycle</dt><dd>The in-memory adapter adds a device, exchanges protected messages in both directions, updates the group, removes the device, and tests replay and reordering.</dd><dd class="claim-state implemented">Implemented + tested</dd></div>
+        <div class="claim-row"><dt>Local delivery under faults</dt><dd>Separate deposit, receive, and acknowledgement rights are tested under deterministic loss, duplication, delay, reordering, retry, expiry, and bounds.</dd><dd class="claim-state implemented">Implemented + tested</dd></div>
+        <div class="claim-row"><dt>Durable product join transaction</dt><dd>Approval, replay, invitation consumption, MLS state, and encrypted Welcome outbox must commit as one recoverable owner-local transaction.</dd><dd class="claim-state required">Required, not integrated</dd></div>
+        <div class="claim-row"><dt>Production vault and desktop client</dt><dd>The common macOS, Windows, and Linux baseline needs reviewed key protection, a selected shell, safe deep links, updates, and packaging.</dd><dd class="claim-state required">Required, unimplemented</dd></div>
+        <div class="claim-row"><dt>Network and metadata-private delivery</dt><dd>Fast and Private profiles need real adapters, egress isolation, packet captures, operational evidence, and explicit unavailability behavior.</dd><dd class="claim-state deferred">Later roadmap phases</dd></div>
+        <div class="claim-row"><dt>GitHub and portable credential admission</dt><dd>Designed behind the same exact KeyPackage binding, but intentionally kept out of the Phase 1 capability-only laboratory.</dd><dd class="claim-state deferred">Later roadmap phases</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <section class="section dark" aria-labelledby="threat-title">
+    <div class="section-inner">
+      <div class="section-head">
+        <h2 id="threat-title">Assume every input and supporting service can be hostile.</h2>
+        <p class="section-lede">Invitations, links, envelopes, provider responses, mailbox objects, storage, and network input remain untrusted until the component responsible for them validates them.</p>
+      </div>
+      <div class="split-argument">
+        <article class="argument-pane">
+          <h3>Threats included in the design</h3>
+          <ul>
+            <li>A malicious or compromised participant before and after admission.</li>
+            <li>A curious or compromised realm, mailbox, relay, or transport operator.</li>
+            <li>A network adversary that delays, drops, reorders, duplicates, injects, or observes.</li>
+            <li>A supply-chain attacker targeting dependencies, builds, updates, or signing credentials.</li>
+            <li>A deceptive identity or credential ecosystem that produces technically valid but misleading evidence.</li>
+          </ul>
+        </article>
+        <article class="argument-pane">
+          <h3>Required behavior</h3>
+          <ul>
+            <li>Reject ambiguity, expiry, replay, substitution, and unknown suites before mutation.</li>
+            <li>Bound storage, parsing, retries, queues, and unauthenticated work.</li>
+            <li>Keep plaintext, keys, capabilities, raw tokens, and stable identity out of transport and logs.</li>
+            <li>Fail closed when a private transport is unavailable.</li>
+            <li>Make every visible guarantee match retained evidence.</li>
+          </ul>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="limits-title">
+    <div class="section-inner">
+      <div class="section-head">
+        <h2 id="limits-title">Encryption protects message content, not every trace of a conversation.</h2>
+        <p class="section-lede">Identity, network metadata, device security, and message retention each have different observers and failure modes.</p>
+      </div>
+      <div class="evidence-callout">
+        <strong>A private message can still leave metadata.</strong>
+        <p>A direct peer may learn the other peer’s IP address. A relay may observe endpoints, timing, and volume. A mixnet can reduce correlation but adds latency, loss, and deployment assumptions. None of those layers may read MLS content, but they do not provide the same privacy.</p>
+      </div>
+      <div class="trust-line">
+        <strong>The device can still expose the message.</strong>
+        <p>Session Chat cannot stop a participant from saving plaintext or protect an unlocked device controlled by malware. Ephemeral deletion can remove only Session Chat’s own retained copies and cryptographic access, not copies on another person’s device.</p>
+        <a class="text-link" href={sitePath('/project/')}>See the release gates →</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section tight-top" aria-labelledby="review-title">
+    <div class="section-inner">
+      <div class="trust-line">
+        <strong id="review-title">Use source-backed evidence for real decisions.</strong>
+        <p>The independent-audit brief is the canonical index for code-backed evidence, required but unimplemented contracts, proposed experiments, deferred work, and explicit non-goals.</p>
+        <a class="text-link" href="https://github.com/dills122/session-chat/blob/master/docs/INDEPENDENT_AUDIT_BRIEF.md">Open audit brief ↗</a>
+      </div>
+    </div>
+  </section>
+</BaseLayout>

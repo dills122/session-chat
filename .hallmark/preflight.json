@@ -1,0 +1,10 @@
+{
+  "scanned_at": "2026-08-24",
+  "design_system": null,
+  "font_stack": null,
+  "palette": null,
+  "motion": "motion-cut",
+  "spacing": null,
+  "framework": null,
+  "finding": "No existing frontend or design tokens; Hallmark introduced the full system in site/."
+}
