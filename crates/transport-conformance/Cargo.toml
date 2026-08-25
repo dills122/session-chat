@@ -1,0 +1,13 @@
+[package]
+name = "transport-conformance"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+session-protocol = { version = "=0.1.0", path = "../session-protocol" }
+session-transport = { version = "=0.1.0", path = "../session-transport" }
+
+[lints]
+workspace = true

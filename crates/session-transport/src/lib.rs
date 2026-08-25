@@ -4,6 +4,7 @@
 
 mod capability;
 mod contract;
+mod dispatch;
 
 pub use capability::{
     LocalWelcomeAcknowledgementCapability, LocalWelcomeMailbox, LocalWelcomeReceiveCapability,
@@ -15,6 +16,10 @@ pub use contract::{
     MAX_POLL_ENVELOPES, MAX_POLL_WAIT_SECONDS, MAX_RETRY_DELAY_SECONDS, OperationBudget,
     PollRequest, PollWait, ReceiveBatch, ReceivedCanonicalEnvelope, RetryAdvice,
     TransportContractError, TransportFailure, TransportFailureCode, TransportProfileId,
+};
+pub use dispatch::{
+    AcknowledgementRight, DepositRight, DispatchControl, DispatchObservation, EnvelopeDelivery,
+    ReceiveRight,
 };
 
 use std::{collections::BTreeMap, error::Error};

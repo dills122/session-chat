@@ -54,6 +54,9 @@ Current areas:
   right-specific opaque-envelope transport trait
 - `crates/transport-memory`: bounded deterministic delivery-fault adapter for
   opaque-envelope headless and conformance tests; not a network transport
+- `crates/transport-conformance`: publish-disabled offline trace-schema and
+  shared adapter-evidence support; its strict adverse-trace parser exists, while
+  the normalized runner and reusable verdict suite remain incomplete
 - `crates/session-inviter-transaction`: bounded, fault-injectable conformance
   model for inviter-local atomic join and Welcome-outbox recovery semantics;
   not a durable storage implementation

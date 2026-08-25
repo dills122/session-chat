@@ -1,8 +1,8 @@
 # Session Chat transport abstraction version 1
 
-Status: accepted for incremental internal implementation; a narrow local
-Welcome adapter exists, but no stable multi-adapter trait or production network
-adapter exists
+Status: accepted for incremental internal implementation; a generalized
+runtime-neutral dispatch trait exists, the deterministic memory adapter has
+adopted it, and no production network adapter exists
 
 Date: 2026-08-20
 
@@ -227,6 +227,12 @@ struct OperationBudget {
     max_attempts: u16,
 }
 
+trait DispatchControl {
+    fn monotonic_now(&self) -> Instant;
+    fn wall_now_unix_seconds(&self) -> Option<u64>;
+    fn is_cancelled(&self) -> bool;
+}
+
 struct PollRequest {
     cursor: Option<Cursor>,
     max_envelopes: u16,
@@ -266,9 +272,10 @@ The first internal stabilization increment implements only:
 This value increment did not itself implement capability erasure or delivery.
 A later Phase 1 increment added a narrow synchronous `EnvelopeTransport` trait
 with associated right-specific types and a separate deterministic
-`transport-memory` implementation. That retained trait is not the complete
-budget-aware request, receipt, polling, lifecycle, binding, coordination,
-durability, or network boundary illustrated below.
+`transport-memory` implementation. A subsequent additive increment implements
+the budget-aware `EnvelopeDelivery` trait below in that memory adapter while
+retaining the narrow compatibility surface. Lifecycle, binding, coordination,
+durability, and networking remain separate work.
 
 ### First local capability-boundary evidence
 
@@ -300,8 +307,8 @@ before adapter dispatch:
 - a deposit request owns exactly one `CanonicalEnvelope` and rejects it when
   its already-encoded bytes exceed the operation's total network-byte budget;
   and
-- one acknowledgement request contains 1 through 64 untrusted `DeliveryId`
-  values plus its operation budget.
+- one acknowledgement request contains 1 through 64 distinct untrusted
+  `DeliveryId` values plus its operation budget.
 
 Full cursor, delivery-identifier, and ciphertext-bearing request or receipt
 values omit ordinary `Debug` and `Display` output. `DepositReceipt` carries only
@@ -321,32 +328,39 @@ and each item omit ordinary diagnostics.
 This batch validation does not replace an adapter's requirement to bound remote
 response bytes before allocation or decoding, define cursor state/retry
 semantics, or stop work at the monotonic deadline. Generalized authority
-issuance, adapter dispatch, asynchronous and clock mechanics, cancellation,
-rotation, and mailbox lifecycle remain required before Task 3 is complete.
+issuance, rotation, mailbox lifecycle, and provider-wide conformance remain
+required before Task 3 is complete. The subsequent dispatch increment fixes
+asynchronous and clock mechanics as described below, and the deterministic
+memory adapter now adopts that boundary.
 
 ## Delivery interfaces
 
 ```rust
-trait EnvelopeDelivery {
-    async fn deposit(
-        &self,
-        destination: &DepositEndpoint,
-        envelope: &CanonicalEnvelope,
-        budget: OperationBudget,
-    ) -> Result<DepositReceipt, TransportFailure>;
+trait EnvelopeDelivery: Send {
+    type DepositEndpoint: Sync;
+    type ReceiveCapability: Sync;
+    type AcknowledgementCapability: Sync;
 
-    async fn poll(
-        &self,
-        authority: &ReceiveCapability,
+    fn deposit<'a>(
+        &'a mut self,
+        destination: &'a DepositRight<Self::DepositEndpoint>,
+        request: DepositRequest,
+        control: &'a dyn DispatchControl,
+    ) -> impl Future<Output = Result<DepositReceipt, TransportFailure>> + Send + 'a;
+
+    fn poll<'a>(
+        &'a mut self,
+        authority: &'a ReceiveRight<Self::ReceiveCapability>,
         request: PollRequest,
-    ) -> Result<ReceiveBatch, TransportFailure>;
+        control: &'a dyn DispatchControl,
+    ) -> impl Future<Output = Result<ReceiveBatch, TransportFailure>> + Send + 'a;
 
-    async fn acknowledge(
-        &self,
-        authority: &AcknowledgementCapability,
-        deliveries: BoundedDeliveryIds,
-        budget: OperationBudget,
-    ) -> Result<AcknowledgementReceipt, TransportFailure>;
+    fn acknowledge<'a>(
+        &'a mut self,
+        authority: &'a AcknowledgementRight<Self::AcknowledgementCapability>,
+        request: AcknowledgementRequest,
+        control: &'a dyn DispatchControl,
+    ) -> impl Future<Output = Result<AcknowledgementReceipt, TransportFailure>> + Send + 'a;
 }
 
 trait MailboxLifecycle {
@@ -359,14 +373,47 @@ trait MailboxLifecycle {
 }
 ```
 
+The three provider-neutral outer wrappers remain different Rust types even if
+an adapter reuses one inner provider-material type. They prevent direct
+substitution of an already-issued wrapper at another operation position. They
+do not make cross-right derivation safe: every adapter issuance path must ensure
+material for one right cannot derive another and must validate operation,
+mailbox, generation, and expiry scope. Cloning and serialization policy is
+reviewed per right: deposit endpoints may support controlled transfer, while
+receive, acknowledgement, and rotation capabilities should be non-`Clone` by
+default as stated above. Public wrapper construction and borrowing exist so
+adapters can live in separate crates; they are not authority factories. The
+retained narrow compatibility surface remains separate. This closes only the
+positional gap in using associated type names alone; provider conformance closes
+the authority-issuance gap.
+
 `MailboxLifecycle` is separate because direct and transient delivery adapters
 may not own mailbox continuity. The service or adapter that implements rotation
 must consume or transactionally replace the supplied rotation authority. Normal
 delivery operations never receive it.
 
-The final Rust design MAY use generic traits, boxed futures, or actor messages.
-It MUST preserve the operation and authority separation above and MUST provide
-one mockable core-facing boundary.
+Reusable mailboxes use monotonically non-reused continuity generations with
+fresh independent authority for every right. Rotation is compare-and-swap bound
+to the predecessor generation; an exact retry returns the same successor while
+a competing or stale request fails closed. Routine rotation may explicitly
+drain an old generation under bounded policy, but compromise revocation permits
+no overlap. These lifecycle semantics are fixed before their Rust types are
+implemented.
+
+The implemented internal Phase 1 boundary uses static dispatch and explicit
+standard-library futures. This avoids selecting an async runtime and permits a
+`Send` future requirement. It is deliberately not dyn-compatible; a future
+composition root may use a closed reviewed enum to select a provider for a new
+session. Boxed futures or an actor boundary require new direct evidence before
+replacing this API.
+
+`DispatchControl` is checked before provider entry and after every await or
+provider boundary. `Instant` is used only for live operation deadlines and is
+never persisted. Fallible Unix wall time is used only for externally timestamped
+values; a clock failure fails closed rather than fabricating zero. The caller
+owns timer/cancellation wakeups and drops the returned future to stop further
+adapter-owned work. A remote operation may still have committed before drop,
+so retries retain the exact idempotency identity.
 
 ## Portable delivery semantics
 
@@ -412,6 +459,13 @@ A cursor is only a continuation hint. Replaying, corrupting, crossing mailbox
 scope, or presenting a stale cursor MUST fail safely without granting access or
 rolling state backward.
 
+`None` starts from the earliest currently eligible item in the authorized
+mailbox generation. An invalid or expired cursor returns `InvalidCursor`; only
+the coordinator may explicitly retry from `None`, after durable receive-side
+deduplication is available. Restart may preserve a cursor only when its schema,
+adapter binding, mailbox generation, and provider persistence contract still
+match. Rotation always invalidates old cursors for the successor generation.
+
 ### Acknowledgement
 
 Acknowledgement requires a right-specific capability under ADR 0010. A
@@ -420,6 +474,10 @@ credential alone MUST NOT authorize deletion.
 
 Acknowledging an already acknowledged or expired delivery SHOULD be idempotent
 and return a normalized result that does not reveal unnecessary mailbox state.
+One request acknowledges an exact bounded identifier set only. Cumulative,
+range, prefix, or cursor-based destructive acknowledgement is outside the
+portable contract. Provider receipt handles that carry destructive authority
+remain inside a right-specific capability or protected adapter state.
 
 ### Expiration
 
@@ -456,6 +514,7 @@ enum TransportFailureCode {
     RateLimited,
     Unavailable,
     DeadlineExceeded,
+    Cancelled,
     CorruptRemoteResponse,
     PolicyViolation,
     Misconfigured,
@@ -479,6 +538,14 @@ Adapter error strings, remote response bodies, routes, full mailbox IDs,
 capabilities, envelope bytes, and network addresses MUST NOT enter
 `public_context`. Detailed local diagnostics must use a separately reviewed,
 redacted event schema.
+
+`RetryAdvice::Never` means no further adapter attempt under the current
+operation budget. It does not prove that a request failed before commit. After
+an ambiguous result, the coordinator may use a fresh budget to reconcile the
+exact same idempotency identity only while owner-local state still marks that
+operation eligible. It must not change the identity, recreate membership, or
+start a competing logical operation. `Backoff` and `After` remain suggestions
+bounded by the coordinator's current operation and retry policy.
 
 `Unavailable` means the selected profile is unavailable. It never means
 "attempt a different profile."
@@ -616,16 +683,18 @@ profiles. Adapter self-report is insufficient.
 
 ### Deterministic memory adapter
 
-The first implementation is a memory adapter and adverse-network controller
-that can script:
+The deterministic memory adapter currently scripts exact delivery, loss,
+duplication, and hold/release reordering under the generalized boundary. It
+also supplies bounded persistent outage, one-shot corrupt polling, exact-byte
+stale replay, before/after-commit acknowledgement-result loss, and a
+secret-free count snapshot. It rejects every supplied cursor until persisted
+cursor state is implemented. The publish-disabled conformance crate owns the
+strict canonical adverse-trace v1 parser and hostile fixtures. The complete
+adverse-network controller still requires the normalized virtual-control runner
+and shared verdict suite to execute:
 
-- exact delivery;
-- loss;
 - arbitrary delay;
-- duplication;
-- reordering;
-- corruption;
-- stale replay;
+- corruption and stale replay through normalized trace aliases;
 - queue saturation;
 - cursor invalidation;
 - acknowledgement loss; and
@@ -633,6 +702,15 @@ that can script:
 
 The same scripted trace format should drive later adapter integration tests
 where practical.
+
+The retained trace v1 format is LF-delimited lowercase ASCII with a fixed
+version header, closed tokens, numeric aliases, bounded relative clocks and
+fixture sizes, at most 64 KiB, 512 bytes per line, 256 steps, 64 aliases per
+kind, and eight checkpoint directives per operation. It contains no raw
+plaintext, ciphertext, canonical envelope bytes, identifiers, routes,
+capabilities, provider errors, admission data, or stable identities. Unknown,
+noncanonical, duplicate, forward-referenced, and oversized input fails before
+retention. This parser contract does not itself establish adapter conformance.
 
 ## Versioning and compatibility
 
@@ -650,11 +728,11 @@ The initial Rust API can change while the Phase 1 laboratory is internal, but
 the authority boundaries and portable semantics cannot be weakened without
 updating ADR 0010 or superseding ADR 0015.
 
-## Deferred decisions after the first contract-values increment
+## Deferred decisions after the first dispatch increment
 
-- Whether the eventual delivery trait is generic, actor-based, or object-safe.
-  The first increment deliberately stabilizes bounded values and errors before
-  fixing dispatch or async mechanics.
+- Whether later evidence justifies replacing the static future-returning trait
+  with an actor or boxed object-safe boundary. The current internal API does not
+  require either cost or lifecycle model.
 - Exact storage ownership for cursors, receive-side deduplication, and
   acknowledgement scheduling; owner-local transaction stores already own
   durable outbox truth and leases.

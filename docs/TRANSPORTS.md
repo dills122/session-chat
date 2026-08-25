@@ -229,12 +229,39 @@ durability, outbox atomicity, networking, anonymity, or a production profile.
 
 ### Deterministic Phase 1 envelope transport
 
-`session-transport` defines a provider-neutral trait whose associated deposit,
-receive, and acknowledgement types preserve ADR 0010's authority separation.
-The separate `transport-memory` adapter implements that contract for headless
-tests. Its bounded action queue can deliver, drop, hold, release out of order,
-or duplicate one accepted attempt. Exact retries retain one logical delivery
-identifier, while changed bytes under the same envelope identifier fail closed.
+`session-transport` defines a narrow compatibility trait and a generalized
+budget-aware trait whose provider-neutral deposit, receive, and acknowledgement
+outer rights prevent direct cross-position substitution even if inner provider
+types alias. Provider conformance—not the wrappers alone—must make inner
+authority non-derivable across rights and exact-scope validated, with cloning
+and serialization policy reviewed per right. Controlled deposit transfer is
+allowed; receive and acknowledgement authority should be non-cloneable by
+default. The
+generalized boundary uses runtime-neutral futures plus explicit
+monotonic deadline, fallible wall-clock, and cancellation observations. The
+separate `transport-memory` adapter
+implements both contracts for headless tests. Its bounded action queue can
+deliver, drop, hold, release out of order, or duplicate one accepted attempt.
+Exact retries retain one logical delivery identifier, while changed bytes under
+the same envelope identifier report a normalized conflict without overwrite.
+Its additive adverse controls model persistent outage, one normalized corrupt
+poll, digest-checked exact-byte stale replay, and acknowledgement-result loss
+before or after deletion, all behind bounded test-only queues and secret-free
+count snapshots. The publish-disabled conformance crate now parses a strict,
+bounded, canonical, alias-only trace v1, but its normalized runner and reusable
+adapter verdict remain unimplemented.
+
+`RetryAdvice::Never` ends attempts under the current budget. It does not assert
+that a deposit did not commit; the coordinator may reconcile an ambiguous
+completion only with the exact same idempotency identity under a fresh budget
+while owner-local state still permits that operation.
+
+Generalized cursorless polls enforce request count/byte limits and revalidate
+expiry with the final wall-clock observation. The
+memory profile rejects every supplied cursor until persisted cursor state
+exists. Acknowledgement accepts one distinct exact identifier set under separate
+authority and makes unknown or repeated identifiers indistinguishable no-ops.
+Fixed hard ceilings bound policy inputs, live bytes, and scheduled work.
 
 The adapter receives an `OpaqueEnvelope`; it does not encrypt or authenticate
 the bytes inside that container. Its capabilities are provider-generated and

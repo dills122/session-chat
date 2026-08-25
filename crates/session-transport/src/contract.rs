@@ -402,7 +402,13 @@ pub struct BoundedDeliveryIds(Box<[crate::DeliveryId]>);
 
 impl BoundedDeliveryIds {
     pub fn new(ids: Vec<crate::DeliveryId>) -> Result<Self, TransportContractError> {
-        if ids.is_empty() || ids.len() > usize::from(MAX_ACKNOWLEDGEMENT_IDS) {
+        if ids.is_empty()
+            || ids.len() > usize::from(MAX_ACKNOWLEDGEMENT_IDS)
+            || ids
+                .iter()
+                .enumerate()
+                .any(|(index, id)| ids[index + 1..].contains(id))
+        {
             return Err(TransportContractError::InvalidAcknowledgementBatch);
         }
         Ok(Self(ids.into_boxed_slice()))
@@ -633,7 +639,12 @@ impl BoundedRetryDelay {
 /// Bounded adapter retry suggestion; the coordinator retains policy authority.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RetryAdvice {
-    /// The same logical operation must not be retried.
+    /// No further adapter attempt is allowed under the current operation budget.
+    ///
+    /// After an ambiguous completion, this does not prohibit the coordinator
+    /// from reconciling the exact same idempotency identity under a fresh
+    /// budget while the owner-local operation remains eligible. It does
+    /// prohibit changing identity or starting a competing logical operation.
     Never,
     /// Retry only under coordinator-selected bounded backoff.
     Backoff,
@@ -655,6 +666,7 @@ pub enum TransportFailureCode {
     RateLimited,
     Unavailable,
     DeadlineExceeded,
+    Cancelled,
     CorruptRemoteResponse,
     PolicyViolation,
     Misconfigured,

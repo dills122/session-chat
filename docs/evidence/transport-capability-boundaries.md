@@ -1,8 +1,8 @@
 # Local transport capability-boundary evidence
 
-Status: implemented local evidence beside the narrow provider-neutral trait and
-bounded operation-request values; generalized capability representation,
-dispatch, and network-provider issuance remain unimplemented
+Status: implemented local and deterministic-memory evidence beside the narrow
+and generalized provider-neutral traits; generalized capability representation,
+lifecycle, and network-provider issuance remain unimplemented
 
 Date: 2026-08-20
 
@@ -10,8 +10,9 @@ Date: 2026-08-20
 
 This record maps ADR 0010's right separation to the implemented one-Welcome
 memory adapter. It hardens the local compatibility boundary beside the narrow
-provider-neutral `EnvelopeTransport` trait and separate deterministic memory
-adapter already retained on `master`. It does not define provider-neutral
+provider-neutral `EnvelopeTransport` trait and the generalized
+`EnvelopeDelivery` implementation in the separate deterministic memory adapter.
+It does not define provider-neutral
 capability bytes, create rotation authority for the local profile, or claim that
 a real mailbox protocol has passed these checks.
 
@@ -50,6 +51,26 @@ The unchanged `local_welcome_mailbox.rs` suite continues to prove generated
 right separation, foreign/expired rejection, exact retry, conflicting deposit,
 expiry, deletion, and capacity behavior after the capability-module extraction.
 
+`crates/session-transport/src/dispatch.rs` adds a generalized compile-fail
+matrix for wrong-right, aliased-inner-type, `DeliveryId`, and cursor
+substitution. Provider-neutral outer wrappers prevent direct positional
+substitution even if a concrete adapter reuses one inner provider-material
+type. They do not stop a defective provider from cloning, forging, or reminting
+its inner material into another right; provider conformance must independently
+prevent cross-right derivation, validate exact scope, and review duplication
+policy per right. Controlled deposit transfer remains allowed; receive and
+acknowledgement authority should be non-cloneable by default. Its runtime
+tests cover fallible clocks, cancellation/deadline checkpoints, post-provider
+cancellation, and pending-future drop cleanup. The deterministic-memory tests
+prove that all three provider capability types remain non-`Clone` and
+non-`Debug`, exact canonical bytes cross the generalized boundary, normalized
+errors omit seeded ciphertext/cursor/identifier bytes, and exact-set repeated or
+unknown acknowledgement is indistinguishable under valid authority, and a wall
+clock advancing to envelope expiry before the final checkpoint cannot surface
+the staged envelope. Post-commit cancellation, deadline, and clock-failure
+tests also prove exact-identity reconciliation under a fresh budget without a
+second logical delivery.
+
 ## Verification
 
 ```sh
@@ -61,12 +82,11 @@ cargo fmt --all --check
 ## Explicit gaps
 
 - No provider-neutral capability representation or erasure boundary exists.
-- The narrow synchronous `EnvelopeTransport` trait exists, but no complete
-  budget-aware request/receipt, polling, cursor, or mailbox-lifecycle boundary
-  exists.
+- The generalized budget-aware boundary exists, but valid persisted cursor and
+  mailbox-lifecycle behavior do not; the memory profile rejects all cursors.
 - The local profile issues no rotation capability.
-- Cursor, request, receipt, and receive-batch values have contract tests but are
-  not yet exercised through adapter dispatch. No profile binder, coordinator,
-  durable adapter, or network adapter is exercised.
+- Cursor, request, receipt, and receive-batch values are exercised through the
+  memory adapter. No profile binder, coordinator, durable transport adapter, or
+  network adapter is exercised.
 - Rust type and diagnostic evidence does not prove process isolation, packet
   privacy, revocation, crash recovery, or production secret erasure.

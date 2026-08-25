@@ -1,6 +1,6 @@
 # ADR 0015: Bind transport adapters to versioned profiles
 
-Status: accepted; local baseline mapped, generalized implementation in progress
+Status: accepted; generalized dispatch and cursorless memory-adapter adoption implemented
 
 Date: 2026-08-20
 
@@ -58,6 +58,26 @@ profiles require packet-capture and egress-denial evidence.
 
 The detailed proposed contract is
 [`docs/specs/TRANSPORT_ABSTRACTION_V1.md`](../specs/TRANSPORT_ABSTRACTION_V1.md).
+
+The first generalized Rust dispatch boundary uses static dispatch and explicit
+standard-library futures. This keeps provider authority as three distinct
+associated types, imposes no async-runtime dependency, and permits deterministic
+generic mocks. A reviewed provider can later be selected with a closed local
+enum; the internal Phase 1 API does not require arbitrary dynamic plugins.
+
+Each operation receives `DispatchControl`, which separates a monotonic deadline
+clock, fallible Unix wall time, and cooperative cancellation observation.
+Cancellation before provider entry or after a provider boundary fails with the
+normalized `Cancelled` code. Dropping a pending future must stop further
+adapter-owned local work, but cannot prove that an already-sent remote deposit
+did not commit. Exact retry identity and owner-store recovery remain mandatory.
+
+Acknowledgement remains an exact bounded identifier set under separate
+provider authority. A cursor or delivery identifier never authorizes deletion
+or rotation. Provider-private receipt handles stay inside acknowledgement
+authority or protected adapter state. Reusable mailbox generations and
+rotation remain a later lifecycle increment, but stale generation state cannot
+cross into a successor.
 
 ## Alternatives considered
 
@@ -123,11 +143,28 @@ request also rejects canonical bytes larger than its total operation byte
 budget before dispatch.
 
 Received batches reject excess item count, excess aggregate canonical bytes,
-and envelopes expired at the caller-supplied local wall time. These values do
-not publish a complete multi-adapter request dispatcher, generalized capability
-representation, or mailbox lifecycle interface. Capability representation and dispatch must be proven
-against the local adapter before that interface is stabilized. Network adapters
-remain gated on the memory control path and conformance harness.
+and envelopes expired at the caller-supplied local wall time. The additive
+`EnvelopeDelivery` boundary now dispatches those bounded request and receipt
+types with right-specific provider-neutral outer wrappers around associated
+provider material, standard-library futures, and explicit clock/cancellation
+checkpoints. The wrappers prevent direct cross-position substitution even if an
+implementation aliases its inner provider types; they do not compensate for
+material that can be converted into another right. Every retained adapter must
+prevent cross-right derivation, validate exact scope, and document cloning or
+serialization policy per right. Controlled deposit transfer is allowed;
+receive and acknowledgement authority should be non-cloneable by default. The
+deterministic memory adapter does so with three separate private provider types
+and now implements this boundary while preserving its narrow compatibility tests. It
+adds no generalized capability issuance or mailbox lifecycle, and it rejects
+all supplied cursors until persisted cursor state exists. Network adapters
+remain gated on the complete adverse control path and conformance harness.
+
+`RetryAdvice::Never` stops further adapter attempts under the current budget;
+it is not proof that an operation failed before commit. Ambiguous deposit
+completion is reconciled only by the coordinator using the exact same
+idempotency identity under a fresh budget while the owner-local operation
+remains eligible. A different identity or competing logical operation is never
+an allowed retry.
 
 The owner-local transaction store remains authoritative for Welcome-outbox
 truth and leases. Acknowledgement issuance stays provider-specific while its
@@ -142,5 +179,11 @@ adapter spike can produce direct evidence.
 - [RFC 9458: Oblivious HTTP](https://www.rfc-editor.org/rfc/rfc9458)
 - [Tor onion-service overview](https://community.torproject.org/onion-services/overview/)
 - [SimpleX Messaging Protocol](https://github.com/simplex-chat/simplexmq/blob/stable/protocol/simplex-messaging.md)
+- [Rust trait dyn compatibility](https://doc.rust-lang.org/1.97.1/reference/items/traits.html#dyn-compatibility)
+- [Rust `Future` contract](https://doc.rust-lang.org/1.97.1/std/future/trait.Future.html)
+- [Rust `Instant` contract](https://doc.rust-lang.org/1.97.1/std/time/struct.Instant.html)
+- [Rust async cancellation guidance](https://rust-lang.github.io/async-book/part-guide/more-async-await.html#cancellation)
+- [Google AIP-158 pagination](https://google.aip.dev/158)
+- [Amazon SQS message and receipt identifiers](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-queue-message-identifiers.html)
 - [Katzenpost specifications](https://katzenpost.network/docs/specs/)
 - [Nym network overview](https://nym.com/network)

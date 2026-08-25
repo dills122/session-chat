@@ -1,7 +1,8 @@
 # Implementation plan: profile-bound transport abstraction
 
 Status: active staged implementation plan; ADR 0015 is accepted, Tasks 1 and 2
-are complete, Task 3 is partial, and later dispatch and network work remain gated
+and the cursorless Task 4 control path are complete, Task 3 is partial, and
+later lifecycle, coordinator, conformance, and network work remain gated
 
 Date: 2026-08-20
 
@@ -98,6 +99,53 @@ Iroh Fast adapter       Tor/Arti spike        SimpleX SMP spike
 The external adapter spikes can run independently only after the common
 contract and harness are stable.
 
+## Active execution slice: generalized dispatch boundary
+
+This slice closes the remaining Task 3 dispatch decisions before extending the
+memory control path. Research items are read-only inputs; they do not select a
+dependency, provider protocol, or product profile by themselves.
+
+| Work item | Delivery unit | Depends on | Status | Completion boundary |
+| --- | --- | --- | --- | --- |
+| `T3-DISPATCH` | Lead implementation | Tasks 1 and 2 | Complete | One mockable budget-aware deposit, poll, and acknowledgement boundary preserves right-specific method positions, requires provider-owned right-bound authority, uses explicit clock/cancellation inputs, and has compile/runtime contract tests. Generalized issuance remains outside this slice. |
+| `R3-RUNTIME` | Research | None | Complete | Official-source comparison of runtime-neutral Rust dispatch, monotonic deadlines, and cancellation with a recommendation compatible with the pinned workspace. |
+| `R3-MAILBOX` | Research | None | Complete | Protocol-source comparison of acknowledgement scope, cursor invalidation, rotation, and restart semantics, with security constraints separated from provider choices. |
+| `R4-MEMORY-MAP` | Internal codebase exploration | None | Complete | Exact migration map from the narrow memory adapter to the generalized boundary, including test seams and shared-file conflict risks. |
+| `T4-MEMORY` | Lead integration | `T3-DISPATCH`, `R4-MEMORY-MAP` | Complete | The deterministic memory adapter implements the accepted common boundary without weakening its existing fault and idempotency evidence. |
+
+`T3-DISPATCH` acceptance is checked first with the smallest
+`session-transport` compile/runtime tests, then with `cargo test -p
+session-transport --all-features --locked --offline`. Integration work also
+runs the `transport-memory` package tests. The complete workspace formatting,
+lint, test, documentation, and repository-policy gates remain required before a
+PR checkpoint.
+
+## Active execution slice: adverse trace and shared conformance
+
+This slice implements Tasks 5 and 6 without adding test-control behavior to the
+production `session-transport` API. The canonical trace and reusable runner are
+owned by a publish-disabled conformance crate; provider-specific fault state
+remains in `transport-memory`.
+
+| Work item | Delivery unit | Depends on | Status | Completion boundary |
+| --- | --- | --- | --- | --- |
+| `R5-TRACE` | Read-only research | Task 4 | Complete | Versioned trace ownership, vocabulary, bounds, redaction, determinism, and test seams are recorded from the accepted contracts and official Rust runtime sources. |
+| `T5-TRACE` | Lead implementation | `R5-TRACE` | Complete | A strict canonical v1 trace parser rejects unknown/noncanonical/oversized input and round-trips one secret-free golden fixture byte-for-byte. |
+| `T5-MEMORY-FAULTS` | Lead implementation | `T5-TRACE` | Complete | The memory provider supplies bounded outage, corruption, exact-byte stale-replay, acknowledgement-loss, release, and secret-free probe controls without weakening existing semantics. |
+| `T6-HARNESS` | Lead implementation | `T5-MEMORY-FAULTS` | Pending | A normalized runner replays the same trace twice and detects deliberately defective adapters without serializing provider identifiers or secret material. |
+| `R7-COORD` | Read-only research | Tasks 5-6 contracts | Complete | Exact deposit-only coordinator/outbox ownership, recovery transitions, and five blocking contract defects are mapped for later Tasks 8-9. |
+| `R7-CURSOR` | Read-only research | ADRs 0010/0015 | Complete | Generation-bound cursor, persist-before-acknowledge, mailbox rotation, restart, and stale-state requirements are recorded without selecting a provider. |
+
+The retained v1 trace is strict LF-delimited lowercase ASCII, capped at 64 KiB,
+512 bytes per line, 256 steps, 64 aliases per kind, and eight checkpoint
+directives per operation. It stores only numeric aliases, relative time,
+bounded sizes, normalized outcomes, and fault/control enums. It never stores
+plaintext, ciphertext, raw identifiers, routes, capabilities, or provider
+errors. Queue saturation is induced through bounded ordinary operations rather
+than a state-forging action. Positive persisted cursor issuance, rotation,
+restart, concurrency, network timing, and profile-specific privacy faults remain
+outside this slice.
+
 ## Phase A: contract adoption
 
 ### Task 1: Review and accept the transport decision
@@ -185,8 +233,9 @@ envelope ownership, operation budgets, bounded retry advice, context-free
 failures, and a compile-fail `CanonicalEnvelope: Debug` check. A later Phase 1
 increment added the narrow synchronous `EnvelopeTransport` trait with associated
 right-specific types, and the separate `transport-memory` crate implements it.
-Task 3 remains incomplete because the full budget-aware request/receipt,
-polling/cursor, lifecycle, and generalized diagnostic boundaries are not fixed.
+Task 3 remains incomplete because generalized capability issuance, mailbox
+lifecycle, valid cursor state, and provider-wide diagnostic boundaries are not
+fixed.
 
 The local capability-evidence sub-increment extracts receive and
 acknowledgement authority behind private fields and crate-only constructors,
@@ -206,10 +255,27 @@ receive-batch sub-increment enforces request-specific item/byte ceilings and
 local post-receive expiry without claiming incremental remote parsing or cursor
 state semantics.
 
+The dispatch sub-increment adds the static `EnvelopeDelivery` trait with
+standard-library `Send` futures, right-specific provider-neutral outer wrappers
+around associated provider material, and a
+fallible clock/cancellation checkpoint. Tests cover generic dispatch,
+pre-entry cancellation/deadline rejection, wall-clock failure, post-provider
+cancellation, pending-future drop cleanup, and generalized wrong-right
+compile failures, including aliased inner provider types. Capability
+lifecycle/issuance and provider-wide redaction remain open. The wrappers prove
+only positional separation; each adapter must independently prevent cross-right
+derivation, validate exact scope, and review duplication policy per right.
+Controlled deposit transfer remains allowed; receive and acknowledgement
+authority should be non-cloneable by default. The memory adapter supplies that
+provider-specific evidence. `RetryAdvice::Never` stops
+the current operation budget but permits coordinator-owned exact-identity
+reconciliation under a fresh budget after ambiguous completion.
+
 **Acceptance criteria:**
 
-- [ ] Deposit cannot accept receive, acknowledgement, or rotation authority.
-- [ ] A delivery ID or cursor cannot authorize acknowledgement.
+- [x] Deposit cannot accept receive or acknowledgement authority; rotation
+  remains outside the delivery interface.
+- [x] A delivery ID or cursor cannot authorize acknowledgement.
 - [ ] Secret-bearing values have reviewed ownership, cloning, serialization,
   zeroization, and redaction behavior.
 - [x] Deposit requests accept only canonical bounded envelope objects or validated
@@ -221,7 +287,7 @@ state semantics.
 
 - [x] Local compile-fail tests cover deposit, receive, acknowledgement, and
   delivery-ID substitution.
-- [ ] Generalized wrong-right tests cover the eventual common trait.
+- [x] Generalized wrong-right tests cover the common trait.
 - [x] The local rejection fixture contains none of the seeded authority or
   ciphertext bytes.
 - [x] Generalized value tests cover cursor, poll, deposit-byte, acknowledgement-
@@ -264,29 +330,34 @@ deterministic in-memory implementation of the common bounded deposit, poll, and
 acknowledgement semantics.
 
 **Progress (updated 2026-08-24):** The separate `transport-memory` crate now
-implements the narrow provider-neutral trait and bounded explicit deliver,
-drop, duplicate, hold/release reorder, exact-retry, expiry, authority, and
-capacity behavior. This was extracted before the older plan text was
-reconciled. Task 4 remains incomplete until the full polling/cursor, operation-
-budget, receipt, and common-conformance semantics exist.
+implements both the narrow compatibility trait and the generalized
+`EnvelopeDelivery` boundary with bounded explicit deliver, drop, duplicate,
+hold/release reorder, exact-retry, expiry, authority, capacity, poll-page,
+receipt, clock, and cancellation behavior. The profile explicitly rejects every
+supplied cursor until persisted cursor state exists. Fixed hard ceilings bound
+caller policy, live canonical bytes, scheduled copies, and lifetime. Task 4 is
+complete for this cursorless Phase 1 memory profile; valid cursor persistence
+and richer adverse scheduling remain Tasks 5 and 8 work.
 
 **Acceptance criteria:**
 
 - [x] Repeating identical destination/ID/bytes is idempotent.
 - [x] Reusing an ID with different bytes conflicts without overwrite.
-- [ ] Queue count, byte, TTL, and poll-page limits are enforced before
+- [x] Queue count, byte, TTL, and poll-page limits are enforced before
   unbounded allocation.
 
 **Verification:**
 
-- [ ] Unit tests cover full queues, expiration, stale cursors, duplicate
+- [x] Unit tests cover full queues, expiration, rejected cursors, duplicate
   deposit, conflicting deposit, wrong rights, and repeated acknowledgement.
 - [x] The existing local Welcome mailbox tests remain unchanged or gain only
   explicitly reviewed compatibility updates.
 - [x] `cargo test -p session-transport`
 - [x] `cargo test -p transport-memory`
 
-**Dependencies:** Tasks 2 and 3
+**Dependencies:** Task 2 and the completed `T3-DISPATCH` subtask; remaining
+Task 3 issuance/lifecycle work is not a prerequisite for this cursorless memory
+control path.
 
 **Files likely touched:**
 
@@ -302,32 +373,42 @@ budget, receipt, and common-conformance semantics exist.
 duplication, reordering, corruption, stale replay, queue saturation,
 acknowledgement loss, cursor invalidation, and unavailability.
 
-**Progress (updated 2026-08-24):** `transport-memory` provides the first bounded
+**Progress (updated 2026-08-25):** `transport-memory` retains the bounded
 explicit action queue for delivery, loss, duplication, and hold/release
-reordering. Corruption, stale replay, acknowledgement loss, cursor invalidation,
-total unavailability, cancellation, deadlines, and a retained trace format
-remain open, so this task is not complete.
+reordering and now adds persistent total unavailability, one-shot normalized
+corrupt polling without dequeue, digest-checked exact-byte stale replay,
+before/after-commit acknowledgement-result loss, and a secret-free bounded
+snapshot. The publish-disabled `transport-conformance` crate owns a strict
+64 KiB/256-step canonical adverse-trace v1 parser with closed tokens, numeric
+aliases, bounded fixtures/checkpoints, hostile cases, redacted errors, and an
+exact round-trip fixture. Cursor invalidation remains fail-closed because the
+memory profile rejects every cursor. The normalized runner, double replay,
+virtual-control driver, and deliberately defective adapters remain Task 6, so
+Task 5 is not complete as an executable end-to-end schedule.
 
 **Acceptance criteria:**
 
 - [ ] Every fault is selected through deterministic test input rather than
   wall-clock races or nondeterministic randomness.
 - [ ] Scheduled work is bounded and cancelable.
-- [ ] The trace format contains no secret capability bytes or plaintext.
+- [x] The trace format contains no secret capability bytes or plaintext.
 
 **Verification:**
 
 - [ ] Golden traces replay identically across repeated test runs.
 - [ ] Tests prove no work remains after cancellation or deadline.
-- [ ] `cargo test -p session-transport adverse`
+- [x] `cargo test -p transport-conformance --test trace_v1`
+- [x] `cargo test -p transport-memory --test adverse_schedule`
 
 **Dependencies:** Task 4
 
-**Files likely touched:**
+**Files retained in this increment:**
 
-- `crates/session-transport/src/adverse.rs`
-- `crates/session-transport/tests/adverse.rs`
-- `crates/session-transport/tests/fixtures/trace-v1.txt`
+- `crates/transport-conformance/src/trace.rs`
+- `crates/transport-conformance/tests/trace_v1.rs`
+- `crates/transport-conformance/tests/fixtures/adverse-trace-v1.txt`
+- `crates/transport-memory/src/lib.rs`
+- `crates/transport-memory/tests/adverse_schedule.rs`
 
 **Estimated scope:** Medium
 
@@ -403,6 +484,17 @@ success or bounded failure. The coordinator must not duplicate membership,
 outbox, lease, attempt-count, or ambiguous-commit truth already owned by
 `session-inviter-transaction` or a future durable implementation.
 
+**Research gate (updated 2026-08-25):** Start with a LocalV1 deposit-only
+coordinator. The owner store exclusively owns leases, attempts, retry
+eligibility, terminal state, exact envelope, and encoded destination; a
+profile/provider resolver returns only the typed deposit right. One owner lease
+permits one adapter call with `max_attempts == 1`, and `Delivered` means adapter
+acceptance only. Before implementation, fix inviter lease-token ABA, remove
+exhausted work from eligible enumeration, canonically validate committed
+envelope/endpoint/expiry relationships, define reconstructible LocalV1 deposit
+material, and assign pending-future wake/drop supervision to the composition
+root. Do not connect SQLCipher or claim durable restart in this slice.
+
 **Acceptance criteria:**
 
 - [ ] Duplicate delivery never emits two accepted core events.
@@ -435,7 +527,7 @@ outbox, lease, attempt-count, or ambiguous-commit truth already owned by
 **Description:** First connect the coordinator to the existing
 `session-inviter-transaction` conformance model and local Welcome adapter. Then
 apply the same owner-store port to the future durable transaction required by
-ADRs 0008, 0012, and 0014. Membership commit and exact encrypted Welcome work
+ADRs 0008, 0014, and 0015. Membership commit and exact encrypted Welcome work
 remain atomic in that owner-local store, while delivery retry remains
 idempotent and cannot repeat MLS Add or Commit.
 
@@ -457,14 +549,14 @@ idempotent and cannot repeat MLS Add or Commit.
   evidence.
 
 **Dependencies:** Task 8, the existing inviter-transaction conformance model,
-and the future durable MLS/storage increment governed by ADRs 0008 and 0012
+and the future durable MLS/storage increment governed by ADRs 0008 and 0015
 
 **Files likely touched:**
 
 - `crates/session-core/src/join.rs`
 - `crates/session-inviter-transaction/src/lib.rs`
 - `crates/session-inviter-transaction/tests/conformance.rs`
-- `crates/session-storage/src/transaction.rs`
+- `crates/storage-sqlcipher/src/lib.rs`
 - `crates/session-transport/src/outbox.rs`
 - `crates/session-core/tests/join_recovery.rs`
 - `crates/session-transport/tests/outbox_recovery.rs`

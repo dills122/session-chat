@@ -1,7 +1,9 @@
 use session_protocol::OpaqueEnvelope;
 use session_transport::EnvelopeTransport;
 use transport_memory::{
-    DeliveryAction, DeterministicMemoryTransport, MemoryMailboxPolicy, MemoryTransportError,
+    DeliveryAction, DeterministicMemoryTransport, MAX_MEMORY_DELIVERY_ATTEMPTS_PER_ENVELOPE,
+    MAX_MEMORY_ENVELOPES_PER_MAILBOX, MAX_MEMORY_LIVE_MAILBOXES,
+    MAX_MEMORY_MAILBOX_LIFETIME_SECONDS, MemoryMailboxPolicy, MemoryTransportError,
 };
 
 const NOW: u64 = 1_700_000_000;
@@ -236,6 +238,22 @@ fn capacity_attempt_and_idempotency_bounds_fail_closed() {
     );
     assert_eq!(
         MemoryMailboxPolicy::new(60, 1, 1, 0),
+        Err(MemoryTransportError::InvalidPolicy)
+    );
+    assert_eq!(
+        MemoryMailboxPolicy::new(MAX_MEMORY_MAILBOX_LIFETIME_SECONDS + 1, 1, 1, 1),
+        Err(MemoryTransportError::InvalidPolicy)
+    );
+    assert_eq!(
+        MemoryMailboxPolicy::new(60, MAX_MEMORY_LIVE_MAILBOXES + 1, 1, 1),
+        Err(MemoryTransportError::InvalidPolicy)
+    );
+    assert_eq!(
+        MemoryMailboxPolicy::new(60, 1, MAX_MEMORY_ENVELOPES_PER_MAILBOX + 1, 1),
+        Err(MemoryTransportError::InvalidPolicy)
+    );
+    assert_eq!(
+        MemoryMailboxPolicy::new(60, 1, 1, MAX_MEMORY_DELIVERY_ATTEMPTS_PER_ENVELOPE + 1,),
         Err(MemoryTransportError::InvalidPolicy)
     );
 

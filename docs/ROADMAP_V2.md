@@ -85,8 +85,16 @@ This completes the Phase 1 memory-transport test control, not network delivery.
 The additive generalized contract values now also bound opaque cursors, poll
 count/bytes/wait, deposit bytes, acknowledgement batches, and identifier-minimal
 receipts before dispatch, while received batches enforce the originating poll's
-count/byte limits and local expiry. Complete request dispatch, lifecycle,
-provider-wide capability issuance/redaction, and conformance remain open.
+count/byte limits and local expiry. The runtime-neutral generalized dispatch
+trait and its deterministic memory adoption now add explicit clock/cancellation,
+exact-set acknowledgement, fail-closed cursor, idempotency-conflict, and
+provider-redaction evidence. Lifecycle, valid cursor persistence, provider-wide
+capability issuance, and the reusable conformance runner remain open. A new
+publish-disabled `transport-conformance` crate now retains the strict bounded
+adverse-trace v1 parser and hostile fixtures, while `transport-memory` adds
+bounded outage, corrupt-poll, exact-byte stale-replay, acknowledgement-loss,
+and secret-free state-probe controls. Those increments do not yet prove
+double-replay determinism or common-suite detection of defective adapters.
 
 The implementation-free `session-admission` crate now supplies the
 provider-neutral, non-authorizing approval context and decision from ADR 0015.

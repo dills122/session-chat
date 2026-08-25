@@ -87,7 +87,7 @@ records, roadmap gates, and external audit findings can refer to the same case.
 | `session-crypto-mls` | Two-party lifecycle, replay/reorder, update/removal, and storage-call evidence | Cross-implementation vectors where available, process restart, durable state, and corrupted-state tests |
 | `session-inviter-transaction` | Deterministic atomicity and fault model | Real database process-kill, disk-full/I/O failure, restore, and stale-snapshot evidence |
 | `storage-sqlcipher` | Real inviter and joiner MLS transaction, rollback, ambiguous-result, and close/reopen laboratory tests | Product composition, process-kill, disk/power fault, restore, and stale-snapshot evidence |
-| `session-transport` and `transport-memory` | Local and provider-neutral right separation, bounds, idempotency, canonical opaque envelopes, and deterministic drop/duplicate/hold/release evidence | Full adverse scheduler, reusable conformance harness, profile binder, coordinator, and packet-captured adapters |
+| `session-transport`, `transport-memory`, and `transport-conformance` | Local and provider-neutral right separation, bounds, idempotency, canonical opaque envelopes, deterministic drop/duplicate/hold/release/outage/corruption/stale-replay/acknowledgement-loss controls, and a strict bounded secret-free trace parser | Normalized double-replay runner, reusable verdict suite with defective adapters, profile binder, coordinator, and packet-captured adapters |
 | `sessionctl` | In-process two-client capability join, simulated approval, Welcome delivery, messaging, update, removal, and coarse output | Independent-process L1 runner and machine-readable redacted evidence producer |
 | Client vault | Sealed lifecycle, opaque locked inbox, bounded unlock orchestration, and portable passphrase laboratory | Product storage composition, OS credential input, process isolation, crash-dump, rollback, recovery, and deletion evidence |
 | Realm services | Design and disposable invitation-provider spike only | Container isolation, quotas, migration/restore, and operational redaction tests |
@@ -179,10 +179,10 @@ passes a happy path.
 
 1. Finish the remaining transport Task 3 budget-aware request/receipt, polling,
    lifecycle, and provider-wide redaction boundaries.
-2. Extend the existing deterministic `transport-memory` adapter into the full
-   adverse scheduler required by the version 1 contract.
-3. Extract the shared adapter conformance harness, including deliberately
-   defective adapters.
+2. Connect the retained adverse-trace parser to the deterministic
+   `transport-memory` fault controls through a normalized virtual-clock runner.
+3. Complete the shared adapter conformance harness, including double replay and
+   deliberately defective adapters.
 4. Extend the existing in-process `sessionctl` composition into the canonical
    independent-process L1 runner and redacted evidence producer.
 5. Connect the real SQLCipher transactions through the durable Phase 1
@@ -199,8 +199,10 @@ passes a happy path.
 - No independent-process two-client/service runner or machine-readable evidence
   bundle exists; current `sessionctl` evidence is in process.
 - The deterministic memory adapter covers explicit delivery, loss, duplication,
-  hold/release reordering, retry, expiry, authority, and capacity, but no full
-  adverse scheduler or reusable adapter-conformance crate exists.
+  hold/release reordering, retry, expiry, authority, capacity, outage,
+  corruption, stale replay, and acknowledgement-result loss. The publish-disabled
+  conformance crate parses retained traces, but no normalized double-replay
+  runner or reusable adapter verdict exists.
 - SQLCipher transaction evidence exists, but no product-integrated durable flow,
   process-crash, disk/power-fault, restore, or stale-snapshot harness exists.
 - The supported-platform CI matrix exists for current Rust foundations, but no

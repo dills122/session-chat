@@ -1174,6 +1174,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "transport-conformance"
+version = "0.1.0"
+dependencies = [
+ "session-protocol",
+ "session-transport",
+]
+
+[[package]]
 name = "transport-memory"
 version = "0.1.0"
 dependencies = [
