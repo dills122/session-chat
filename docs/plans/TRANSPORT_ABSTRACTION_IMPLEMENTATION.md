@@ -19,6 +19,11 @@ This plan does not select a production transport. It creates the boundary and
 evidence needed to compare transports without changing MLS, admission, or the
 canonical envelope format.
 
+The cross-system execution cadence, stable scenario IDs, retained evidence
+bundle, and progression from offline two-client tests to process, storage,
+network, packet-capture, and release gates are defined in
+[`REAL_WORLD_E2E_TESTING.md`](REAL_WORLD_E2E_TESTING.md).
+
 ## Existing baseline on `master`
 
 - `session-protocol` owns bounded canonical `OpaqueEnvelope` bytes and the
@@ -173,12 +178,22 @@ traits alongside the existing local API. Add negative and compile-time tests
 showing that capabilities cannot be substituted and secret-bearing values
 cannot enter ordinary debug/error output. Do not add network dependencies.
 
-**Progress (2026-08-20):** The bounded contract-values sub-increment is
+**Progress (updated 2026-08-24):** The bounded contract-values sub-increment is
 implemented with closed profile IDs, validated adapter IDs, exact canonical
 envelope ownership, operation budgets, bounded retry advice, context-free
-failures, and a compile-fail `CanonicalEnvelope: Debug` check. Capability types
-and the delivery trait remain deliberately unimplemented, so Task 3 is not yet
-complete.
+failures, and a compile-fail `CanonicalEnvelope: Debug` check. A later Phase 1
+increment added the narrow synchronous `EnvelopeTransport` trait with associated
+right-specific types, and the separate `transport-memory` crate implements it.
+Task 3 remains incomplete because the full budget-aware request/receipt,
+polling/cursor, lifecycle, and generalized diagnostic boundaries are not fixed.
+
+The local capability-evidence sub-increment extracts receive and
+acknowledgement authority behind private fields and crate-only constructors,
+retains the sender-facing canonical deposit endpoint, adds a compile-fail
+wrong-right matrix, and seeds authority/ciphertext bytes into a coarse-error
+redaction fixture. This proves the local adoption boundary only; generalized
+capability issuance, rotation, requests, receipts, batches, and dispatch remain
+open.
 
 **Acceptance criteria:**
 
@@ -193,9 +208,13 @@ complete.
 
 **Verification:**
 
-- [ ] Compile-fail or type tests cover wrong-right calls.
-- [ ] Error/log fixture tests contain none of the seeded secret bytes.
-- [ ] `cargo test -p session-transport`
+- [x] Local compile-fail tests cover deposit, receive, acknowledgement, and
+  delivery-ID substitution.
+- [ ] Generalized wrong-right tests cover the eventual common trait.
+- [x] The local rejection fixture contains none of the seeded authority or
+  ciphertext bytes.
+- [ ] Generalized adapter error/log fixtures cover every authority type.
+- [x] `cargo test -p session-transport`
 
 **Dependencies:** Task 2
 
@@ -214,7 +233,7 @@ complete.
 ## Checkpoint: contract foundation
 
 - [x] ADR 0015 is accepted for implementation.
-- [ ] The crate builds without a network dependency.
+- [x] The crate builds without a network dependency.
 - [ ] Authority and redaction tests pass.
 - [ ] Review before adding mutable delivery state.
 
@@ -224,14 +243,19 @@ complete.
 
 **Description:** Preserve the narrow local Welcome behavior while adding a
 deterministic in-memory implementation of the common bounded deposit, poll, and
-acknowledgement semantics. Keep it in `session-transport` for the first
-stabilization slice; extraction into `transport-memory` requires an explicit
-review after the trait and ownership boundaries settle.
+acknowledgement semantics.
+
+**Progress (updated 2026-08-24):** The separate `transport-memory` crate now
+implements the narrow provider-neutral trait and bounded explicit deliver,
+drop, duplicate, hold/release reorder, exact-retry, expiry, authority, and
+capacity behavior. This was extracted before the older plan text was
+reconciled. Task 4 remains incomplete until the full polling/cursor, operation-
+budget, receipt, and common-conformance semantics exist.
 
 **Acceptance criteria:**
 
-- [ ] Repeating identical destination/ID/bytes is idempotent.
-- [ ] Reusing an ID with different bytes conflicts without overwrite.
+- [x] Repeating identical destination/ID/bytes is idempotent.
+- [x] Reusing an ID with different bytes conflicts without overwrite.
 - [ ] Queue count, byte, TTL, and poll-page limits are enforced before
   unbounded allocation.
 
@@ -239,16 +263,17 @@ review after the trait and ownership boundaries settle.
 
 - [ ] Unit tests cover full queues, expiration, stale cursors, duplicate
   deposit, conflicting deposit, wrong rights, and repeated acknowledgement.
-- [ ] The existing local Welcome mailbox tests remain unchanged or gain only
+- [x] The existing local Welcome mailbox tests remain unchanged or gain only
   explicitly reviewed compatibility updates.
-- [ ] `cargo test -p session-transport`
+- [x] `cargo test -p session-transport`
+- [x] `cargo test -p transport-memory`
 
 **Dependencies:** Tasks 2 and 3
 
 **Files likely touched:**
 
-- `crates/session-transport/src/memory.rs`
-- `crates/session-transport/tests/generalized_memory.rs`
+- `crates/transport-memory/src/lib.rs`
+- `crates/transport-memory/tests/deterministic_delivery.rs`
 - `crates/session-transport/tests/local_welcome_mailbox.rs`
 
 **Estimated scope:** Medium
@@ -258,6 +283,12 @@ review after the trait and ownership boundaries settle.
 **Description:** Add a deterministic controller that scripts delay, loss,
 duplication, reordering, corruption, stale replay, queue saturation,
 acknowledgement loss, cursor invalidation, and unavailability.
+
+**Progress (updated 2026-08-24):** `transport-memory` provides the first bounded
+explicit action queue for delivery, loss, duplication, and hold/release
+reordering. Corruption, stale replay, acknowledgement loss, cursor invalidation,
+total unavailability, cancellation, deadlines, and a retained trace format
+remain open, so this task is not complete.
 
 **Acceptance criteria:**
 

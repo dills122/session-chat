@@ -76,3 +76,9 @@ capture the settings through GitHub when preparing an audit or release.
 
 No dependency or cryptographic update is auto-merged. Advisory exceptions need
 an affected-path analysis, owner, expiry or removal condition, and review.
+
+The [real-world E2E security test strategy](plans/REAL_WORLD_E2E_TESTING.md)
+defines when deterministic two-client scenarios enter this required gate and
+when heavier process, storage, network, packet-capture, platform, and release
+lanes become mandatory. Those future lanes supplement this gate; they never
+replace its always-on contract, unit, documentation, and dependency checks.
