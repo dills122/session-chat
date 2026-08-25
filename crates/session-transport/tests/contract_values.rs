@@ -234,6 +234,27 @@ fn poll_request_enforces_count_byte_wait_and_operation_bounds() {
 }
 
 #[test]
+fn poll_wait_accepts_only_immediate_or_one_through_sixty_seconds() {
+    assert_eq!(PollWait::immediate().duration(), Duration::ZERO);
+    assert_eq!(
+        PollWait::up_to(Duration::from_nanos(1)),
+        Err(TransportContractError::InvalidPollWait)
+    );
+    assert_eq!(
+        PollWait::up_to(Duration::from_secs(1))
+            .expect("one second is the minimum non-immediate wait")
+            .duration(),
+        Duration::from_secs(1)
+    );
+    assert_eq!(
+        PollWait::up_to(Duration::from_secs(MAX_POLL_WAIT_SECONDS))
+            .expect("sixty seconds is the maximum wait")
+            .duration(),
+        Duration::from_secs(MAX_POLL_WAIT_SECONDS)
+    );
+}
+
+#[test]
 fn deposit_request_owns_one_canonical_envelope_and_finite_budget() {
     let opaque =
         OpaqueEnvelope::new([0x61; 16], 1_700_000_060, vec![0x62; 32]).expect("bounded envelope");

@@ -1,7 +1,7 @@
 # Implementation plan: profile-bound transport abstraction
 
-Status: proposed stabilization plan; generalized transport API and network
-adapter work must not begin until ADR 0015 and the version 1 contract are reviewed
+Status: active staged implementation plan; ADR 0015 is accepted, Tasks 1 and 2
+are complete, Task 3 is partial, and later dispatch and network work remain gated
 
 Date: 2026-08-20
 
@@ -33,9 +33,10 @@ network, packet-capture, and release gates are defined in
 - `session-inviter-transaction` models atomic membership/outbox visibility,
   ambiguous commit recovery, bounded delivery leasing, and exact retry in
   memory.
-- The local adapter has no common `EnvelopeDelivery` trait, profile binder,
-  general queue/poll model, adverse-network scheduler, network path, or durable
-  storage claim.
+- A narrow synchronous `EnvelopeTransport` trait and deterministic memory
+  adapter exist for bounded conformance work. They are not the complete
+  budget-aware polling, cursor, lifecycle, profile-binder, coordinator, network,
+  or durable-storage boundary.
 
 The plan extends this baseline. It does not recreate these crates or relabel
 their current evidence as durable or production-ready.

@@ -29,11 +29,14 @@ bounded one-Welcome deposit, receive, and acknowledgement with independent
 provider-generated authorities. The approved in-memory join result carries only
 the authenticated deposit endpoint beside its MLS outputs, and a retained test
 delivers the encrypted Welcome through that mailbox. This provides no durable
-outbox or network behavior. The first generalized transport values now use a
-closed profile set, bounded local adapter identifiers, exact canonical-envelope
+outbox or network behavior. The generalized transport contract now has a closed
+profile set, bounded local adapter identifiers, exact canonical-envelope
 ownership without ordinary debug output, finite operation budgets, bounded
-retry advice, and context-free failures. They add no capability erasure,
-delivery trait, binder, coordinator, or network authority. A separate bounded,
+retry advice, context-free failures, bounded operation requests and receipts,
+and post-receive batch validation. An earlier Phase 1 increment also added a
+narrow synchronous delivery trait and deterministic memory adapter. The full
+budget-aware dispatch boundary still has no generalized capability erasure,
+profile binder, coordinator, or network authority. A separate bounded,
 fault-injectable model exercises
 all-or-nothing inviter state, ambiguous-result recovery, and Welcome-outbox
 leasing semantics without providing storage or connecting to that sequential

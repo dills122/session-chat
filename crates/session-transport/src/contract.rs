@@ -259,7 +259,9 @@ impl PollWait {
 
     /// Requests a bounded wait that remains subordinate to the operation deadline.
     pub fn up_to(duration: Duration) -> Result<Self, TransportContractError> {
-        if duration.is_zero() || duration > Duration::from_secs(MAX_POLL_WAIT_SECONDS) {
+        if duration < Duration::from_secs(1)
+            || duration > Duration::from_secs(MAX_POLL_WAIT_SECONDS)
+        {
             return Err(TransportContractError::InvalidPollWait);
         }
         Ok(Self(duration))
