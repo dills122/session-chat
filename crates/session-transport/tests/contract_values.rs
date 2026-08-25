@@ -6,8 +6,8 @@ use session_transport::{
     BoundedRetryDelay, CanonicalEnvelope, Cursor, DeliveryId, DepositReceipt, DepositRequest,
     MAX_ACKNOWLEDGEMENT_IDS, MAX_ADAPTER_ID_BYTES, MAX_CURSOR_BYTES, MAX_POLL_ENCODED_BYTES,
     MAX_POLL_ENVELOPES, MAX_POLL_WAIT_SECONDS, MAX_RETRY_DELAY_SECONDS, OperationBudget,
-    PollRequest, PollWait, RetryAdvice, TransportContractError, TransportFailure,
-    TransportFailureCode, TransportProfileId,
+    PollRequest, PollWait, ReceiveBatch, ReceivedCanonicalEnvelope, RetryAdvice,
+    TransportContractError, TransportFailure, TransportFailureCode, TransportProfileId,
 };
 
 #[test]
@@ -308,5 +308,103 @@ fn receipts_reveal_only_normalized_non_authorizing_outcomes() {
     assert_eq!(
         AcknowledgementReceipt::accepted(),
         AcknowledgementReceipt::accepted()
+    );
+}
+
+#[test]
+fn receive_batch_enforces_request_count_bytes_and_post_receive_expiry() {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let budget = OperationBudget::new(deadline, 256, 1).expect("bounded operation");
+    let request = PollRequest::new(None, 2, 128, PollWait::immediate(), budget)
+        .expect("bounded poll request");
+    let first = ReceivedCanonicalEnvelope::new(
+        DeliveryId::from_provider_bytes([0x81; 16]).expect("delivery ID"),
+        CanonicalEnvelope::from_opaque(
+            OpaqueEnvelope::new([0x82; 16], 1_700_000_060, vec![0x83; 16])
+                .expect("bounded envelope"),
+        )
+        .expect("canonical envelope"),
+    );
+    let second = ReceivedCanonicalEnvelope::new(
+        DeliveryId::from_provider_bytes([0x84; 16]).expect("delivery ID"),
+        CanonicalEnvelope::from_opaque(
+            OpaqueEnvelope::new([0x85; 16], 1_700_000_060, vec![0x86; 16])
+                .expect("bounded envelope"),
+        )
+        .expect("canonical envelope"),
+    );
+    let expected_first_id = *first.delivery_id();
+    let next_cursor = Cursor::new(vec![0x87; 16]).expect("bounded cursor");
+
+    let batch = ReceiveBatch::new(
+        vec![first, second],
+        Some(next_cursor),
+        &request,
+        1_700_000_000,
+    )
+    .expect("batch fits request");
+    assert_eq!(batch.len(), 2);
+    assert!(!batch.is_empty());
+    assert_eq!(batch.items()[0].delivery_id(), &expected_first_id);
+    assert_eq!(
+        batch.next_cursor().expect("continuation").as_bytes(),
+        &[0x87; 16]
+    );
+
+    let empty = ReceiveBatch::new(Vec::new(), None, &request, 1_700_000_000)
+        .expect("empty poll result is valid");
+    assert!(empty.is_empty());
+}
+
+#[test]
+fn receive_batch_rejects_excess_items_bytes_and_expired_envelopes() {
+    fn item(id: u8, expires_at: u64, ciphertext_bytes: usize) -> ReceivedCanonicalEnvelope {
+        ReceivedCanonicalEnvelope::new(
+            DeliveryId::from_provider_bytes([id; 16]).expect("delivery ID"),
+            CanonicalEnvelope::from_opaque(
+                OpaqueEnvelope::new([id; 16], expires_at, vec![id; ciphertext_bytes])
+                    .expect("bounded envelope"),
+            )
+            .expect("canonical envelope"),
+        )
+    }
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let budget = OperationBudget::new(deadline, 512, 1).expect("bounded operation");
+    let one_item = PollRequest::new(None, 1, 512, PollWait::immediate(), budget)
+        .expect("bounded poll request");
+    assert_eq!(
+        ReceiveBatch::new(
+            vec![item(0x91, 1_700_000_060, 16), item(0x92, 1_700_000_060, 16),],
+            None,
+            &one_item,
+            1_700_000_000,
+        )
+        .err(),
+        Some(TransportContractError::InvalidReceiveBatch)
+    );
+
+    let tiny_bytes =
+        PollRequest::new(None, 2, 32, PollWait::immediate(), budget).expect("bounded poll request");
+    assert_eq!(
+        ReceiveBatch::new(
+            vec![item(0x93, 1_700_000_060, 32)],
+            None,
+            &tiny_bytes,
+            1_700_000_000,
+        )
+        .err(),
+        Some(TransportContractError::InvalidReceiveBatch)
+    );
+
+    assert_eq!(
+        ReceiveBatch::new(
+            vec![item(0x94, 1_700_000_000, 16)],
+            None,
+            &one_item,
+            1_700_000_000,
+        )
+        .err(),
+        Some(TransportContractError::ExpiredReceivedEnvelope)
     );
 }

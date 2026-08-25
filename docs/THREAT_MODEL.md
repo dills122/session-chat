@@ -548,10 +548,12 @@ zero or excessive poll counts, aggregate poll-byte limits above either the 4 MiB
 contract ceiling or the caller's total operation budget, waits above 60 seconds,
 deposit bytes above their operation budget, and acknowledgement batches outside
 one to 64 identifiers. Cursor, request, bounded-ID, and deposit-receipt types
-that own full identifiers or ciphertext omit ordinary diagnostics. These are
-pre-dispatch allocation and disclosure controls; no receive-batch validation,
-generalized capability issuance, lifecycle implementation, cancellation, or
-adapter dispatch claim follows from them.
+that own full identifiers or ciphertext omit ordinary diagnostics. Received
+batches also reject excess items, excess aggregate canonical bytes, and locally
+expired envelopes before crossing the contract. These are contract-value and
+post-receive validation controls; no generalized capability issuance, lifecycle
+implementation, cancellation, incremental remote-response parser, or adapter
+dispatch claim follows from them.
 
 Attacker story: an unauthenticated sender floods a public request mailbox with
 maximum-sized objects. The service must bound per-invitation and global storage,

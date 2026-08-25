@@ -84,7 +84,8 @@ hold/release reordering, exact-retry, expiry, authority, and capacity evidence.
 This completes the Phase 1 memory-transport test control, not network delivery.
 The additive generalized contract values now also bound opaque cursors, poll
 count/bytes/wait, deposit bytes, acknowledgement batches, and identifier-minimal
-receipts before dispatch. Complete request dispatch, receive batches, lifecycle,
+receipts before dispatch, while received batches enforce the originating poll's
+count/byte limits and local expiry. Complete request dispatch, lifecycle,
 provider-wide capability issuance/redaction, and conformance remain open.
 
 The implementation-free `session-admission` crate now supplies the

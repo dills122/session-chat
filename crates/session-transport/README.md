@@ -11,12 +11,14 @@ protocol encoding without ordinary debug or clone output; and
 context-free failure semantics. The next additive values bound opaque cursors,
 poll count/bytes/wait, acknowledgement batches, and deposit bytes against one
 operation budget. Request and receipt types omit ordinary diagnostics when they
-own ciphertext or full identifiers. The provider-neutral `EnvelopeTransport`
+own ciphertext or full identifiers. `ReceiveBatch` validates item count,
+aggregate canonical bytes, and local post-receive expiry against its exact poll
+request before the result crosses the contract. The provider-neutral `EnvelopeTransport`
 trait keeps associated deposit, receive, and acknowledgement authority types
 distinct instead of erasing them into generic credentials. Reviewed adapters
 are selected at composition time; the trait does not load code or grant ambient
-authority. No complete request dispatch, receive batch, lifecycle boundary,
-profile binder, coordinator, or network adapter exists yet.
+authority. No complete request dispatch, lifecycle boundary, profile binder,
+coordinator, or network adapter exists yet.
 
 `LocalMemoryWelcomeTransport` creates fresh mailbox identifiers and independent
 deposit, receive, and acknowledgement authorities with AWS-LC's CSPRNG. Only

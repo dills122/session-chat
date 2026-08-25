@@ -65,7 +65,8 @@ cargo fmt --all --check
   budget-aware request/receipt, polling, cursor, or mailbox-lifecycle boundary
   exists.
 - The local profile issues no rotation capability.
-- No cursor, receipt, batch, profile binder, coordinator, durable adapter, or
-  network adapter is exercised.
+- Cursor, request, receipt, and receive-batch values have contract tests but are
+  not yet exercised through adapter dispatch. No profile binder, coordinator,
+  durable adapter, or network adapter is exercised.
 - Rust type and diagnostic evidence does not prove process isolation, packet
   privacy, revocation, crash recovery, or production secret erasure.

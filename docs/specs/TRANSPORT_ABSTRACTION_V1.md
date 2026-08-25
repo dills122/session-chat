@@ -309,9 +309,20 @@ the non-authorizing delivery identifier. `AcknowledgementReceipt` is an
 identifier-free unit-like accepted outcome so implementations cannot reveal
 which identifiers were previously absent or acknowledged.
 
-This increment does not implement receive batches, generalized authority
-issuance, adapter dispatch, asynchronous or clock mechanics, cancellation,
-rotation, or mailbox lifecycle. Those remain required before Task 3 is complete.
+The initial request/receipt sub-increment did not implement a received batch.
+
+The additive receive-batch value then pairs each non-authorizing delivery ID
+with one `CanonicalEnvelope` and validates the result against the originating
+`PollRequest`. It rejects excess item count, aggregate canonical bytes above the
+request, and any envelope expired at the supplied local wall time. Empty results
+are valid, and a next cursor remains only an opaque continuation hint. The batch
+and each item omit ordinary diagnostics.
+
+This batch validation does not replace an adapter's requirement to bound remote
+response bytes before allocation or decoding, define cursor state/retry
+semantics, or stop work at the monotonic deadline. Generalized authority
+issuance, adapter dispatch, asynchronous and clock mechanics, cancellation,
+rotation, and mailbox lifecycle remain required before Task 3 is complete.
 
 ## Delivery interfaces
 

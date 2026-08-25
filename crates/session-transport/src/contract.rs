@@ -480,6 +480,121 @@ impl DepositReceipt {
     }
 }
 
+/// One received canonical envelope paired with its non-authorizing delivery ID.
+///
+/// This type intentionally omits `Clone`, `Debug`, and `Display` so adapters
+/// cannot place ciphertext or full identifiers into ordinary diagnostics.
+///
+/// ```compile_fail
+/// use session_transport::ReceivedCanonicalEnvelope;
+///
+/// fn require_debug<T: std::fmt::Debug>() {}
+/// require_debug::<ReceivedCanonicalEnvelope>();
+/// ```
+pub struct ReceivedCanonicalEnvelope {
+    delivery_id: crate::DeliveryId,
+    envelope: CanonicalEnvelope,
+}
+
+impl ReceivedCanonicalEnvelope {
+    #[must_use]
+    pub const fn new(delivery_id: crate::DeliveryId, envelope: CanonicalEnvelope) -> Self {
+        Self {
+            delivery_id,
+            envelope,
+        }
+    }
+
+    #[must_use]
+    pub const fn delivery_id(&self) -> &crate::DeliveryId {
+        &self.delivery_id
+    }
+
+    #[must_use]
+    pub const fn envelope(&self) -> &CanonicalEnvelope {
+        &self.envelope
+    }
+
+    #[must_use]
+    pub fn into_parts(self) -> (crate::DeliveryId, CanonicalEnvelope) {
+        (self.delivery_id, self.envelope)
+    }
+}
+
+/// Poll result validated against its originating request and local wall time.
+///
+/// Empty batches are valid. This type intentionally omits diagnostics traits
+/// because it owns canonical ciphertext, delivery identifiers, and a cursor.
+///
+/// ```compile_fail
+/// use session_transport::ReceiveBatch;
+///
+/// fn require_debug<T: std::fmt::Debug>() {}
+/// require_debug::<ReceiveBatch>();
+/// ```
+pub struct ReceiveBatch {
+    items: Box<[ReceivedCanonicalEnvelope]>,
+    next_cursor: Option<Cursor>,
+}
+
+impl ReceiveBatch {
+    /// Applies count, aggregate canonical-byte, and post-receive expiry checks.
+    pub fn new(
+        items: Vec<ReceivedCanonicalEnvelope>,
+        next_cursor: Option<Cursor>,
+        request: &PollRequest,
+        now_unix_seconds: u64,
+    ) -> Result<Self, TransportContractError> {
+        if items.len() > usize::from(request.max_envelopes()) {
+            return Err(TransportContractError::InvalidReceiveBatch);
+        }
+        let mut encoded_bytes = 0_usize;
+        for item in &items {
+            if item.envelope().expires_at_unix_seconds() <= now_unix_seconds {
+                return Err(TransportContractError::ExpiredReceivedEnvelope);
+            }
+            encoded_bytes = encoded_bytes
+                .checked_add(item.envelope().as_bytes().len())
+                .ok_or(TransportContractError::InvalidReceiveBatch)?;
+            if encoded_bytes
+                > usize::try_from(request.max_encoded_bytes())
+                    .map_err(|_| TransportContractError::InvalidReceiveBatch)?
+            {
+                return Err(TransportContractError::InvalidReceiveBatch);
+            }
+        }
+        Ok(Self {
+            items: items.into_boxed_slice(),
+            next_cursor,
+        })
+    }
+
+    #[must_use]
+    pub fn items(&self) -> &[ReceivedCanonicalEnvelope] {
+        &self.items
+    }
+
+    #[must_use]
+    pub const fn next_cursor(&self) -> Option<&Cursor> {
+        self.next_cursor.as_ref()
+    }
+
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.items.len()
+    }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
+
+    #[must_use]
+    pub fn into_parts(self) -> (Box<[ReceivedCanonicalEnvelope]>, Option<Cursor>) {
+        (self.items, self.next_cursor)
+    }
+}
+
 /// Identifier-free normalized acknowledgement outcome.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AcknowledgementReceipt(());
@@ -593,6 +708,10 @@ pub enum TransportContractError {
     InvalidDepositRequest,
     #[error("invalid acknowledgement batch")]
     InvalidAcknowledgementBatch,
+    #[error("invalid receive batch")]
+    InvalidReceiveBatch,
+    #[error("received envelope is expired")]
+    ExpiredReceivedEnvelope,
     #[error("invalid retry delay")]
     InvalidRetryDelay,
 }

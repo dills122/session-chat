@@ -192,14 +192,18 @@ acknowledgement authority behind private fields and crate-only constructors,
 retains the sender-facing canonical deposit endpoint, adds a compile-fail
 wrong-right matrix, and seeds authority/ciphertext bytes into a coarse-error
 redaction fixture. This proves the local adoption boundary only; generalized
-capability issuance, rotation, receive batches, and dispatch remain open.
+capability issuance, rotation, receive-batch dispatch, and cursor state remain
+open.
 
 The bounded-operation sub-increment adds opaque cursors, poll count/byte/wait
 limits, canonical deposit requests, bounded acknowledgement identifiers, and
 identifier-minimal receipts. It enforces provider-neutral hard ceilings and the
 caller's total byte budget before dispatch and keeps ciphertext/full identifiers
 out of ordinary diagnostics. It deliberately does not stabilize dispatch,
-async/clock mechanics, receive batches, capabilities, or lifecycle operations.
+async/clock mechanics, capabilities, or lifecycle operations. A follow-up
+receive-batch sub-increment enforces request-specific item/byte ceilings and
+local post-receive expiry without claiming incremental remote parsing or cursor
+state semantics.
 
 **Acceptance criteria:**
 
@@ -221,6 +225,7 @@ async/clock mechanics, receive batches, capabilities, or lifecycle operations.
   ciphertext bytes.
 - [x] Generalized value tests cover cursor, poll, deposit-byte, acknowledgement-
   batch, and receipt bounds before dispatch.
+- [x] Receive-batch tests cover request count/bytes and post-receive expiry.
 - [ ] Generalized adapter error/log fixtures cover every authority type.
 - [x] `cargo test -p session-transport`
 
