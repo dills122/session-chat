@@ -211,6 +211,23 @@ impl<T> AcknowledgementRight<T> {
     }
 }
 
+/// Narrow deposit-only dispatch used by sender-side delivery coordinators.
+///
+/// This contract deliberately grants no poll or acknowledgement operation. A
+/// full [`EnvelopeDelivery`] implementation receives this capability through
+/// the blanket implementation below, while a sender-only LocalV1 adapter can
+/// implement only this smaller surface.
+pub trait EnvelopeDeposit: Send {
+    type DepositEndpoint: Sync;
+
+    fn deposit<'a>(
+        &'a mut self,
+        endpoint: &'a DepositRight<Self::DepositEndpoint>,
+        request: DepositRequest,
+        control: &'a dyn DispatchControl,
+    ) -> impl Future<Output = Result<DepositReceipt, TransportFailure>> + Send + 'a;
+}
+
 /// Budget-aware provider-neutral dispatch over right-specific mailbox authority.
 ///
 /// This internal Phase 1 boundary uses static dispatch and standard-library
@@ -415,4 +432,17 @@ pub trait EnvelopeDelivery: Send {
         request: AcknowledgementRequest,
         control: &'a dyn DispatchControl,
     ) -> impl Future<Output = Result<AcknowledgementReceipt, TransportFailure>> + Send + 'a;
+}
+
+impl<D: EnvelopeDelivery> EnvelopeDeposit for D {
+    type DepositEndpoint = D::DepositEndpoint;
+
+    fn deposit<'a>(
+        &'a mut self,
+        endpoint: &'a DepositRight<Self::DepositEndpoint>,
+        request: DepositRequest,
+        control: &'a dyn DispatchControl,
+    ) -> impl Future<Output = Result<DepositReceipt, TransportFailure>> + Send + 'a {
+        EnvelopeDelivery::deposit(self, endpoint, request, control)
+    }
 }

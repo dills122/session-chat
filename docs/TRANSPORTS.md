@@ -262,6 +262,16 @@ binding record containing only profile, adapter/version, configuration
 fingerprint, enforcement mode, and selection time. Reserved Fast and Private
 IDs are rejected by the binder and no API accepts a fallback list.
 
+The first coordinator increment is also LocalV1-only and deposit-only. It
+leases at most one exact owner-store job, validates canonical envelope and
+endpoint material, creates an operation budget with `max_attempts == 1`, and
+invokes only the narrow sender-side `EnvelopeDeposit` surface. Adapter success
+means deposit acceptance only—not receipt, acknowledgement, or application
+processing. Adapter failure releases only the exact owner lease; dropping a
+pending coordinator future drops adapter-owned work and leaves authoritative
+recovery to lease expiry. The port is not yet implemented by the inviter store,
+and no runtime deadline supervisor or durable-restart evidence exists.
+
 `RetryAdvice::Never` ends attempts under the current budget. It does not assert
 that a deposit did not commit; the coordinator may reconcile an ambiguous
 completion only with the exact same idempotency identity under a fresh budget

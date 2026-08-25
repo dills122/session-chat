@@ -4,7 +4,9 @@
 
 mod capability;
 mod contract;
+mod coordinator;
 mod dispatch;
+mod outbox_port;
 mod profile;
 
 pub use capability::{
@@ -18,10 +20,16 @@ pub use contract::{
     PollRequest, PollWait, ReceiveBatch, ReceivedCanonicalEnvelope, RetryAdvice,
     TransportContractError, TransportFailure, TransportFailureCode, TransportProfileId,
 };
+pub use coordinator::{
+    CoordinatorError, CoordinatorOutcome, CoordinatorPolicy, DepositEndpointResolver,
+    EndpointResolutionError, LocalV1DepositEndpointResolver, MAX_COORDINATOR_LEASE_SECONDS,
+    WelcomeDeliveryCoordinator,
+};
 pub use dispatch::{
     AcknowledgementRight, DepositRight, DispatchControl, DispatchObservation, EnvelopeDelivery,
-    ReceiveRight,
+    EnvelopeDeposit, ReceiveRight,
 };
+pub use outbox_port::{LeasedWelcome, OutboxPortError, WelcomeOutboxPort};
 pub use profile::{
     AdapterExecutionV1, AdapterLimitsV1, AdapterManifestV1, AdapterOperationsV1, AdapterVersionV1,
     BackgroundWorkV1, BindingErrorV1, EgressDeclarationV1, EnforcementModeV1, InternalRetryV1,
@@ -431,6 +439,61 @@ impl EnvelopeTransport for LocalMemoryWelcomeTransport {
         now_unix_seconds: u64,
     ) -> Result<(), Self::Error> {
         Self::acknowledge(self, authority, delivery_id, now_unix_seconds)
+    }
+}
+
+impl EnvelopeDeposit for LocalMemoryWelcomeTransport {
+    type DepositEndpoint = LocalWelcomeDepositEndpoint;
+
+    async fn deposit(
+        &mut self,
+        endpoint: &DepositRight<Self::DepositEndpoint>,
+        request: DepositRequest,
+        control: &dyn DispatchControl,
+    ) -> Result<DepositReceipt, TransportFailure> {
+        let budget = request.budget();
+        let observation = control.checkpoint(budget)?;
+        let (canonical, _) = request.into_parts();
+        if canonical.expires_at_unix_seconds() <= observation.wall_now_unix_seconds()
+            || canonical.expires_at_unix_seconds() > endpoint.provider().expires_at_unix_seconds()
+        {
+            return Err(TransportFailure::new(
+                TransportFailureCode::ExpiredEnvelope,
+                RetryAdvice::Never,
+            ));
+        }
+        let envelope = OpaqueEnvelope::decode_canonical(canonical.as_bytes()).map_err(|_| {
+            TransportFailure::new(
+                TransportFailureCode::CorruptRemoteResponse,
+                RetryAdvice::Never,
+            )
+        })?;
+        let delivery_id = EnvelopeTransport::deposit(
+            self,
+            endpoint.provider(),
+            envelope,
+            observation.wall_now_unix_seconds(),
+        )
+        .map_err(map_local_dispatch_failure)?;
+        control.checkpoint(budget)?;
+        Ok(DepositReceipt::accepted(delivery_id))
+    }
+}
+
+fn map_local_dispatch_failure(failure: LocalTransportError) -> TransportFailure {
+    match failure {
+        LocalTransportError::InvalidPolicy => {
+            TransportFailure::new(TransportFailureCode::Misconfigured, RetryAdvice::Never)
+        }
+        LocalTransportError::Rejected => {
+            TransportFailure::new(TransportFailureCode::InvalidAuthority, RetryAdvice::Never)
+        }
+        LocalTransportError::CapacityExceeded => {
+            TransportFailure::new(TransportFailureCode::QueueFull, RetryAdvice::Backoff)
+        }
+        LocalTransportError::ProviderFailure => {
+            TransportFailure::new(TransportFailureCode::Internal, RetryAdvice::Backoff)
+        }
     }
 }
 

@@ -27,8 +27,18 @@ default. It returns runtime-neutral
 standard-library futures and receives explicit monotonic-deadline,
 fallible-wall-clock, and cooperative-cancellation observations. Reviewed
 adapters are selected at composition time; neither trait loads code or grants
-ambient authority. No lifecycle boundary, profile binder, coordinator, or
-network adapter exists yet.
+ambient authority.
+
+The additive `EnvelopeDeposit` surface gives the LocalV1 Welcome coordinator
+only sender-side deposit authority. `WelcomeDeliveryCoordinator` consumes one
+lease from an owner-store port, rebuilds exact canonical envelope and endpoint
+values, creates a one-attempt finite budget, and reports only adapter acceptance
+or failure back to that same owner. The encoded endpoint is zeroized and never
+implements ordinary diagnostics. The real local mailbox implements this narrow
+surface, while the composition root remains responsible for waking and dropping
+a pending coordinator future at its deadline. The LocalV1 profile binder and
+non-secret binding record exist; owner-store integration, a runtime supervisor,
+durable storage, and network adapters remain later work.
 
 `RetryAdvice::Never` ends attempts under the current operation budget. If a
 deposit may already have committed, a coordinator may reconcile only the exact

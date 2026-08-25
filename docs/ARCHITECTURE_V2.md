@@ -202,8 +202,11 @@ The active Rust laboratory now contains fourteen narrow pieces of this architect
   runtime-neutral `EnvelopeDelivery` trait with right-specific authority and
   explicit clock/cancellation checkpoints. Its first profile-binding slice
   accepts only an exact no-network LocalV1 manifest and emits a non-secret local
-  binding record; Fast, Private, network authority, coordinator, and network
-  adapters remain unavailable.
+  binding record. A deposit-only LocalV1 coordinator contract now consumes one
+  authoritative owner lease, reconstructs the canonical endpoint/envelope, and
+  makes one bounded adapter call through a sender-only interface. It is not yet
+  integrated with the inviter store or a runtime deadline supervisor; Fast,
+  Private, network authority, and network adapters remain unavailable.
 - `transport-memory` implements both traits with bounded deterministic drop,
   hold/release, duplication, reordering, retry, outage, one-shot corruption,
   exact-byte stale replay, acknowledgement-result loss, poll-page, exact-set

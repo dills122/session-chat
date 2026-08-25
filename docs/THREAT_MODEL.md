@@ -266,6 +266,11 @@ Assumptions:
   coordinator, not the adapter, owns total retry policy, expiry checks,
   deduplication, cursor, and acknowledgement execution without maintaining a
   competing outbox ledger.
+- The retained LocalV1 coordinator slice is deposit-only. Its sender-only
+  adapter surface, exact canonical reconstruction, one-attempt budget, coarse
+  failures, and drop-on-supervision evidence do not yet prove owner-store
+  integration, automatic deadline wakeups, restart recovery, receipt, or
+  recipient processing.
 
 ### Trust boundary: local persistent storage and operating system
 
