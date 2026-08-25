@@ -39,14 +39,21 @@ Rust types permit it. It returns one coarse public rejection for malformed
 input, wrong context or passphrase, randomness failure, or authentication
 failure.
 
-This crate does not implement `SessionKeyProtector` and is not connected to
-`SessionVaultModel` or `storage-sqlcipher`. It does not provide a desktop
-passphrase UI, in-flight KDF cancellation, password-quality enforcement,
-recovery, rekey persistence, rollback resistance, device binding, fresh user
-presence, backup exclusion, memory locking, secure deletion, or production
-storage. A copied record permits offline passphrase guesses. Best-effort
-zeroization does not establish removal from registers, allocator copies,
-native provider state, swap, crash dumps, or OS snapshots.
+The exact-session `PortablePassphraseKeyProtector` now implements the
+provider-neutral lifecycle boundary. It owns only the wrapped record; each
+unlock consumes a separately supplied one-shot passphrase credential through
+`session-storage`'s bounded work/result contract. Cancellation before provider
+work preserves an unacquired credential, while cancellation or expiry after
+Argon2 starts discards the eventual key result. Argon2 itself remains
+non-preemptible.
+
+This crate is not connected to `storage-sqlcipher` and does not provide a
+desktop passphrase UI, password-quality enforcement, recovery, rekey
+persistence, rollback resistance, device binding, fresh user presence, backup
+exclusion, memory locking, secure deletion, or production storage. A copied
+record permits offline passphrase guesses. Best-effort zeroization does not
+establish removal from registers, allocator copies, native provider state,
+swap, crash dumps, or OS snapshots.
 
 ```sh
 cargo test -p key-protector-passphrase --all-features --locked --offline

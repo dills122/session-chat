@@ -360,17 +360,21 @@ later packaging decision, not an initial requirement.
   `key-protector-passphrase` fix exact RustCrypto `argon2` 0.5.3 with only its
   `zeroize` feature, AWS-LC 1.16.3 AES-256-GCM, one fixed RFC 9106-derived
   measurement profile, and a closed expected-`SessionId`-bound 102-byte record.
-  This is not the selected production baseline and is not wired to the vault
-  lifecycle or SQLCipher.
+  ADR 0020 now wires its exact-session protector only to the deterministic
+  vault lifecycle through a bounded one-shot credential/result contract. This
+  is not the selected production baseline and is not wired to SQLCipher.
 - Measure the fixed Argon2id `m=65,536 KiB`, `t=3`, `p=4` profile's wall-clock
   latency and peak memory on minimum supported Linux, macOS, and Windows
   hardware, including low-memory and concurrent-load behavior. CI conformance
   alone is not representative endpoint performance evidence.
-- Decide credential acquisition, offline-guessing UX and cost assumptions,
-  bounded concurrency, result discard after lifecycle cancellation, atomic
-  database-key handoff, rekey, recovery, and rollback behavior before selecting
-  a production portable baseline. The synchronous KDF cannot be preemptively
-  cancelled once started.
+- The shared contract now provides exact-session one-shot credential handoff,
+  a nonzero process-local concurrency bound, cancellation checks before
+  provider entry, and generation-bound result discard. Decide the desktop
+  credential-acquisition UI/IPC boundary, offline-guessing UX and cost
+  assumptions, production scheduling/isolation, atomic database-key handoff,
+  rekey, recovery, and rollback behavior before selecting a production
+  portable baseline. The synchronous KDF cannot be preemptively cancelled once
+  started.
 - Independently review RustCrypto `argon2` 0.5.3 or retain the explicit unknown;
   no primary-source independent audit was found. Decide whether the incomplete
   evidence for native AWS-LC AEAD key-schedule cleanup is acceptable.

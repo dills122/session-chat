@@ -37,8 +37,12 @@ The Rust workspace currently contains:
 - `session-inviter-transaction`, with a bounded fault-injectable conformance
   model for atomic invitation/replay/approval/MLS-snapshot/Welcome-outbox state
 - `session-storage`, with a deterministic session-scoped sealed-vault lifecycle,
-  stale-completion rejection, and a bounded canonical opaque inbox whose local
-  import requires the exact open session and state generation
+  bounded external unlock preparation, one-shot credential acquisition,
+  cancellation/stale-result rejection, and a bounded canonical opaque inbox
+  whose local import requires the exact open session and state generation
+- `key-protector-passphrase`, with an exact-session Argon2id/AES-256-GCM
+  wrapped-key protector behind that lifecycle contract; it remains a
+  non-production conformance adapter and does not supply SQLCipher
 - `storage-sqlcipher`, with a keyed file-backed laboratory adapter proving the
   real inviter MLS/join/outbox transaction and the separate joiner MLS plus
   one-time-KeyPackage deletion transaction on required Linux, macOS, and
@@ -76,8 +80,11 @@ evidence, not a deployable client, human approval UX, durable vault, hosted
 realm, or production transport.
 
 The `session-storage` model now rejects key protectors whose factual capability
-report is weaker than the selected policy. `storage-sqlcipher` adds encrypted
-file-backed transaction evidence, but no platform protector connects them.
+report is weaker than the selected policy, bounds concurrent unlock work, and
+accepts only a result bound to the current vault instance, session, and
+generation. The portable passphrase adapter exercises that boundary with a
+one-shot credential, but `storage-sqlcipher` remains disconnected and no
+production platform protector exists.
 The required cross-platform build matrix is now configured; rollback
 resistance, broader crash/fault testing, packaging, and production key
 protection remain unimplemented.

@@ -2,9 +2,10 @@ use std::{cell::Cell, rc::Rc};
 
 use session_storage::{
     BackupExposure, DeterministicClock, DeterministicKeyProtector, DeterministicProtectorError,
-    DeviceBinding, KeyStorageProtection, LockEvent, OpaqueInboxPolicy, ProtectorCapabilities,
-    SessionId, SessionKeyProtector, SessionVaultModel, UnsealedSessionKey, UserPresence,
-    VaultClock, VaultError, VaultOperation, VaultPolicy, VaultState,
+    DeviceBinding, KeyStorageProtection, LockEvent, OneShotUnlockCredential, OpaqueInboxPolicy,
+    ProtectorCapabilities, SessionId, SessionKeyProtector, SessionVaultModel, UnlockWorkLimiter,
+    UnsealedSessionKey, UserPresence, VaultClock, VaultError, VaultOperation, VaultPolicy,
+    VaultState,
 };
 
 const NOW: u64 = 2_000_000_000;
@@ -13,26 +14,25 @@ fn session_id(byte: u8) -> SessionId {
     SessionId::new([byte; 32]).expect("nonzero session ID")
 }
 
-fn model() -> SessionVaultModel<DeterministicClock, DeterministicKeyProtector> {
-    let session_id = session_id(0x11);
+fn model() -> SessionVaultModel<DeterministicClock> {
     SessionVaultModel::new(
         VaultPolicy::new(30, 60).expect("valid vault policy"),
         OpaqueInboxPolicy::new(300, 4, 256 * 1024).expect("valid inbox policy"),
         DeterministicClock::new(NOW),
-        DeterministicKeyProtector::new(session_id, [0x21; 32])
-            .expect("valid deterministic protector"),
     )
 }
 
-fn unlock(
-    vault: &mut SessionVaultModel<DeterministicClock, DeterministicKeyProtector>,
-    session_id: SessionId,
-) {
+fn unlock(vault: &mut SessionVaultModel<DeterministicClock>, session_id: SessionId) {
+    let limiter = UnlockWorkLimiter::new(1).expect("test work limit");
+    let mut credential = OneShotUnlockCredential::new(session_id, ());
+    let mut protector = DeterministicKeyProtector::new(session_id, [0x21; 32])
+        .expect("valid deterministic protector");
     let attempt = vault
         .begin_unlock(session_id)
         .expect("begin deterministic unlock");
+    let completion = attempt.prepare_with(&limiter, &mut credential, &mut protector);
     vault
-        .complete_unlock(attempt)
+        .complete_unlock(completion)
         .expect("complete deterministic unlock");
 }
 
@@ -51,6 +51,7 @@ struct TimeAdvancingProtector {
 }
 
 impl SessionKeyProtector for TimeAdvancingProtector {
+    type Credential = ();
     type Error = DeterministicProtectorError;
 
     fn capabilities(&self) -> ProtectorCapabilities {
@@ -65,6 +66,7 @@ impl SessionKeyProtector for TimeAdvancingProtector {
     fn unseal_session_key(
         &mut self,
         session_id: SessionId,
+        (): Self::Credential,
     ) -> Result<UnsealedSessionKey, Self::Error> {
         if session_id != self.session_id {
             return Err(DeterministicProtectorError);
@@ -134,7 +136,12 @@ fn exact_unlock_opens_one_session_until_idle_expiry() {
         vault.perform_privileged(selected, VaultOperation::Decrypt, || {}),
         Err(VaultError::Rejected)
     );
-    vault.complete_unlock(attempt).expect("complete unlock");
+    let limiter = UnlockWorkLimiter::new(1).expect("test work limit");
+    let mut credential = OneShotUnlockCredential::new(selected, ());
+    let mut protector = DeterministicKeyProtector::new(selected, [0x21; 32])
+        .expect("valid deterministic protector");
+    let completion = attempt.prepare_with(&limiter, &mut credential, &mut protector);
+    vault.complete_unlock(completion).expect("complete unlock");
     assert_eq!(vault.state(), VaultState::Open);
 
     let calls = Cell::new(0);
@@ -171,13 +178,21 @@ fn stale_unlock_completion_cannot_open_a_new_generation() {
     assert_eq!(vault.state(), VaultState::Sealed);
 
     let current = vault.begin_unlock(selected).expect("begin second unlock");
+    let limiter = UnlockWorkLimiter::new(1).expect("test work limit");
+    let mut stale_credential = OneShotUnlockCredential::new(selected, ());
+    let mut protector = DeterministicKeyProtector::new(selected, [0x21; 32])
+        .expect("valid deterministic protector");
+    let stale_completion = stale.prepare_with(&limiter, &mut stale_credential, &mut protector);
     assert_eq!(
-        vault.complete_unlock(stale),
+        vault.complete_unlock(stale_completion),
         Err(VaultError::ReservationMismatch)
     );
     assert_eq!(vault.state(), VaultState::Unlocking);
+    let mut current_credential = OneShotUnlockCredential::new(selected, ());
+    let current_completion =
+        current.prepare_with(&limiter, &mut current_credential, &mut protector);
     vault
-        .complete_unlock(current)
+        .complete_unlock(current_completion)
         .expect("current generation still opens");
     assert_eq!(vault.state(), VaultState::Open);
 }
@@ -194,11 +209,14 @@ fn unlock_expiring_during_unseal_does_not_open() {
         VaultPolicy::new(30, 60).expect("valid vault policy"),
         OpaqueInboxPolicy::new(300, 4, 256 * 1024).expect("valid inbox policy"),
         clock,
-        protector,
     );
     let attempt = vault.begin_unlock(selected).expect("begin unlock");
+    let limiter = UnlockWorkLimiter::new(1).expect("test work limit");
+    let mut credential = OneShotUnlockCredential::new(selected, ());
+    let mut protector = protector;
+    let completion = attempt.prepare_with(&limiter, &mut credential, &mut protector);
 
-    assert_eq!(vault.complete_unlock(attempt), Err(VaultError::Rejected));
+    assert_eq!(vault.complete_unlock(completion), Err(VaultError::Rejected));
     assert_eq!(vault.state(), VaultState::Sealed);
 }
 
@@ -209,12 +227,15 @@ fn protector_failure_returns_to_sealed_without_running_work() {
         VaultPolicy::new(30, 60).expect("valid vault policy"),
         OpaqueInboxPolicy::new(300, 4, 256 * 1024).expect("valid inbox policy"),
         DeterministicClock::new(NOW),
-        DeterministicKeyProtector::rejecting(selected),
     );
     let attempt = vault.begin_unlock(selected).expect("begin unlock");
+    let limiter = UnlockWorkLimiter::new(1).expect("test work limit");
+    let mut credential = OneShotUnlockCredential::new(selected, ());
+    let mut protector = DeterministicKeyProtector::rejecting(selected);
+    let completion = attempt.prepare_with(&limiter, &mut credential, &mut protector);
 
     assert_eq!(
-        vault.complete_unlock(attempt),
+        vault.complete_unlock(completion),
         Err(VaultError::ProviderFailure)
     );
     assert_eq!(vault.state(), VaultState::Sealed);

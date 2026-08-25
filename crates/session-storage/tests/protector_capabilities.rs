@@ -1,7 +1,8 @@
 use session_storage::{
     BackupExposure, DeterministicClock, DeterministicKeyProtector, DeviceBinding,
-    KeyStorageProtection, OpaqueInboxPolicy, ProtectionLevel, ProtectorCapabilities, SessionId,
-    SessionKeyProtector, SessionVaultModel, UserPresence, VaultError, VaultPolicy, VaultState,
+    KeyStorageProtection, OneShotUnlockCredential, OpaqueInboxPolicy, ProtectionLevel,
+    ProtectorCapabilities, SessionId, SessionKeyProtector, SessionVaultModel, UnlockWorkLimiter,
+    UserPresence, VaultError, VaultPolicy, VaultState,
 };
 
 fn session_id() -> SessionId {
@@ -120,12 +121,15 @@ fn unlock_fails_closed_before_calling_a_weaker_protector() {
             .expect("production-shaped policy"),
         OpaqueInboxPolicy::new(300, 4, 256 * 1024).expect("inbox policy"),
         DeterministicClock::new(100),
-        DeterministicKeyProtector::new(selected, [8; 32]).expect("test protector"),
     );
     let attempt = vault.begin_unlock(selected).expect("begin unlock");
+    let limiter = UnlockWorkLimiter::new(1).expect("test work limit");
+    let mut credential = OneShotUnlockCredential::new(selected, ());
+    let mut protector = DeterministicKeyProtector::new(selected, [8; 32]).expect("test protector");
+    let completion = attempt.prepare_with(&limiter, &mut credential, &mut protector);
 
     assert_eq!(
-        vault.complete_unlock(attempt),
+        vault.complete_unlock(completion),
         Err(VaultError::ProviderFailure)
     );
     assert_eq!(vault.state(), VaultState::Sealed);

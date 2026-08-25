@@ -9,7 +9,7 @@ use aws_lc_rs::{
 };
 use session_storage::{
     BackupExposure, DeviceBinding, KeyStorageProtection, ProtectorCapabilities, SessionId,
-    UnsealedSessionKey, UserPresence,
+    SessionKeyProtector, UnsealedSessionKey, UserPresence,
 };
 use thiserror::Error;
 use zeroize::Zeroizing;
@@ -102,6 +102,53 @@ impl ProvisionedSessionKey {
     #[must_use]
     pub fn into_parts(self) -> (WrappedSessionKeyV1, UnsealedSessionKey) {
         (self.wrapped, self.unsealed)
+    }
+}
+
+/// Exact-session protector backed by one portable wrapped-key record.
+///
+/// The protector owns ciphertext only. A passphrase must arrive as a one-shot
+/// credential for each attempt and is never retained between calls. This type
+/// intentionally implements neither `Clone`, `Debug`, nor `Display`.
+///
+/// ```compile_fail
+/// use key_protector_passphrase::PortablePassphraseKeyProtector;
+/// fn require_debug<T: core::fmt::Debug>() {}
+/// require_debug::<PortablePassphraseKeyProtector>();
+/// ```
+pub struct PortablePassphraseKeyProtector {
+    session_id: SessionId,
+    wrapped: WrappedSessionKeyV1,
+}
+
+impl PortablePassphraseKeyProtector {
+    /// Binds one canonical wrapped-key record to its out-of-band session scope.
+    #[must_use]
+    pub const fn new(session_id: SessionId, wrapped: WrappedSessionKeyV1) -> Self {
+        Self {
+            session_id,
+            wrapped,
+        }
+    }
+}
+
+impl SessionKeyProtector for PortablePassphraseKeyProtector {
+    type Credential = PortablePassphrase;
+    type Error = PortableKeyError;
+
+    fn capabilities(&self) -> ProtectorCapabilities {
+        PortablePassphraseKeyWrapper::new().capabilities()
+    }
+
+    fn unseal_session_key(
+        &mut self,
+        session_id: SessionId,
+        passphrase: Self::Credential,
+    ) -> Result<UnsealedSessionKey, Self::Error> {
+        if session_id != self.session_id {
+            return Err(PortableKeyError::Rejected);
+        }
+        PortablePassphraseKeyWrapper::new().unseal(session_id, passphrase, &self.wrapped)
     }
 }
 

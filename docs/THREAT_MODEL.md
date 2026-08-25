@@ -597,11 +597,17 @@ deterministic conformance boundary: sealed mode may append only bounded
 canonical opaque envelopes, while decrypt, signing, admission, MLS mutation,
 acknowledgement, and rotation require the exact open session. Linear vault and
 inbox generations reject delayed completion and identifier-reuse ABA in the
-model. This is not encrypted or durable storage, and the deterministic key
-protector is not platform protection evidence. Platform key stores have
-different user-presence and unlock-sharing semantics, so production adapters
-must report and test their actual behavior. Database encryption does not
-establish rollback resistance, and malware controlling an unlocked session
+model. ADR 0020 additionally separates provider work from lifecycle ownership:
+an unlock request is bound to one process-local vault instance, exact session,
+generation, and minimum policy; one shared limiter rejects excess work without
+queueing; and an exact-session credential can be acquired only once. Explicit
+lock, expiry polling, or a replacement generation invalidates work before
+credential acquisition/provider entry when observed and makes any already
+prepared result unusable. This is not encrypted or durable storage, and the
+deterministic key protector is not platform protection evidence. Platform key
+stores have different user-presence and unlock-sharing semantics, so production
+adapters must report and test their actual behavior. Database encryption does
+not establish rollback resistance, and malware controlling an unlocked session
 remains out of scope.
 
 ADR 0017's `storage-sqlcipher` adapter adds keyed, encrypted file-backed
@@ -614,12 +620,14 @@ platform key protector, rollback resistance, production packaging, behavior on
 broader hardware/OS versions, power-loss safety, or secure deletion.
 
 ADR 0019 and `key-protector-passphrase` add only a bounded portable conformance
-construction. The fixed 102-byte record authenticates its complete public
+construction, now connected to the deterministic ADR 0020 lifecycle boundary.
+The fixed 102-byte record authenticates its complete public
 prefix and a caller-supplied expected `SessionId`; unknown versions, suites,
 profiles, parameter values, lengths, and trailing bytes fail before Argon2 work.
 Wrong passphrases, record tampering, and cross-session substitution expose only
-coarse failures. Passphrase size and concurrent work must be bounded before the
-synchronous KDF begins.
+coarse failures. Passphrase size is bounded before orchestration; one shared
+nonzero limiter bounds concurrent provider work before the synchronous KDF
+begins.
 
 A copied record still permits unlimited offline guesses, and Argon2id cannot
 create passphrase entropy. The fixed `m=65,536 KiB`, `t=3`, `p=4` profile is a
@@ -628,15 +636,20 @@ owners apply best-effort zeroization to the passphrase, KEK, caller-owned Argon2
 blocks, and temporary plaintext, but native AEAD key-schedule cleanup, registers,
 swap, dumps, UI copies, and OS snapshots remain unproved. Work already running
 cannot be cancelled preemptively; only a later lifecycle result may be rejected.
-The adapter provides no device binding, fresh user presence, recovery, rollback
+The exact-session protector owns only the wrapped record and consumes a
+separately supplied passphrase credential once per attempt. It provides no
+device binding, fresh user presence, desktop credential UI, recovery, rollback
 resistance, secure deletion, SQLCipher key handoff, or unlocked-endpoint
 protection, and no durable or product path currently uses it.
 
-The current deterministic `session-storage` model now rechecks the unlock
-deadline after a protector returns and remains sealed when completion is late.
-That is evidence for generation/deadline-bound result discard in the model only;
-it neither interrupts the synchronous KDF nor proves a production scheduler,
-threading, or process-isolation boundary.
+The current deterministic `session-storage` model rechecks the unlock deadline
+after a protector returns and remains sealed when completion is late. A shared
+active-generation marker prevents work that observes cancellation before
+provider entry and rejects foreign-vault or stale-generation completions. Work
+already inside the synchronous KDF still runs through cleanup. This is
+conformance evidence for pre-entry cancellation and result discard only; it
+does not prove a production scheduler, threading, process isolation, or secure
+desktop-to-core credential path.
 
 ### Realm replacement and disaster recovery
 

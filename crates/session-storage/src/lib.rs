@@ -2,7 +2,14 @@
 
 //! Sealed-vault and opaque-inbox contracts plus deterministic conformance models.
 
-use std::{collections::BTreeMap, error::Error};
+use std::{
+    collections::BTreeMap,
+    error::Error,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, AtomicUsize, Ordering},
+    },
+};
 
 use session_protocol::{MAX_ENVELOPE_CIPHERTEXT_BYTES, OpaqueEnvelope};
 use thiserror::Error;
@@ -375,8 +382,57 @@ impl Drop for UnsealedSessionKey {
     }
 }
 
-/// Provider-neutral platform boundary for unsealing one selected session key.
+/// Provider-neutral source for one unlock credential.
+pub trait UnlockCredentialSource {
+    /// Secret or authority consumed by one protector invocation.
+    type Credential;
+    /// Source-private error mapped to the coarse vault boundary.
+    type Error: Error;
+
+    /// Acquires one credential for the exact selected session.
+    fn acquire(&mut self, session_id: SessionId) -> Result<Self::Credential, Self::Error>;
+}
+
+/// Coarse failure from the one-shot credential boundary.
+#[derive(Clone, Copy, Debug, Eq, Error, PartialEq)]
+#[error("unlock credential unavailable")]
+pub struct UnlockCredentialUnavailable;
+
+/// One exact-session credential that can be acquired only once.
+///
+/// This type intentionally implements neither `Clone`, `Debug`, nor `Display`.
+pub struct OneShotUnlockCredential<C> {
+    session_id: SessionId,
+    credential: Option<C>,
+}
+
+impl<C> OneShotUnlockCredential<C> {
+    /// Binds one owned credential to one exact session.
+    #[must_use]
+    pub const fn new(session_id: SessionId, credential: C) -> Self {
+        Self {
+            session_id,
+            credential: Some(credential),
+        }
+    }
+}
+
+impl<C> UnlockCredentialSource for OneShotUnlockCredential<C> {
+    type Credential = C;
+    type Error = UnlockCredentialUnavailable;
+
+    fn acquire(&mut self, session_id: SessionId) -> Result<Self::Credential, Self::Error> {
+        if session_id != self.session_id {
+            return Err(UnlockCredentialUnavailable);
+        }
+        self.credential.take().ok_or(UnlockCredentialUnavailable)
+    }
+}
+
+/// Provider-neutral boundary for unsealing one selected session key.
 pub trait SessionKeyProtector {
+    /// Exact one-shot credential required by this protector.
+    type Credential;
     /// Provider-private error mapped to the coarse vault boundary.
     type Error: Error;
 
@@ -387,7 +443,72 @@ pub trait SessionKeyProtector {
     fn unseal_session_key(
         &mut self,
         session_id: SessionId,
+        credential: Self::Credential,
     ) -> Result<UnsealedSessionKey, Self::Error>;
+}
+
+/// Shared bound for concurrently active unlock operations.
+#[derive(Clone)]
+pub struct UnlockWorkLimiter {
+    maximum_concurrent: usize,
+    in_flight: Arc<AtomicUsize>,
+}
+
+impl UnlockWorkLimiter {
+    /// Creates a nonzero process-local unlock-work bound.
+    pub fn new(maximum_concurrent: usize) -> Result<Self, VaultError> {
+        if maximum_concurrent == 0 {
+            return Err(VaultError::InvalidPolicy);
+        }
+        Ok(Self {
+            maximum_concurrent,
+            in_flight: Arc::new(AtomicUsize::new(0)),
+        })
+    }
+
+    /// Reserves one work slot without waiting or starting provider work.
+    pub fn try_reserve(&self) -> Result<UnlockWorkPermit, VaultError> {
+        let mut current = self.in_flight.load(Ordering::Acquire);
+        loop {
+            if current >= self.maximum_concurrent {
+                return Err(VaultError::CapacityExceeded);
+            }
+            match self.in_flight.compare_exchange_weak(
+                current,
+                current + 1,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => {
+                    return Ok(UnlockWorkPermit {
+                        in_flight: Arc::clone(&self.in_flight),
+                    });
+                }
+                Err(observed) => current = observed,
+            }
+        }
+    }
+
+    /// Returns the current process-local reservation count.
+    #[must_use]
+    pub fn in_flight(&self) -> usize {
+        self.in_flight.load(Ordering::Acquire)
+    }
+}
+
+/// Linear reservation for one bounded unlock operation.
+///
+/// Dropping this value releases the slot. It intentionally does not implement
+/// `Clone`, `Debug`, or `Display`.
+pub struct UnlockWorkPermit {
+    in_flight: Arc<AtomicUsize>,
+}
+
+impl Drop for UnlockWorkPermit {
+    fn drop(&mut self) {
+        let previous = self.in_flight.fetch_sub(1, Ordering::AcqRel);
+        debug_assert!(previous > 0, "unlock work reservation underflow");
+    }
 }
 
 /// Failure from the deterministic non-production protector.
@@ -434,6 +555,7 @@ impl DeterministicKeyProtector {
 }
 
 impl SessionKeyProtector for DeterministicKeyProtector {
+    type Credential = ();
     type Error = DeterministicProtectorError;
 
     fn capabilities(&self) -> ProtectorCapabilities {
@@ -448,6 +570,7 @@ impl SessionKeyProtector for DeterministicKeyProtector {
     fn unseal_session_key(
         &mut self,
         session_id: SessionId,
+        (): Self::Credential,
     ) -> Result<UnsealedSessionKey, Self::Error> {
         if self.reject || session_id != self.session_id {
             return Err(DeterministicProtectorError);
@@ -463,10 +586,99 @@ impl Drop for DeterministicKeyProtector {
     }
 }
 
+struct VaultInstance {
+    active_unlock_generation: AtomicU64,
+}
+
 /// Linear authority to complete one exact unlock generation.
 pub struct UnlockAttempt {
+    vault_instance: Arc<VaultInstance>,
     session_id: SessionId,
     generation: u64,
+    minimum_protection: ProtectionLevel,
+}
+
+impl UnlockAttempt {
+    /// Runs one bounded credential/protector operation outside the vault state owner.
+    ///
+    /// Provider errors remain coarse. The returned completion is still only a
+    /// candidate: the vault independently rechecks generation, deadline, and
+    /// protection policy before retaining the key.
+    #[must_use]
+    pub fn prepare_with<S, P>(
+        self,
+        limiter: &UnlockWorkLimiter,
+        credential_source: &mut S,
+        protector: &mut P,
+    ) -> UnlockCompletion
+    where
+        S: UnlockCredentialSource<Credential = P::Credential>,
+        P: SessionKeyProtector,
+    {
+        let capabilities = protector.capabilities();
+        let outcome = if !self.is_current() {
+            UnlockOutcome::Failed(VaultError::ReservationMismatch)
+        } else if !capabilities.supports(self.minimum_protection) {
+            UnlockOutcome::Failed(VaultError::ProviderFailure)
+        } else {
+            match limiter.try_reserve() {
+                Err(error) => UnlockOutcome::Failed(error),
+                Ok(_permit) => {
+                    if !self.is_current() {
+                        UnlockOutcome::Failed(VaultError::ReservationMismatch)
+                    } else {
+                        match credential_source.acquire(self.session_id) {
+                            Err(_) => UnlockOutcome::Failed(VaultError::ProviderFailure),
+                            Ok(credential) => {
+                                if !self.is_current() {
+                                    UnlockOutcome::Failed(VaultError::ReservationMismatch)
+                                } else {
+                                    match protector.unseal_session_key(self.session_id, credential)
+                                    {
+                                        Ok(key) => UnlockOutcome::Ready { capabilities, key },
+                                        Err(_) => {
+                                            UnlockOutcome::Failed(VaultError::ProviderFailure)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        };
+        UnlockCompletion {
+            vault_instance: self.vault_instance,
+            session_id: self.session_id,
+            generation: self.generation,
+            outcome,
+        }
+    }
+
+    fn is_current(&self) -> bool {
+        self.vault_instance
+            .active_unlock_generation
+            .load(Ordering::Acquire)
+            == self.generation
+    }
+}
+
+/// Linear provider result for one exact unlock generation.
+///
+/// This type intentionally implements neither `Clone`, `Debug`, nor `Display`.
+pub struct UnlockCompletion {
+    vault_instance: Arc<VaultInstance>,
+    session_id: SessionId,
+    generation: u64,
+    outcome: UnlockOutcome,
+}
+
+enum UnlockOutcome {
+    Ready {
+        capabilities: ProtectorCapabilities,
+        key: UnsealedSessionKey,
+    },
+    Failed(VaultError),
 }
 
 /// Linear authority to complete one exact relock generation.
@@ -498,11 +710,11 @@ enum LifecycleState {
 ///
 /// This model proves transition and capability-matrix semantics only. It is not
 /// encrypted persistence, a platform vault, or a rollback-resistance claim.
-pub struct SessionVaultModel<C: VaultClock, P: SessionKeyProtector> {
+pub struct SessionVaultModel<C: VaultClock> {
+    vault_instance: Arc<VaultInstance>,
     policy: VaultPolicy,
     inbox_policy: OpaqueInboxPolicy,
     clock: C,
-    protector: P,
     next_generation: u64,
     next_inbox_generation: u64,
     state: LifecycleState,
@@ -510,20 +722,17 @@ pub struct SessionVaultModel<C: VaultClock, P: SessionKeyProtector> {
     inbox_total_encoded_bytes: usize,
 }
 
-impl<C: VaultClock, P: SessionKeyProtector> SessionVaultModel<C, P> {
+impl<C: VaultClock> SessionVaultModel<C> {
     /// Creates a model in the sealed state.
     #[must_use]
-    pub const fn new(
-        policy: VaultPolicy,
-        inbox_policy: OpaqueInboxPolicy,
-        clock: C,
-        protector: P,
-    ) -> Self {
+    pub fn new(policy: VaultPolicy, inbox_policy: OpaqueInboxPolicy, clock: C) -> Self {
         Self {
+            vault_instance: Arc::new(VaultInstance {
+                active_unlock_generation: AtomicU64::new(0),
+            }),
             policy,
             inbox_policy,
             clock,
-            protector,
             next_generation: 0,
             next_inbox_generation: 0,
             state: LifecycleState::Sealed,
@@ -565,14 +774,19 @@ impl<C: VaultClock, P: SessionKeyProtector> SessionVaultModel<C, P> {
             generation,
             expires_at_unix_seconds,
         };
+        self.vault_instance
+            .active_unlock_generation
+            .store(generation, Ordering::Release);
         Ok(UnlockAttempt {
+            vault_instance: Arc::clone(&self.vault_instance),
             session_id,
             generation,
+            minimum_protection: self.policy.minimum_protection,
         })
     }
 
     /// Completes only the current exact unlock generation.
-    pub fn complete_unlock(&mut self, attempt: UnlockAttempt) -> Result<(), VaultError> {
+    pub fn complete_unlock(&mut self, completion: UnlockCompletion) -> Result<(), VaultError> {
         let now = self.clock.now_unix_seconds();
         let LifecycleState::Unlocking {
             session_id,
@@ -582,24 +796,26 @@ impl<C: VaultClock, P: SessionKeyProtector> SessionVaultModel<C, P> {
         else {
             return Err(VaultError::ReservationMismatch);
         };
-        if session_id != attempt.session_id || generation != attempt.generation {
+        if !Arc::ptr_eq(&self.vault_instance, &completion.vault_instance)
+            || session_id != completion.session_id
+            || generation != completion.generation
+        {
             return Err(VaultError::ReservationMismatch);
         }
         self.state = LifecycleState::Sealed;
+        self.vault_instance
+            .active_unlock_generation
+            .store(0, Ordering::Release);
         if expires_at_unix_seconds <= now {
             return Err(VaultError::Rejected);
         }
-        if !self
-            .protector
-            .capabilities()
-            .supports(self.policy.minimum_protection)
-        {
+        let (capabilities, key) = match completion.outcome {
+            UnlockOutcome::Ready { capabilities, key } => (capabilities, key),
+            UnlockOutcome::Failed(error) => return Err(error),
+        };
+        if !capabilities.supports(self.policy.minimum_protection) {
             return Err(VaultError::ProviderFailure);
         }
-        let key = self
-            .protector
-            .unseal_session_key(session_id)
-            .map_err(|_| VaultError::ProviderFailure)?;
         let completed_at_unix_seconds = self.clock.now_unix_seconds();
         if expires_at_unix_seconds <= completed_at_unix_seconds {
             return Err(VaultError::Rejected);
@@ -691,6 +907,9 @@ impl<C: VaultClock, P: SessionKeyProtector> SessionVaultModel<C, P> {
     pub fn force_lock(&mut self, event: LockEvent) {
         let _ = event;
         self.state = LifecycleState::Sealed;
+        self.vault_instance
+            .active_unlock_generation
+            .store(0, Ordering::Release);
     }
 
     /// Applies pending unlock and idle deadlines without running privileged work.
@@ -709,6 +928,9 @@ impl<C: VaultClock, P: SessionKeyProtector> SessionVaultModel<C, P> {
         };
         if expired {
             self.state = LifecycleState::Sealed;
+            self.vault_instance
+                .active_unlock_generation
+                .store(0, Ordering::Release);
         }
         self.prune_expired_inbox(now);
     }
