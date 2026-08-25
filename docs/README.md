@@ -13,8 +13,7 @@ The central product idea is:
 The [secure-development policy](SECURE_DEVELOPMENT.md) maps the repository's
 threat and supply-chain boundaries to the required CI and GitHub merge gates.
 The [Rust code-coverage policy](CODE_COVERAGE.md) records the production-only
-measurement method, clean-master baseline, enforced ratchets, exclusions, and
-remaining `sessionctl` gap.
+measurement method, clean-master baseline, enforced ratchets, and exclusions.
 
 For an outside review, start with the
 [independent-audit brief](INDEPENDENT_AUDIT_BRIEF.md). It separates current

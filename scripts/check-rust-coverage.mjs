@@ -24,7 +24,7 @@ export const COVERAGE_POLICY = Object.freeze({
     'transport-memory': 'crates/transport-memory/src/',
   }),
   minimumComponentLines: 90,
-  componentLineRatchets: Object.freeze({ sessionctl: 78.28 }),
+  componentLineRatchets: Object.freeze({ sessionctl: 90 }),
   minimumWorkspaceFunctions: 85.64,
   minimumWorkspaceLines: 92.23,
   minimumWorkspaceRegions: 88.53,
