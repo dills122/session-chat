@@ -273,9 +273,11 @@ transactions through the real MLS storage path and recovers them after close
 and reopen on the required Linux, macOS, and Windows CI runners. Schema version
 2 also implements the coordinator's sole-owner Welcome port with explicit v1
 migration fixtures, restart leasing, terminal states, and ambiguous exact retry.
-It is not wired to capability admission or the vault lifecycle and adds no
-production packaging, broader platform, rollback-resistance, or
-production-storage claim.
+A retained real capability-admission/MLS integration now resolves an ambiguous
+SQL commit before in-memory finalization, reopens the store, and delivers the
+exact Welcome to the original joiner. It is not wired into durable `sessionctl`
+or the vault lifecycle and adds no production packaging, broader platform,
+rollback-resistance, or production-storage claim.
 
 ## Reference standards and projects
 

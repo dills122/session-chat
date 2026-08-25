@@ -248,24 +248,27 @@ The active Rust laboratory now contains fourteen narrow pieces of this architect
   for the real inviter and joiner MLS persistence calls. Its version-2 schema
   also owns exact Welcome work, bounded attempt/lease state, and terminal
   delivery state through the coordinator's sole-owner port across close/reopen.
-  It is not connected to a platform key protector and provides no rollback or
-  production claim.
+  A retained integration test drives the real capability-admission/MLS path
+  through ambiguous commit recovery and post-restart Welcome delivery. It is
+  not connected to a platform key protector or durable client and provides no
+  rollback or production claim.
 - `sessionctl` composes the current local pieces into one headless Alice/Bob
   flow: capability join, simulated approval, Welcome delivery, bidirectional
   application messages, path update, removal, and post-removal rejection. It
   is not a durable, hosted, or networked client.
 
 The invitation registry, replay verifier, and MLS adapter remain separate
-in-process state machines. The capability adapter now coordinates them through
-an approval-gated one-shot API: rejection and pre-commit failure release both
-reservations, abandonment also clears the MLS pending Commit, and successful
-in-memory Add consumes the invitation before returning its outputs. This is
-sequential in-memory coordination, not one persistent, cross-process,
-crash-atomic, or rollback-resistant transaction. Human approval UX and durable
-membership/replay integration do not exist in that product path. The separate
+in-process state machines. The capability adapter coordinates them through an
+approval-gated one-shot API: rejection and pre-commit failure release both
+reservations, abandonment also clears the MLS pending Commit, and the legacy
+in-memory apply consumes the invitation before returning its outputs. Durable
+composition instead retains an applied, durability-pending value until SQL
+recovery proves commit or rollback. This is retained component integration, not
+a persistent cross-process or rollback-resistant client. Human approval UX and
+durable replay loading do not exist in the headless product path. The separate
 memory conformance model and SQLCipher laboratory exercise atomic visibility,
-durable Welcome-owner recovery, and ambiguous-result retry without yet
-connecting that store to the sequential admission path. The in-memory committed join result
+durable Welcome-owner recovery, and ambiguous-result retry, and the real
+capability integration now crosses that store boundary. The in-memory committed join result
 now carries the
 exact authenticated deposit-only endpoint beside its MLS Welcome, and retained
 integration evidence delivers that Welcome through the local mailbox. No

@@ -277,8 +277,10 @@ external cancellation, enforces a monotonic deadline, and drops unfinished
 adapter work; it is a cross-platform headless/worker-thread baseline, not a UI
 runtime choice. The SQLCipher laboratory now implements the same sole-owner
 port and retains close/reopen delivery, stale/foreign lease, exhaustion,
-expiry, and ambiguous exact-retry evidence. The sequential capability-admission
-product path and independent-process runner are not yet connected to it.
+expiry, and ambiguous exact-retry evidence. A retained real
+capability-admission/MLS integration recovers an ambiguous SQL commit, reopens
+that owner store, and delivers the exact Welcome once; durable `sessionctl` and
+the independent-process runner are not yet connected to it.
 
 `RetryAdvice::Never` ends attempts under the current budget. It does not assert
 that a deposit did not commit; the coordinator may reconcile an ambiguous

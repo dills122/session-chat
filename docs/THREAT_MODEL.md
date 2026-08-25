@@ -22,8 +22,10 @@ explicit simulated approval decision before MLS preparation. Its pending value
 implements a provider-neutral, display-only approval context while retaining
 the exact provider evidence, KeyPackage, and reservation authorities. Copying
 that context or its decision grants no membership authority. Rejection and
-pre-commit failure release invitation and replay state; successful in-memory
-Add consumes the invitation. It does not perform human UI approval or
+pre-commit failure release invitation and replay state. The legacy in-memory
+apply consumes the invitation immediately; durable composition instead returns
+a one-shot applied result that preserves both reservations until SQL recovery
+proves commit or rollback. It does not perform human UI approval or
 rollback-resistant persistence. A local transport adapter implements
 bounded one-Welcome deposit, receive, and acknowledgement with independent
 provider-generated authorities. The approved in-memory join result carries only
@@ -40,8 +42,10 @@ authority remain absent. A separate bounded, fault-injectable model exercises
 all-or-nothing inviter state, ambiguous-result recovery, and Welcome-outbox
 leasing semantics without providing storage or connecting to that sequential
 join path. The SQLCipher laboratory now implements the same sole-owner port
-with versioned migration and close/reopen lease recovery, while remaining
-disconnected from the sequential admission path. A separate deterministic memory transport uses right-specific
+with versioned migration and close/reopen lease recovery. A retained real
+capability-admission/MLS composition crosses that boundary, including ambiguous
+commit recovery and exact post-restart Welcome delivery, but no durable client
+or independent-process runner uses it yet. A separate deterministic memory transport uses right-specific
 authorities and bounded explicit drop, duplicate, hold/release, retry, expiry,
 and capacity behavior for headless tests. It accepts structurally opaque bytes
 but neither encrypts them nor provides a network or privacy property. The MLS
@@ -442,15 +446,19 @@ transport behavior.
 The provider owns one complete invitation-v2 creation API covering every secret
 and random field; callers supply only issue and expiration times. The in-memory
 approval path applies MLS and then consumes invitation state before returning
-the committed outputs, but that sequencing is not crash-atomic. A separate
+the committed outputs, but that sequencing is not crash-atomic. The durable
+path instead retains a one-shot applied value across SQL staging, write, and
+transaction-ID recovery; it finalizes the in-memory shadow only for a proven
+commit and releases it only for a proven rollback. A separate
 conformance model tests the accepted inviter transaction's all-or-nothing
 components, exact retries, stale-generation rejection, ambiguous commit
 recovery, and bounded outbox leases over in-memory records. The SQLCipher
 laboratory now supplies the corresponding real MLS transaction and durable
-coordinator owner port, but is not wired to capability admission. Remaining
-requirements include human approval UX, product-path integration, durable
-rollback protection, vault-backed confidentiality, and broader process/disk
-crash evidence.
+coordinator owner port, and a retained integration test wires it to capability
+admission through restart delivery and real joiner processing. Remaining
+requirements include human approval UX, durable client/independent-process
+integration, rollback protection, vault-backed confidentiality, and broader
+process/disk crash evidence.
 
 Attacker story: Mallory captures a protected request and resubmits it after the
 invitation expires and is reissued with the same invitation and request IDs.
@@ -706,8 +714,11 @@ that inviter row the sole Welcome-delivery ledger with persistent store
 identity, exact canonical material, bounded attempts, generation/identity-bound
 leases, and delivered/exhausted/expired terminal states. Retained tests reject
 stale and foreign results and reconcile an ambiguous prior adapter acceptance
-byte-identically after reopen. This does not establish product admission
-integration, a platform key protector, rollback resistance, production
+byte-identically after reopen. The real capability path additionally recovers
+an ambiguous SQL commit before finalizing its in-memory invitation shadow,
+reopens the store, delivers once, and proves the original joiner consumes that
+Welcome without a second MLS Add. This does not establish a durable client,
+platform key protector, rollback resistance, production
 packaging, behavior on broader hardware/OS versions, power-loss safety, or
 secure deletion.
 

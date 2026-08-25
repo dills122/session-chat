@@ -33,9 +33,17 @@ material. Close/reopen tests cover stale and foreign leases, expiry, exhaustion,
 and byte-identical retry after an unrecorded remote acceptance without repeating
 the retained MLS epoch or reopening invitation state.
 
+The retained capability-composition test now drives a fresh HPKE-protected
+request through exact capability admission, simulated explicit approval, and
+the real MLS Add. Admission returns a one-shot durability-pending result: an
+ambiguous SQL commit is recovered by transaction ID before the in-memory
+invitation shadow is finalized. After close/reopen, the sole-owner coordinator
+delivers the canonical Welcome once and the original joiner enters the exact
+two-member group; replaying the protected request remains rejected.
+
 This adapter is durability-laboratory evidence, not production storage. It has
 no platform keychain integration, rollback anchor, disk-full or power-loss
-evidence, rekey/backup/deletion policy, product admission composition, or
+evidence, rekey/backup/deletion policy, durable `sessionctl` composition, or
 secure-erasure guarantee. Hosted-runner evidence is not a production packaging
 or broader hardware/OS compatibility claim.
 

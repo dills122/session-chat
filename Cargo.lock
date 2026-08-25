@@ -1114,8 +1114,13 @@ dependencies = [
 name = "storage-sqlcipher"
 version = "0.1.0"
 dependencies = [
+ "admission-capability",
+ "aws-lc-rs",
  "mls-rs-core",
  "rusqlite",
+ "session-admission",
+ "session-core",
+ "session-crypto-hpke",
  "session-crypto-mls",
  "session-protocol",
  "session-transport",

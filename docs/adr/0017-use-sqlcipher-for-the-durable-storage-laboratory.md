@@ -42,6 +42,11 @@ libraries across the three required CI operating systems.
   acceptance, and failure transition uses one immediate SQL transaction;
   restart reconstructs work from this ledger, and stale or foreign lease
   results fail closed.
+- The real capability-admission/MLS composition uses an explicit
+  durability-pending one-shot value. A proven SQL rollback releases its
+  in-memory admission reservations and requires the transient MLS group to be
+  discarded; an ambiguous result preserves them until recovery proves commit
+  or rollback. No Welcome is exposed before committed recovery.
 - The adapter retains SQLCipher's default memory policy, which locks and
   sanitizes its internal cryptographic allocations without enabling the
   optional process-wide wiping of every SQLite allocation.
@@ -68,8 +73,8 @@ and Linux before adding any native enhanced protector.
   Linux Secret Service implementations in parallel;
 - test process kill at every production adapter write boundary, disk full,
   truncation, tampering, migration, rekey, backup, and deletion;
-- integrate the durable inviter transaction and Welcome coordinator with the
-  real capability-admission product path;
+- extend the proven capability-admission/MLS/storage composition into the
+  durable headless client and independent-process L1 runner;
 - select or explicitly defer a trusted monotonic rollback anchor; and
 - independently review the exact MLS, SQLCipher, and platform-protector boundary.
 

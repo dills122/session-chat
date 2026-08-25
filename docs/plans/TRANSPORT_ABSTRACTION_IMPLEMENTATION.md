@@ -1,9 +1,8 @@
 # Implementation plan: profile-bound transport abstraction
 
-Status: active staged implementation plan; ADR 0015 is accepted, the LocalV1
-in-memory coordinator checkpoint is complete, Task 3 is partial, and Task 9's
-durable owner-store increment is active before product composition or network
-work
+Status: active staged implementation plan; ADR 0015 is accepted, Task 3 is
+partial, and Task 9's durable owner-store plus capability-admission/MLS
+composition checkpoints are complete before independent-process or network work
 
 Date: 2026-08-20
 
@@ -634,6 +633,10 @@ idempotent and cannot repeat MLS Add or Commit.
 - [x] The SQLCipher adapter proves the owner-port properties across close/reopen
   and its retained pre/post-commit storage faults. Process-kill and disk/power
   evidence remain separate L2 gates.
+- [x] The real capability-admission and MLS path defers in-memory invitation
+  consumption while SQL durability is unresolved, recovers an ambiguous commit
+  by transaction ID, finalizes once, reopens the owner store, and delivers the
+  byte-identical Welcome without repeating MLS membership.
 
 **Verification:**
 
@@ -659,12 +662,12 @@ and the future durable MLS/storage increment governed by ADRs 0008 and 0015
 
 ## Checkpoint: Phase 1 transport control path
 
-- [ ] Memory transport remains deterministic and offline.
-- [ ] The complete Phase 1 headless flow passes through the common transport
+- [x] Memory transport remains deterministic and offline.
+- [x] The complete Phase 1 headless flow passes through the common transport
   boundary.
 - [ ] Duplicate/reordered delivery and crash recovery cannot repeat membership
   transitions.
-- [ ] The owner-local transaction store is the sole durable outbox and lease
+- [x] The owner-local transaction store is the sole durable outbox and lease
   authority; coordinator restart does not create a second ledger.
 - [ ] `cargo fmt --all --check`
 - [ ] `cargo clippy --workspace --all-targets -- -D warnings`

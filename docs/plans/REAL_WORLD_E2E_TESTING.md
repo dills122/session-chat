@@ -13,10 +13,11 @@ re-run through processes, durable storage, real transports, and supported
 platforms as those components become real.
 
 This strategy defines the permanent test layers, scenario catalog, evidence
-format, CI cadence, and release gates. A headless in-process client, isolated
-SQLCipher durability laboratory, sealed-vault model, and deterministic memory
-transport exist. It does not claim that a two-process runner, product-integrated
-durable store, hosted realm, desktop client vault, or real-network adapter exists.
+format, CI cadence, and release gates. A headless in-process client, a real
+capability-admission/MLS composition test over the SQLCipher durability
+laboratory, a sealed-vault model, and deterministic memory transport exist. It
+does not claim that a two-process runner, durable `sessionctl` client, hosted
+realm, desktop client vault, or real-network adapter exists.
 
 ## Principles
 
@@ -82,11 +83,11 @@ records, roadmap gates, and external audit findings can refer to the same case.
 | --- | --- | --- |
 | `session-protocol` | Canonical fixtures and malformed/boundary tests | Continuous fuzz corpus, compatibility corpus, and cross-version decode matrix |
 | `session-core` | Invitation validation and lifecycle state tests | Two-process invitation/join orchestration with restart and concurrent request races |
-| `admission-capability` | Exact binding, replay, expiry, and reservation tests | Full hostile first-contact scenario through the headless client and transaction boundary |
+| `admission-capability` | Exact binding, replay, expiry, reservation, and durability-resolution tests | Full hostile first-contact scenario through the independent-process client boundary |
 | `session-crypto-hpke` | RFC and independent-provider vectors plus hostile context rejection | Cross-process protected join with captured ciphertext inspection |
 | `session-crypto-mls` | Two-party lifecycle, replay/reorder, update/removal, and storage-call evidence | Cross-implementation vectors where available, process restart, durable state, and corrupted-state tests |
 | `session-inviter-transaction` | Deterministic atomicity/fault model plus LocalV1 coordinator owner-port acceptance, failure, and ambiguous exact-retry integration | Real database process-kill, disk-full/I/O failure, restore, and stale-snapshot evidence |
-| `storage-sqlcipher` | Real inviter and joiner MLS transaction, schema-v2 migration, sole-owner Welcome leases, stale/foreign rejection, exhaustion/expiry, ambiguous exact-retry, rollback, and close/reopen laboratory tests | Capability-admission product composition, process-kill, disk/power fault, restore, and stale-snapshot evidence |
+| `storage-sqlcipher` | Real capability admission and inviter MLS composition, ambiguous commit recovery, schema-v2 migration, sole-owner Welcome leases, stale/foreign rejection, exhaustion/expiry, exact retry, rollback, close/reopen delivery, and real joiner MLS consumption | Durable `sessionctl` composition, process-kill, disk/power fault, restore, and stale-snapshot evidence |
 | `session-transport`, `transport-memory`, and `transport-conformance` | Local and provider-neutral right separation, bounds, idempotency, canonical opaque envelopes, deterministic adverse controls, strict bounded double-replay conformance with defective bridges, fail-closed LocalV1 binding, a deposit-only coordinator, and cross-platform blocking supervision | Provider-wide conformance, durable owner-store composition, real network adapters, and packet-captured evidence |
 | `sessionctl` | In-process two-client capability join, simulated approval, Welcome delivery, messaging, update, removal, and coarse output | Independent-process L1 runner and machine-readable redacted evidence producer |
 | Client vault | Sealed lifecycle, opaque locked inbox, bounded unlock orchestration, and portable passphrase laboratory | Product storage composition, OS credential input, process isolation, crash-dump, rollback, recovery, and deletion evidence |
@@ -180,10 +181,9 @@ passes a happy path.
 1. Connect the real SQLCipher transactions through the same sole-owner
    coordinator port, with process/disk-fault evidence before any durability
    claim.
-2. Integrate the atomic inviter transaction and coordinator into the real
-   admission/MLS product composition without repeating the existing MLS
-   transition.
-3. Extend the existing in-process `sessionctl` composition into the canonical
+2. Extend the proven capability-admission/MLS/SQLCipher composition into
+   `sessionctl` without repeating the existing MLS transition.
+3. Extend that composition into the canonical
    independent-process L1 runner and redacted evidence producer.
 4. Add provider-wide lifecycle/cursor conformance and only then retain a
    packet-captured network adapter experiment.
@@ -203,9 +203,9 @@ passes a happy path.
   conformance crate parses retained traces and executes one normalized
   double-replay memory lifecycle, but no complete reusable adapter verdict or
   deliberately defective-adapter suite exists.
-- SQLCipher transaction and durable coordinator-owner evidence exists, but no
-  capability-admission product integration, process-crash, disk/power-fault,
-  restore, or stale-snapshot harness exists.
+- SQLCipher transaction, capability-admission/MLS composition, and durable
+  coordinator-owner evidence exists, but no durable `sessionctl`, process-crash,
+  disk/power-fault, restore, or stale-snapshot harness exists.
 - The supported-platform CI matrix exists for current Rust foundations, but no
   real transport, packet-capture lane, containerized realm, desktop application,
   signed release, or operated release matrix exists.

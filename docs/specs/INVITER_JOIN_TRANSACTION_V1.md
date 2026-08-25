@@ -1,7 +1,8 @@
 # Spec: inviter join transaction v1
 
-Status: implementation contract; fault-injectable in-memory conformance model
-and SQLCipher durable Welcome-owner subset implemented
+Status: implementation contract; fault-injectable in-memory conformance model,
+SQLCipher durable Welcome owner, and real capability-admission/MLS composition
+implemented
 
 ## Objective
 
@@ -20,10 +21,11 @@ acknowledgement failure cannot release the invitation, erase replay state, or
 roll back the MLS epoch.
 
 The first implementation is a deterministic, bounded, fault-injectable memory
-model. The later `storage-sqlcipher` laboratory now passes the durable
-Welcome-owner subset across close/reopen and schema migration. Neither adapter
-establishes rollback resistance, production readiness, or product-path
-integration.
+model. The `storage-sqlcipher` laboratory passes the durable Welcome-owner
+subset across close/reopen and schema migration. A retained real
+capability-admission/MLS integration holds a one-shot durability-pending result
+until recovery resolves the SQL outcome. These adapters do not establish
+rollback resistance, production readiness, or durable-client integration.
 
 ## Assumptions
 

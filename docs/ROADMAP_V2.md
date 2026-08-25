@@ -75,12 +75,15 @@ now exercises the accepted inviter transaction's atomic visibility, exact retry,
 ambiguous-result recovery, and Welcome-outbox leasing semantics under injected
 memory-model faults. The in-memory inviter outbox now implements the LocalV1
 coordinator owner port and retains exact acceptance/failure/ambiguous-retry
-evidence against the real local mailbox. Human approval UX, integration of the
-transaction with the real MLS/admission product path, and network transport
-work listed below remain outstanding. The separate SQLCipher laboratory now
+evidence against the real local mailbox. The real capability-admission/MLS path
+now crosses the SQLCipher transaction through an explicit durability-pending
+one-shot value, recovers an ambiguous commit, finalizes invitation state once,
+reopens the owner store, and delivers the exact Welcome to the original joiner.
+Human approval UX, durable `sessionctl` composition, and network transport work
+listed below remain outstanding. The separate SQLCipher laboratory now
 implements the same sole-owner coordinator port with version-2 migration,
 close/reopen leases, terminal states, and ambiguous exact-retry evidence; it is
-not yet the admission product path.
+not yet a durable client or independent-process path.
 
 The provider-neutral right-specific transport trait and its separate
 `transport-memory` adapter now retain deterministic drop, duplicate,
@@ -149,7 +152,7 @@ coordinator owner port with persistent store identity, bounded attempts,
 generation/identity-bound leases, explicit terminal states, and version-1
 migration fixtures. Tests cover rollback, stale/foreign leases, ambiguous
 byte-identical delivery recovery, and close/reopen on the required Linux,
-macOS, and Windows CI runners. Product admission composition, platform-vault,
+macOS, and Windows CI runners. Durable `sessionctl` composition, platform-vault,
 disk/power fault, production packaging, and rollback-anchor gates remain.
 
 ADR 0019 and `key-protector-passphrase` now retain the bounded portable

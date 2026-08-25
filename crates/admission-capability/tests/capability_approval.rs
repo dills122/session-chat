@@ -126,6 +126,8 @@ fn pending_capability_exposes_exact_non_authorizing_approval_context() {
         .expect("exact local invitation is reserved");
 
     let context = pending.approval_context();
+    assert_eq!(pending.invitation_id(), &fixture.invitation_id);
+    assert_eq!(pending.join_request_id(), &REQUEST_ID);
     assert_eq!(context.method(), AdmissionMethod::SecretCapability);
     assert_eq!(context.invitation_id(), &fixture.invitation_id);
     assert_eq!(context.join_request_id(), &REQUEST_ID);
@@ -262,6 +264,10 @@ fn request_expiry_before_prepare_releases_both_state_machines() {
     else {
         panic!("approval must produce the one-shot approved value");
     };
+    assert_eq!(
+        approved.key_package_reference(),
+        &fixture.key_package_reference
+    );
     let inviter = create_client().expect("create inviter");
     let mut group = inviter.create_group(group_id(), NOW).expect("create group");
 
@@ -276,6 +282,79 @@ fn request_expiry_before_prepare_releases_both_state_machines() {
     assert_eq!(
         fixture.registry.lifecycle(&fixture.invitation_id),
         Some(InvitationLifecycle::Available)
+    );
+}
+
+#[test]
+fn endpoint_expiry_at_approval_decision_releases_both_state_machines() {
+    let response_endpoint = LocalWelcomeDepositEndpoint::new(
+        [0x64; 16],
+        [0x74; 16],
+        DepositCapability::new([0x84; 32]).expect("nonzero deposit capability"),
+        NOW + 60,
+    )
+    .expect("create shorter-lived endpoint");
+    let mut fixture = approval_fixture_with_endpoint(response_endpoint);
+    let mut verifier = verifier();
+    let verified = verifier
+        .verify_and_reserve(fixture.opened, NOW)
+        .expect("automated verification succeeds");
+    let pending = verifier
+        .reserve_v2_for_approval(&mut fixture.registry, &fixture.validated, verified, NOW)
+        .expect("reserve invitation");
+
+    assert!(matches!(
+        verifier.decide_v2(
+            &mut fixture.registry,
+            pending,
+            ManualApprovalDecision::Approve,
+            NOW + 60,
+        ),
+        Err(CapabilityAdmissionError::Rejected)
+    ));
+    assert_eq!(verifier.pending_count(), 0);
+    assert_eq!(
+        fixture.registry.lifecycle(&fixture.invitation_id),
+        Some(InvitationLifecycle::Available)
+    );
+}
+
+#[test]
+fn foreign_verifier_cannot_prepare_an_approved_exact_add() {
+    let mut fixture = approval_fixture();
+    let mut owner = verifier();
+    let verified = owner
+        .verify_and_reserve(fixture.opened, NOW)
+        .expect("automated verification succeeds");
+    let pending = owner
+        .reserve_v2_for_approval(&mut fixture.registry, &fixture.validated, verified, NOW)
+        .expect("reserve invitation");
+    let CapabilityApprovalOutcome::Approved(approved) = owner
+        .decide_v2(
+            &mut fixture.registry,
+            pending,
+            ManualApprovalDecision::Approve,
+            NOW,
+        )
+        .expect("record approval")
+    else {
+        panic!("approval must produce the one-shot approved value");
+    };
+    let inviter = create_client().expect("create inviter");
+    let mut group = inviter.create_group(group_id(), NOW).expect("create group");
+    let mut foreign = verifier();
+
+    assert!(matches!(
+        foreign.prepare_approved_add(&mut fixture.registry, approved, &mut group, NOW),
+        Err(CapabilityAdmissionError::ReservationMismatch)
+    ));
+    assert_eq!(group.epoch(), 0);
+    assert_eq!(group.member_count(), 1);
+    assert_eq!(owner.pending_count(), 1);
+    assert_eq!(foreign.pending_count(), 0);
+    assert_eq!(
+        fixture.registry.lifecycle(&fixture.invitation_id),
+        Some(InvitationLifecycle::Reserved)
     );
 }
 
@@ -507,12 +586,156 @@ fn only_approved_exact_value_applies_mls_and_consumes_invitation() {
         committed.key_package_reference(),
         &fixture.key_package_reference
     );
+    assert!(!committed.commit().as_bytes().is_empty());
     assert_eq!(group.epoch(), 1);
     assert_eq!(group.member_count(), 2);
     assert_eq!(verifier.pending_count(), 1);
     assert_eq!(
         fixture.registry.lifecycle(&fixture.invitation_id),
         Some(InvitationLifecycle::Consumed)
+    );
+}
+
+#[test]
+fn durability_pending_join_defers_invitation_consumption_until_commit_is_confirmed() {
+    let mut fixture = approval_fixture();
+    let mut verifier = verifier();
+    let verified = verifier
+        .verify_and_reserve(fixture.opened, NOW)
+        .expect("automated verification succeeds");
+    let pending = verifier
+        .reserve_v2_for_approval(&mut fixture.registry, &fixture.validated, verified, NOW)
+        .expect("reserve invitation");
+    let CapabilityApprovalOutcome::Approved(approved) = verifier
+        .decide_v2(
+            &mut fixture.registry,
+            pending,
+            ManualApprovalDecision::Approve,
+            NOW,
+        )
+        .expect("record approval")
+    else {
+        panic!("approval must produce the one-shot approved value");
+    };
+    let inviter = create_client().expect("create inviter");
+    let mut group = inviter.create_group(group_id(), NOW).expect("create group");
+
+    let durability_pending = verifier
+        .prepare_approved_add(&mut fixture.registry, approved, &mut group, NOW)
+        .expect("prepare approved Add")
+        .apply_awaiting_durability(NOW)
+        .expect("apply MLS while durability remains unresolved");
+
+    assert_eq!(
+        durability_pending.key_package_reference(),
+        &fixture.key_package_reference
+    );
+    assert!(!durability_pending.commit().as_bytes().is_empty());
+    assert!(!durability_pending.welcome().as_bytes().is_empty());
+    assert_eq!(
+        durability_pending
+            .response_endpoint()
+            .expires_at_unix_seconds(),
+        NOW + 120
+    );
+    assert_eq!(group.epoch(), 1);
+    assert_eq!(group.member_count(), 2);
+    assert_eq!(
+        durability_pending.invitation_lifecycle(),
+        Some(InvitationLifecycle::Reserved)
+    );
+    let committed = durability_pending
+        .finalize_committed()
+        .expect("confirmed durable commit consumes the in-memory shadow");
+
+    assert_eq!(
+        committed.key_package_reference(),
+        &fixture.key_package_reference
+    );
+    assert_eq!(verifier.pending_count(), 1);
+    assert_eq!(
+        fixture.registry.lifecycle(&fixture.invitation_id),
+        Some(InvitationLifecycle::Consumed)
+    );
+}
+
+#[test]
+fn proven_uncommitted_durable_join_releases_admission_reservations() {
+    let mut fixture = approval_fixture();
+    let mut verifier = verifier();
+    let verified = verifier
+        .verify_and_reserve(fixture.opened, NOW)
+        .expect("automated verification succeeds");
+    let pending = verifier
+        .reserve_v2_for_approval(&mut fixture.registry, &fixture.validated, verified, NOW)
+        .expect("reserve invitation");
+    let CapabilityApprovalOutcome::Approved(approved) = verifier
+        .decide_v2(
+            &mut fixture.registry,
+            pending,
+            ManualApprovalDecision::Approve,
+            NOW,
+        )
+        .expect("record approval")
+    else {
+        panic!("approval must produce the one-shot approved value");
+    };
+    let inviter = create_client().expect("create inviter");
+    let mut group = inviter.create_group(group_id(), NOW).expect("create group");
+
+    verifier
+        .prepare_approved_add(&mut fixture.registry, approved, &mut group, NOW)
+        .expect("prepare approved Add")
+        .apply_awaiting_durability(NOW)
+        .expect("apply transient MLS state")
+        .release_proven_uncommitted()
+        .expect("known rollback releases both reservations");
+
+    assert_eq!(group.epoch(), 1);
+    assert_eq!(group.member_count(), 2);
+    assert_eq!(verifier.pending_count(), 0);
+    assert_eq!(
+        fixture.registry.lifecycle(&fixture.invitation_id),
+        Some(InvitationLifecycle::Available)
+    );
+}
+
+#[test]
+fn abandoning_ambiguous_durable_join_preserves_reservations_fail_closed() {
+    let mut fixture = approval_fixture();
+    let mut verifier = verifier();
+    let verified = verifier
+        .verify_and_reserve(fixture.opened, NOW)
+        .expect("automated verification succeeds");
+    let pending = verifier
+        .reserve_v2_for_approval(&mut fixture.registry, &fixture.validated, verified, NOW)
+        .expect("reserve invitation");
+    let CapabilityApprovalOutcome::Approved(approved) = verifier
+        .decide_v2(
+            &mut fixture.registry,
+            pending,
+            ManualApprovalDecision::Approve,
+            NOW,
+        )
+        .expect("record approval")
+    else {
+        panic!("approval must produce the one-shot approved value");
+    };
+    let inviter = create_client().expect("create inviter");
+    let mut group = inviter.create_group(group_id(), NOW).expect("create group");
+
+    drop(
+        verifier
+            .prepare_approved_add(&mut fixture.registry, approved, &mut group, NOW)
+            .expect("prepare approved Add")
+            .apply_awaiting_durability(NOW)
+            .expect("apply MLS with ambiguous durability"),
+    );
+
+    assert_eq!(verifier.pending_count(), 1);
+    assert_eq!(
+        fixture.registry.lifecycle(&fixture.invitation_id),
+        Some(InvitationLifecycle::Reserved)
     );
 }
 
