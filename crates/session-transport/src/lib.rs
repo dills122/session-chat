@@ -8,6 +8,7 @@ mod coordinator;
 mod dispatch;
 mod outbox_port;
 mod profile;
+mod supervisor;
 
 pub use capability::{
     LocalWelcomeAcknowledgementCapability, LocalWelcomeMailbox, LocalWelcomeReceiveCapability,
@@ -34,6 +35,9 @@ pub use profile::{
     AdapterExecutionV1, AdapterLimitsV1, AdapterManifestV1, AdapterOperationsV1, AdapterVersionV1,
     BackgroundWorkV1, BindingErrorV1, EgressDeclarationV1, EnforcementModeV1, InternalRetryV1,
     TransportBindingRecordV1, bind_transport_v1,
+};
+pub use supervisor::{
+    BlockingFutureSupervisor, CancellationHandle, SupervisionError, ThreadDispatchControl,
 };
 
 use std::{collections::BTreeMap, error::Error};

@@ -85,9 +85,9 @@ records, roadmap gates, and external audit findings can refer to the same case.
 | `admission-capability` | Exact binding, replay, expiry, and reservation tests | Full hostile first-contact scenario through the headless client and transaction boundary |
 | `session-crypto-hpke` | RFC and independent-provider vectors plus hostile context rejection | Cross-process protected join with captured ciphertext inspection |
 | `session-crypto-mls` | Two-party lifecycle, replay/reorder, update/removal, and storage-call evidence | Cross-implementation vectors where available, process restart, durable state, and corrupted-state tests |
-| `session-inviter-transaction` | Deterministic atomicity and fault model | Real database process-kill, disk-full/I/O failure, restore, and stale-snapshot evidence |
+| `session-inviter-transaction` | Deterministic atomicity/fault model plus LocalV1 coordinator owner-port acceptance, failure, and ambiguous exact-retry integration | Real database process-kill, disk-full/I/O failure, restore, and stale-snapshot evidence |
 | `storage-sqlcipher` | Real inviter and joiner MLS transaction, rollback, ambiguous-result, and close/reopen laboratory tests | Product composition, process-kill, disk/power fault, restore, and stale-snapshot evidence |
-| `session-transport`, `transport-memory`, and `transport-conformance` | Local and provider-neutral right separation, bounds, idempotency, canonical opaque envelopes, deterministic drop/duplicate/hold/release/outage/corruption/stale-replay/acknowledgement-loss controls, a strict bounded secret-free trace parser, and one normalized quiescent double-replay memory trace | Complete reusable verdict suite with defective adapters, profile binder, coordinator, and packet-captured adapters |
+| `session-transport`, `transport-memory`, and `transport-conformance` | Local and provider-neutral right separation, bounds, idempotency, canonical opaque envelopes, deterministic adverse controls, strict bounded double-replay conformance with defective bridges, fail-closed LocalV1 binding, a deposit-only coordinator, and cross-platform blocking supervision | Provider-wide conformance, durable owner-store composition, real network adapters, and packet-captured evidence |
 | `sessionctl` | In-process two-client capability join, simulated approval, Welcome delivery, messaging, update, removal, and coarse output | Independent-process L1 runner and machine-readable redacted evidence producer |
 | Client vault | Sealed lifecycle, opaque locked inbox, bounded unlock orchestration, and portable passphrase laboratory | Product storage composition, OS credential input, process isolation, crash-dump, rollback, recovery, and deletion evidence |
 | Realm services | Design and disposable invitation-provider spike only | Container isolation, quotas, migration/restore, and operational redaction tests |
@@ -177,17 +177,16 @@ passes a happy path.
 
 ## Implementation order
 
-1. Finish the remaining transport Task 3 budget-aware request/receipt, polling,
-   lifecycle, and provider-wide redaction boundaries.
-2. Connect the retained adverse-trace parser to the deterministic
-   `transport-memory` fault controls through a normalized virtual-clock runner.
-3. Complete the shared adapter conformance harness, including double replay and
-   deliberately defective adapters.
-4. Extend the existing in-process `sessionctl` composition into the canonical
+1. Connect the real SQLCipher transactions through the same sole-owner
+   coordinator port, with process/disk-fault evidence before any durability
+   claim.
+2. Integrate the atomic inviter transaction and coordinator into the real
+   admission/MLS product composition without repeating the existing MLS
+   transition.
+3. Extend the existing in-process `sessionctl` composition into the canonical
    independent-process L1 runner and redacted evidence producer.
-5. Connect the real SQLCipher transactions through the durable Phase 1
-   admission/MLS/invitation/Welcome-outbox composition, then add process and
-   disk-fault runners before claiming product durability.
+4. Add provider-wide lifecycle/cursor conformance and only then retain a
+   packet-captured network adapter experiment.
 6. Add the containerized realm runner before deployment claims.
 7. Evaluate Fast, Tor/Arti, SMP, and mixnet candidates through the same scenario
    IDs, evidence schema, and packet-capture policy.

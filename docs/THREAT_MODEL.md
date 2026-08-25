@@ -270,8 +270,9 @@ Assumptions:
   adapter surface, exact canonical reconstruction, one-attempt budget, coarse
   failures, and drop-on-supervision evidence now include the in-memory inviter
   owner port and exact retry after an unrecorded remote acceptance. They do not
-  prove automatic deadline wakeups, durable restart recovery, receipt, or
-  recipient processing.
+  now include cross-platform wake/cancel/deadline supervision and pending-work
+  drop for the standard-library blocking baseline. They do not prove durable
+  restart recovery, receipt, recipient processing, or future UI-runtime wiring.
 
 ### Trust boundary: local persistent storage and operating system
 

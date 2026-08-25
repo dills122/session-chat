@@ -38,9 +38,11 @@ processing.
 4. **Corrected in the inviter conformance model.** Retained LocalV1 destination
    bytes are the existing canonical transferable Welcome endpoint schema and
    can be decoded without inventing a second format.
-5. `DispatchControl` observes clocks/cancellation but does not supply wakeups.
-   The composition root must explicitly supervise deadline/cancellation and
-   drop the returned future; no active-preemption claim is allowed.
+5. **Corrected for the cross-platform baseline.** `DispatchControl` remains an
+   observation contract, while the optional standard-library blocking
+   supervisor waits on legal future wakeups, cancellation, or a monotonic
+   deadline and drops unfinished work. This is not active preemption and does
+   not select the future UI runtime.
 6. The plan must reference governing ADR 0008 and the actual SQLCipher inviter
    schema rather than nonexistent transaction files or a duplicate ADR.
 

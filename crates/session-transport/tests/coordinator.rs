@@ -7,12 +7,13 @@ use std::{
 
 use session_protocol::OpaqueEnvelope;
 use session_transport::{
-    AcknowledgementReceipt, AcknowledgementRequest, AcknowledgementRight, CoordinatorError,
-    CoordinatorOutcome, CoordinatorPolicy, DeliveryId, DepositEndpointResolver, DepositReceipt,
-    DepositRequest, DepositRight, DispatchControl, EnvelopeDelivery, LeasedWelcome,
+    AcknowledgementReceipt, AcknowledgementRequest, AcknowledgementRight, BlockingFutureSupervisor,
+    CoordinatorError, CoordinatorOutcome, CoordinatorPolicy, DeliveryId, DepositEndpointResolver,
+    DepositReceipt, DepositRequest, DepositRight, DispatchControl, EnvelopeDelivery, LeasedWelcome,
     LocalMailboxPolicy, LocalMemoryWelcomeTransport, LocalV1DepositEndpointResolver,
-    OutboxPortError, PollRequest, ReceiveBatch, ReceiveRight, RetryAdvice, TransportFailure,
-    TransportFailureCode, WelcomeDeliveryCoordinator, WelcomeOutboxPort,
+    OutboxPortError, PollRequest, ReceiveBatch, ReceiveRight, RetryAdvice, SupervisionError,
+    ThreadDispatchControl, TransportFailure, TransportFailureCode, WelcomeDeliveryCoordinator,
+    WelcomeOutboxPort,
 };
 
 const NOW: u64 = 1_700_000_000;
@@ -216,7 +217,11 @@ impl EnvelopeDelivery for PendingAdapter {
 }
 
 fn canonical_envelope() -> Vec<u8> {
-    OpaqueEnvelope::new([0x31; 16], NOW + 60, vec![0x32; 32])
+    canonical_envelope_at(NOW + 60)
+}
+
+fn canonical_envelope_at(expires_at_unix_seconds: u64) -> Vec<u8> {
+    OpaqueEnvelope::new([0x31; 16], expires_at_unix_seconds, vec![0x32; 32])
         .expect("bounded envelope")
         .encode_canonical()
         .expect("canonical envelope")
@@ -334,24 +339,35 @@ fn malformed_owner_work_fails_before_adapter_entry() {
 }
 
 #[test]
-fn dropping_a_supervised_pending_run_drops_adapter_work_and_leaves_owner_lease() {
-    let start = Instant::now();
-    let control = TestControl {
-        monotonic_now: start,
-        wall_now_unix_seconds: NOW,
+fn deadline_supervision_drops_pending_adapter_work_and_leaves_owner_lease() {
+    let (control, _cancellation) = ThreadDispatchControl::new();
+    let wall_now = control
+        .wall_now_unix_seconds()
+        .expect("system wall clock is available");
+    let mut store = TestStore {
+        job: Some((
+            canonical_envelope_at(wall_now + 60),
+            b"endpoint".to_vec(),
+            wall_now + 30,
+        )),
+        leased: false,
+        accepted: 0,
+        failed: 0,
     };
-    let mut store = store(canonical_envelope());
     let mut adapter = PendingAdapter {
         started: false,
         dropped: false,
     };
     let mut resolver = TestResolver;
     let coordinator = coordinator();
-    let mut run = Box::pin(coordinator.run_once(&mut store, &mut resolver, &mut adapter, &control));
-    let waker = Waker::noop();
-    let mut context = Context::from_waker(waker);
-    assert!(matches!(run.as_mut().poll(&mut context), Poll::Pending));
-    drop(run);
+    assert_eq!(
+        BlockingFutureSupervisor::run(
+            coordinator.run_once(&mut store, &mut resolver, &mut adapter, &control),
+            &control,
+            Instant::now() + Duration::from_millis(20),
+        ),
+        Err(SupervisionError::DeadlineElapsed)
+    );
 
     assert!(adapter.started);
     assert!(adapter.dropped);

@@ -134,7 +134,7 @@ remains in `transport-memory`.
 | `T5-MEMORY-FAULTS` | Lead implementation | `T5-TRACE` | Complete | The memory provider supplies bounded outage, corruption, exact-byte stale-replay, acknowledgement-loss, release, and secret-free probe controls without weakening existing semantics. |
 | `T6-HARNESS` | Lead implementation | `T5-MEMORY-FAULTS` | Complete | The bounded wake-aware runner replays retained traces twice against fresh memory adapters; common verdicts, exact retry identity, drop/quiescence, redaction, and deliberately defective bridges are covered. |
 | `T8-OWNER-PREREQS` | Lead implementation | `R7-COORD` | Complete | The inviter model issues scoped leases, terminalizes exhausted work, validates canonical LocalV1 delivery material and expiry scope, and rejects stale or foreign lease results. |
-| `T8-COORDINATOR` | Lead implementation | `T8-OWNER-PREREQS` | In progress | The deposit-only port, one-attempt policy executor, LocalV1 resolver/adapter bridge, inviter-store integration, and pending-drop evidence exist; a runtime supervisor remains. |
+| `T8-COORDINATOR` | Lead implementation | `T8-OWNER-PREREQS` | Complete | The deposit-only port, one-attempt policy executor, LocalV1 resolver/adapter bridge, inviter-store integration, and cross-platform wake/cancel/deadline/drop supervisor are retained. |
 | `T9-INMEMORY-INTEGRATION` | Lead implementation | `T8-COORDINATOR` | Complete | The atomic inviter outbox drives the real LocalV1 mailbox; acceptance, adapter failure, and ambiguous exact retry preserve one membership commit and one authoritative ledger. |
 | `R7-COORD` | Read-only research | Tasks 5-6 contracts | Complete | Exact deposit-only coordinator/outbox ownership, recovery transitions, and five blocking contract defects are mapped for later Tasks 8-9. |
 | `R7-CURSOR` | Read-only research | ADRs 0010/0015 | Complete | Generation-bound cursor, persist-before-acknowledge, mailbox rotation, restart, and stale-state requirements are recorded without selecting a provider. |
@@ -537,13 +537,13 @@ root. Do not connect SQLCipher or claim durable restart in this slice.
   canonically validated.
 - [x] LocalV1 deposit material uses the reconstructible canonical
   `LocalWelcomeDepositEndpoint` schema.
-- [ ] The coordinator composition root supplies bounded wake/deadline/cancel
+- [x] The coordinator composition root supplies bounded wake/deadline/cancel
   supervision and drops unfinished adapter futures.
 
 **Acceptance criteria:**
 
 - [x] Duplicate delivery never emits two accepted core events.
-- [ ] Retry never exceeds attempts, bytes, deadline, or envelope expiration.
+- [x] Retry never exceeds attempts, bytes, deadline, or envelope expiration.
 - [x] Adapter success/failure cannot reopen invitation or MLS membership state.
 - [x] There is exactly one authoritative outbox/lease record for a Welcome.
 
@@ -551,13 +551,15 @@ root. Do not connect SQLCipher or claim durable restart in this slice.
 
 - [x] Each retained coordinator dispatch uses one attempt, bounded bytes, and a
   deadline subordinate to the owner lease.
-- [ ] A real composition root wakes and drops pending work at that deadline.
+- [x] The cross-platform blocking composition baseline wakes and drops pending
+  work at that deadline; UI runtimes may provide an equivalent driver.
 
 - [ ] Model or property tests exercise arbitrary duplicate/reorder/loss traces.
 - [ ] Tests distinguish deposit acceptance, receipt, acknowledgement, and
   application processing.
 - [x] A deliberately stale or foreign lease cannot report delivery state.
 - [x] `cargo test -p session-transport --test coordinator --all-features --locked --offline`
+- [x] `cargo test -p session-transport --test supervisor --all-features --locked --offline`
 
 **Dependencies:** Tasks 5, 6, and 7
 

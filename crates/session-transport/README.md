@@ -35,10 +35,13 @@ lease from an owner-store port, rebuilds exact canonical envelope and endpoint
 values, creates a one-attempt finite budget, and reports only adapter acceptance
 or failure back to that same owner. The encoded endpoint is zeroized and never
 implements ordinary diagnostics. The real local mailbox implements this narrow
-surface, while the composition root remains responsible for waking and dropping
-a pending coordinator future at its deadline. The LocalV1 profile binder and
-non-secret binding record exist; owner-store integration, a runtime supervisor,
-durable storage, and network adapters remain later work.
+surface. The optional standard-library blocking supervisor provides a
+cross-platform headless/worker-thread baseline that waits on proper future
+wakes, external cancellation, or a monotonic deadline and drops unfinished
+adapter work. UI runtimes may supply a non-blocking equivalent without changing
+the coordinator contract. The LocalV1 profile binder, non-secret binding
+record, and in-memory owner-store integration exist; durable storage, headless
+product-flow adoption, and network adapters remain later work.
 
 `RetryAdvice::Never` ends attempts under the current operation budget. If a
 deposit may already have committed, a coordinator may reconcile only the exact

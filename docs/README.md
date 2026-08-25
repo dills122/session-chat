@@ -51,8 +51,9 @@ all.
   records generation-bound cursor, persist-before-acknowledge, rotation, and
   restart requirements without selecting a network provider.
 - [Welcome delivery coordinator research](research/WELCOME_DELIVERY_COORDINATOR_2026-08-25.md)
-  maps the future deposit-only coordinator to the inviter-owned outbox and
-  identifies the spec corrections required before implementation.
+  maps the implemented deposit-only coordinator and standard-library
+  supervision baseline to the inviter-owned outbox while preserving the
+  remaining durable-storage and UI-runtime gaps.
 - [Transport abstraction implementation plan](plans/TRANSPORT_ABSTRACTION_IMPLEMENTATION.md)
   sequences stabilization of the existing local adapter and outbox model, the
   generalized contract, conformance harness, coordinator, and later

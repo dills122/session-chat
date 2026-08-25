@@ -207,9 +207,12 @@ The active Rust laboratory now contains fourteen narrow pieces of this architect
   makes one bounded adapter call through a sender-only interface. The in-memory
   inviter transaction model implements the sole-owner port, with retained
   evidence for acceptance, failure, and exact ambiguous-result retry without
-  repeating membership. A runtime deadline supervisor and durable owner-store
-  adapter do not exist; Fast, Private, network authority, and network adapters
-  remain unavailable.
+  repeating membership. A cross-platform standard-library blocking supervisor
+  retains wake, cancellation, deadline, and pending-drop evidence for headless
+  or worker-thread composition; a future UI may replace it behind the same
+  runtime-neutral future contract. A durable owner-store adapter does not
+  exist; Fast, Private, network authority, and network adapters remain
+  unavailable.
 - `transport-memory` implements both traits with bounded deterministic drop,
   hold/release, duplication, reordering, retry, outage, one-shot corruption,
   exact-byte stale replay, acknowledgement-result loss, poll-page, exact-set

@@ -52,7 +52,8 @@ Current areas:
 - `crates/session-transport`: bounded local one-Welcome mailbox with distinct
   deposit, receive, and acknowledgement authorities plus the provider-neutral
   right-specific opaque-envelope transport trait and a fail-closed LocalV1-only
-  manifest/binding-record slice
+  manifest/binding-record slice, deposit-only coordinator, sole-owner outbox
+  port, and cross-platform blocking supervision baseline
 - `crates/transport-memory`: bounded deterministic delivery-fault adapter for
   opaque-envelope headless and conformance tests; not a network transport
 - `crates/transport-conformance`: publish-disabled offline trace-schema and
