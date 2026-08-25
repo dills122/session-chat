@@ -119,11 +119,12 @@ separate gates.
 The Rust source-coverage gate now measures production code through integration
 targets without counting inline test helpers. The clean-master baseline was
 90.78% workspace lines; retained negative-path tests raise the enforced result
-to 92.24%, with every security- and correctness-vital library component at or
-above 90%. Stable region and function ratchets are also enforced. `sessionctl`
-remains explicitly measured and frozen at 78.28% while narrow orchestration
-fault seams are added; it is not excluded or represented as meeting 90%. Exact
-scope, commands, counts, and exclusions are in
+to 92.82%, with every security- and correctness-vital component at or above
+90%. Stable region and function ratchets are also enforced. `sessionctl` now
+uses named, secret-free orchestration fault seams to cover cross-crate failure
+mapping, cleanup, post-commit Welcome failure, and dropped delivery while its
+normal successful flow remains unchanged. Exact scope, commands, counts, and
+exclusions are in
 [`CODE_COVERAGE.md`](CODE_COVERAGE.md).
 
 The first `session-storage` increments now make the selected sealed-vault

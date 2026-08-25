@@ -75,19 +75,19 @@ the coverage workstream after its behavior-focused tests.
 | `session-core` | 334/376 (88.83%) | 343/376 (91.22%) | 90% |
 | `session-crypto` | 50/63 (79.37%) | 63/63 (100.00%) | 90% |
 | `session-crypto-hpke` | 229/232 (98.71%) | 229/232 (98.71%) | 90% |
-| `session-crypto-mls` | 611/687 (88.94%) | 626/687 (91.12%) | 90% |
+| `session-crypto-mls` | 611/687 (88.94%) | 627/687 (91.27%) | 90% |
 | `session-inviter-transaction` | 459/486 (94.44%) | 459/486 (94.44%) | 90% |
 | `session-protocol` | 1176/1245 (94.46%) | 1176/1245 (94.46%) | 90% |
 | `session-storage` | 501/521 (96.16%) | 501/521 (96.16%) | 90% |
 | `session-transport` | 1032/1097 (94.07%) | 1032/1097 (94.07%) | 90% |
-| `sessionctl` | 292/373 (78.28%) | 292/373 (78.28%) | 78.28% ratchet |
+| `sessionctl` | 292/373 (78.28%) | 470/510 (92.16%) | 90% |
 | `storage-sqlcipher` | 650/742 (87.60%) | 676/742 (91.11%) | 90% |
 | `transport-conformance` | 1325/1514 (87.52%) | 1364/1514 (90.09%) | 90% |
 | `transport-memory` | 808/920 (87.83%) | 835/920 (90.76%) | 90% |
-| **Workspace** | **8034/8850 (90.78%)** | **8163/8850 (92.24%)** | **92.23% ratchet** |
+| **Workspace** | **8034/8850 (90.78%)** | **8342/8987 (92.82%)** | **92.23% ratchet** |
 
-The workspace also moved from 86.88% to 88.54% region coverage and from
-83.47% to 85.64% function coverage. CI floors the current stable evidence at
+The workspace also moved from 86.88% to 89.38% region coverage and from
+83.47% to 90.76% function coverage. CI retains its existing stable floors at
 92.23% lines, 88.53% regions, and 85.64% functions. The slight fractional
 margin avoids making display rounding part of the contract.
 
@@ -127,14 +127,11 @@ slide back to the minimum. A new production file, missing component, stale
 allowance, tool-version drift, integration-test failure, or threshold regression
 fails `CI / Rust production coverage` and therefore `CI / Gate`.
 
-`sessionctl` is the one documented component exception. Its successful
-orchestration is measured, but many private one-line error-mapping closures can
-currently be reached only by injecting failures between cross-crate operations.
-The 78.28% result is frozen rather than excluded or counted as 90%. Close this
-gap by introducing narrow, production-appropriate orchestration seams and tests
-for each failure milestone; do not refactor closures solely to manipulate the
-denominator. Raise the component ratchet with each retained slice until it also
-reaches 90%.
+`sessionctl` now injects failures only at named cross-crate operation-result
+boundaries. Its integration tests cover coarse redacted error mapping,
+reservation and pending-Commit cleanup, post-membership Welcome failure, a
+dropped application delivery, and final orchestration quiescence. The normal
+binary uses the no-fault plan and retains the successful two-client flow.
 
 Stable branch coverage should replace or supplement the region proxy only when
 the pinned Rust/LLVM toolchain provides reproducible cross-platform evidence.
