@@ -2,9 +2,12 @@ use std::time::{Duration, Instant};
 
 use session_protocol::OpaqueEnvelope;
 use session_transport::{
-    AdapterId, BoundedRetryDelay, CanonicalEnvelope, MAX_ADAPTER_ID_BYTES, MAX_RETRY_DELAY_SECONDS,
-    OperationBudget, RetryAdvice, TransportContractError, TransportFailure, TransportFailureCode,
-    TransportProfileId,
+    AcknowledgementReceipt, AcknowledgementRequest, AdapterId, BoundedDeliveryIds,
+    BoundedRetryDelay, CanonicalEnvelope, Cursor, DeliveryId, DepositReceipt, DepositRequest,
+    MAX_ACKNOWLEDGEMENT_IDS, MAX_ADAPTER_ID_BYTES, MAX_CURSOR_BYTES, MAX_POLL_ENCODED_BYTES,
+    MAX_POLL_ENVELOPES, MAX_POLL_WAIT_SECONDS, MAX_RETRY_DELAY_SECONDS, OperationBudget,
+    PollRequest, PollWait, RetryAdvice, TransportContractError, TransportFailure,
+    TransportFailureCode, TransportProfileId,
 };
 
 #[test]
@@ -149,5 +152,161 @@ fn normalized_failures_expose_only_code_and_retry_advice() {
     assert_eq!(
         format!("{failure:?}"),
         "TransportFailure { code: Unavailable, retry: Backoff }"
+    );
+}
+
+#[test]
+fn cursor_is_an_opaque_bounded_non_authority_value() {
+    let cursor = Cursor::new(vec![0x41; MAX_CURSOR_BYTES]).expect("maximum cursor");
+    assert_eq!(cursor.as_bytes(), &[0x41; MAX_CURSOR_BYTES]);
+    assert_eq!(
+        Cursor::new(Vec::new()).err(),
+        Some(TransportContractError::InvalidCursor)
+    );
+    assert_eq!(
+        Cursor::new(vec![0x42; MAX_CURSOR_BYTES + 1]).err(),
+        Some(TransportContractError::InvalidCursor)
+    );
+}
+
+#[test]
+fn poll_request_enforces_count_byte_wait_and_operation_bounds() {
+    let deadline = Instant::now() + Duration::from_secs(120);
+    let budget = OperationBudget::new(deadline, u64::from(MAX_POLL_ENCODED_BYTES), 2)
+        .expect("bounded operation");
+    let cursor = Cursor::new(vec![0x51; 16]).expect("bounded cursor");
+    let wait = PollWait::up_to(Duration::from_secs(MAX_POLL_WAIT_SECONDS)).expect("maximum wait");
+    let request = PollRequest::new(
+        Some(cursor),
+        MAX_POLL_ENVELOPES,
+        MAX_POLL_ENCODED_BYTES,
+        wait,
+        budget,
+    )
+    .expect("bounded poll request");
+
+    assert_eq!(request.cursor().expect("cursor").as_bytes(), &[0x51; 16]);
+    assert_eq!(request.max_envelopes(), MAX_POLL_ENVELOPES);
+    assert_eq!(request.max_encoded_bytes(), MAX_POLL_ENCODED_BYTES);
+    assert_eq!(request.wait().duration(), Duration::from_secs(60));
+    assert_eq!(request.budget(), budget);
+
+    assert_eq!(
+        PollWait::up_to(Duration::ZERO),
+        Err(TransportContractError::InvalidPollWait)
+    );
+    assert_eq!(
+        PollWait::up_to(Duration::from_secs(MAX_POLL_WAIT_SECONDS + 1)),
+        Err(TransportContractError::InvalidPollWait)
+    );
+    assert_eq!(
+        PollRequest::new(None, 0, 1, PollWait::immediate(), budget).err(),
+        Some(TransportContractError::InvalidPollRequest)
+    );
+    assert_eq!(
+        PollRequest::new(
+            None,
+            MAX_POLL_ENVELOPES + 1,
+            1,
+            PollWait::immediate(),
+            budget,
+        )
+        .err(),
+        Some(TransportContractError::InvalidPollRequest)
+    );
+    assert_eq!(
+        PollRequest::new(
+            None,
+            1,
+            MAX_POLL_ENCODED_BYTES + 1,
+            PollWait::immediate(),
+            budget,
+        )
+        .err(),
+        Some(TransportContractError::InvalidPollRequest)
+    );
+
+    let smaller_budget = OperationBudget::new(deadline, 1_024, 1).expect("small budget");
+    assert_eq!(
+        PollRequest::new(None, 1, 1_025, PollWait::immediate(), smaller_budget).err(),
+        Some(TransportContractError::InvalidPollRequest)
+    );
+}
+
+#[test]
+fn deposit_request_owns_one_canonical_envelope_and_finite_budget() {
+    let opaque =
+        OpaqueEnvelope::new([0x61; 16], 1_700_000_060, vec![0x62; 32]).expect("bounded envelope");
+    let expected = opaque.encode_canonical().expect("canonical bytes");
+    let budget = OperationBudget::new(Instant::now() + Duration::from_secs(5), 65_536, 1)
+        .expect("bounded operation");
+    let request = DepositRequest::new(
+        CanonicalEnvelope::from_opaque(opaque).expect("canonical envelope"),
+        budget,
+    )
+    .expect("envelope fits byte budget");
+
+    assert_eq!(request.envelope().as_bytes(), expected);
+    assert_eq!(request.budget(), budget);
+    let (envelope, returned_budget) = request.into_parts();
+    assert_eq!(envelope.as_bytes(), expected);
+    assert_eq!(returned_budget, budget);
+
+    let oversized_for_budget = OpaqueEnvelope::new([0x63; 16], 1_700_000_060, vec![0x64; 1_024])
+        .expect("protocol-bounded envelope");
+    let tiny_budget = OperationBudget::new(Instant::now() + Duration::from_secs(5), 128, 1)
+        .expect("finite but insufficient budget");
+    assert_eq!(
+        DepositRequest::new(
+            CanonicalEnvelope::from_opaque(oversized_for_budget).expect("canonical envelope"),
+            tiny_budget,
+        )
+        .err(),
+        Some(TransportContractError::InvalidDepositRequest)
+    );
+}
+
+#[test]
+fn acknowledgement_request_bounds_identifiers_without_turning_them_into_authority() {
+    let ids = (1..=MAX_ACKNOWLEDGEMENT_IDS)
+        .map(|value| {
+            DeliveryId::from_provider_bytes([u8::try_from(value).expect("small bound"); 16])
+                .expect("nonzero delivery ID")
+        })
+        .collect::<Vec<_>>();
+    let bounded = BoundedDeliveryIds::new(ids).expect("maximum acknowledgement batch");
+    assert_eq!(bounded.len(), usize::from(MAX_ACKNOWLEDGEMENT_IDS));
+    assert!(!bounded.is_empty());
+    assert_eq!(
+        BoundedDeliveryIds::new(Vec::new()).err(),
+        Some(TransportContractError::InvalidAcknowledgementBatch)
+    );
+
+    let oversized = (0..=MAX_ACKNOWLEDGEMENT_IDS)
+        .map(|value| {
+            DeliveryId::from_provider_bytes([u8::try_from(value + 1).expect("small bound"); 16])
+                .expect("nonzero delivery ID")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        BoundedDeliveryIds::new(oversized).err(),
+        Some(TransportContractError::InvalidAcknowledgementBatch)
+    );
+
+    let budget = OperationBudget::new(Instant::now() + Duration::from_secs(5), 4_096, 1)
+        .expect("bounded operation");
+    let request = AcknowledgementRequest::new(bounded, budget);
+    assert_eq!(request.delivery_ids().len(), 64);
+    assert_eq!(request.budget(), budget);
+}
+
+#[test]
+fn receipts_reveal_only_normalized_non_authorizing_outcomes() {
+    let delivery_id = DeliveryId::from_provider_bytes([0x71; 16]).expect("delivery ID");
+    let deposit = DepositReceipt::accepted(delivery_id);
+    assert_eq!(deposit.delivery_id(), &delivery_id);
+    assert_eq!(
+        AcknowledgementReceipt::accepted(),
+        AcknowledgementReceipt::accepted()
     );
 }

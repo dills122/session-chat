@@ -112,10 +112,19 @@ mailbox pieces, but the core needs one envelope-delivery contract.
 ## Adoption gate
 
 The accepted decision permits incremental internal generalization of the
-existing local-only `session-transport` API. The first implementation increment
-adds bounded contract values beside the local API and does not publish a stable
-multi-adapter trait. Capability representation and dispatch must be proven
-against the local adapter before that trait is stabilized. Network adapters
+existing local-only `session-transport` API. The retained additive increments
+now include bounded profile, adapter, canonical-envelope, operation, cursor,
+poll, deposit-request, acknowledgement-batch, and identifier-minimal receipt
+values beside the local API. Version 1 fixes hard ceilings of 256 cursor bytes,
+64 envelopes and 4 MiB of canonical bytes per poll, 60 seconds of requested
+poll wait, and 64 delivery identifiers per acknowledgement operation. A deposit
+request also rejects canonical bytes larger than its total operation byte
+budget before dispatch.
+
+These values do not publish a complete multi-adapter request dispatcher,
+receive-batch contract, generalized capability representation, or mailbox
+lifecycle interface. Capability representation and dispatch must be proven
+against the local adapter before that interface is stabilized. Network adapters
 remain gated on the memory control path and conformance harness.
 
 The owner-local transaction store remains authoritative for Welcome-outbox

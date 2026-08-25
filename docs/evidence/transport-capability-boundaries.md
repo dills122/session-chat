@@ -1,8 +1,8 @@
 # Local transport capability-boundary evidence
 
-Status: implemented local evidence beside the narrow provider-neutral trait;
-generalized request/receipt capability representation and network-provider
-issuance remain unimplemented
+Status: implemented local evidence beside the narrow provider-neutral trait and
+bounded operation-request values; generalized capability representation,
+dispatch, and network-provider issuance remain unimplemented
 
 Date: 2026-08-20
 

@@ -286,6 +286,33 @@ authority. Provider-specific issuance, revocation, serialization, and the full
 budget-aware request/receipt and mailbox-lifecycle boundaries remain gated on
 later Task 3 review.
 
+### First bounded operation-request values
+
+The next additive internal increment fixes these provider-neutral ceilings
+before adapter dispatch:
+
+- an opaque cursor is 1 through 256 bytes;
+- one poll requests 1 through 64 envelopes and at most 4 MiB of aggregate
+  canonical bytes;
+- a requested poll wait is immediate or 1 through 60 seconds and remains
+  subordinate to the monotonic operation deadline;
+- the poll byte ceiling cannot exceed the operation's total network-byte budget;
+- a deposit request owns exactly one `CanonicalEnvelope` and rejects it when
+  its already-encoded bytes exceed the operation's total network-byte budget;
+  and
+- one acknowledgement request contains 1 through 64 untrusted `DeliveryId`
+  values plus its operation budget.
+
+Full cursor, delivery-identifier, and ciphertext-bearing request or receipt
+values omit ordinary `Debug` and `Display` output. `DepositReceipt` carries only
+the non-authorizing delivery identifier. `AcknowledgementReceipt` is an
+identifier-free unit-like accepted outcome so implementations cannot reveal
+which identifiers were previously absent or acknowledged.
+
+This increment does not implement receive batches, generalized authority
+issuance, adapter dispatch, asynchronous or clock mechanics, cancellation,
+rotation, or mailbox lifecycle. Those remain required before Task 3 is complete.
+
 ## Delivery interfaces
 
 ```rust

@@ -192,8 +192,14 @@ acknowledgement authority behind private fields and crate-only constructors,
 retains the sender-facing canonical deposit endpoint, adds a compile-fail
 wrong-right matrix, and seeds authority/ciphertext bytes into a coarse-error
 redaction fixture. This proves the local adoption boundary only; generalized
-capability issuance, rotation, requests, receipts, batches, and dispatch remain
-open.
+capability issuance, rotation, receive batches, and dispatch remain open.
+
+The bounded-operation sub-increment adds opaque cursors, poll count/byte/wait
+limits, canonical deposit requests, bounded acknowledgement identifiers, and
+identifier-minimal receipts. It enforces provider-neutral hard ceilings and the
+caller's total byte budget before dispatch and keeps ciphertext/full identifiers
+out of ordinary diagnostics. It deliberately does not stabilize dispatch,
+async/clock mechanics, receive batches, capabilities, or lifecycle operations.
 
 **Acceptance criteria:**
 
@@ -201,7 +207,7 @@ open.
 - [ ] A delivery ID or cursor cannot authorize acknowledgement.
 - [ ] Secret-bearing values have reviewed ownership, cloning, serialization,
   zeroization, and redaction behavior.
-- [ ] The contract accepts only canonical bounded envelope objects or validated
+- [x] Deposit requests accept only canonical bounded envelope objects or validated
   views derived from `session-protocol` bytes.
 - [ ] Existing local callers remain covered while migration to the common trait
   is explicit and reviewable.
@@ -213,6 +219,8 @@ open.
 - [ ] Generalized wrong-right tests cover the eventual common trait.
 - [x] The local rejection fixture contains none of the seeded authority or
   ciphertext bytes.
+- [x] Generalized value tests cover cursor, poll, deposit-byte, acknowledgement-
+  batch, and receipt bounds before dispatch.
 - [ ] Generalized adapter error/log fixtures cover every authority type.
 - [x] `cargo test -p session-transport`
 

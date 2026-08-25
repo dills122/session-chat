@@ -543,6 +543,16 @@ fixture proves coarse diagnostics omit known authority and ciphertext bytes.
 These checks do not establish provider-neutral capability issuance, operating-
 system memory erasure, process isolation, or network-metadata privacy.
 
+The additive generalized operation values reject empty or oversized cursors,
+zero or excessive poll counts, aggregate poll-byte limits above either the 4 MiB
+contract ceiling or the caller's total operation budget, waits above 60 seconds,
+deposit bytes above their operation budget, and acknowledgement batches outside
+one to 64 identifiers. Cursor, request, bounded-ID, and deposit-receipt types
+that own full identifiers or ciphertext omit ordinary diagnostics. These are
+pre-dispatch allocation and disclosure controls; no receive-batch validation,
+generalized capability issuance, lifecycle implementation, cancellation, or
+adapter dispatch claim follows from them.
+
 Attacker story: an unauthenticated sender floods a public request mailbox with
 maximum-sized objects. The service must bound per-invitation and global storage,
 CPU, and outgoing work without requiring identity in Anonymous Private mode.

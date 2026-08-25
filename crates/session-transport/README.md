@@ -8,11 +8,15 @@ It also contains the first additive ADR 0015 contract values. The closed
 bounded local diagnostic grammar; `CanonicalEnvelope` owns one exact validated
 protocol encoding without ordinary debug or clone output; and
 `OperationBudget`, `RetryAdvice`, and `TransportFailure` expose finite work and
-context-free failure semantics. The provider-neutral `EnvelopeTransport` trait
-keeps associated deposit, receive, and acknowledgement authority types distinct
-instead of erasing them into generic credentials. Reviewed adapters are selected
-at composition time; the trait does not load code or grant ambient authority.
-No profile binder, coordinator, or network adapter exists yet.
+context-free failure semantics. The next additive values bound opaque cursors,
+poll count/bytes/wait, acknowledgement batches, and deposit bytes against one
+operation budget. Request and receipt types omit ordinary diagnostics when they
+own ciphertext or full identifiers. The provider-neutral `EnvelopeTransport`
+trait keeps associated deposit, receive, and acknowledgement authority types
+distinct instead of erasing them into generic credentials. Reviewed adapters
+are selected at composition time; the trait does not load code or grant ambient
+authority. No complete request dispatch, receive batch, lifecycle boundary,
+profile binder, coordinator, or network adapter exists yet.
 
 `LocalMemoryWelcomeTransport` creates fresh mailbox identifiers and independent
 deposit, receive, and acknowledgement authorities with AWS-LC's CSPRNG. Only
