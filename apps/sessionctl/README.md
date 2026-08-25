@@ -16,6 +16,11 @@ Output contains only coarse public milestones. Capability material,
 invitation identifiers, KeyPackages, credentials, ciphertext, and plaintext
 are not printed.
 
+The library also exposes a narrow `PhaseOneFaultPlan` conformance seam. It can
+stop the same flow only at named operation-result boundaries and observes only
+coarse cleanup states; it receives no protocol bytes, identifiers, authority,
+plaintext, or provider error values. The default binary injects no faults.
+
 This executable composes single-process adapters. It does not provide a
 network service, durable state, crash recovery, rollback protection, a sealed
 client vault, human approval UX, anonymity, or a production client.
