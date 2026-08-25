@@ -12,6 +12,9 @@ The central product idea is:
 
 The [secure-development policy](SECURE_DEVELOPMENT.md) maps the repository's
 threat and supply-chain boundaries to the required CI and GitHub merge gates.
+The [Rust code-coverage policy](CODE_COVERAGE.md) records the production-only
+measurement method, clean-master baseline, enforced ratchets, exclusions, and
+remaining `sessionctl` gap.
 
 For an outside review, start with the
 [independent-audit brief](INDEPENDENT_AUDIT_BRIEF.md). It separates current
@@ -73,6 +76,8 @@ all.
   remain future work.
 - [Threat model](THREAT_MODEL.md) defines assets, trust boundaries, attackers,
   invariants, and severity calibration.
+- [Rust code-coverage policy](CODE_COVERAGE.md) defines the source-based
+  production measurement, vital component gates, baseline, and ratchet path.
 - [Roadmap](ROADMAP_V2.md) proposes an incremental implementation and validation
   sequence.
 - [Phase 1 build decision](adr/0004-build-v2-as-a-parallel-protocol-laboratory.md)

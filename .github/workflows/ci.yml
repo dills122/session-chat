@@ -80,7 +80,33 @@ jobs:
         run: node --version
 
       - name: Test retained Node tooling
-        run: node --test scripts/setup-codex-links.test.mjs spikes/sealed-invitation-provider/test/provider.test.mjs
+        run: node --test scripts/check-rust-coverage.test.mjs scripts/setup-codex-links.test.mjs spikes/sealed-invitation-provider/test/provider.test.mjs
+
+  coverage:
+    name: Rust production coverage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out source without retained credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Install repository-pinned Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Install pinned source-coverage driver
+        uses: taiki-e/install-action@67729d5c413db75907f0ad1e39bb04b9c868ff60 # v2.85.7
+        with:
+          tool: cargo-llvm-cov@0.9.0
+
+      - name: Fetch the locked dependency graph
+        run: cargo fetch --locked
+
+      - name: Enforce production coverage and ratchets
+        run: node scripts/check-rust-coverage.mjs
 
   site:
     name: Astro project site
@@ -173,6 +199,7 @@ jobs:
     needs:
       - rust
       - node
+      - coverage
       - site
       - repository-policy
       - dependency-policy
@@ -185,6 +212,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           RUST_RESULT: ${{ needs.rust.result }}
           NODE_RESULT: ${{ needs.node.result }}
+          COVERAGE_RESULT: ${{ needs.coverage.result }}
           SITE_RESULT: ${{ needs.site.result }}
           REPOSITORY_POLICY_RESULT: ${{ needs.repository-policy.result }}
           DEPENDENCY_POLICY_RESULT: ${{ needs.dependency-policy.result }}
@@ -192,6 +220,7 @@ jobs:
         run: |
           test "$RUST_RESULT" = success
           test "$NODE_RESULT" = success
+          test "$COVERAGE_RESULT" = success
           test "$SITE_RESULT" = success
           test "$REPOSITORY_POLICY_RESULT" = success
           test "$DEPENDENCY_POLICY_RESULT" = success

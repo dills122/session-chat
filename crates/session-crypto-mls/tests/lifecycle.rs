@@ -66,6 +66,8 @@ fn exact_validated_key_package_reaches_add_welcome_and_two_party_messages()
     let addition = prepared.apply().expect("apply Add");
     assert_eq!(alice_group.epoch(), 1);
     assert_eq!(alice_group.member_count(), 2);
+    assert_eq!(addition.key_package_reference(), &expected_reference);
+    assert!(!addition.commit().as_bytes().is_empty());
 
     let mut trailing_welcome = addition.welcome().as_bytes().to_vec();
     trailing_welcome.push(0);
@@ -142,6 +144,10 @@ fn malformed_expired_and_oversized_key_packages_fail_before_membership()
     let validator = create_key_package_validator();
     let key_package = bob.generate_key_package(NOW)?;
 
+    assert!(matches!(
+        validator.validate_key_package(&[], NOW),
+        Err(MlsAdapterError::MalformedKeyPackage)
+    ));
     let mut trailing = key_package.as_bytes().to_vec();
     trailing.push(0);
     assert!(matches!(
@@ -205,10 +211,17 @@ fn removal_advances_the_epoch_and_blocks_future_messages() -> Result<(), MlsAdap
     let bob_key_package = bob.generate_key_package(NOW)?;
     let bob_admission = validator.validate_key_package(bob_key_package.as_bytes(), NOW)?;
     let mut alice_group = alice.create_group(group_id(), NOW)?;
+    assert!(matches!(
+        alice_group.prepare_remove_peer(NOW),
+        Err(MlsAdapterError::ProtocolRejected)
+    ));
     let addition = alice_group.prepare_add(bob_admission, NOW)?.apply()?;
     let mut bob_group = bob.join_group(addition.into_welcome(), NOW)?;
 
-    let removal = alice_group.prepare_remove_peer(NOW)?.apply()?;
+    let removal = alice_group.prepare_remove_peer(NOW)?;
+    assert_eq!(removal.epoch_before(), 1);
+    assert_eq!(removal.current_group_epoch(), 1);
+    let removal = removal.apply()?;
     assert_eq!(alice_group.epoch(), 2);
     assert_eq!(alice_group.member_count(), 1);
     let removal_bytes = removal.commit().as_bytes().to_vec();
@@ -257,6 +270,11 @@ fn update_and_reordered_or_temporarily_lost_messages_recover_safely() -> Result<
         bob_group.process_message(MlsWireMessage::from_bytes(&first_bytes)?),
         Err(MlsAdapterError::ProtocolRejected)
     );
+
+    let abandoned_update = alice_group.prepare_epoch_update(NOW)?;
+    assert_eq!(abandoned_update.epoch_before(), 1);
+    drop(abandoned_update);
+    assert_eq!(alice_group.epoch(), 1);
 
     let update = alice_group.prepare_epoch_update(NOW)?.apply()?;
     assert_eq!(alice_group.epoch(), 2);

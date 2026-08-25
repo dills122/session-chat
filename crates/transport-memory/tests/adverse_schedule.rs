@@ -279,6 +279,48 @@ fn acknowledgement_loss_distinguishes_known_precommit_and_ambiguous_postcommit_r
 }
 
 #[test]
+fn acknowledgement_clears_held_and_stale_copies_of_the_exact_delivery() {
+    let start = Instant::now();
+    let control = LiveControl { now: start };
+    let mut transport = transport();
+    let (deposit, receive, acknowledgement) = transport
+        .create_mailbox(NOW + 180, NOW)
+        .expect("mailbox")
+        .into_dispatch_parts();
+    let original = envelope(0x79, 0x7a);
+    transport
+        .queue_action(DeliveryAction::Hold)
+        .expect("hold provider copy");
+    let receipt = ready(EnvelopeDelivery::deposit(
+        &mut transport,
+        &deposit,
+        deposit_request(original.clone(), start),
+        &control,
+    ))
+    .expect("deposit");
+    transport
+        .replay_stale(&receive, *receipt.delivery_id(), original)
+        .expect("inject exact stale copy");
+    let before = transport.conformance_snapshot();
+    assert_eq!(before.held_copies(), 1);
+    assert_eq!(before.queued_stale_replays(), 1);
+
+    let ids = BoundedDeliveryIds::new(vec![*receipt.delivery_id()]).expect("exact set");
+    ready(EnvelopeDelivery::acknowledge(
+        &mut transport,
+        &acknowledgement,
+        AcknowledgementRequest::new(ids, budget(start)),
+        &control,
+    ))
+    .expect("acknowledge all exact copies");
+
+    let after = transport.conformance_snapshot();
+    assert_eq!(after.live_envelopes(), 0);
+    assert_eq!(after.held_copies(), 0);
+    assert_eq!(after.queued_stale_replays(), 0);
+}
+
+#[test]
 fn stale_replay_controls_are_bounded_exact_byte_only_and_secret_free() {
     let start = Instant::now();
     let control = LiveControl { now: start };

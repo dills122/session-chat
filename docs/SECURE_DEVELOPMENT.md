@@ -12,6 +12,7 @@ does not certify future architecture or make a test build production-ready.
 | --- | --- |
 | Rust | Exact toolchain and locked graph; all-target/all-feature Clippy and tests on pinned Linux, macOS, and Windows runners; formatting, doctests, and warning-free rustdoc on Linux |
 | Retained Node tools | Exact Node patch and all dependency-free repository/provider tests |
+| Rust production coverage | Pinned source-based driver; integration-target production measurement; 92.23% workspace lines, 88.53% regions, 85.64% functions, and 90% lines for every vital library component |
 | Repository policy | Local Markdown links, JSON parsing, evidence-manifest references/digests, absence of developer-local paths/placeholders, and immutable action references |
 | Rust dependency policy | RustSec advisories/yanks, reviewed license allowlist, crates.io-only sources, and no wildcard requirements |
 | Pull-request dependency review | Rejects newly introduced moderate-or-higher vulnerabilities in runtime or unknown scopes |
@@ -33,7 +34,8 @@ cargo fmt --all --check
 cargo clippy --workspace --all-targets --all-features --locked --offline -- -D warnings
 cargo test --workspace --all-features --locked --offline
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps --locked --offline
-node --test scripts/setup-codex-links.test.mjs spikes/sealed-invitation-provider/test/provider.test.mjs
+node --test scripts/check-rust-coverage.test.mjs scripts/setup-codex-links.test.mjs spikes/sealed-invitation-provider/test/provider.test.mjs
+node scripts/check-rust-coverage.mjs
 node --test scripts/check-repository.test.mjs
 node scripts/check-repository.mjs
 cargo deny --all-features --locked check
@@ -71,8 +73,9 @@ capture the settings through GitHub when preparing an audit or release.
 - Image scanning begins with deployable OCI images.
 - SBOMs, artifact attestations, signed reproducible updates, and protected
   release environments begin when a user-runnable artifact exists.
-- Coverage percentages are diagnostic; they are not a substitute for explicit
-  security invariants and negative tests.
+- Coverage is a required regression gate under [the coverage policy](CODE_COVERAGE.md),
+  but percentages are not a substitute for explicit security invariants and
+  negative tests.
 
 No dependency or cryptographic update is auto-merged. Advisory exceptions need
 an affected-path analysis, owner, expiry or removal condition, and review.

@@ -116,6 +116,16 @@ retained test and coarse CLI output satisfy the no-GUI/no-network laboratory
 acceptance path. Durable state, human approval, and a network profile remain
 separate gates.
 
+The Rust source-coverage gate now measures production code through integration
+targets without counting inline test helpers. The clean-master baseline was
+90.78% workspace lines; retained negative-path tests raise the enforced result
+to 92.24%, with every security- and correctness-vital library component at or
+above 90%. Stable region and function ratchets are also enforced. `sessionctl`
+remains explicitly measured and frozen at 78.28% while narrow orchestration
+fault seams are added; it is not excluded or represented as meeting 90%. Exact
+scope, commands, counts, and exclusions are in
+[`CODE_COVERAGE.md`](CODE_COVERAGE.md).
+
 The first `session-storage` increments now make the selected sealed-vault
 lifecycle and locked-mode capability matrix executable. The deterministic
 model permits bounded canonical opaque receipt in every state and binds local
