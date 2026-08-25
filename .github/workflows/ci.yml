@@ -187,7 +187,7 @@ jobs:
           persist-credentials: false
 
       - name: Reject vulnerable dependency changes
-        uses: actions/dependency-review-action@40c09b7dc99638e5ddb0bfd91c1673effc064d8a # v4.8.1
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           fail-on-severity: moderate
           fail-on-scopes: runtime, unknown
