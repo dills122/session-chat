@@ -234,8 +234,12 @@ open.
 
 - [x] ADR 0015 is accepted for implementation.
 - [x] The crate builds without a network dependency.
-- [ ] Authority and redaction tests pass.
-- [ ] Review before adding mutable delivery state.
+- [x] Local authority-separation and seeded-redaction tests pass.
+- [x] Existing local and deterministic-memory delivery state has retained test
+  and review evidence.
+- [ ] Generalized authority, lifecycle, and provider-wide redaction tests pass.
+- [ ] Review the completed generalized contract before adding coordinator or
+  network state.
 
 ## Phase C: deterministic memory control path
 
