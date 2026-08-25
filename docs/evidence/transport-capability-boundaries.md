@@ -1,17 +1,19 @@
 # Local transport capability-boundary evidence
 
-Status: implemented local evidence; generalized capability representation and
-network-provider issuance remain unimplemented
+Status: implemented local evidence beside the narrow provider-neutral trait;
+generalized request/receipt capability representation and network-provider
+issuance remain unimplemented
 
 Date: 2026-08-20
 
 ## Scope
 
 This record maps ADR 0010's right separation to the implemented one-Welcome
-memory adapter. It proves the local compatibility boundary that ADR 0015
-requires before a generalized delivery trait is stabilized. It does not define
-provider-neutral capability bytes, create rotation authority for the local
-profile, or claim that a real mailbox protocol has passed these checks.
+memory adapter. It hardens the local compatibility boundary beside the narrow
+provider-neutral `EnvelopeTransport` trait and separate deterministic memory
+adapter already retained on `master`. It does not define provider-neutral
+capability bytes, create rotation authority for the local profile, or claim that
+a real mailbox protocol has passed these checks.
 
 ## Ownership and exposure matrix
 
@@ -59,7 +61,9 @@ cargo fmt --all --check
 ## Explicit gaps
 
 - No provider-neutral capability representation or erasure boundary exists.
-- No generalized delivery or mailbox-lifecycle trait exists.
+- The narrow synchronous `EnvelopeTransport` trait exists, but no complete
+  budget-aware request/receipt, polling, cursor, or mailbox-lifecycle boundary
+  exists.
 - The local profile issues no rotation capability.
 - No cursor, receipt, batch, profile binder, coordinator, durable adapter, or
   network adapter is exercised.

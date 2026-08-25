@@ -1,7 +1,7 @@
 # Real-world end-to-end security test strategy
 
-Status: accepted test strategy; only the deterministic in-process evidence
-identified below exists today
+Status: accepted test strategy; deterministic in-process protocol evidence and
+isolated SQLCipher durability-laboratory evidence exist today
 
 Date: 2026-08-20
 
@@ -13,9 +13,10 @@ re-run through processes, durable storage, real transports, and supported
 platforms as those components become real.
 
 This strategy defines the permanent test layers, scenario catalog, evidence
-format, CI cadence, and release gates. It does not claim that the headless
-client, durable store, hosted realm, desktop vault, or real-network adapters
-already exist.
+format, CI cadence, and release gates. A headless in-process client, isolated
+SQLCipher durability laboratory, sealed-vault model, and deterministic memory
+transport exist. It does not claim that a two-process runner, product-integrated
+durable store, hosted realm, desktop client vault, or real-network adapter exists.
 
 ## Principles
 
@@ -40,7 +41,7 @@ already exist.
 | Layer | Environment | What it proves | Cadence |
 | --- | --- | --- | --- |
 | L0: type, unit, parser, and model | One process, offline | Canonical formats, bounds, state transitions, right separation, redaction, crypto vectors | Every PR through `CI / Gate` |
-| L1: deterministic protocol E2E | Two headless clients plus memory admission, MLS, transaction, and transport adapters | One complete invitation-to-message-to-removal flow under a virtual clock | Every PR once `sessionctl` exists |
+| L1: deterministic protocol E2E | Current in-process `sessionctl` two-client composition; later independent client/service processes | One complete invitation-to-message-to-removal flow under explicit time inputs | Every PR |
 | L2: faulted component E2E | Multiple local processes, deterministic adverse scheduler, disposable real storage | Crash/restart, lost responses, duplicate/reordered delivery, lease recovery, rollback detection | Nightly and on affected PRs |
 | L3: containerized realm E2E | Digest-pinned disposable realm with real service boundaries and storage | Deployment wiring, TLS, quotas, migrations, restore, service isolation, operational redaction | Nightly after a deployable realm exists |
 | L4: real transport labs | NAT/relay, onion test service, SMP test servers, and local/test mixnets | Adapter conformance, outage behavior, latency/resource bounds, no unintended fallback | Scheduled and before adapter decisions |
@@ -85,16 +86,19 @@ records, roadmap gates, and external audit findings can refer to the same case.
 | `session-crypto-hpke` | RFC and independent-provider vectors plus hostile context rejection | Cross-process protected join with captured ciphertext inspection |
 | `session-crypto-mls` | Two-party lifecycle, replay/reorder, update/removal, and storage-call evidence | Cross-implementation vectors where available, process restart, durable state, and corrupted-state tests |
 | `session-inviter-transaction` | Deterministic atomicity and fault model | Real database process-kill, disk-full/I/O failure, restore, and stale-snapshot evidence |
-| `session-transport` | Local right separation, bounds, idempotency, canonical bytes, and redaction | Adverse scheduler, reusable conformance harness, profile binder, coordinator, and packet-captured adapters |
-| `sessionctl` | Not implemented | Canonical L1 two-client runner and machine-readable redacted evidence producer |
-| Realm services and client vault | Design only | Container isolation, quotas, migration/restore, OS lock/delete, IPC, crash-dump, and update tests |
+| `storage-sqlcipher` | Real inviter and joiner MLS transaction, rollback, ambiguous-result, and close/reopen laboratory tests | Product composition, process-kill, disk/power fault, restore, and stale-snapshot evidence |
+| `session-transport` and `transport-memory` | Local and provider-neutral right separation, bounds, idempotency, canonical opaque envelopes, and deterministic drop/duplicate/hold/release evidence | Full adverse scheduler, reusable conformance harness, profile binder, coordinator, and packet-captured adapters |
+| `sessionctl` | In-process two-client capability join, simulated approval, Welcome delivery, messaging, update, removal, and coarse output | Independent-process L1 runner and machine-readable redacted evidence producer |
+| Client vault | Sealed lifecycle, opaque locked inbox, bounded unlock orchestration, and portable passphrase laboratory | Product storage composition, OS credential input, process isolation, crash-dump, rollback, recovery, and deletion evidence |
+| Realm services | Design and disposable invitation-provider spike only | Container isolation, quotas, migration/restore, and operational redaction tests |
 
 ## Runner and topology contract
 
-The L1 runner should launch two independent `sessionctl` processes and an
-untrusted transport/service process. Tests communicate through public wire and
-core-facing interfaces rather than calling private state directly. A scenario
-controller supplies:
+The current L1 test composes two logical clients in one process. The next L1
+runner should launch two independent `sessionctl` processes and an untrusted
+transport/service process. Tests communicate through public wire and core-facing
+interfaces rather than calling private state directly. A scenario controller
+supplies:
 
 - a virtual clock and explicit deadlines;
 - a deterministic delivery/fault schedule and retained seed;
@@ -133,8 +137,9 @@ digests only.
 
 - Run the full locked workspace tests, doctests, Clippy, rustdoc, repository
   policy, and dependency policy already defined in `SECURE_DEVELOPMENT.md`.
-- Add L1 scenarios to ordinary workspace tests when the headless runner lands,
-  keeping the suite deterministic, offline, and below the required job timeout.
+- Keep the current in-process L1 scenario in ordinary workspace tests and add
+  independent-process scenarios when that runner lands, keeping the required
+  PR subset deterministic, offline, and below the job timeout.
 - Run affected fuzz smoke corpora and model tests once their untrusted parser or
   state-machine surfaces land.
 - A failure blocks merge. Re-running without a code, environment, or recorded
@@ -172,14 +177,17 @@ passes a happy path.
 
 ## Implementation order
 
-1. Finish transport Task 3 authority, bounded request/receipt, and dispatch
-   boundaries.
-2. Build the deterministic generalized memory adapter and adverse scheduler.
+1. Finish the remaining transport Task 3 budget-aware request/receipt, polling,
+   lifecycle, and provider-wide redaction boundaries.
+2. Extend the existing deterministic `transport-memory` adapter into the full
+   adverse scheduler required by the version 1 contract.
 3. Extract the shared adapter conformance harness, including deliberately
    defective adapters.
-4. Build `sessionctl` as the canonical two-client L1 runner and connect the
-   existing invitation, admission, HPKE, MLS, transaction, and transport fakes.
-5. Add process and real-storage fault runners before claiming durability.
+4. Extend the existing in-process `sessionctl` composition into the canonical
+   independent-process L1 runner and redacted evidence producer.
+5. Connect the real SQLCipher transactions through the durable Phase 1
+   admission/MLS/invitation/Welcome-outbox composition, then add process and
+   disk-fault runners before claiming product durability.
 6. Add the containerized realm runner before deployment claims.
 7. Evaluate Fast, Tor/Arti, SMP, and mixnet candidates through the same scenario
    IDs, evidence schema, and packet-capture policy.
@@ -188,11 +196,16 @@ passes a happy path.
 
 ## Current gaps
 
-- No headless two-client runner or cross-crate protocol E2E exists.
-- No adverse transport scheduler or reusable adapter conformance crate exists.
-- No durable storage or process-crash harness exists.
-- No real transport, packet-capture lane, containerized realm, desktop vault,
-  signed release, or supported-platform matrix exists.
+- No independent-process two-client/service runner or machine-readable evidence
+  bundle exists; current `sessionctl` evidence is in process.
+- The deterministic memory adapter covers explicit delivery, loss, duplication,
+  hold/release reordering, retry, expiry, authority, and capacity, but no full
+  adverse scheduler or reusable adapter-conformance crate exists.
+- SQLCipher transaction evidence exists, but no product-integrated durable flow,
+  process-crash, disk/power-fault, restore, or stale-snapshot harness exists.
+- The supported-platform CI matrix exists for current Rust foundations, but no
+  real transport, packet-capture lane, containerized realm, desktop application,
+  signed release, or operated release matrix exists.
 
 These are missing evidence, not failed evidence. Until the relevant layer
 passes, corresponding security, durability, privacy, and production claims

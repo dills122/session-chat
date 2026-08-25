@@ -263,10 +263,12 @@ The first internal stabilization increment implements only:
 - the context-free `TransportFailureCode`, `RetryAdvice`, and
   `TransportFailure` boundary.
 
-This increment does not implement capability erasure, the delivery traits,
-polling, manifests, binding, coordination, adverse scheduling, durability, or
-network I/O. Those boundaries remain gated on direct evidence rather than being
-inferred from the value types.
+This value increment did not itself implement capability erasure or delivery.
+A later Phase 1 increment added a narrow synchronous `EnvelopeTransport` trait
+with associated right-specific types and a separate deterministic
+`transport-memory` implementation. That retained trait is not the complete
+budget-aware request, receipt, polling, lifecycle, binding, coordination,
+durability, or network boundary illustrated below.
 
 ### First local capability-boundary evidence
 
@@ -280,8 +282,9 @@ error diagnostics contain neither authority nor ciphertext bytes.
 
 This is evidence for the local compatibility boundary, not a provider-neutral
 capability representation. The local one-use profile still issues no rotation
-authority. Provider-specific issuance, revocation, serialization, and the
-generalized delivery trait remain gated on later Task 3 review.
+authority. Provider-specific issuance, revocation, serialization, and the full
+budget-aware request/receipt and mailbox-lifecycle boundaries remain gated on
+later Task 3 review.
 
 ## Delivery interfaces
 
