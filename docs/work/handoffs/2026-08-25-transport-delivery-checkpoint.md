@@ -39,8 +39,9 @@ source of truth. If it conflicts with the files above, the canonical files win.
 - Merge-base with the current local `origin/master` reference:
   `936e1078eaaeb6b4b35cd2874e1fed50074ec78a`
 - The checkpoint was rebased cleanly onto that base after the unrelated project
-  overview site merge. The delivered PR branch is eight commits ahead and zero
-  behind, including this handoff and one dependency-policy pin fix.
+  overview site merge. The delivered PR branch is nine commits ahead and zero
+  behind, including this handoff plus scoped dependency-policy and canonical-EOL
+  fixes found by the PR gates.
 - The branch had no configured upstream before PR delivery.
 - The worktree was clean after the rebase and before this metadata refresh.
 

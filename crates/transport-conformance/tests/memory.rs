@@ -422,6 +422,10 @@ fn map_control_error(error: MemoryTransportError) -> AdapterControlErrorV1 {
 
 #[test]
 fn memory_trace_replays_twice_with_identical_secret_free_output() {
+    assert!(
+        !RUNNER_TRACE.contains(&b'\r'),
+        "canonical trace fixtures must retain LF line endings"
+    );
     let trace = AdverseTraceV1::parse(RUNNER_TRACE).expect("canonical runner trace");
     let report = run_adverse_trace_twice_v1(&trace, MemoryTraceAdapter::new)
         .expect("memory adapter must satisfy the trace twice");
@@ -434,6 +438,10 @@ fn memory_trace_replays_twice_with_identical_secret_free_output() {
 
 #[test]
 fn memory_adapter_passes_the_composed_common_verdict_trace() {
+    assert!(
+        !COMMON_VERDICTS_TRACE.contains(&b'\r'),
+        "canonical trace fixtures must retain LF line endings"
+    );
     let trace = AdverseTraceV1::parse(COMMON_VERDICTS_TRACE)
         .expect("canonical composed common-verdict trace");
     let report = run_adverse_trace_twice_v1(&trace, MemoryTraceAdapter::new)
