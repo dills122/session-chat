@@ -6,8 +6,8 @@ This brief is the entry point for an independent review of Session Chat 2.0.
 It deliberately separates code-backed evidence from accepted design contracts,
 research proposals, and deferred work. It is suitable for an architecture and
 protocol review now. It is not a request to certify a production application,
-because no production client, integrated MLS product path, production durable
-store, network service, or deployable realm exists.
+because no production client, independently restartable process, production
+durable store, network service, or deployable realm exists.
 
 An auditor should record the exact Git commit, parent or comparison base,
 `Cargo.lock` digest, enabled Cargo features, and tool versions used for the
@@ -51,10 +51,12 @@ The checked-in runtime consists of:
   owns the exact provider KeyPackage, reserves request-ID/nonce and local v2
   state, implements the shared observation seam, and permits only its original
   approved one-shot value to enter MLS;
-- `session-crypto-mls`: an isolated, in-memory two-party MLS 1.0 adapter with
-  bounded KeyPackage/Welcome/message inputs, exact KeyPackage ownership,
-  Add/Welcome, application messages, path updates, removal, and explicit
-  prepare/apply stages;
+- `session-crypto-mls`: an isolated two-party MLS 1.0 adapter with bounded
+  KeyPackage/Welcome/message inputs, exact KeyPackage ownership, Add/Welcome,
+  application messages, path updates, removal, explicit prepare/apply stages,
+  configurable group/KeyPackage stores, and a load-only durable identity
+  boundary. Its secret-bearing identity value is opaque and non-cloneable/
+  non-debuggable, and durable clients are bound to one exact group;
 - `session-transport`: a bounded, single-process local one-Welcome mailbox with
   provider-generated, separate deposit, receive, and acknowledgement authority,
   exact-retry idempotency, expiry, coarse errors, a narrow provider-neutral
@@ -81,24 +83,28 @@ The checked-in runtime consists of:
   protector using the fixed ADR 0019 construction through the ADR 0020 unlock
   boundary, but no SQLCipher or desktop credential path;
 - `storage-sqlcipher`: an encrypted file-backed laboratory adapter exercising
-  the real inviter and joiner MLS storage calls on the required Linux, macOS,
-  and Windows CI runners;
+  the real inviter and joiner MLS storage calls, one group-bound client identity,
+  atomic inviter reservation/MLS/Welcome-outbox persistence, and restartable
+  outbox leasing on the required Linux, macOS, and Windows CI runners;
 - `sessionctl`: a headless two-client composition covering protected capability
-  join, simulated approval, local Welcome delivery, bidirectional MLS messages,
-  path update, removal, and post-removal rejection; and
+  join, simulated approval, an atomic SQLCipher inviter commit, ambiguous-result
+  recovery, real close/reopen with exact Alice identity/group reload, resumed
+  local Welcome delivery, bidirectional MLS messages, path update, removal, and
+  post-removal rejection; and
 - a disposable Node.js sealed-post-office simulator used only to test boundary
   semantics such as schema rejection, right-specific authorization ordering,
   rotation, and capacity limits.
 
-There is no human approval UX, integrated durable product transaction, network
-or production transport, production client vault, desktop shell, or hosted
-realm. The
+There is no human approval UX, independently restartable durable product,
+network or production transport, production client vault, desktop shell, or
+hosted realm. The
 HPKE adapter proves PSK possession only for its exact typed context; the
 capability adapter performs automated verification, explicit simulated
-approval, exact v2/replay reservation, and in-memory MLS coordination. The
-isolated MLS adapter uses exact `mls-rs` 0.56.0 and AWS-LC 0.25.0 dependencies
-and exposes a generic persistence boundary, but the headless product path does
-not use it. The superseded OpenMLS selection remains
+approval, exact v2/replay reservation, and MLS coordination. The isolated MLS
+adapter uses exact `mls-rs` 0.56.0 and AWS-LC 0.25.0 dependencies. The headless
+path uses its storage and group-bound identity-reload boundaries through
+SQLCipher, but the restart remains inside one process with an externally
+supplied raw database key. The superseded OpenMLS selection remains
 blocked by repository dependency policy. The Node simulator's custom
 composition of platform crypto and placeholder address control is explicitly
 non-production.
@@ -110,8 +116,9 @@ single-process replay-aware capability verification and approval-gated
 invitation/MLS sequencing. The right-specific local mailbox is also runtime
 inventory, and the committed approved-join result carries only its authenticated
 deposit endpoint beside the exact MLS outputs. A retained test deposits the
-encrypted Welcome. Human approval UX, durable replay, and atomic cross-layer
-state transitions remain accepted-but-unimplemented contracts.
+encrypted Welcome. Human approval UX, durable replay loading, platform key
+custody, and complete cross-process recovery remain accepted-but-unimplemented
+contracts.
 
 ```mermaid
 flowchart LR
@@ -119,18 +126,22 @@ flowchart LR
   P --> C["Implemented: automated capability verification and replay reservation"]
   I --> R["Implemented: in-memory lifecycle"]
   E["Implemented: bounded opaque envelope"]
-  M["Implemented: isolated in-memory MLS lifecycle"]
+  M["Implemented: isolated MLS lifecycle and group-bound identity reload"]
+  Q["Implemented laboratory: atomic SQLCipher inviter state and resumable outbox"]
   D["Implemented: deterministic opaque-envelope transport"]
   N["Non-production Node boundary simulator"]
   C --> O["Implemented: display-only approval context"]
-  O --> A["Implemented: simulated approval and in-memory invitation/MLS coordination"]
+  O --> A["Implemented: simulated approval and invitation/MLS coordination"]
   R --> A
   A --> M
+  A --> Q
+  M --> Q
+  Q --> T
   M --> T["Implemented: local right-specific Welcome delivery"]
   E --> T
   E --> D
   E --> V["Implemented: sealed lifecycle and bounded opaque inbox model"]
-  A -. future .-> S["Atomic durable state and platform-protected vault"]
+  Q -. future .-> S["Independent-process recovery and platform-protected vault"]
   T -. proposed .-> H["Portable self-hosted realm"]
 ```
 
@@ -143,26 +154,27 @@ flowchart LR
 | Secret-capability invitation is canonical, strictly Ed25519-verified, time-bounded, and signed over all accepted fields | Implemented and tested | ADRs 0005/0007, signed-invitation fixtures and negative tests |
 | Invitation v2 and protected outer/inner/AAD/deposit-endpoint layouts are canonical and bounded | Implemented and tested | ADR 0014 protocol fixtures, closed-code-point tests, malformed/non-preferred/trailing rejection, and exact size-boundary tests |
 | Invitation v1/v2 reservation is tied to the schema and exact record instance, including expiry/reissue with reused invitation and request IDs | Implemented and tested | Shared bounded registry, provider-only local v2 issuance, `InvitationReservation.record_signature`, and stale release/consume regression tests |
-| Invitation state is durable or rollback resistant | Accepted contract, unimplemented | ADR 0008 and the roadmap require a later cross-layer transaction |
+| One inviter reservation/consumption shadow is atomically composed with MLS and Welcome-outbox persistence | Implemented and tested in the in-process SQLCipher laboratory | `sessionctl` and `storage-sqlcipher` cover rollback, ambiguous commit recovery, exact reload, and delivery resumption; full invitation/replay state reload and rollback resistance remain unimplemented |
 | Isolated MLS validation owns the exact KeyPackage, credential identity, leaf key, and reference through Add/Welcome | Implemented and tested | Private non-`Clone` adapter value and retained lifecycle tests; this is not admission |
 | Automated capability verification owns the exact validated MLS value after HPKE proof | Implemented and tested | Private non-cloneable proof/provider object retains exact invitation signature; exact tuple and verifier-owned reservation checks reject substitution and foreign authority |
 | Pending approval has a provider-neutral observation and decision seam | Implemented and tested | ADR 0015 and `session-admission` expose only redacted, non-authorizing context; the capability provider retains exact proof, KeyPackage, and reservations |
 | Explicit approval gates exact v2 invitation, replay, and MLS Add sequencing | Implemented and tested in memory | One-shot simulated `Approve`/`Reject`; direct verified-to-MLS API removed; rejection, expiry, failed prepare, and abandonment release both reservations; success consumes invitation after Add |
-| Approval, invitation state, replay state, MLS Add, and Welcome outbox form one durable product transaction | Accepted contract, unimplemented | ADRs 0008/0009/0012; the product path remains sequential and in memory, while the separate SQLCipher adapter supplies transaction-mechanics evidence |
+| Approval, invitation state, replay state, MLS Add, and Welcome outbox are independently recoverable as one durable product transaction | Accepted contract, unimplemented | The in-process headless slice atomically persists inviter reservation/MLS/outbox state and reconciles its in-memory approval/replay shadows after ambiguous commit; it cannot reload those shadows in a fresh process |
 | Capability possession is HPKE-protected and bound to the exact local join context | Implemented and tested | Typed one-shot AWS-LC adapter, official RFC PSK vector, independent-provider opening, wrong-key/context and tampering rejection |
 | Request ID and nonce are replay-reserved within one invitation generation | Implemented and tested | Bounded in-memory reservations cover same-generation replay, expiry/reissue independence, stale-release ABA, and capacity preservation; not durable or rollback resistant |
-| Two-party MLS Add/Welcome, application messages, path updates, removal, replay/reordering, and delayed-Commit handling work in memory | Implemented and tested | `session-crypto-mls` lifecycle and hostile-member tests with exact pinned provider graph |
+| Two-party MLS Add/Welcome, application messages, path updates, removal, replay/reordering, and delayed-Commit handling work | Implemented and tested | `session-crypto-mls` lifecycle and hostile-member tests with the exact pinned provider graph; the SQLCipher slice additionally reloads one exact group/member after close/reopen |
+| Durable MLS identity storage is secret-safe and bound to one exact group | Implemented and tested | The 141-byte v1 record crosses the public trait only in an opaque non-`Clone`, non-`Debug`/non-`Display` type; SQL-loaded record bytes enter zeroizing ownership before validation; schema v4 stores an exact group binding, and create/load/join reject cross-group use while the frozen RFC 8032 fixture and a semantically valid schema-v3 identity/group reload preserve compatibility |
 | Product-level forward secrecy, post-compromise security, durable removal isolation, and interoperability | Accepted contract, unimplemented | Requires cross-implementation fixtures, durable state, deletion/rollback evidence, and independent boundary review |
 | Approved in-memory join returns the exact deposit endpoint beside the encrypted MLS Welcome | Implemented and tested | The endpoint moves from the HPKE-authenticated request through approval and MLS apply; expiry is checked before reservation and MLS mutation, while local delivery and non-rollback after delivery failure are retained integration evidence |
-| Welcome outbox delivery is atomic with MLS, replay, approval, and invitation state | Accepted contract, unimplemented | The SQLCipher laboratory atomically creates a pending outbox record with MLS state, but durable leasing/delivery is not connected to the product path |
+| Inviter reservation, MLS state, and Welcome outbox creation are atomic and delivery resumes after close/reopen | Implemented and tested in the in-process SQLCipher laboratory | The real capability path recovers an ambiguous commit, reloads the exact identity/group, leases the committed Welcome, and delivers it once; durable approval/replay reload and independent-process recovery remain unimplemented |
 | Local deposit, receive, and acknowledge rights are non-interchangeable | Implemented and tested | `session-transport` uses separately typed provider-generated authorities, commitment checks, hostile authority tests, and an approved-join integration test |
 | Generalized dispatch keeps already-issued right wrappers out of other operation positions | Implemented and tested as a positional contract | `EnvelopeDelivery` compile-fail tests include aliased inner associated types, delivery IDs, and cursors. Wrappers alone do not prevent cross-right derivation; every provider must validate exact scope and document duplication policy per right. Deposit endpoints may support controlled transfer, while receive and acknowledgement authority should be non-cloneable by default. The memory provider supplies three private non-`Clone` types with domain-separated commitments. |
 | Generalized operations separate monotonic deadlines, fallible wall time, and cooperative cancellation | Implemented and tested as a local dispatch contract | Pre-entry rejection, post-provider checkpoints, and clock-failure tests are joined by a standard-library blocking supervisor that accepts legal delayed wakeups, wakes on external cancellation/deadline, and drops pending work. It is a cross-platform headless/worker-thread baseline, not provider preemption or a future UI-runtime selection. |
-| Ambiguous committed deposits can be reconciled without a second logical delivery | Implemented and tested in memory | The inviter model is the sole owner of attempts and leases. A simulated unrecorded LocalV1 remote acceptance expires, retries the exact canonical envelope and endpoint through a fresh lease, returns the same logical mailbox delivery, and leaves one membership commit. Durable coordinator recovery remains unimplemented. |
+| Ambiguous committed deposits can be reconciled without a second logical delivery | Implemented and tested in memory and SQLCipher | The sole-owner ledger persists attempts and leases. Both the deterministic model and file-backed adapter retry the exact canonical envelope/endpoint after ambiguous acceptance and preserve one membership commit across reopen. |
 | Deterministic memory delivery models loss, duplication, reordering, replay, retry, expiry, and bounded capacity | Implemented and tested | `transport-memory` fault-plan and hostile-authority tests over `OpaqueEnvelope`; generalized tests preserve exact canonical bytes, reject changed-byte retries and every cursor, enforce count/byte/live-state ceilings, normalize unknown/repeated exact-set acknowledgement, and revalidate expiry at the final checkpoint. This is neither encryption nor a network/privacy claim. |
 | Test-only memory controls model outage, corrupt polling, stale replay, and lost acknowledgement results | Implemented and tested in memory | One-shot/persistent controls are bounded, unavailable deposit preserves the next fault, corrupt poll does not dequeue, stale replay requires the exact retained digest without restoring acknowledged state, and acknowledgement loss distinguishes before- from after-commit through secret-free counts. No remote or coordinator claim follows. |
 | Adverse trace v1 is canonical, versioned, bounded, and secret-free | Reusable runner and verdict slice implemented and tested | `transport-conformance` rejects unknown/noncanonical/oversized input, duplicate/forward aliases, excessive lines/steps/checkpoints, unreachable pending expectations, and seeded diagnostics. Executable fixtures drive the retained adverse vocabulary twice through fresh LocalV1 memory adapters; output is alias-only, exact bindings and canonical bytes are enforced, delayed wake/drop and quiescence are bounded, and deliberately defective bridges prove failure detection. Network, durability, and provider-wide conformance remain unimplemented. |
-| One headless two-client flow composes protected join through removal | Implemented and tested in memory | `sessionctl` creates fresh Alice/Bob state, explicitly approves the exact capability request, delivers the MLS Welcome and protected traffic through local adapters, updates the epoch, removes Bob, and observes post-removal rejection; no durability, network, hosting, or UX claim |
+| One headless two-client flow composes protected join through removal | Implemented and tested with an in-process SQLCipher restart | `sessionctl` explicitly approves the exact capability request, atomically commits inviter/MLS/outbox state, reconciles ambiguous SQL outcome, closes/reopens, reloads the group-bound Alice identity and group, resumes Welcome delivery, then exchanges traffic, updates, removes Bob, and observes post-removal rejection; no independent-process, power-loss, platform-vault, network, hosting, or UX claim |
 | Reusable or network mailbox rotation is a separate non-interchangeable right | Accepted contract, unimplemented | ADR 0010; the one-use local profile deliberately has no rotation operation, and Node simulator evidence does not establish production transport |
 | The Node simulator rejects unknown, cyclic, accessor-backed, symbol-keyed, deep, or oversized provider input before cloning or authorization | Implemented and tested | Retained non-production adversarial tests at directory and attestor entry points |
 | A sealed-session lifecycle and locked-mode capability matrix reject stale completion and gate privileged model operations | Implemented and tested in memory | ADRs 0016/0020 and `session-storage`; exact vault-instance/session/generation result binding, pre-provider cancellation checks, one-shot credentials, and bounded work are retained without a durable or production-scheduler claim |
@@ -216,7 +228,7 @@ releasable, or committed and consumed with resumable Welcome delivery.
 | --- | --- | --- |
 | UI/webview | Redacted display models, explicit user decisions | Vault roots, database keys, MLS secrets, raw provider tokens, unrestricted mailbox capabilities |
 | Session core | Validated protocol objects and narrowly owned capabilities | Unbounded or side-effecting decoded input |
-| Isolated MLS adapter | Session credential/key material, exact validated KeyPackage, in-memory group state | Stable external identity as an MLS identity claim; admission and durable state remain external |
+| Isolated MLS adapter | Session-scoped credential/key material, exact validated KeyPackage, provider-owned group/KeyPackage state, and one opaque group-bound durable identity record | Stable external identity as an MLS identity claim; admission authority, raw secret diagnostics, or cross-group signer reuse |
 | Future admission adapter | Minimum evidence needed for the invitation policy | Reusable provider tokens after verification, unrelated identity fields |
 | Directory | Public or recipient-authorized routing bundle and freshness data | Conversation plaintext, MLS secrets, receive or membership authority |
 | Sealed mailbox | Bounded opaque items and one exact right per operation | Plaintext, group keys, interchangeable rights, stable sender identity by default |
@@ -308,18 +320,20 @@ silently re-establish continuity. None of this is implemented today.
 1. **Now — architecture and protocol contracts:** assess layer separation,
    authority, invitation state, canonical formats, threat completeness, and
    feasibility of the accepted future invariants.
-2. **Now and after durable state — MLS implementation review:** assess the
-   current crypto provider boundary, exact KeyPackage ownership,
-   Add/Commit/Welcome, update/removal, and storage-call evidence; then reassess
-   crash injection, rollback, atomic outbox behavior, and deletion once built.
+2. **Now and after independent-process recovery — MLS/storage review:** assess
+   the current crypto provider boundary, exact KeyPackage ownership,
+   Add/Commit/Welcome, update/removal, group-bound identity record, SQLCipher
+   atomicity, close/reopen recovery, outbox behavior, and explicit non-claims;
+   then reassess abrupt power loss, rollback anchoring, and old-secret deletion.
 3. **After the first client and hosted vertical slice — endpoint/network review:**
    assess the vault, IPC/UI privilege boundary, updates, platform artifacts,
    packet captures, deployment, operations, and disaster recovery.
 
 High-value questions for the current review include:
 
-- Can the selected `mls-rs`/AWS-LC adapter participate in the required single
-  application transaction without split-brain membership or Welcome state?
+- Does the retained `mls-rs`/AWS-LC/SQLCipher composition actually prevent
+  split-brain membership, Welcome state, secret logging, and cross-group signer
+  reuse across every public storage and reload seam?
 - Is the proposed linear ownership API sufficient to prevent KeyPackage,
   credential, or leaf-key substitution at every seam?
 - Which monotonic anchor can reject stale device or database snapshots without
@@ -337,29 +351,33 @@ The canonical invitation-v2 and protected-request parser increment from ADR
 0014 now preserves invitation-v1 bytes, rejects malformed and unknown
 representations before provider or state work, and retains exact fixtures. The
 provider-neutral HPKE operation now has RFC 9180 and cross-provider evidence.
-The admission increment now owns the exact validated KeyPackage value, retains
-the exact HPKE-opened invitation signature, binds it to local v2 state, consumes
-an explicit simulated approval decision, and permits only that one-shot value
-to enter Add preparation. It does not accept a replacement byte string or
-digest. The integration remains in memory until the cross-layer durable
-transaction and Welcome outbox design has crash/rollback evidence.
+The admission increment owns the exact validated KeyPackage value, retains the
+exact HPKE-opened invitation signature, binds it to local v2 state, consumes an
+explicit simulated approval decision, and permits only that one-shot value to
+enter Add preparation. It does not accept a replacement byte string or digest.
+The in-process headless composition now crosses a real SQLCipher transaction:
+it resolves rollback or ambiguous commit, reloads the exact group-bound client
+identity and group after close/reopen, and resumes Welcome delivery from the
+sole-owner outbox. The approval/replay shadows are still process memory, and
+the raw database key is supplied directly rather than by a platform vault.
 
 The next evidence-producing research or implementation tasks are:
 
-1. Complete the `mls-rs` group-state/KeyPackage repository call trace and cross-layer
-   crash/rollback model.
-2. Design the durable approval/result, replay, invitation, MLS, and Welcome-outbox transaction.
-3. Parser fuzzing and invitation/admission state-machine property-test plan.
-4. RNG and clock-source contracts for expiry, replay, and deterministic tests.
+1. Add an independent-process runner and abrupt-power-loss evidence without
+   weakening the current exact identity/group and outbox recovery contract.
+2. Make approval/result, replay, and invitation state reloadable with the MLS
+   and Welcome-outbox transaction, including rollback-anchor research.
+3. Select a common platform key-custody baseline before connecting SQLCipher to
+   a desktop credential path.
+4. Retain parser fuzzing, state-machine properties, and explicit RNG/clock
+   contracts at every newly durable or network-facing boundary.
 
-Then implement, in order: the canonical capability proof and linear admission
-contract; right-specific adverse
-in-memory transport; the headless in-memory flow; and
-only then durable persistence and a networked/client vertical slice.
+Only after those gates should the laboratory be promoted into a networked or
+desktop-client vertical slice.
 
 GitHub/credential admission, OHTTP, Privacy Pass, desktop-framework selection,
-mixnets, recovery, and federation should not interrupt the capability-only
-in-memory Phase 1 path.
+mixnets, user recovery, and federation should not interrupt completion of the
+capability-only durable-client foundation.
 
 ## Reproduction and evidence index
 

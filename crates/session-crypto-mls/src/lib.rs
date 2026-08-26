@@ -9,7 +9,7 @@ use mls_rs::{
     CipherSuite, CipherSuiteProvider, Client, CryptoProvider, ExtensionList, Group, MlsMessage,
     ProtocolVersion, WireFormat,
     client_builder::MlsConfig,
-    crypto::HpkePublicKey,
+    crypto::{HpkePublicKey, SignaturePublicKey, SignatureSecretKey},
     extension::ExtensionType,
     external_client::{ExternalClient, builder::MlsConfig as ExternalMlsConfig},
     group::{CommitEffect, LeafNode, ReceivedMessage},
@@ -25,6 +25,7 @@ use session_crypto::{
     validate_application_message,
 };
 use thiserror::Error;
+use zeroize::Zeroizing;
 
 /// Opaque configuration bound used by ownership-preserving integration wrappers.
 pub use mls_rs::client_builder::MlsConfig as SessionMlsConfig;
@@ -37,11 +38,21 @@ pub use session_crypto::{
 pub const SESSION_CREDENTIAL_ID_BYTES: usize = 32;
 /// Exact byte length of a Phase 1 group identifier.
 pub const SESSION_GROUP_ID_BYTES: usize = 32;
+/// Exact length of the versioned durable client-identity record.
+pub const DURABLE_CLIENT_IDENTITY_BYTES: usize = 141;
 /// Maximum TLS-serialized KeyPackage accepted before parsing.
 pub const MAX_KEY_PACKAGE_BYTES: usize = 16 * 1024;
 const KEY_PACKAGE_REFERENCE_BYTES: usize = 32;
 const KEY_PACKAGE_LIFETIME: Duration = Duration::from_secs(3_600);
 const CIPHERSUITE: CipherSuite = CipherSuite::CURVE25519_AES128;
+const DURABLE_IDENTITY_MAGIC: &[u8; 8] = b"SCMLSID1";
+const DURABLE_IDENTITY_FORMAT_VERSION: u8 = 1;
+const DURABLE_IDENTITY_PROTOCOL_MLS_10: u8 = 1;
+const DURABLE_IDENTITY_CIPHERSUITE: u16 = 1;
+const DURABLE_IDENTITY_PROVIDER_AWS_LC: u8 = 1;
+const SIGNATURE_PUBLIC_KEY_BYTES: usize = 32;
+const SIGNATURE_SECRET_KEY_BYTES: usize = 64;
+const DURABLE_IDENTITY_KEY_CHECK: &[u8] = b"session-chat/durable-mls-identity/v1";
 
 /// Coarse, non-provider-specific MLS adapter failures.
 #[derive(Clone, Copy, Debug, Eq, Error, PartialEq)]
@@ -67,6 +78,182 @@ pub enum MlsAdapterError {
     /// Phase 1 permits exactly two members.
     #[error("the two-member Phase 1 group is full")]
     GroupFull,
+}
+
+/// Opaque secret-bearing durable client-identity record.
+///
+/// This type intentionally implements neither `Clone`, `Debug`, nor `Display`.
+/// Storage adapters may construct it from one exact bounded database value and
+/// consume it when persisting; callers cannot borrow the secret bytes publicly.
+///
+/// ```compile_fail
+/// use session_crypto_mls::DurableClientIdentityRecord;
+/// fn requires_clone<T: Clone>() {}
+/// requires_clone::<DurableClientIdentityRecord>();
+/// ```
+///
+/// ```compile_fail
+/// use session_crypto_mls::DurableClientIdentityRecord;
+/// fn requires_debug<T: core::fmt::Debug>() {}
+/// requires_debug::<DurableClientIdentityRecord>();
+/// ```
+///
+/// ```compile_fail
+/// use session_crypto_mls::DurableClientIdentityRecord;
+/// fn requires_display<T: core::fmt::Display>() {}
+/// requires_display::<DurableClientIdentityRecord>();
+/// ```
+pub struct DurableClientIdentityRecord(Zeroizing<Vec<u8>>);
+
+impl DurableClientIdentityRecord {
+    /// Wraps one exact-length value returned by durable storage.
+    pub fn from_storage_bytes(encoded: Vec<u8>) -> Result<Self, MlsAdapterError> {
+        let encoded = Zeroizing::new(encoded);
+        if encoded.len() != DURABLE_CLIENT_IDENTITY_BYTES {
+            return Err(MlsAdapterError::ProtocolRejected);
+        }
+        Ok(Self(encoded))
+    }
+
+    /// Consumes the opaque record for insertion by a storage adapter.
+    #[must_use]
+    pub fn into_storage_bytes(self) -> Zeroizing<Vec<u8>> {
+        self.0
+    }
+
+    fn as_secret_bytes(&self) -> &[u8] {
+        self.0.as_slice()
+    }
+}
+
+/// Storage contract for one session-bound client signing identity paired with
+/// durable MLS state.
+///
+/// Implementations must insert at most one record and reject replacement or a
+/// lookup under any different group identifier.
+pub trait DurableClientIdentityStorage: Clone {
+    /// Provider-specific storage failure hidden behind the MLS adapter boundary.
+    type Error;
+
+    /// Loads the sole retained identity record, if one exists.
+    fn load_client_identity(
+        &self,
+        group_id: &SessionGroupId,
+    ) -> Result<Option<DurableClientIdentityRecord>, Self::Error>;
+
+    /// Inserts the sole identity record without replacing an existing value.
+    fn insert_client_identity(
+        &self,
+        group_id: &SessionGroupId,
+        encoded: DurableClientIdentityRecord,
+    ) -> Result<(), Self::Error>;
+}
+
+struct DurableClientIdentity {
+    credential_identity: [u8; SESSION_CREDENTIAL_ID_BYTES],
+    signature_public_key: [u8; SIGNATURE_PUBLIC_KEY_BYTES],
+    signature_secret_key: Zeroizing<[u8; SIGNATURE_SECRET_KEY_BYTES]>,
+}
+
+impl DurableClientIdentity {
+    fn generate(crypto: &AwsLcCryptoProvider) -> Result<Self, MlsAdapterError> {
+        let cipher_suite = crypto
+            .cipher_suite_provider(CIPHERSUITE)
+            .ok_or(MlsAdapterError::UnexpectedProviderOutput)?;
+        let mut credential_identity = [0; SESSION_CREDENTIAL_ID_BYTES];
+        cipher_suite
+            .random_bytes(&mut credential_identity)
+            .map_err(|_| MlsAdapterError::ProtocolRejected)?;
+        let (secret, public) = cipher_suite
+            .signature_key_generate()
+            .map_err(|_| MlsAdapterError::ProtocolRejected)?;
+        Self::from_parts(
+            credential_identity,
+            public.as_ref(),
+            secret.as_bytes(),
+            crypto,
+        )
+    }
+
+    fn decode(encoded: &[u8], crypto: &AwsLcCryptoProvider) -> Result<Self, MlsAdapterError> {
+        if encoded.len() != DURABLE_CLIENT_IDENTITY_BYTES
+            || &encoded[..8] != DURABLE_IDENTITY_MAGIC
+            || encoded[8] != DURABLE_IDENTITY_FORMAT_VERSION
+            || encoded[9] != DURABLE_IDENTITY_PROTOCOL_MLS_10
+            || u16::from_be_bytes([encoded[10], encoded[11]]) != DURABLE_IDENTITY_CIPHERSUITE
+            || encoded[12] != DURABLE_IDENTITY_PROVIDER_AWS_LC
+        {
+            return Err(MlsAdapterError::ProtocolRejected);
+        }
+        Self::from_parts(
+            encoded[13..45]
+                .try_into()
+                .map_err(|_| MlsAdapterError::ProtocolRejected)?,
+            &encoded[45..77],
+            &encoded[77..141],
+            crypto,
+        )
+    }
+
+    fn from_parts(
+        credential_identity: [u8; SESSION_CREDENTIAL_ID_BYTES],
+        public: &[u8],
+        secret: &[u8],
+        crypto: &AwsLcCryptoProvider,
+    ) -> Result<Self, MlsAdapterError> {
+        let signature_public_key: [u8; SIGNATURE_PUBLIC_KEY_BYTES] = public
+            .try_into()
+            .map_err(|_| MlsAdapterError::ProtocolRejected)?;
+        if secret.len() != SIGNATURE_SECRET_KEY_BYTES {
+            return Err(MlsAdapterError::ProtocolRejected);
+        }
+        let mut signature_secret_key = Zeroizing::new([0_u8; SIGNATURE_SECRET_KEY_BYTES]);
+        signature_secret_key.copy_from_slice(secret);
+        if credential_identity.iter().all(|byte| *byte == 0)
+            || signature_public_key.iter().all(|byte| *byte == 0)
+            || signature_secret_key.iter().all(|byte| *byte == 0)
+        {
+            return Err(MlsAdapterError::ProtocolRejected);
+        }
+        let cipher_suite = crypto
+            .cipher_suite_provider(CIPHERSUITE)
+            .ok_or(MlsAdapterError::UnexpectedProviderOutput)?;
+        let secret_key = SignatureSecretKey::new_slice(signature_secret_key.as_ref());
+        let derived = cipher_suite
+            .signature_key_derive_public(&secret_key)
+            .map_err(|_| MlsAdapterError::ProtocolRejected)?;
+        if derived.as_ref() != signature_public_key {
+            return Err(MlsAdapterError::ProtocolRejected);
+        }
+        let signature = cipher_suite
+            .sign(&secret_key, DURABLE_IDENTITY_KEY_CHECK)
+            .map_err(|_| MlsAdapterError::ProtocolRejected)?;
+        cipher_suite
+            .verify(
+                &SignaturePublicKey::from(signature_public_key.to_vec()),
+                &signature,
+                DURABLE_IDENTITY_KEY_CHECK,
+            )
+            .map_err(|_| MlsAdapterError::ProtocolRejected)?;
+        Ok(Self {
+            credential_identity,
+            signature_public_key,
+            signature_secret_key,
+        })
+    }
+
+    fn encode(&self) -> DurableClientIdentityRecord {
+        let mut encoded = Zeroizing::new(Vec::with_capacity(DURABLE_CLIENT_IDENTITY_BYTES));
+        encoded.extend_from_slice(DURABLE_IDENTITY_MAGIC);
+        encoded.push(DURABLE_IDENTITY_FORMAT_VERSION);
+        encoded.push(DURABLE_IDENTITY_PROTOCOL_MLS_10);
+        encoded.extend_from_slice(&DURABLE_IDENTITY_CIPHERSUITE.to_be_bytes());
+        encoded.push(DURABLE_IDENTITY_PROVIDER_AWS_LC);
+        encoded.extend_from_slice(&self.credential_identity);
+        encoded.extend_from_slice(&self.signature_public_key);
+        encoded.extend_from_slice(self.signature_secret_key.as_ref());
+        DurableClientIdentityRecord(encoded)
+    }
 }
 
 /// Fresh random BasicCredential identity for one Session Chat session.
@@ -108,6 +295,8 @@ fn nonzero<const N: usize>(bytes: [u8; N]) -> Result<[u8; N], MlsAdapterError> {
 pub struct SessionMlsClient<C: MlsConfig> {
     inner: Client<C>,
     credential_identity: SessionCredentialId,
+    signature_public_key: [u8; SIGNATURE_PUBLIC_KEY_BYTES],
+    bound_group_id: Option<SessionGroupId>,
 }
 
 fn create_client_with_credential_identity(
@@ -121,6 +310,10 @@ fn create_client_with_credential_identity(
         .signature_key_generate()
         .map_err(|_| MlsAdapterError::ProtocolRejected)?;
     let credential = BasicCredential::new(credential_identity.0.to_vec());
+    let signature_public_key = public
+        .as_ref()
+        .try_into()
+        .map_err(|_| MlsAdapterError::UnexpectedProviderOutput)?;
     let identity = SigningIdentity::new(credential.into_credential(), public);
     let inner = Client::builder()
         .identity_provider(BasicIdentityProvider)
@@ -133,6 +326,8 @@ fn create_client_with_credential_identity(
     Ok(SessionMlsClient {
         inner,
         credential_identity,
+        signature_public_key,
+        bound_group_id: None,
     })
 }
 
@@ -181,6 +376,10 @@ where
     let (secret, public) = cipher_suite
         .signature_key_generate()
         .map_err(|_| MlsAdapterError::ProtocolRejected)?;
+    let signature_public_key = public
+        .as_ref()
+        .try_into()
+        .map_err(|_| MlsAdapterError::UnexpectedProviderOutput)?;
     let identity = SigningIdentity::new(
         BasicCredential::new(credential_identity.to_vec()).into_credential(),
         public,
@@ -198,6 +397,108 @@ where
     Ok(SessionMlsClient {
         inner,
         credential_identity: SessionCredentialId(credential_identity),
+        signature_public_key,
+        bound_group_id: None,
+    })
+}
+
+/// Creates and durably records one fresh client identity before returning the client.
+///
+/// This path fails closed if the identity store is unavailable or already owns
+/// an identity. It never replaces an existing member identity.
+pub fn create_durable_client_with_storage<G, K, I>(
+    group_id: SessionGroupId,
+    group_state_storage: G,
+    key_package_storage: K,
+    identity_storage: I,
+) -> Result<SessionMlsClient<impl MlsConfig>, MlsAdapterError>
+where
+    G: GroupStateStorage + Clone,
+    K: KeyPackageStorage + Clone,
+    I: DurableClientIdentityStorage,
+{
+    if identity_storage
+        .load_client_identity(&group_id)
+        .map_err(|_| MlsAdapterError::ProtocolRejected)?
+        .is_some()
+    {
+        return Err(MlsAdapterError::ProtocolRejected);
+    }
+    let crypto = AwsLcCryptoProvider::default();
+    let durable_identity = DurableClientIdentity::generate(&crypto)?;
+    let encoded = durable_identity.encode();
+    identity_storage
+        .insert_client_identity(&group_id, encoded)
+        .map_err(|_| MlsAdapterError::ProtocolRejected)?;
+    build_stored_client(
+        group_state_storage,
+        key_package_storage,
+        durable_identity,
+        crypto,
+        group_id,
+    )
+}
+
+/// Reloads the exact durable client identity without generating a replacement.
+pub fn load_durable_client_with_storage<G, K, I>(
+    group_id: SessionGroupId,
+    group_state_storage: G,
+    key_package_storage: K,
+    identity_storage: I,
+) -> Result<SessionMlsClient<impl MlsConfig>, MlsAdapterError>
+where
+    G: GroupStateStorage + Clone,
+    K: KeyPackageStorage + Clone,
+    I: DurableClientIdentityStorage,
+{
+    let encoded = identity_storage
+        .load_client_identity(&group_id)
+        .map_err(|_| MlsAdapterError::ProtocolRejected)?
+        .ok_or(MlsAdapterError::ProtocolRejected)?;
+    let crypto = AwsLcCryptoProvider::default();
+    let durable_identity = DurableClientIdentity::decode(encoded.as_secret_bytes(), &crypto)?;
+    build_stored_client(
+        group_state_storage,
+        key_package_storage,
+        durable_identity,
+        crypto,
+        group_id,
+    )
+}
+
+fn build_stored_client<G, K>(
+    group_state_storage: G,
+    key_package_storage: K,
+    durable_identity: DurableClientIdentity,
+    crypto: AwsLcCryptoProvider,
+    group_id: SessionGroupId,
+) -> Result<SessionMlsClient<impl MlsConfig>, MlsAdapterError>
+where
+    G: GroupStateStorage + Clone,
+    K: KeyPackageStorage + Clone,
+{
+    let identity = SigningIdentity::new(
+        BasicCredential::new(durable_identity.credential_identity.to_vec()).into_credential(),
+        SignaturePublicKey::from(durable_identity.signature_public_key.to_vec()),
+    );
+    let inner = Client::builder()
+        .identity_provider(BasicIdentityProvider)
+        .crypto_provider(crypto)
+        .key_package_repo(key_package_storage)
+        .group_state_storage(group_state_storage)
+        .protocol_version(ProtocolVersion::MLS_10)
+        .key_package_lifetime(KEY_PACKAGE_LIFETIME)
+        .signing_identity(
+            identity,
+            SignatureSecretKey::new_slice(durable_identity.signature_secret_key.as_ref()),
+            CIPHERSUITE,
+        )
+        .build();
+    Ok(SessionMlsClient {
+        inner,
+        credential_identity: SessionCredentialId(durable_identity.credential_identity),
+        signature_public_key: durable_identity.signature_public_key,
+        bound_group_id: Some(group_id),
     })
 }
 
@@ -213,10 +514,46 @@ impl KeyPackageMessage {
 }
 
 impl<C: MlsConfig> SessionMlsClient<C> {
+    fn ensure_group_scope(&self, group_id: &SessionGroupId) -> Result<(), MlsAdapterError> {
+        if self
+            .bound_group_id
+            .is_some_and(|bound_group_id| bound_group_id != *group_id)
+        {
+            return Err(MlsAdapterError::ProtocolRejected);
+        }
+        Ok(())
+    }
+
     /// Returns this client's adapter-generated session-scoped credential identity.
     #[must_use]
     pub const fn credential_identity(&self) -> &SessionCredentialId {
         &self.credential_identity
+    }
+
+    /// Reloads an exact stored group only when its local member matches this
+    /// client's durably reconstructed credential and signing public key.
+    pub fn load_group(
+        &self,
+        group_id: SessionGroupId,
+    ) -> Result<SessionMlsGroup<C>, MlsAdapterError> {
+        self.ensure_group_scope(&group_id)?;
+        let inner = self
+            .inner
+            .load_group(group_id.as_bytes())
+            .map_err(|_| MlsAdapterError::ProtocolRejected)?;
+        let local_identity = inner
+            .current_member_signing_identity()
+            .map_err(|_| MlsAdapterError::ProtocolRejected)?;
+        let credential = local_identity
+            .credential
+            .as_basic()
+            .ok_or(MlsAdapterError::ProtocolRejected)?;
+        if credential.identifier() != self.credential_identity.as_bytes()
+            || local_identity.signature_key.as_ref() != self.signature_public_key
+        {
+            return Err(MlsAdapterError::ProtocolRejected);
+        }
+        SessionMlsGroup::from_provider(inner)
     }
 
     /// Generates one one-shot KeyPackage using a caller-supplied clock value.
@@ -248,6 +585,7 @@ impl<C: MlsConfig> SessionMlsClient<C> {
         group_id: SessionGroupId,
         now_unix_seconds: u64,
     ) -> Result<SessionMlsGroup<C>, MlsAdapterError> {
+        self.ensure_group_scope(&group_id)?;
         let inner = self
             .inner
             .create_group_with_id(
@@ -284,6 +622,7 @@ impl<C: MlsConfig> SessionMlsClient<C> {
             return Err(MlsAdapterError::ProtocolRejected);
         }
         let group = SessionMlsGroup::from_provider(inner)?;
+        self.ensure_group_scope(&SessionGroupId(*group.group_id()))?;
         if group.member_count() != 2 {
             return Err(MlsAdapterError::UnexpectedProviderOutput);
         }
@@ -1172,6 +1511,11 @@ mod tests {
             .map_err(|_| MlsAdapterError::ProtocolRejected)?;
         let credential = BasicCredential::new(credential_identity.0.to_vec());
         let identity = SigningIdentity::new(credential.into_credential(), public);
+        let signature_public_key = identity
+            .signature_key
+            .as_ref()
+            .try_into()
+            .map_err(|_| MlsAdapterError::UnexpectedProviderOutput)?;
         let inner = Client::builder()
             .identity_provider(BasicIdentityProvider)
             .crypto_provider(crypto)
@@ -1184,6 +1528,8 @@ mod tests {
         Ok(SessionMlsClient {
             inner,
             credential_identity,
+            signature_public_key,
+            bound_group_id: None,
         })
     }
 

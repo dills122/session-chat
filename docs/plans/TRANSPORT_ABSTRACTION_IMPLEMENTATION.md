@@ -2,8 +2,8 @@
 
 Status: active staged implementation plan; ADR 0015 is accepted, Task 3 is
 partial, Task 9's durable owner-store plus capability-admission/MLS composition
-checkpoints are complete, and durable headless composition is active before
-independent-process or network work
+checkpoints are complete, and the durable client-reload prerequisite is complete
+before independent-process or network work
 
 Date: 2026-08-20
 
@@ -113,10 +113,11 @@ those seams and does not reinterpret their pre-merge files.
 | `T9-SESSIONCTL` | Headless integration | merged orchestration fault seams | Complete | The existing Alice/Bob flow uses the real SQLCipher inviter transaction and reconstructed coordinator owner while preserving its coarse fault and output contracts. |
 | `L1-PROCESS` | Independent-process runner | `T9-SESSIONCTL` | Pending | Separate client and untrusted-service processes exchange only public wire objects under bounded lifecycle control and emit a redacted evidence manifest. |
 
-Full client restart is not claimed by `T9-SESSIONCTL`: the current MLS adapter
-does not persist and reload the client signing identity required to continue as
-the same Alice process after reopening the group. That missing contract must be
-resolved before `L1-PROCESS` can claim durable client recovery.
+`T9-SESSIONCTL` now persists and reloads Alice's exact client signing identity
+and stored group through SQLCipher schema v4, failing closed on fresh,
+malformed, missing, replacement, cross-group, or member-mismatched identity state. This is a
+real close/reopen boundary inside one process, not independent-process recovery;
+`L1-PROCESS` remains the next client-composition gate.
 
 ## Active execution slice: generalized dispatch boundary
 
@@ -168,7 +169,7 @@ than a state-forging action. Positive persisted cursor issuance, rotation,
 restart, concurrency, network timing, and profile-specific privacy faults remain
 outside this slice.
 
-## Active execution slice: durable Welcome owner store
+## Completed execution slice: durable Welcome owner store
 
 This is the authoritative sequential backbone after the completed in-memory
 Task 9 checkpoint. It evolves the existing SQLCipher inviter transaction rather
@@ -602,8 +603,8 @@ root. Do not connect SQLCipher or claim durable restart in this slice.
 - [x] The cross-platform blocking composition baseline wakes and drops pending
   work at that deadline; UI runtimes may provide an equivalent driver.
 
-- [ ] Model or property tests exercise arbitrary duplicate/reorder/loss traces.
-- [ ] Tests distinguish deposit acceptance, receipt, acknowledgement, and
+- [x] Model tests exhaust the retained bounded duplicate/reorder/loss schedules.
+- [x] Tests distinguish deposit acceptance, receipt, acknowledgement, and
   application processing.
 - [x] A deliberately stale or foreign lease cannot report delivery state.
 - [x] `cargo test -p session-transport --test coordinator --all-features --locked --offline`
@@ -685,8 +686,8 @@ and the future durable MLS/storage increment governed by ADRs 0008 and 0015
 - [x] Memory transport remains deterministic and offline.
 - [x] The complete Phase 1 headless flow passes through the common transport
   boundary.
-- [ ] Duplicate/reordered delivery and crash recovery cannot repeat membership
-  transitions.
+- [ ] Process-crash recovery cannot repeat membership transitions; bounded
+  duplicate/reordered memory schedules are retained.
 - [x] The owner-local transaction store is the sole durable outbox and lease
   authority; coordinator restart does not create a second ledger.
 - [x] `cargo fmt --all --check`

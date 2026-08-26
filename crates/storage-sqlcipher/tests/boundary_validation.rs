@@ -5,6 +5,10 @@ use mls_rs_core::{
     group::GroupStateStorage,
     key_package::{KeyPackageData, KeyPackageStorage},
 };
+use session_crypto_mls::{
+    DURABLE_CLIENT_IDENTITY_BYTES, DurableClientIdentityRecord, DurableClientIdentityStorage,
+    SessionGroupId, load_durable_client_with_storage,
+};
 use session_protocol::{DepositCapability, LocalWelcomeDepositEndpoint, OpaqueEnvelope};
 use storage_sqlcipher::{
     InviterJoinTransaction, JoinerTransaction, PersistenceFault, SqlCipherStorage, StoreError,
@@ -168,5 +172,25 @@ fn only_one_owner_transaction_can_be_staged_at_a_time() {
             PersistenceFault::None,
         ),
         Err(StoreError::Conflict)
+    );
+}
+
+#[test]
+fn malformed_durable_identity_is_rejected_by_the_mls_boundary() {
+    let (_database, storage) = create_storage("malformed-client-identity");
+    let group_id = SessionGroupId::new([0x61; 32]).expect("group id");
+    storage
+        .insert_client_identity(
+            &group_id,
+            DurableClientIdentityRecord::from_storage_bytes(vec![
+                0xff;
+                DURABLE_CLIENT_IDENTITY_BYTES
+            ])
+            .expect("opaque exact-length fixture"),
+        )
+        .expect("opaque exact-length fixture stored");
+    assert!(
+        load_durable_client_with_storage(group_id, storage.clone(), storage.clone(), storage)
+            .is_err()
     );
 }

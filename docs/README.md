@@ -71,8 +71,8 @@ all.
   right-separation evidence without claiming a generalized provider contract.
 - `transport-conformance` retains the canonical adverse-trace parser, hostile
   fixtures, and a first normalized double-replay runner over the real memory
-  adapter. The complete common verdict and deliberately defective-adapter suite
-  remain future work.
+  adapter. A composed verdict and paired deliberately defective bridges cover
+  the retained adverse slice; the exhaustive common verdict remains future work.
 - [Threat model](THREAT_MODEL.md) defines assets, trust boundaries, attackers,
   invariants, and severity calibration.
 - [Rust code-coverage policy](CODE_COVERAGE.md) defines the source-based
@@ -251,8 +251,9 @@ fresh two-client run covering protected capability admission, explicit
 simulated approval, atomic SQLCipher MLS join/outbox commit, ambiguous-result
 recovery, reconstructed coordinator Welcome delivery, bidirectional MLS
 application messages, path update, removal, and post-removal rejection. It
-prints coarse milestones or a versioned redacted scenario record and is neither
-a process-restartable nor networked client.
+reloads Alice's exact identity and group after a SQLCipher close/reopen, prints
+coarse milestones or a versioned redacted scenario record, and is neither an
+independent-process nor networked client.
 The `session-storage` crate now retains a deterministic in-memory conformance
 model for one-session unsealing, bounded external unlock work, exact-session
 one-shot credential acquisition, forced relock events, stale/foreign-owner
@@ -273,8 +274,11 @@ production key-protection baseline.
 The separate `storage-sqlcipher` crate now exercises both owner-local
 transactions through the real MLS storage path and recovers them after close
 and reopen on the required Linux, macOS, and Windows CI runners. Schema version
-2 also implements the coordinator's sole-owner Welcome port with explicit v1
+2 implements the coordinator's sole-owner Welcome port with explicit v1
 migration fixtures, restart leasing, terminal states, and ambiguous exact retry.
+Schema version 3 adds an insert-only versioned client identity; version 4 binds
+it to one exact group. The opaque non-cloneable/non-debuggable secret boundary and exact
+identity/group reload with fail-closed member and group-scope matching.
 A retained real capability-admission/MLS integration now resolves an ambiguous
 SQL commit before in-memory finalization, reopens the store, and delivers the
 exact Welcome to the original joiner. The same composition now backs the

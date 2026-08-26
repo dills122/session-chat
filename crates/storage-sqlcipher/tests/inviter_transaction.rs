@@ -2,7 +2,8 @@ use std::path::PathBuf;
 
 use mls_rs_core::group::GroupStateStorage;
 use session_crypto_mls::{
-    SessionGroupId, create_client, create_client_with_storage, create_key_package_validator,
+    SessionGroupId, create_client, create_durable_client_with_storage,
+    create_key_package_validator, load_durable_client_with_storage,
 };
 use session_protocol::{DepositCapability, LocalWelcomeDepositEndpoint, OpaqueEnvelope};
 use storage_sqlcipher::{
@@ -82,10 +83,16 @@ fn actual_inviter_mls_write_is_atomic_with_join_and_welcome_outbox_state() {
     storage
         .seed_reservation([1; 16], [2; 64], [3; 16], NOW + 300, NOW)
         .expect("reservation stored");
-    let alice = create_client_with_storage(storage.clone(), storage.clone()).expect("Alice client");
-    let mut alice_group = alice
-        .create_group(SessionGroupId::new([5; 32]).expect("group id"), NOW)
-        .expect("Alice group");
+    let group_id = SessionGroupId::new([5; 32]).expect("group id");
+    let alice = create_durable_client_with_storage(
+        group_id,
+        storage.clone(),
+        storage.clone(),
+        storage.clone(),
+    )
+    .expect("durable Alice client");
+    let alice_credential = *alice.credential_identity().as_bytes();
+    let mut alice_group = alice.create_group(group_id, NOW).expect("Alice group");
 
     let bob = create_client().expect("Bob client");
     let bob_key_package = bob.generate_key_package(NOW).expect("Bob KeyPackage");
@@ -203,5 +210,36 @@ fn actual_inviter_mls_write_is_atomic_with_join_and_welcome_outbox_state() {
             .recover_inviter(&[4; 16])
             .expect("recovery after reopen"),
         Some(recovered)
+    );
+    let reloaded_alice = load_durable_client_with_storage(
+        group_id,
+        reopened.clone(),
+        reopened.clone(),
+        reopened.clone(),
+    )
+    .expect("Alice identity reloads");
+    assert_eq!(
+        reloaded_alice.credential_identity().as_bytes(),
+        &alice_credential
+    );
+    let reloaded_group = reloaded_alice
+        .load_group(group_id)
+        .expect("Alice group reloads with the same member");
+    assert_eq!(reloaded_group.epoch(), 1);
+    assert_eq!(reloaded_group.member_count(), 2);
+    let foreign_group_id = SessionGroupId::new([6; 32]).expect("foreign group id");
+    assert!(
+        load_durable_client_with_storage(
+            foreign_group_id,
+            reopened.clone(),
+            reopened.clone(),
+            reopened.clone(),
+        )
+        .is_err()
+    );
+    assert!(reloaded_alice.create_group(foreign_group_id, NOW).is_err());
+    assert!(
+        create_durable_client_with_storage(group_id, reopened.clone(), reopened.clone(), reopened,)
+            .is_err()
     );
 }

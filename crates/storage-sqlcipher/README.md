@@ -22,18 +22,36 @@ required Linux, macOS, and Windows CI runners and prove that:
   the normal SQLite header; and
 - SQLCipher's page-HMAC integrity check succeeds for retained fixtures.
 
-Schema version 2 now makes the same database the sole Welcome-outbox owner. It
+Schema version 3 retains the version-2 sole Welcome-outbox owner and adds one
+opaque versioned MLS client-identity record. Version 4 binds that record to one
+exact nonzero 32-byte group identifier. The MLS adapter creates it once through a secret
+type with no `Clone`, `Debug`, or `Display`, reloads the same credential and
+signing key after close/reopen only for the bound group, and verifies that the
+loaded group's local member has the same credential and signing public key.
+Missing, malformed, replacement, cross-group, or mismatched identity state
+fails closed. The outbox portion
 persists one nonzero store identity, exact canonical Welcome and LocalV1
 endpoint bytes, delivery state, bounded attempts, monotonic lease generation,
 opaque lease identity, lease expiry, and the per-row attempt ceiling so restart
 cannot reinterpret committed work. Schema metadata is bound to SQLite's
-application `user_version`, migration takes an exclusive transaction, and each
-open reads back the retained rollback-journal and synchronization settings.
+application `user_version`; the v1-to-v2, v2-to-v3, and v3-to-v4 migrations take
+exclusive transactions. A frozen schema-v2 fixture preserves leased, delivered,
+and attempts-exhausted outbox rows plus the store identity through v4, while a
+forced migration conflict proves that versions and rows roll back intact. A
+frozen schema-v3 transition proves that a real legacy identity/group pair stays
+reloadable when exactly one structurally valid nonzero group identifier exists;
+the migration does not decode provider-owned MLS state, which the MLS reload
+boundary still rejects when malformed. Ambiguous binding rolls back at version
+3. Each open reads back the retained rollback-journal and synchronization settings.
+Migration from versions 1 and 2 intentionally leaves the new identity table
+empty because those databases never retained enough material to reconstruct the
+same client; callers must not generate a replacement and attach it to an old group.
 `SqlCipherStorage` implements the
 coordinator's `WelcomeOutboxPort` with one immediate SQL transaction per lease,
-accepted result, or failed result. Explicit schema-v1 fixtures prove atomic
-migration of valid pending work and rollback of invalid legacy delivery
-material. Close/reopen tests cover old-open-scope, stale, and foreign leases,
+accepted result, or failed result. Explicit schema-v1, schema-v2, and schema-v3 fixtures
+prove atomic migration of valid retained work and rollback of invalid or
+conflicting migration state. Close/reopen tests cover old-open-scope, stale,
+and foreign leases,
 expiry, exhaustion,
 and byte-identical retry after an unrecorded remote acceptance without repeating
 the retained MLS epoch or reopening invitation state.
@@ -48,8 +66,9 @@ two-member group; replaying the protected request remains rejected.
 
 This adapter is durability-laboratory evidence, not production storage. It has
 no platform keychain integration, rollback anchor, disk-full or power-loss
-evidence, rekey/backup/deletion policy, full durable-client identity recovery,
-or secure-erasure guarantee. Hosted-runner evidence is not a production
+evidence, rekey/backup/deletion policy, independent-process client runner,
+or secure-erasure guarantee. Its exact identity/group close-reopen test is not
+process-kill, rollback, or platform-vault evidence. Hosted-runner evidence is not a production
 packaging or broader hardware/OS compatibility claim.
 
 ```sh

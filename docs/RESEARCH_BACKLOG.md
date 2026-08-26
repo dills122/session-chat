@@ -46,8 +46,9 @@ foundational changes, an ADR.
   path update, out-of-order application delivery, a temporarily lost epoch
   Commit, abandoned pending Commits, and explicit-only group-state writes. The
   SQLCipher laboratory adds close/reopen recovery, joining-KeyPackage deletion,
-  and owner-local transaction evidence; integrated product recovery,
-  rollback protection, and durable outbox delivery are still open.
+  owner-local transaction evidence, durable Welcome-outbox delivery, and an
+  exact versioned client-identity/group reload boundary. Independent-process
+  recovery, rollback protection, and process/disk fault evidence remain open.
 
 Immediate gate: retain the isolated ADR 0012 laboratory with exact KeyPackage
 ownership, two-party lifecycle, removal, reordered/lost message, and
@@ -69,7 +70,9 @@ evidence required by ADR 0012.
   v2 adds only the fixed protected-join context. Version 1 lifecycle state uses
   explicit issue and expiration times, accepts realm-configured maximum
   lifetime and future skew, and follows ADR 0008. Descriptor parsing is
-  read-only; durable cross-layer transactions remain open.
+  read-only. The retained SQLCipher laboratory now implements bounded
+  inviter-local and joiner-local cross-layer transactions; durable replay
+  loading, rollback resistance, revocation, and multi-use state remain open.
 - **Protected-join decision recorded:** the
   [HPKE join-request packet](research/HPKE_JOIN_REQUEST_PROFILE.md) recommends
   RFC 9180 PSK mode with X25519/HKDF-SHA256/AES-128-GCM through the already
@@ -84,8 +87,9 @@ evidence required by ADR 0012.
   local v2 reservation, explicit simulated approval, and in-memory MLS/Add
   coordination. A right-specific one-Welcome memory mailbox now has bounded
   local evidence, and the committed approved-join result carries only its exact
-  deposit endpoint beside the MLS outputs. Human approval UX and durable
-  replay/MLS/invitation/outbox state remain gates. The provider owns one complete
+  deposit endpoint beside the MLS outputs. Human approval UX, durable replay
+  loading, process recovery, and rollback resistance remain gates; the current
+  SQLCipher laboratory owns atomic MLS/invitation/outbox state. The provider owns one complete
   CSPRNG-backed invitation-v2 creation API.
 - Implement durable transactional replay state, rollback protection,
   revocation, reservation recovery, and bounded-multi-use state machines.

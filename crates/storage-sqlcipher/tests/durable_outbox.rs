@@ -8,7 +8,9 @@ use std::{
 
 use rusqlite::{Connection, params};
 use session_crypto_mls::{
-    SessionGroupId, create_client, create_client_with_storage, create_key_package_validator,
+    DurableClientIdentityStorage, SessionGroupId, create_client,
+    create_durable_client_with_storage, create_key_package_validator,
+    load_durable_client_with_storage,
 };
 use session_protocol::{DepositCapability, LocalWelcomeDepositEndpoint, OpaqueEnvelope};
 use session_transport::{
@@ -24,6 +26,11 @@ use storage_sqlcipher::{
 const NOW: u64 = 1_900_000_000;
 const TRANSACTION_ID: [u8; 16] = [4; 16];
 const INVITATION_ID: [u8; 16] = [1; 16];
+const V2_LEASED_TRANSACTION_ID: [u8; 16] = [51; 16];
+const V2_DELIVERED_TRANSACTION_ID: [u8; 16] = [52; 16];
+const V2_EXHAUSTED_TRANSACTION_ID: [u8; 16] = [53; 16];
+const V2_STORE_ID: [u8; 16] = [54; 16];
+const V3_IDENTITY_GROUP_ID: [u8; 32] = [0xa1; 32];
 
 struct TestDatabase(PathBuf);
 
@@ -90,6 +97,7 @@ fn canonical_endpoint(expires_at: u64) -> Vec<u8> {
 
 fn commit_real_mls_inviter(
     storage: &SqlCipherStorage,
+    group_id: SessionGroupId,
     endpoint: Vec<u8>,
     envelope_id: [u8; 16],
     fault: PersistenceFault,
@@ -97,10 +105,14 @@ fn commit_real_mls_inviter(
     storage
         .seed_reservation(INVITATION_ID, [2; 64], [3; 16], NOW + 300, NOW)
         .expect("reservation stored");
-    let alice = create_client_with_storage(storage.clone(), storage.clone()).expect("Alice client");
-    let mut alice_group = alice
-        .create_group(SessionGroupId::new([5; 32]).expect("group id"), NOW)
-        .expect("Alice group");
+    let alice = create_durable_client_with_storage(
+        group_id,
+        storage.clone(),
+        storage.clone(),
+        storage.clone(),
+    )
+    .expect("durable Alice client");
+    let mut alice_group = alice.create_group(group_id, NOW).expect("Alice group");
     let bob = create_client().expect("Bob client");
     let bob_key_package = bob.generate_key_package(NOW).expect("Bob KeyPackage");
     let validated = create_key_package_validator()
@@ -149,6 +161,7 @@ fn committed_store(name: &str) -> (TestDatabase, SqlCipherStorage) {
     let storage = SqlCipherStorage::create(&database.0, vault_key()).expect("storage created");
     let (_welcome, result) = commit_real_mls_inviter(
         &storage,
+        SessionGroupId::new([5; 32]).expect("group id"),
         canonical_endpoint(NOW + 240),
         [8; 16],
         PersistenceFault::None,
@@ -158,7 +171,7 @@ fn committed_store(name: &str) -> (TestDatabase, SqlCipherStorage) {
 }
 
 #[test]
-fn schema_v1_fixture_migrates_atomically_to_pending_v2_work() {
+fn schema_v1_fixture_migrates_atomically_to_pending_v4_work() {
     let database = TestDatabase::new("migration-v1");
     let welcome = OpaqueEnvelope::new([21; 16], NOW + 180, vec![22; 32])
         .expect("Welcome")
@@ -168,7 +181,13 @@ fn schema_v1_fixture_migrates_atomically_to_pending_v2_work() {
     create_schema_v1_fixture(&database.0, &welcome, &endpoint);
 
     let mut migrated = SqlCipherStorage::open(&database.0, vault_key()).expect("v1 migrates");
-    assert_eq!(migrated.schema_version().expect("schema version"), 2);
+    assert_eq!(migrated.schema_version().expect("schema version"), 4);
+    assert!(
+        migrated
+            .load_client_identity(&SessionGroupId::new([0x31; 32]).expect("group id"))
+            .expect("identity lookup")
+            .is_none()
+    );
     let recovered = migrated
         .recover_inviter(&TRANSACTION_ID)
         .expect("recovery")
@@ -189,7 +208,7 @@ fn schema_v1_fixture_migrates_atomically_to_pending_v2_work() {
         connection
             .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
             .expect("application schema version"),
-        2
+        4
     );
     assert_eq!(
         connection
@@ -204,8 +223,213 @@ fn schema_v1_fixture_migrates_atomically_to_pending_v2_work() {
     );
     drop(connection);
 
-    let reopened = SqlCipherStorage::open(&database.0, vault_key()).expect("v2 reopens");
-    assert_eq!(reopened.schema_version().expect("schema version"), 2);
+    let reopened = SqlCipherStorage::open(&database.0, vault_key()).expect("v4 reopens");
+    assert_eq!(reopened.schema_version().expect("schema version"), 4);
+}
+
+#[test]
+fn frozen_schema_v2_fixture_preserves_nondefault_outbox_states_in_v4() {
+    let database = TestDatabase::new("migration-v2");
+    let welcome = OpaqueEnvelope::new([55; 16], NOW + 180, vec![56; 32])
+        .expect("Welcome")
+        .encode_canonical()
+        .expect("canonical Welcome");
+    create_schema_v2_fixture(&database.0, &welcome, &canonical_endpoint(NOW + 240));
+
+    let migrated = SqlCipherStorage::open(&database.0, vault_key()).expect("v2 migrates");
+    assert_eq!(migrated.schema_version().expect("schema version"), 4);
+    assert!(
+        migrated
+            .load_client_identity(&SessionGroupId::new([0x32; 32]).expect("group id"))
+            .expect("identity lookup")
+            .is_none()
+    );
+    let leased = migrated
+        .recover_inviter(&V2_LEASED_TRANSACTION_ID)
+        .expect("leased recovery")
+        .expect("leased fixture");
+    assert_eq!(leased.outbox_state, WelcomeOutboxState::Leased);
+    assert_eq!(leased.delivery_attempts, 2);
+    let delivered = migrated
+        .recover_inviter(&V2_DELIVERED_TRANSACTION_ID)
+        .expect("delivered recovery")
+        .expect("delivered fixture");
+    assert_eq!(delivered.outbox_state, WelcomeOutboxState::Delivered);
+    assert_eq!(delivered.delivery_attempts, 1);
+    let exhausted = migrated
+        .recover_inviter(&V2_EXHAUSTED_TRANSACTION_ID)
+        .expect("exhausted recovery")
+        .expect("exhausted fixture");
+    assert_eq!(
+        exhausted.outbox_state,
+        WelcomeOutboxState::AttemptsExhausted
+    );
+    assert_eq!(exhausted.delivery_attempts, 3);
+    drop(migrated);
+
+    let connection = open_fixture_connection(&database.0);
+    assert_eq!(fixture_versions(&connection), (4, 4));
+    assert_eq!(fixture_store_id(&connection), V2_STORE_ID);
+    assert_eq!(
+        connection
+            .query_row(
+                "SELECT lease_generation, lease_id, lease_expires_at
+                 FROM inviter_joins WHERE transaction_id = ?1",
+                params![V2_LEASED_TRANSACTION_ID],
+                |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, Vec<u8>>(1)?,
+                        row.get::<_, i64>(2)?,
+                    ))
+                },
+            )
+            .expect("leased authority survives migration"),
+        (4, vec![91_u8; 16], (NOW + 60) as i64)
+    );
+}
+
+#[test]
+fn frozen_schema_v3_identity_is_bound_to_its_sole_group_in_v4() {
+    let database = TestDatabase::new("migration-v3-identity");
+    create_schema_v3_fixture(&database.0, true);
+
+    let migrated = SqlCipherStorage::open(&database.0, vault_key()).expect("v3 migrates");
+    assert_eq!(migrated.schema_version().expect("schema version"), 4);
+    let group_id = SessionGroupId::new(V3_IDENTITY_GROUP_ID).expect("group id");
+    let record = migrated
+        .load_client_identity(&group_id)
+        .expect("bound identity lookup")
+        .expect("identity retained");
+    assert_eq!(record.into_storage_bytes().len(), 141);
+    assert!(
+        migrated
+            .load_client_identity(&SessionGroupId::new([0xa2; 32]).expect("foreign group id"))
+            .is_err()
+    );
+    let reloaded = load_durable_client_with_storage(
+        group_id,
+        migrated.clone(),
+        migrated.clone(),
+        migrated.clone(),
+    )
+    .expect("migrated v3 identity remains usable");
+    let reloaded_group = reloaded
+        .load_group(group_id)
+        .expect("migrated v3 group remains usable by the retained identity");
+    assert_eq!(reloaded_group.group_id(), group_id.as_bytes());
+    drop(migrated);
+
+    let connection = open_fixture_connection(&database.0);
+    assert_eq!(fixture_versions(&connection), (4, 4));
+    assert_eq!(
+        connection
+            .query_row(
+                "SELECT group_id FROM mls_client_identity WHERE singleton = 1",
+                [],
+                |row| row.get::<_, Vec<u8>>(0),
+            )
+            .expect("migrated identity group"),
+        V3_IDENTITY_GROUP_ID
+    );
+}
+
+#[test]
+fn ambiguous_schema_v3_identity_binding_rolls_migration_back() {
+    let database = TestDatabase::new("migration-v3-identity-rollback");
+    create_schema_v3_fixture(&database.0, false);
+
+    assert!(SqlCipherStorage::open(&database.0, vault_key()).is_err());
+    let connection = open_fixture_connection(&database.0);
+    assert_eq!(fixture_versions(&connection), (3, 3));
+    assert_eq!(
+        connection
+            .query_row("SELECT count(*) FROM mls_client_identity", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .expect("identity survives rollback"),
+        1
+    );
+    assert_eq!(
+        connection
+            .query_row(
+                "SELECT count(*) FROM sqlite_master
+                 WHERE type = 'table' AND name IN (
+                     'storage_metadata_v3', 'mls_client_identity_v3'
+                 )",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("temporary migration tables"),
+        0
+    );
+}
+
+#[test]
+fn schema_v3_structural_binding_defers_malformed_group_rejection_to_mls() {
+    let database = TestDatabase::new("migration-v3-malformed-group");
+    create_schema_v3_fixture(&database.0, true);
+    let connection = open_fixture_connection(&database.0);
+    connection
+        .execute(
+            "UPDATE mls_groups SET state = ?1 WHERE group_id = ?2",
+            params![vec![0xb3_u8; 64], V3_IDENTITY_GROUP_ID],
+        )
+        .expect("malformed MLS state inserted");
+    drop(connection);
+
+    let migrated = SqlCipherStorage::open(&database.0, vault_key())
+        .expect("structurally unambiguous v3 state migrates");
+    let group_id = SessionGroupId::new(V3_IDENTITY_GROUP_ID).expect("group id");
+    let reloaded =
+        load_durable_client_with_storage(group_id, migrated.clone(), migrated.clone(), migrated)
+            .expect("valid identity reloads");
+    assert!(reloaded.load_group(group_id).is_err());
+}
+
+#[test]
+fn failed_schema_v2_migration_restores_versions_and_outbox_rows() {
+    let database = TestDatabase::new("migration-v2-rollback");
+    let welcome = OpaqueEnvelope::new([57; 16], NOW + 180, vec![58; 32])
+        .expect("Welcome")
+        .encode_canonical()
+        .expect("canonical Welcome");
+    create_schema_v2_fixture(&database.0, &welcome, &canonical_endpoint(NOW + 240));
+    let connection = open_fixture_connection(&database.0);
+    connection
+        .execute_batch(
+            "CREATE TABLE mls_client_identity (
+                 conflicting INTEGER PRIMARY KEY
+             ) STRICT;",
+        )
+        .expect("conflicting future table");
+    drop(connection);
+
+    assert!(SqlCipherStorage::open(&database.0, vault_key()).is_err());
+    let connection = open_fixture_connection(&database.0);
+    assert_eq!(fixture_versions(&connection), (2, 2));
+    assert_eq!(fixture_store_id(&connection), V2_STORE_ID);
+    assert_eq!(
+        connection
+            .query_row(
+                "SELECT outbox_state FROM inviter_joins WHERE transaction_id = ?1",
+                params![V2_LEASED_TRANSACTION_ID],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("leased fixture survives rollback"),
+        2
+    );
+    assert_eq!(
+        connection
+            .query_row(
+                "SELECT count(*) FROM sqlite_master
+                 WHERE type = 'table' AND name = 'storage_metadata_v2'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("temporary metadata table lookup"),
+        0
+    );
 }
 
 #[test]
@@ -443,6 +667,7 @@ fn ambiguous_prior_acceptance_retries_byte_identically_after_restart() {
         .into_parts();
     let (welcome, result) = commit_real_mls_inviter(
         &storage,
+        SessionGroupId::new([5; 32]).expect("group id"),
         endpoint.encode_canonical().expect("canonical endpoint"),
         [31; 16],
         PersistenceFault::None,
@@ -503,6 +728,7 @@ fn rolled_back_membership_exposes_no_outbox_work() {
     let mut storage = SqlCipherStorage::create(&database.0, vault_key()).expect("storage created");
     let (_welcome, result) = commit_real_mls_inviter(
         &storage,
+        SessionGroupId::new([5; 32]).expect("group id"),
         canonical_endpoint(NOW + 240),
         [41; 16],
         PersistenceFault::BeforeCommit,
@@ -572,6 +798,189 @@ fn create_schema_v1_fixture(path: &Path, welcome: &[u8], endpoint: &[u8]) {
             ],
         )
         .expect("inviter fixture");
+}
+
+fn create_schema_v2_fixture(path: &Path, welcome: &[u8], endpoint: &[u8]) {
+    let connection = open_fixture_connection(path);
+    connection
+        .execute_batch(include_str!("fixtures/schema-v2.sql"))
+        .expect("frozen schema v2 fixture");
+    let rows = [
+        (
+            V2_LEASED_TRANSACTION_ID,
+            [61_u8; 16],
+            [71_u8; 16],
+            [81_u8; 32],
+            2_i64,
+            2_i64,
+            5_i64,
+            4_i64,
+            Some([91_u8; 16]),
+            Some((NOW + 60) as i64),
+        ),
+        (
+            V2_DELIVERED_TRANSACTION_ID,
+            [62_u8; 16],
+            [72_u8; 16],
+            [82_u8; 32],
+            3_i64,
+            1_i64,
+            5_i64,
+            1_i64,
+            None,
+            None,
+        ),
+        (
+            V2_EXHAUSTED_TRANSACTION_ID,
+            [63_u8; 16],
+            [73_u8; 16],
+            [83_u8; 32],
+            4_i64,
+            3_i64,
+            3_i64,
+            3_i64,
+            None,
+            None,
+        ),
+    ];
+    for (
+        transaction_id,
+        invitation_id,
+        join_request_id,
+        group_id,
+        outbox_state,
+        delivery_attempts,
+        maximum_delivery_attempts,
+        lease_generation,
+        lease_id,
+        lease_expires_at,
+    ) in rows
+    {
+        connection
+            .execute(
+                "INSERT INTO reservations(
+                     invitation_id, generation, join_request_id, expires_at, state
+                 ) VALUES (?1, ?2, ?3, ?4, 2)",
+                params![
+                    invitation_id,
+                    [2_u8; 64],
+                    join_request_id,
+                    (NOW + 300) as i64
+                ],
+            )
+            .expect("v2 consumed reservation fixture");
+        connection
+            .execute(
+                "INSERT INTO inviter_joins(
+                     transaction_id, invitation_id, generation, join_request_id,
+                     request_fingerprint, group_id, epoch_before, epoch_after,
+                     approval_record, welcome, endpoint, outbox_expires_at,
+                     outbox_state, delivery_attempts, maximum_delivery_attempts,
+                     lease_generation, lease_id, lease_expires_at
+                 ) VALUES (
+                     ?1, ?2, ?3, ?4, ?5, ?6, 0, 1, ?7, ?8, ?9, ?10,
+                     ?11, ?12, ?13, ?14, ?15, ?16
+                 )",
+                params![
+                    transaction_id,
+                    invitation_id,
+                    [2_u8; 64],
+                    join_request_id,
+                    [6_u8; 32],
+                    group_id,
+                    vec![7_u8; 32],
+                    welcome,
+                    endpoint,
+                    (NOW + 120) as i64,
+                    outbox_state,
+                    delivery_attempts,
+                    maximum_delivery_attempts,
+                    lease_generation,
+                    lease_id,
+                    lease_expires_at,
+                ],
+            )
+            .expect("v2 inviter fixture");
+    }
+}
+
+fn create_schema_v3_fixture(path: &Path, include_group: bool) {
+    let source_database = TestDatabase(path.with_extension("semantic-v4-source.sqlite3"));
+    let source_storage =
+        SqlCipherStorage::create(&source_database.0, vault_key()).expect("semantic source created");
+    let group_id = SessionGroupId::new(V3_IDENTITY_GROUP_ID).expect("v3 group id");
+    let (_welcome, result) = commit_real_mls_inviter(
+        &source_storage,
+        group_id,
+        canonical_endpoint(NOW + 240),
+        [0xb0; 16],
+        PersistenceFault::None,
+    );
+    result.expect("semantic source committed");
+    drop(source_storage);
+    let source_connection = open_fixture_connection(&source_database.0);
+    let group_state = source_connection
+        .query_row(
+            "SELECT state FROM mls_groups WHERE group_id = ?1",
+            params![V3_IDENTITY_GROUP_ID],
+            |row| row.get::<_, Vec<u8>>(0),
+        )
+        .expect("semantic v3 group state");
+    let identity_record = source_connection
+        .query_row(
+            "SELECT identity_record FROM mls_client_identity WHERE singleton = 1",
+            [],
+            |row| row.get::<_, Vec<u8>>(0),
+        )
+        .expect("semantic v3 identity record");
+    drop(source_connection);
+
+    let welcome = OpaqueEnvelope::new([0xb1; 16], NOW + 180, vec![0xb2; 32])
+        .expect("Welcome")
+        .encode_canonical()
+        .expect("canonical Welcome");
+    create_schema_v2_fixture(path, &welcome, &canonical_endpoint(NOW + 240));
+    let connection = open_fixture_connection(path);
+    connection
+        .execute_batch(include_str!("fixtures/schema-v3-upgrade.sql"))
+        .expect("frozen schema v3 upgrade");
+    if include_group {
+        connection
+            .execute(
+                "INSERT INTO mls_groups(group_id, state) VALUES (?1, ?2)",
+                params![V3_IDENTITY_GROUP_ID, group_state],
+            )
+            .expect("sole v3 MLS group");
+    }
+    connection
+        .execute(
+            "INSERT INTO mls_client_identity(singleton, identity_record) VALUES (1, ?1)",
+            params![identity_record],
+        )
+        .expect("v3 identity fixture");
+}
+
+fn fixture_versions(connection: &Connection) -> (i64, i64) {
+    (
+        connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .expect("application schema version"),
+        connection
+            .query_row("SELECT schema_version FROM storage_metadata", [], |row| {
+                row.get(0)
+            })
+            .expect("metadata schema version"),
+    )
+}
+
+fn fixture_store_id(connection: &Connection) -> [u8; 16] {
+    connection
+        .query_row("SELECT store_id FROM storage_metadata", [], |row| {
+            row.get::<_, Vec<u8>>(0)
+        })
+        .expect("store identity")
+        .try_into()
+        .expect("exact store identity")
 }
 
 fn open_fixture_connection(path: &Path) -> Connection {

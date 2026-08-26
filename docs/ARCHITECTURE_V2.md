@@ -248,16 +248,21 @@ The active Rust laboratory now contains fourteen narrow pieces of this architect
   for the real inviter and joiner MLS persistence calls. Its version-2 schema
   also owns exact Welcome work, bounded attempt/lease state, and terminal
   delivery state through the coordinator's sole-owner port across close/reopen.
+  Version 3 adds an insert-only, versioned MLS client identity; version 4 binds
+  it to one exact group identifier. The secret-bearing storage value is opaque and
+  non-cloneable/non-debuggable; durable clients reject group creation, join, or
+  reload outside that binding and verify the same local member when loading
+  group state.
   A retained integration test drives the real capability-admission/MLS path
   through ambiguous commit recovery and post-restart Welcome delivery. It is
-  not connected to a platform key protector or durable client and provides no
-  rollback or production claim.
+  not connected to a platform key protector or independent-process client and
+  provides no rollback or production claim.
 - `sessionctl` composes the current local pieces into one headless Alice/Bob
   flow: capability join, simulated approval, atomic SQLCipher inviter commit,
-  ambiguous-result recovery, reconstructed coordinator Welcome delivery,
+  ambiguous-result recovery, exact Alice identity/group reload, reconstructed coordinator Welcome delivery,
   bidirectional application messages, path update, removal, and post-removal
   rejection. It can emit a bounded redacted scenario record. It is not a
-  process-restartable, hosted, or networked client.
+  independent-process, hosted, or networked client.
 
 The invitation registry, replay verifier, and MLS adapter remain separate
 in-process state machines. The capability adapter coordinates them through an
