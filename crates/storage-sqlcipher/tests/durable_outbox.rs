@@ -29,6 +29,7 @@ const V2_LEASED_TRANSACTION_ID: [u8; 16] = [51; 16];
 const V2_DELIVERED_TRANSACTION_ID: [u8; 16] = [52; 16];
 const V2_EXHAUSTED_TRANSACTION_ID: [u8; 16] = [53; 16];
 const V2_STORE_ID: [u8; 16] = [54; 16];
+const V3_IDENTITY_GROUP_ID: [u8; 32] = [0xa1; 32];
 
 struct TestDatabase(PathBuf);
 
@@ -163,7 +164,7 @@ fn committed_store(name: &str) -> (TestDatabase, SqlCipherStorage) {
 }
 
 #[test]
-fn schema_v1_fixture_migrates_atomically_to_pending_v3_work() {
+fn schema_v1_fixture_migrates_atomically_to_pending_v4_work() {
     let database = TestDatabase::new("migration-v1");
     let welcome = OpaqueEnvelope::new([21; 16], NOW + 180, vec![22; 32])
         .expect("Welcome")
@@ -173,10 +174,10 @@ fn schema_v1_fixture_migrates_atomically_to_pending_v3_work() {
     create_schema_v1_fixture(&database.0, &welcome, &endpoint);
 
     let mut migrated = SqlCipherStorage::open(&database.0, vault_key()).expect("v1 migrates");
-    assert_eq!(migrated.schema_version().expect("schema version"), 3);
+    assert_eq!(migrated.schema_version().expect("schema version"), 4);
     assert!(
         migrated
-            .load_client_identity()
+            .load_client_identity(&SessionGroupId::new([0x31; 32]).expect("group id"))
             .expect("identity lookup")
             .is_none()
     );
@@ -200,7 +201,7 @@ fn schema_v1_fixture_migrates_atomically_to_pending_v3_work() {
         connection
             .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
             .expect("application schema version"),
-        3
+        4
     );
     assert_eq!(
         connection
@@ -215,12 +216,12 @@ fn schema_v1_fixture_migrates_atomically_to_pending_v3_work() {
     );
     drop(connection);
 
-    let reopened = SqlCipherStorage::open(&database.0, vault_key()).expect("v3 reopens");
-    assert_eq!(reopened.schema_version().expect("schema version"), 3);
+    let reopened = SqlCipherStorage::open(&database.0, vault_key()).expect("v4 reopens");
+    assert_eq!(reopened.schema_version().expect("schema version"), 4);
 }
 
 #[test]
-fn frozen_schema_v2_fixture_preserves_nondefault_outbox_states_in_v3() {
+fn frozen_schema_v2_fixture_preserves_nondefault_outbox_states_in_v4() {
     let database = TestDatabase::new("migration-v2");
     let welcome = OpaqueEnvelope::new([55; 16], NOW + 180, vec![56; 32])
         .expect("Welcome")
@@ -229,10 +230,10 @@ fn frozen_schema_v2_fixture_preserves_nondefault_outbox_states_in_v3() {
     create_schema_v2_fixture(&database.0, &welcome, &canonical_endpoint(NOW + 240));
 
     let migrated = SqlCipherStorage::open(&database.0, vault_key()).expect("v2 migrates");
-    assert_eq!(migrated.schema_version().expect("schema version"), 3);
+    assert_eq!(migrated.schema_version().expect("schema version"), 4);
     assert!(
         migrated
-            .load_client_identity()
+            .load_client_identity(&SessionGroupId::new([0x32; 32]).expect("group id"))
             .expect("identity lookup")
             .is_none()
     );
@@ -260,7 +261,7 @@ fn frozen_schema_v2_fixture_preserves_nondefault_outbox_states_in_v3() {
     drop(migrated);
 
     let connection = open_fixture_connection(&database.0);
-    assert_eq!(fixture_versions(&connection), (3, 3));
+    assert_eq!(fixture_versions(&connection), (4, 4));
     assert_eq!(fixture_store_id(&connection), V2_STORE_ID);
     assert_eq!(
         connection
@@ -278,6 +279,71 @@ fn frozen_schema_v2_fixture_preserves_nondefault_outbox_states_in_v3() {
             )
             .expect("leased authority survives migration"),
         (4, vec![91_u8; 16], (NOW + 60) as i64)
+    );
+}
+
+#[test]
+fn frozen_schema_v3_identity_is_bound_to_its_sole_group_in_v4() {
+    let database = TestDatabase::new("migration-v3-identity");
+    create_schema_v3_fixture(&database.0, true);
+
+    let migrated = SqlCipherStorage::open(&database.0, vault_key()).expect("v3 migrates");
+    assert_eq!(migrated.schema_version().expect("schema version"), 4);
+    let group_id = SessionGroupId::new(V3_IDENTITY_GROUP_ID).expect("group id");
+    let record = migrated
+        .load_client_identity(&group_id)
+        .expect("bound identity lookup")
+        .expect("identity retained");
+    assert_eq!(record.into_storage_bytes().len(), 141);
+    assert!(
+        migrated
+            .load_client_identity(&SessionGroupId::new([0xa2; 32]).expect("foreign group id"))
+            .is_err()
+    );
+    drop(migrated);
+
+    let connection = open_fixture_connection(&database.0);
+    assert_eq!(fixture_versions(&connection), (4, 4));
+    assert_eq!(
+        connection
+            .query_row(
+                "SELECT group_id FROM mls_client_identity WHERE singleton = 1",
+                [],
+                |row| row.get::<_, Vec<u8>>(0),
+            )
+            .expect("migrated identity group"),
+        V3_IDENTITY_GROUP_ID
+    );
+}
+
+#[test]
+fn ambiguous_schema_v3_identity_binding_rolls_migration_back() {
+    let database = TestDatabase::new("migration-v3-identity-rollback");
+    create_schema_v3_fixture(&database.0, false);
+
+    assert!(SqlCipherStorage::open(&database.0, vault_key()).is_err());
+    let connection = open_fixture_connection(&database.0);
+    assert_eq!(fixture_versions(&connection), (3, 3));
+    assert_eq!(
+        connection
+            .query_row("SELECT count(*) FROM mls_client_identity", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .expect("identity survives rollback"),
+        1
+    );
+    assert_eq!(
+        connection
+            .query_row(
+                "SELECT count(*) FROM sqlite_master
+                 WHERE type = 'table' AND name IN (
+                     'storage_metadata_v3', 'mls_client_identity_v3'
+                 )",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("temporary migration tables"),
+        0
     );
 }
 
@@ -794,6 +860,32 @@ fn create_schema_v2_fixture(path: &Path, welcome: &[u8], endpoint: &[u8]) {
             )
             .expect("v2 inviter fixture");
     }
+}
+
+fn create_schema_v3_fixture(path: &Path, include_group: bool) {
+    let welcome = OpaqueEnvelope::new([0xb1; 16], NOW + 180, vec![0xb2; 32])
+        .expect("Welcome")
+        .encode_canonical()
+        .expect("canonical Welcome");
+    create_schema_v2_fixture(path, &welcome, &canonical_endpoint(NOW + 240));
+    let connection = open_fixture_connection(path);
+    connection
+        .execute_batch(include_str!("fixtures/schema-v3-upgrade.sql"))
+        .expect("frozen schema v3 upgrade");
+    if include_group {
+        connection
+            .execute(
+                "INSERT INTO mls_groups(group_id, state) VALUES (?1, ?2)",
+                params![V3_IDENTITY_GROUP_ID, vec![0xb3_u8; 64]],
+            )
+            .expect("sole v3 MLS group");
+    }
+    connection
+        .execute(
+            "INSERT INTO mls_client_identity(singleton, identity_record) VALUES (1, ?1)",
+            params![vec![0xb4_u8; 141]],
+        )
+        .expect("v3 identity fixture");
 }
 
 fn fixture_versions(connection: &Connection) -> (i64, i64) {

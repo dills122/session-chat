@@ -379,11 +379,17 @@ fn run_phase_one_flow(
         "Welcome mailbox",
     )?;
     let (welcome_deposit, welcome_receive, welcome_acknowledgement) = welcome_mailbox.into_parts();
+    let alice_group_id = SessionGroupId::new(random_nonzero()?).at_stage("Alice group ID")?;
 
     let alice = operation_result(
         faults,
         PhaseOneFaultPoint::AliceClient,
-        create_durable_client_with_storage(storage.clone(), storage.clone(), storage.clone()),
+        create_durable_client_with_storage(
+            alice_group_id,
+            storage.clone(),
+            storage.clone(),
+            storage.clone(),
+        ),
         "Alice client",
     )?;
     let bob = operation_result(
@@ -528,10 +534,7 @@ fn run_phase_one_flow(
     let mut alice_group = operation_result(
         faults,
         PhaseOneFaultPoint::AliceGroup,
-        alice.create_group(
-            SessionGroupId::new(random_nonzero()?).at_stage("group ID")?,
-            NOW,
-        ),
+        alice.create_group(alice_group_id, NOW),
         "Alice group",
     )?;
     let prepared_join = operation_result(
@@ -672,7 +675,9 @@ fn run_phase_one_flow(
         return Err(stage("Welcome deposit"));
     }
     drop(committed_join);
-    let alice_group_id = SessionGroupId::new(*alice_group.group_id()).at_stage("Alice group ID")?;
+    if alice_group.group_id() != alice_group_id.as_bytes() {
+        return Err(stage("Alice group ID"));
+    }
     drop(alice_group);
     drop(alice);
     drop(storage);
@@ -686,6 +691,7 @@ fn run_phase_one_flow(
         "durable store reopen",
     )?;
     let reloaded_alice = load_durable_client_with_storage(
+        alice_group_id,
         delivery_store.clone(),
         delivery_store.clone(),
         delivery_store.clone(),

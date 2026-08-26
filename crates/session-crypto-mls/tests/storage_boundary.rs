@@ -3,11 +3,11 @@ use std::sync::{Arc, Mutex};
 use mls_rs::storage_provider::in_memory::{InMemoryGroupStateStorage, InMemoryKeyPackageStorage};
 use mls_rs_core::group::GroupStateStorage;
 use session_crypto_mls::{
-    DURABLE_CLIENT_IDENTITY_BYTES, DurableClientIdentityStorage, IncomingMessage, MlsWireMessage,
-    SessionGroupId, create_client_with_storage, create_durable_client_with_storage,
-    create_key_package_validator, load_durable_client_with_storage,
+    DURABLE_CLIENT_IDENTITY_BYTES, DurableClientIdentityRecord, DurableClientIdentityStorage,
+    IncomingMessage, MlsWireMessage, SessionGroupId, create_client_with_storage,
+    create_durable_client_with_storage, create_key_package_validator,
+    load_durable_client_with_storage,
 };
-use zeroize::Zeroizing;
 
 const NOW: u64 = 1_900_000_000;
 const IDENTITY_V1_CREDENTIAL: [u8; 32] = [0x42; 32];
@@ -29,38 +29,76 @@ const IDENTITY_V1_HEX: &str = concat!(
     "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
 );
 
+#[derive(Default)]
+struct StoredIdentity {
+    group_id: [u8; 32],
+    encoded: Vec<u8>,
+}
+
 #[derive(Clone, Default)]
-struct IdentityStore(Arc<Mutex<Option<Vec<u8>>>>);
+struct IdentityStore(Arc<Mutex<Option<StoredIdentity>>>);
 
-impl DurableClientIdentityStorage for IdentityStore {
-    type Error = ();
-
-    fn load_client_identity(&self) -> Result<Option<Zeroizing<Vec<u8>>>, Self::Error> {
-        Ok(self
-            .0
-            .lock()
-            .map_err(|_| ())?
-            .as_ref()
-            .map(|bytes| Zeroizing::new(bytes.clone())))
-    }
-
-    fn insert_client_identity(&self, encoded: &[u8]) -> Result<(), Self::Error> {
+impl IdentityStore {
+    fn insert_raw(&self, group_id: SessionGroupId, encoded: Vec<u8>) -> Result<(), ()> {
         let mut retained = self.0.lock().map_err(|_| ())?;
         if retained.is_some() {
             return Err(());
         }
-        *retained = Some(encoded.to_vec());
+        *retained = Some(StoredIdentity {
+            group_id: *group_id.as_bytes(),
+            encoded,
+        });
         Ok(())
+    }
+
+    fn raw_bytes(&self) -> Vec<u8> {
+        self.0
+            .lock()
+            .expect("identity store lock")
+            .as_ref()
+            .expect("identity retained")
+            .encoded
+            .clone()
+    }
+}
+
+impl DurableClientIdentityStorage for IdentityStore {
+    type Error = ();
+
+    fn load_client_identity(
+        &self,
+        group_id: &SessionGroupId,
+    ) -> Result<Option<DurableClientIdentityRecord>, Self::Error> {
+        let retained = self.0.lock().map_err(|_| ())?;
+        let Some(retained) = retained.as_ref() else {
+            return Ok(None);
+        };
+        if retained.group_id != *group_id.as_bytes() {
+            return Err(());
+        }
+        DurableClientIdentityRecord::from_storage_bytes(retained.encoded.clone())
+            .map(Some)
+            .map_err(|_| ())
+    }
+
+    fn insert_client_identity(
+        &self,
+        group_id: &SessionGroupId,
+        encoded: DurableClientIdentityRecord,
+    ) -> Result<(), Self::Error> {
+        self.insert_raw(*group_id, encoded.into_storage_bytes().to_vec())
     }
 }
 
 fn assert_identity_rejected(encoded: Vec<u8>) {
     let store = IdentityStore::default();
+    let group_id = SessionGroupId::new([0x51; 32]).expect("group id");
     store
-        .insert_client_identity(&encoded)
+        .insert_raw(group_id, encoded)
         .expect("hostile identity fixture inserted");
     assert!(
         load_durable_client_with_storage(
+            group_id,
             InMemoryGroupStateStorage::default(),
             InMemoryKeyPackageStorage::default(),
             store,
@@ -141,12 +179,18 @@ fn configured_provider_receives_real_group_writes_and_joiner_key_package_deletio
 fn frozen_identity_v1_fixture_loads_the_expected_credential_and_signer() {
     let encoded = decode_hex(IDENTITY_V1_HEX);
     assert_eq!(encoded.len(), DURABLE_CLIENT_IDENTITY_BYTES);
+    let group_id = SessionGroupId::new([0x41; 32]).expect("group id");
     let identity = IdentityStore::default();
     identity
-        .insert_client_identity(&encoded)
+        .insert_client_identity(
+            &group_id,
+            DurableClientIdentityRecord::from_storage_bytes(encoded)
+                .expect("fixed identity-v1 record"),
+        )
         .expect("fixed identity-v1 fixture inserted");
 
     let client = load_durable_client_with_storage(
+        group_id,
         InMemoryGroupStateStorage::default(),
         InMemoryKeyPackageStorage::default(),
         identity,
@@ -175,19 +219,28 @@ fn durable_identity_reloads_the_same_member_and_rejects_fresh_or_malformed_ident
     let alice_groups = InMemoryGroupStateStorage::default();
     let alice_key_packages = InMemoryKeyPackageStorage::default();
     let alice_identity = IdentityStore::default();
+    let group_id = SessionGroupId::new([0x51; 32]).expect("group id");
+    let foreign_group_id = SessionGroupId::new([0x52; 32]).expect("foreign group id");
     let alice = create_durable_client_with_storage(
+        group_id,
         alice_groups.clone(),
         alice_key_packages.clone(),
         alice_identity.clone(),
     )
     .expect("durable Alice client");
     let original_credential = *alice.credential_identity().as_bytes();
-    let valid_identity = alice_identity
-        .load_client_identity()
-        .expect("identity lookup")
-        .expect("identity retained");
-    let group_id = SessionGroupId::new([0x51; 32]).expect("group id");
+    let valid_identity = alice_identity.raw_bytes();
     let mut alice_group = alice.create_group(group_id, NOW).expect("Alice group");
+    assert!(alice.create_group(foreign_group_id, NOW).is_err());
+    assert!(
+        load_durable_client_with_storage(
+            foreign_group_id,
+            alice_groups.clone(),
+            alice_key_packages.clone(),
+            alice_identity.clone(),
+        )
+        .is_err()
+    );
 
     let bob = create_client_with_storage(
         InMemoryGroupStateStorage::default(),
@@ -210,6 +263,7 @@ fn durable_identity_reloads_the_same_member_and_rejects_fresh_or_malformed_ident
     drop(alice);
 
     let reloaded = load_durable_client_with_storage(
+        group_id,
         alice_groups.clone(),
         alice_key_packages.clone(),
         alice_identity.clone(),
@@ -239,6 +293,7 @@ fn durable_identity_reloads_the_same_member_and_rejects_fresh_or_malformed_ident
     assert!(fresh.load_group(group_id).is_err());
     assert!(
         create_durable_client_with_storage(
+            group_id,
             InMemoryGroupStateStorage::default(),
             InMemoryKeyPackageStorage::default(),
             alice_identity,
@@ -249,6 +304,7 @@ fn durable_identity_reloads_the_same_member_and_rejects_fresh_or_malformed_ident
     let missing = IdentityStore::default();
     assert!(
         load_durable_client_with_storage(
+            group_id,
             InMemoryGroupStateStorage::default(),
             InMemoryKeyPackageStorage::default(),
             missing,
@@ -257,10 +313,11 @@ fn durable_identity_reloads_the_same_member_and_rejects_fresh_or_malformed_ident
     );
     let malformed = IdentityStore::default();
     malformed
-        .insert_client_identity(&[0xff; 7])
+        .insert_raw(group_id, vec![0xff; 7])
         .expect("malformed fixture inserted");
     assert!(
         load_durable_client_with_storage(
+            group_id,
             InMemoryGroupStateStorage::default(),
             InMemoryKeyPackageStorage::default(),
             malformed,
@@ -269,11 +326,11 @@ fn durable_identity_reloads_the_same_member_and_rejects_fresh_or_malformed_ident
     );
 
     for index in [0, 8, 9, 10, 11, 12, 45, 77] {
-        let mut altered = valid_identity.to_vec();
+        let mut altered = valid_identity.clone();
         altered[index] ^= 0xff;
         assert_identity_rejected(altered);
     }
-    let mut zero_credential = valid_identity.to_vec();
+    let mut zero_credential = valid_identity.clone();
     zero_credential[13..45].fill(0);
     assert_identity_rejected(zero_credential);
     assert_identity_rejected(valid_identity[..valid_identity.len() - 1].to_vec());
