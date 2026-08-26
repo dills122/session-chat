@@ -71,6 +71,9 @@ records fail closed. The separate SQLCipher laboratory owns this record and the
 MLS group/KeyPackage stores. This crate does not itself coordinate invitation,
 replay, approval, outbox, or KeyPackage-deletion transactions. Remote
 acknowledgement must not gate or roll back the inviter's committed membership.
+An exact committed identity-v1 hex fixture uses RFC 8032 test-only Ed25519
+material and proves the expected credential/public key can reload and sign a
+KeyPackage accepted by the independent validation boundary.
 Cross-implementation fixtures, crash/rollback recovery, old-secret deletion,
 platform coverage, fuzzing, and an independent review of the exact
 `mls-rs`/AWS-LC boundary remain release gates.

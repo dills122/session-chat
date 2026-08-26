@@ -91,6 +91,9 @@ The durable client-identity record has this closed layout:
 The record is storage-internal, not a wire object. Unknown identifiers, wrong
 length, zero fields, inconsistent key halves, or a failed domain-separated
 sign/verify self-check are rejected before a client or group is returned.
+A committed identity-v1 hex fixture uses RFC 8032 test-only Ed25519 material;
+the load-only path must recover its exact credential and public key and produce
+a KeyPackage accepted by the separate validator.
 
 ## Platform protector direction
 
