@@ -108,10 +108,11 @@ pub struct DurableClientIdentityRecord(Zeroizing<Vec<u8>>);
 impl DurableClientIdentityRecord {
     /// Wraps one exact-length value returned by durable storage.
     pub fn from_storage_bytes(encoded: Vec<u8>) -> Result<Self, MlsAdapterError> {
+        let encoded = Zeroizing::new(encoded);
         if encoded.len() != DURABLE_CLIENT_IDENTITY_BYTES {
             return Err(MlsAdapterError::ProtocolRejected);
         }
-        Ok(Self(Zeroizing::new(encoded)))
+        Ok(Self(encoded))
     }
 
     /// Consumes the opaque record for insertion by a storage adapter.

@@ -597,12 +597,12 @@ impl DurableClientIdentityStorage for SqlCipherStorage {
         let Some((stored_group_id, encoded)) = retained else {
             return Ok(None);
         };
+        let encoded = DurableClientIdentityRecord::from_storage_bytes(encoded)
+            .map_err(|_| StoreError::Rejected)?;
         if stored_group_id.as_slice() != group_id.as_bytes() {
             return Err(StoreError::Conflict);
         }
-        DurableClientIdentityRecord::from_storage_bytes(encoded)
-            .map(Some)
-            .map_err(|_| StoreError::Rejected)
+        Ok(Some(encoded))
     }
 
     fn insert_client_identity(
