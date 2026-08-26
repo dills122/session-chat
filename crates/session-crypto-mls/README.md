@@ -62,12 +62,15 @@ create/prepare/apply cause no implicit group-state write and that an explicit
 provider write causes one write.
 
 The default client helper still uses process memory. The durable helper requires
-a caller-owned identity store, inserts exactly one 141-byte version-1 record,
-and has a separate load-only path that never generates a replacement. The
+one exact group identifier and a caller-owned identity store, inserts exactly
+one 141-byte version-1 record behind an opaque non-`Clone`, non-`Debug` secret
+type, and has a separate load-only path that never generates a replacement. The
 record binds MLS 1.0, the selected ciphersuite, the pinned AWS-LC representation,
 the 32-byte BasicCredential identity, 32-byte signing public key, and 64-byte
 signing secret; malformed, unknown, absent, conflicting, and key-mismatched
-records fail closed. The separate SQLCipher laboratory owns this record and the
+records fail closed. Storage binds the record to that exact group, and the
+durable client rejects create, load, or join under another group identifier.
+The separate SQLCipher laboratory owns this record and the
 MLS group/KeyPackage stores. This crate does not itself coordinate invitation,
 replay, approval, outbox, or KeyPackage-deletion transactions. Remote
 acknowledgement must not gate or roll back the inviter's committed membership.

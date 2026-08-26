@@ -114,8 +114,8 @@ those seams and does not reinterpret their pre-merge files.
 | `L1-PROCESS` | Independent-process runner | `T9-SESSIONCTL` | Pending | Separate client and untrusted-service processes exchange only public wire objects under bounded lifecycle control and emit a redacted evidence manifest. |
 
 `T9-SESSIONCTL` now persists and reloads Alice's exact client signing identity
-and stored group through SQLCipher schema v3, failing closed on fresh,
-malformed, missing, replacement, or member-mismatched identity state. This is a
+and stored group through SQLCipher schema v4, failing closed on fresh,
+malformed, missing, replacement, cross-group, or member-mismatched identity state. This is a
 real close/reopen boundary inside one process, not independent-process recovery;
 `L1-PROCESS` remains the next client-composition gate.
 

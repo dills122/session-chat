@@ -248,8 +248,11 @@ The active Rust laboratory now contains fourteen narrow pieces of this architect
   for the real inviter and joiner MLS persistence calls. Its version-2 schema
   also owns exact Welcome work, bounded attempt/lease state, and terminal
   delivery state through the coordinator's sole-owner port across close/reopen.
-  Version 3 adds an insert-only, versioned MLS client identity and verifies the
-  same local member when loading group state.
+  Version 3 adds an insert-only, versioned MLS client identity; version 4 binds
+  it to one exact group identifier. The secret-bearing storage value is opaque and
+  non-cloneable/non-debuggable; durable clients reject group creation, join, or
+  reload outside that binding and verify the same local member when loading
+  group state.
   A retained integration test drives the real capability-admission/MLS path
   through ambiguous commit recovery and post-restart Welcome delivery. It is
   not connected to a platform key protector or independent-process client and

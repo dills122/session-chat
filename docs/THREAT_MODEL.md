@@ -44,8 +44,8 @@ leasing semantics without providing storage or connecting to that sequential
 join path. The SQLCipher laboratory now implements the same sole-owner port
 with versioned migration and close/reopen lease recovery. A retained real
 capability-admission/MLS composition crosses that boundary, including ambiguous
-commit recovery and exact post-restart Welcome delivery. Schema version 3 also
-retains and reloads Alice's exact MLS credential/signing identity with her group
+commit recovery and exact post-restart Welcome delivery. Schema version 3
+retains Alice's exact MLS credential/signing identity, and version 4 binds it to her group
 across an in-process close/reopen, but no independent-process runner uses it yet. A separate deterministic memory transport uses right-specific
 authorities and bounded explicit drop, duplicate, hold/release, retry, expiry,
 and capacity behavior for headless tests. It accepts structurally opaque bytes
@@ -722,13 +722,16 @@ states. The schema version is paired with SQLite's application `user_version`,
 migration is exclusive, and retained configuration is read back on open.
 Retained tests reject old-open-scope, stale, and foreign results and reconcile
 an ambiguous prior adapter acceptance byte-identically after reopen. Schema
-version 3 adds one opaque, versioned client-identity record. Creation is
-insert-only; reload validates the stored credential, signer/public-key match,
-provider/version identifiers, and the loaded group's local member before MLS
-use. Retained tests cover absence, malformed records, replacement, fresh-client
-mismatch, and exact close/reopen reload. The record contains signing secret
-material and therefore remains inside the keyed database and outside logs,
-transport, and evidence output. The real capability path additionally recovers
+version 3 adds one opaque, versioned client-identity record; version 4 adds the
+exact nonzero group binding. Creation is insert-only; reload validates the binding,
+stored credential, signer/public-key match, provider/version identifiers, and
+the loaded group's local member before MLS use. The durable client also rejects
+creation, join, or reload for another group. Retained tests cover absence,
+malformed records, replacement, cross-group use, fresh-client mismatch, and
+exact close/reopen reload. The record contains signing secret material and
+therefore crosses the public storage boundary only as a non-`Clone`,
+non-`Debug`/non-`Display` opaque secret type and remains inside the keyed
+database and outside logs, transport, and evidence output. The real capability path additionally recovers
 an ambiguous SQL commit before finalizing its in-memory invitation shadow,
 reopens the store, delivers once, and proves the original joiner consumes that
 Welcome without a second MLS Add. The headless flow also reloads Alice's exact

@@ -45,16 +45,21 @@ libraries across the three required CI operating systems.
   restart reconstructs work from this ledger, and old-open-scope, stale, or
   foreign lease results fail closed.
 - Schema version 3 retains those semantics and adds one exact 141-byte,
-  versioned MLS client-identity record. It binds MLS 1.0, the selected
+  versioned MLS client-identity record. Version 4 adds one exact nonzero 32-byte
+  group binding. The public storage boundary carries the record only in an opaque
+  secret type with no `Clone`, `Debug`, or `Display`. The record binds MLS 1.0, the selected
   ciphersuite, the pinned AWS-LC representation, the session-scoped credential,
   and the matching signing public/secret key. Creation refuses replacement;
-  reload never generates fallback material; derived-public-key validation and
-  a local-member credential/public-key check precede use of loaded group state.
-  Version 2 migrates in one exclusive transaction. A frozen version-2 fixture
+  reload never generates fallback material or accepts another group; durable
+  group creation and join enforce the same scope; derived-public-key validation
+  and a local-member credential/public-key check precede use of loaded group state.
+  Versions 2 and 3 migrate in exclusive transactions. A frozen version-2 fixture
   retains leased, delivered, and attempts-exhausted outbox states plus the
-  store identity through version 3, and a forced table conflict proves failed
+  store identity through version 4, and a forced table conflict proves failed
   migration restores both schema versions and the original rows. A valid
-  version-1 store advances through both retained migrations. Migration does not
+  version-1 store advances through every retained migration. A frozen version-3
+  fixture binds its identity only when exactly one valid group exists; missing
+  or ambiguous group scope rolls the migration back intact. Migration does not
   invent missing identity material: a legacy store has no reloadable client
   identity and must fail closed rather than pair a new signer with its old group.
 - The real capability-admission/MLS composition uses an explicit
@@ -91,6 +96,9 @@ The durable client-identity record has this closed layout:
 The record is storage-internal, not a wire object. Unknown identifiers, wrong
 length, zero fields, inconsistent key halves, or a failed domain-separated
 sign/verify self-check are rejected before a client or group is returned.
+A separate schema column binds the unchanged version-1 record to one group, so
+the frozen identity format remains compatible without permitting a caller to
+reinterpret the signer under a different group identifier.
 A committed identity-v1 hex fixture uses RFC 8032 test-only Ed25519 material;
 the load-only path must recover its exact credential and public key and produce
 a KeyPackage accepted by the separate validator.

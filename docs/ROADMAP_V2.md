@@ -83,9 +83,9 @@ Human approval UX, independent-process `sessionctl` composition, and network
 transport work listed below remain outstanding. The separate SQLCipher laboratory now
 implements the same sole-owner coordinator port with version-2 migration,
 close/reopen leases, terminal states, and ambiguous exact-retry evidence; it is
-not yet an independent-process path. Schema version 3 now adds the exact
-client-identity owner required to reload the same Alice member and stored group
-after close/reopen; process exit/kill evidence remains open.
+not yet an independent-process path. Schema version 3 adds the exact
+client-identity owner required to reload the same Alice member and stored group;
+version 4 binds it to that one group. Process exit/kill evidence remains open.
 
 The provider-neutral right-specific transport trait and its separate
 `transport-memory` adapter now retain deterministic drop, duplicate,
@@ -156,7 +156,8 @@ generation/identity-bound leases, explicit terminal states, and version-1
 migration fixtures. Tests cover rollback, stale/foreign leases, ambiguous
 byte-identical delivery recovery, and close/reopen on the required Linux,
 macOS, and Windows CI runners. Schema version 3 adds an insert-only, versioned
-client identity and proves exact member/group reload after close/reopen.
+client identity, and version 4 adds the exact group binding and proves exact member/group
+reload plus cross-group rejection after close/reopen.
 Independent-process restart, platform-vault, disk/power fault, production
 packaging, and rollback-anchor gates remain.
 

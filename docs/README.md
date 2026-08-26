@@ -276,8 +276,9 @@ transactions through the real MLS storage path and recovers them after close
 and reopen on the required Linux, macOS, and Windows CI runners. Schema version
 2 implements the coordinator's sole-owner Welcome port with explicit v1
 migration fixtures, restart leasing, terminal states, and ambiguous exact retry.
-Schema version 3 adds an insert-only versioned client identity and exact
-identity/group reload with fail-closed member matching.
+Schema version 3 adds an insert-only versioned client identity; version 4 binds
+it to one exact group. The opaque non-cloneable/non-debuggable secret boundary and exact
+identity/group reload with fail-closed member and group-scope matching.
 A retained real capability-admission/MLS integration now resolves an ambiguous
 SQL commit before in-memory finalization, reopens the store, and delivers the
 exact Welcome to the original joiner. The same composition now backs the
