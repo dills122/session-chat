@@ -14,6 +14,7 @@ use mls_rs_core::{
     key_package::{KeyPackageData, KeyPackageStorage},
 };
 use rusqlite::{Connection, OpenFlags, OptionalExtension, TransactionBehavior, params};
+use session_crypto_mls::{DURABLE_CLIENT_IDENTITY_BYTES, DurableClientIdentityStorage};
 use session_protocol::{LocalWelcomeDepositEndpoint, OpaqueEnvelope};
 use session_transport::{LeasedWelcome, OutboxPortError, WelcomeOutboxPort};
 use thiserror::Error;
@@ -24,7 +25,7 @@ const MAX_MLS_STATE_BYTES: usize = 2 * 1024 * 1024;
 const MAX_EPOCH_WRITES: usize = 64;
 const MAX_KEY_PACKAGE_BYTES: usize = 16 * 1024;
 const MAX_SECRET_KEY_BYTES: usize = 4 * 1024;
-const SCHEMA_VERSION: u32 = 2;
+const SCHEMA_VERSION: u32 = 3;
 const STORE_ID_BYTES: usize = 16;
 const LEASE_ID_BYTES: usize = 16;
 const OUTBOX_PENDING: i64 = 1;
@@ -541,19 +542,20 @@ impl SqlCipherStorage {
         if create {
             create_schema(&connection)?;
         } else {
-            let user_version = application_schema_version(&connection)?;
-            let version: i64 =
-                connection.query_row("SELECT schema_version FROM storage_metadata", [], |row| {
-                    row.get(0)
-                })?;
-            match (user_version, version) {
-                (0, 1) => migrate_schema_v1_to_v2(&connection)?,
-                (user_version, version)
-                    if user_version == SCHEMA_VERSION && version == i64::from(SCHEMA_VERSION) => {}
-                _ => return Err(StoreError::Rejected),
+            let mut versions = schema_versions(&connection)?;
+            if versions == (0, 1) {
+                migrate_schema_v1_to_v2(&connection)?;
+                versions = schema_versions(&connection)?;
+            }
+            if versions == (2, 2) {
+                migrate_schema_v2_to_v3(&connection)?;
+                versions = schema_versions(&connection)?;
+            }
+            if versions != (SCHEMA_VERSION, i64::from(SCHEMA_VERSION)) {
+                return Err(StoreError::Rejected);
             }
         }
-        validate_schema_v2(&connection)?;
+        validate_schema_v3(&connection)?;
 
         Ok(Self {
             inner: Arc::new(Mutex::new(StorageInner {
@@ -564,6 +566,34 @@ impl SqlCipherStorage {
             })),
             lease_scope: Arc::new(()),
         })
+    }
+}
+
+impl DurableClientIdentityStorage for SqlCipherStorage {
+    type Error = StoreError;
+
+    fn load_client_identity(&self) -> Result<Option<Zeroizing<Vec<u8>>>, Self::Error> {
+        self.lock()?
+            .connection
+            .query_row(
+                "SELECT identity_record FROM mls_client_identity WHERE singleton = 1",
+                [],
+                |row| row.get::<_, Vec<u8>>(0),
+            )
+            .optional()
+            .map(|value| value.map(Zeroizing::new))
+            .map_err(Into::into)
+    }
+
+    fn insert_client_identity(&self, encoded: &[u8]) -> Result<(), Self::Error> {
+        if encoded.len() != DURABLE_CLIENT_IDENTITY_BYTES {
+            return Err(StoreError::Rejected);
+        }
+        self.lock()?.connection.execute(
+            "INSERT INTO mls_client_identity(singleton, identity_record) VALUES (1, ?1)",
+            params![encoded],
+        )?;
+        Ok(())
     }
 }
 
@@ -1021,7 +1051,7 @@ fn create_schema(connection: &Connection) -> Result<(), StoreError> {
         "BEGIN IMMEDIATE;
          CREATE TABLE storage_metadata (
              singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
-             schema_version INTEGER NOT NULL CHECK(schema_version = 2),
+             schema_version INTEGER NOT NULL CHECK(schema_version = 3),
              store_id BLOB NOT NULL UNIQUE CHECK(length(store_id) = 16)
          ) STRICT;
 
@@ -1087,11 +1117,16 @@ fn create_schema(connection: &Connection) -> Result<(), StoreError> {
              group_id BLOB NOT NULL UNIQUE CHECK(length(group_id) = 32),
              key_package_ref BLOB NOT NULL UNIQUE CHECK(length(key_package_ref) = 32)
          ) STRICT;
-         PRAGMA user_version = 2;",
+
+         CREATE TABLE mls_client_identity (
+             singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
+             identity_record BLOB NOT NULL CHECK(length(identity_record) = 141)
+         ) STRICT;
+         PRAGMA user_version = 3;",
     )?;
     if connection
         .execute(
-            "INSERT INTO storage_metadata(singleton, schema_version, store_id) VALUES (1, 2, ?1)",
+            "INSERT INTO storage_metadata(singleton, schema_version, store_id) VALUES (1, 3, ?1)",
             params![store_id],
         )
         .is_err()
@@ -1190,7 +1225,35 @@ fn migrate_schema_v1_to_v2(connection: &Connection) -> Result<(), StoreError> {
     migration
 }
 
-fn validate_schema_v2(connection: &Connection) -> Result<(), StoreError> {
+fn migrate_schema_v2_to_v3(connection: &Connection) -> Result<(), StoreError> {
+    let migration = (|| {
+        connection.execute_batch(
+            "BEGIN EXCLUSIVE;
+             ALTER TABLE storage_metadata RENAME TO storage_metadata_v2;
+             CREATE TABLE storage_metadata (
+                 singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
+                 schema_version INTEGER NOT NULL CHECK(schema_version = 3),
+                 store_id BLOB NOT NULL UNIQUE CHECK(length(store_id) = 16)
+             ) STRICT;
+             INSERT INTO storage_metadata(singleton, schema_version, store_id)
+                 SELECT singleton, 3, store_id FROM storage_metadata_v2;
+             CREATE TABLE mls_client_identity (
+                 singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
+                 identity_record BLOB NOT NULL CHECK(length(identity_record) = 141)
+             ) STRICT;
+             DROP TABLE storage_metadata_v2;
+             PRAGMA user_version = 3;
+             COMMIT;",
+        )?;
+        Ok(())
+    })();
+    if migration.is_err() {
+        rollback(connection);
+    }
+    migration
+}
+
+fn validate_schema_v3(connection: &Connection) -> Result<(), StoreError> {
     let rows = connection.query_row(
         "SELECT count(*), min(schema_version), max(schema_version), min(store_id)
          FROM storage_metadata",
@@ -1214,7 +1277,19 @@ fn validate_schema_v2(connection: &Connection) -> Result<(), StoreError> {
     {
         return Err(StoreError::Rejected);
     }
+    let _: i64 = connection.query_row("SELECT count(*) FROM mls_client_identity", [], |row| {
+        row.get(0)
+    })?;
     Ok(())
+}
+
+fn schema_versions(connection: &Connection) -> Result<(u32, i64), StoreError> {
+    Ok((
+        application_schema_version(connection)?,
+        connection.query_row("SELECT schema_version FROM storage_metadata", [], |row| {
+            row.get(0)
+        })?,
+    ))
 }
 
 fn application_schema_version(connection: &Connection) -> Result<u32, StoreError> {

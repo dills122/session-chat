@@ -1,7 +1,8 @@
 # ADR 0017: Use SQLCipher for the durable storage laboratory
 
-Status: accepted for a bounded durable laboratory; inviter/joiner transactions
-and durable Welcome-owner port implemented; not production storage
+Status: accepted for a bounded durable laboratory; inviter/joiner transactions,
+durable Welcome-owner port, and client identity/group reload implemented; not
+production storage
 
 Date: 2026-08-20
 
@@ -43,6 +44,16 @@ libraries across the three required CI operating systems.
   acceptance, and failure transition uses one immediate SQL transaction;
   restart reconstructs work from this ledger, and old-open-scope, stale, or
   foreign lease results fail closed.
+- Schema version 3 retains those semantics and adds one exact 141-byte,
+  versioned MLS client-identity record. It binds MLS 1.0, the selected
+  ciphersuite, the pinned AWS-LC representation, the session-scoped credential,
+  and the matching signing public/secret key. Creation refuses replacement;
+  reload never generates fallback material; derived-public-key validation and
+  a local-member credential/public-key check precede use of loaded group state.
+  Version 2 migrates in one exclusive transaction, and a valid version-1 store
+  advances through both retained migrations. Migration does not invent missing
+  identity material: a legacy store has no reloadable client identity and must
+  fail closed rather than pair a new signer with its old group.
 - The real capability-admission/MLS composition uses an explicit
   durability-pending one-shot value. A proven SQL rollback releases its
   in-memory admission reservations and requires the transient MLS group to be
@@ -53,12 +64,30 @@ libraries across the three required CI operating systems.
   optional process-wide wiping of every SQLite allocation.
 
 The headless `sessionctl` laboratory now opens this adapter with a disposable
-random raw key, but no platform protector supplies that key and no client
-signing identity can yet be reloaded across process restart. SQLCipher is not a
+random raw key and proves exact identity/group reload after a real close/reopen
+inside one process. No platform protector supplies that key, and no
+independent-process client runner uses the reload contract yet. SQLCipher is not a
 rollback anchor and this decision makes no production, cross-platform,
 secure-deletion, or power-loss claim. Vendoring OpenSSL increases the audited
 source, native build, license, advisory, and compile-time surface; the locked
 graph and dependency policy must therefore cover it explicitly.
+
+The durable client-identity record has this closed layout:
+
+| Offset | Length | Meaning |
+| ---: | ---: | --- |
+| 0 | 8 | ASCII magic `SCMLSID1` |
+| 8 | 1 | record version `1` |
+| 9 | 1 | MLS protocol identifier `1` (MLS 1.0) |
+| 10 | 2 | big-endian ciphersuite identifier `1` (`CURVE25519_AES128`) |
+| 12 | 1 | provider representation identifier `1` (pinned AWS-LC adapter) |
+| 13 | 32 | nonzero session-scoped BasicCredential identity |
+| 45 | 32 | Ed25519 signing public key |
+| 77 | 64 | AWS-LC Ed25519 signing secret representation |
+
+The record is storage-internal, not a wire object. Unknown identifiers, wrong
+length, zero fields, inconsistent key halves, or a failed domain-separated
+sign/verify self-check are rejected before a client or group is returned.
 
 ## Platform protector direction
 
@@ -75,8 +104,8 @@ and Linux before adding any native enhanced protector.
   Linux Secret Service implementations in parallel;
 - test process kill at every production adapter write boundary, disk full,
   truncation, tampering, migration, rekey, backup, and deletion;
-- extend the proven single-process headless composition into the
-  independent-process L1 runner and full durable-client identity recovery;
+- extend the proven single-process identity/group reload into the
+  independent-process L1 runner;
 - select or explicitly defer a trusted monotonic rollback anchor; and
 - independently review the exact MLS, SQLCipher, and platform-protector boundary.
 

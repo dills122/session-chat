@@ -12,8 +12,6 @@ mls-rs-crypto-awslc.workspace = true
 mls-rs-core.workspace = true
 session-crypto = { version = "=0.1.0", path = "../session-crypto" }
 thiserror.workspace = true
-
-[dev-dependencies]
 zeroize.workspace = true
 
 [lints]

@@ -281,7 +281,8 @@ expiry, persisted-attempt-ceiling, old-open-scope rejection, and ambiguous
 exact-retry evidence. A retained real
 capability-admission/MLS integration recovers an ambiguous SQL commit, reopens
 that owner store, and delivers the exact Welcome once. `sessionctl` now uses the
-same transaction and reconstructs a coordinator owner from SQLCipher; the
+same transaction, reloads Alice's exact MLS identity/group, and reconstructs a
+coordinator owner from SQLCipher; the
 independent-process runner is not yet connected to it.
 
 `RetryAdvice::Never` ends attempts under the current budget. It does not assert

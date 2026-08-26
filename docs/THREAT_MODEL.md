@@ -44,8 +44,9 @@ leasing semantics without providing storage or connecting to that sequential
 join path. The SQLCipher laboratory now implements the same sole-owner port
 with versioned migration and close/reopen lease recovery. A retained real
 capability-admission/MLS composition crosses that boundary, including ambiguous
-commit recovery and exact post-restart Welcome delivery, but no durable client
-or independent-process runner uses it yet. A separate deterministic memory transport uses right-specific
+commit recovery and exact post-restart Welcome delivery. Schema version 3 also
+retains and reloads Alice's exact MLS credential/signing identity with her group
+across an in-process close/reopen, but no independent-process runner uses it yet. A separate deterministic memory transport uses right-specific
 authorities and bounded explicit drop, duplicate, hold/release, retry, expiry,
 and capacity behavior for headless tests. It accepts structurally opaque bytes
 but neither encrypts them nor provides a network or privacy property. The MLS
@@ -525,15 +526,15 @@ handling, replay, reordering, temporarily lost epoch commits, path updates,
 removal, explicit-only group-state writes, and the provider-neutral established-
 session message interface from ADR 0013. The headless `sessionctl` acceptance
 flow now composes fresh capability admission, an atomic SQLCipher inviter
-transaction, ambiguous-result recovery, reconstructed coordinator Welcome
+transaction, ambiguous-result recovery, exact identity/group reload, reconstructed coordinator Welcome
 delivery, bidirectional protected messages, path update, removal, and
 post-removal rejection across the local adapters. It adds durable-component
-integration evidence, not full client restart, rollback resistance, or
+integration evidence, not independent-process restart, rollback resistance, or
 networking.
 The separate inviter-transaction model
 covers only the application-level all-or-nothing and recovery semantics over
-bounded memory records. Current evidence does not cover full client identity
-and group reload, cross-implementation fixtures, cross-device acknowledgement
+bounded memory records. Current evidence does not cover process-killed client
+identity/group recovery, cross-implementation fixtures, cross-device acknowledgement
 semantics, old-secret deletion, or fuzzing. The separate SQLCipher laboratory
 does cover the real inviter-local MLS/join/outbox transaction and joiner-local
 joined-state plus KeyPackage-deletion atomicity.
@@ -720,12 +721,19 @@ leases, a persisted attempt ceiling, and delivered/exhausted/expired terminal
 states. The schema version is paired with SQLite's application `user_version`,
 migration is exclusive, and retained configuration is read back on open.
 Retained tests reject old-open-scope, stale, and foreign results and reconcile
-an ambiguous prior adapter acceptance byte-identically after reopen. The real
-capability path additionally recovers
+an ambiguous prior adapter acceptance byte-identically after reopen. Schema
+version 3 adds one opaque, versioned client-identity record. Creation is
+insert-only; reload validates the stored credential, signer/public-key match,
+provider/version identifiers, and the loaded group's local member before MLS
+use. Retained tests cover absence, malformed records, replacement, fresh-client
+mismatch, and exact close/reopen reload. The record contains signing secret
+material and therefore remains inside the keyed database and outside logs,
+transport, and evidence output. The real capability path additionally recovers
 an ambiguous SQL commit before finalizing its in-memory invitation shadow,
 reopens the store, delivers once, and proves the original joiner consumes that
-Welcome without a second MLS Add. This does not establish a durable client,
-platform key protector, rollback resistance, production
+Welcome without a second MLS Add. The headless flow also reloads Alice's exact
+identity and group after close/reopen. This does not establish an
+independent-process client, platform key protector, rollback resistance, production
 packaging, behavior on broader hardware/OS versions, power-loss safety, or
 secure deletion.
 

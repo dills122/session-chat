@@ -21,8 +21,8 @@ use session_core::{InvitationLifecycle, InvitationPolicy, InvitationRegistry};
 use session_crypto::{MessageEvent, MessageSession, ProtectedMessage};
 use session_crypto_hpke::{AwsLcInvitationJoinProtector, InvitationJoinProtector};
 use session_crypto_mls::{
-    SessionGroupId, WelcomeMessage, create_client, create_client_with_storage,
-    create_key_package_validator,
+    SessionGroupId, WelcomeMessage, create_client, create_durable_client_with_storage,
+    create_key_package_validator, load_durable_client_with_storage,
 };
 use session_protocol::{
     CapabilityJoinRequest, InvitationJoinBinding, JoinRequestBinding, MlsKeyPackageBinding,
@@ -383,7 +383,7 @@ fn run_phase_one_flow(
     let alice = operation_result(
         faults,
         PhaseOneFaultPoint::AliceClient,
-        create_client_with_storage(storage.clone(), storage.clone()),
+        create_durable_client_with_storage(storage.clone(), storage.clone(), storage.clone()),
         "Alice client",
     )?;
     let bob = operation_result(
@@ -672,6 +672,10 @@ fn run_phase_one_flow(
         return Err(stage("Welcome deposit"));
     }
     drop(committed_join);
+    let alice_group_id = SessionGroupId::new(*alice_group.group_id()).at_stage("Alice group ID")?;
+    drop(alice_group);
+    drop(alice);
+    drop(storage);
     let mut delivery_store = operation_result(
         faults,
         PhaseOneFaultPoint::DurableStoreReopen,
@@ -681,6 +685,15 @@ fn run_phase_one_flow(
         ),
         "durable store reopen",
     )?;
+    let reloaded_alice = load_durable_client_with_storage(
+        delivery_store.clone(),
+        delivery_store.clone(),
+        delivery_store.clone(),
+    )
+    .at_stage("Alice identity reload")?;
+    let mut alice_group = reloaded_alice
+        .load_group(alice_group_id)
+        .at_stage("Alice group reload")?;
     let coordinator = WelcomeDeliveryCoordinator::new(
         CoordinatorPolicy::new(Duration::from_secs(1), 30, 64 * 1024)
             .at_stage("Welcome coordinator policy")?,

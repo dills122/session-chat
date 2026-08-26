@@ -2,7 +2,8 @@ use std::path::PathBuf;
 
 use mls_rs_core::group::GroupStateStorage;
 use session_crypto_mls::{
-    SessionGroupId, create_client, create_client_with_storage, create_key_package_validator,
+    SessionGroupId, create_client, create_durable_client_with_storage,
+    create_key_package_validator, load_durable_client_with_storage,
 };
 use session_protocol::{DepositCapability, LocalWelcomeDepositEndpoint, OpaqueEnvelope};
 use storage_sqlcipher::{
@@ -82,7 +83,10 @@ fn actual_inviter_mls_write_is_atomic_with_join_and_welcome_outbox_state() {
     storage
         .seed_reservation([1; 16], [2; 64], [3; 16], NOW + 300, NOW)
         .expect("reservation stored");
-    let alice = create_client_with_storage(storage.clone(), storage.clone()).expect("Alice client");
+    let alice =
+        create_durable_client_with_storage(storage.clone(), storage.clone(), storage.clone())
+            .expect("durable Alice client");
+    let alice_credential = *alice.credential_identity().as_bytes();
     let mut alice_group = alice
         .create_group(SessionGroupId::new([5; 32]).expect("group id"), NOW)
         .expect("Alice group");
@@ -203,5 +207,20 @@ fn actual_inviter_mls_write_is_atomic_with_join_and_welcome_outbox_state() {
             .recover_inviter(&[4; 16])
             .expect("recovery after reopen"),
         Some(recovered)
+    );
+    let reloaded_alice =
+        load_durable_client_with_storage(reopened.clone(), reopened.clone(), reopened.clone())
+            .expect("Alice identity reloads");
+    assert_eq!(
+        reloaded_alice.credential_identity().as_bytes(),
+        &alice_credential
+    );
+    let reloaded_group = reloaded_alice
+        .load_group(SessionGroupId::new([5; 32]).expect("group id"))
+        .expect("Alice group reloads with the same member");
+    assert_eq!(reloaded_group.epoch(), 1);
+    assert_eq!(reloaded_group.member_count(), 2);
+    assert!(
+        create_durable_client_with_storage(reopened.clone(), reopened.clone(), reopened,).is_err()
     );
 }

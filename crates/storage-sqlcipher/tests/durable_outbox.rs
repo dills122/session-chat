@@ -8,7 +8,8 @@ use std::{
 
 use rusqlite::{Connection, params};
 use session_crypto_mls::{
-    SessionGroupId, create_client, create_client_with_storage, create_key_package_validator,
+    DurableClientIdentityStorage, SessionGroupId, create_client, create_client_with_storage,
+    create_key_package_validator,
 };
 use session_protocol::{DepositCapability, LocalWelcomeDepositEndpoint, OpaqueEnvelope};
 use session_transport::{
@@ -158,7 +159,7 @@ fn committed_store(name: &str) -> (TestDatabase, SqlCipherStorage) {
 }
 
 #[test]
-fn schema_v1_fixture_migrates_atomically_to_pending_v2_work() {
+fn schema_v1_fixture_migrates_atomically_to_pending_v3_work() {
     let database = TestDatabase::new("migration-v1");
     let welcome = OpaqueEnvelope::new([21; 16], NOW + 180, vec![22; 32])
         .expect("Welcome")
@@ -168,7 +169,13 @@ fn schema_v1_fixture_migrates_atomically_to_pending_v2_work() {
     create_schema_v1_fixture(&database.0, &welcome, &endpoint);
 
     let mut migrated = SqlCipherStorage::open(&database.0, vault_key()).expect("v1 migrates");
-    assert_eq!(migrated.schema_version().expect("schema version"), 2);
+    assert_eq!(migrated.schema_version().expect("schema version"), 3);
+    assert!(
+        migrated
+            .load_client_identity()
+            .expect("identity lookup")
+            .is_none()
+    );
     let recovered = migrated
         .recover_inviter(&TRANSACTION_ID)
         .expect("recovery")
@@ -189,7 +196,7 @@ fn schema_v1_fixture_migrates_atomically_to_pending_v2_work() {
         connection
             .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
             .expect("application schema version"),
-        2
+        3
     );
     assert_eq!(
         connection
@@ -204,8 +211,8 @@ fn schema_v1_fixture_migrates_atomically_to_pending_v2_work() {
     );
     drop(connection);
 
-    let reopened = SqlCipherStorage::open(&database.0, vault_key()).expect("v2 reopens");
-    assert_eq!(reopened.schema_version().expect("schema version"), 2);
+    let reopened = SqlCipherStorage::open(&database.0, vault_key()).expect("v3 reopens");
+    assert_eq!(reopened.schema_version().expect("schema version"), 3);
 }
 
 #[test]

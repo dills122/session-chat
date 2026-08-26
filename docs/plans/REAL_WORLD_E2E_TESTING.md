@@ -88,7 +88,7 @@ records, roadmap gates, and external audit findings can refer to the same case.
 | `session-crypto-hpke` | RFC and independent-provider vectors plus hostile context rejection | Cross-process protected join with captured ciphertext inspection |
 | `session-crypto-mls` | Two-party lifecycle, replay/reorder, update/removal, and storage-call evidence | Cross-implementation vectors where available, process restart, durable state, and corrupted-state tests |
 | `session-inviter-transaction` | Deterministic atomicity/fault model plus LocalV1 coordinator owner-port acceptance, failure, and ambiguous exact-retry integration | Real database process-kill, disk-full/I/O failure, restore, and stale-snapshot evidence |
-| `storage-sqlcipher` | Real capability admission and inviter MLS composition, ambiguous commit recovery, schema-v2 migration, sole-owner Welcome leases, stale/foreign rejection, exhaustion/expiry, exact retry, rollback, close/reopen delivery, durable `sessionctl` composition, and real joiner MLS consumption | Process-kill, disk/power fault, restore, and stale-snapshot evidence |
+| `storage-sqlcipher` | Real capability admission and inviter MLS composition, ambiguous commit recovery, schema-v2/v3 migration, exact identity/group reload, sole-owner Welcome leases, stale/foreign rejection, exhaustion/expiry, exact retry, rollback, close/reopen delivery, durable `sessionctl` composition, and real joiner MLS consumption | Process-kill, disk/power fault, restore, and stale-snapshot evidence |
 | `session-transport`, `transport-memory`, and `transport-conformance` | Local and provider-neutral right separation, bounds, idempotency, canonical opaque envelopes, deterministic adverse controls, strict bounded double-replay conformance with defective bridges, fail-closed LocalV1 binding, a deposit-only coordinator, and cross-platform blocking supervision | Provider-wide conformance, durable owner-store composition, real network adapters, and packet-captured evidence |
 | `sessionctl` | In-process two-client capability join through SQLCipher commit recovery and coordinator delivery, messaging, update, removal, coarse output, and a bounded redacted scenario record | Independent-process L1 runner and complete evidence-manifest producer |
 | Client vault | Sealed lifecycle, opaque locked inbox, bounded unlock orchestration, and portable passphrase laboratory | Product storage composition, OS credential input, process isolation, crash-dump, rollback, recovery, and deletion evidence |
@@ -109,11 +109,12 @@ supplies:
 - assertions over client-visible state and redacted service observations; and
 - teardown that proves no child process or leased work remains.
 
-Before that runner can claim client restart, the MLS boundary must gain a
-versioned durable owner for the client's signing identity and credential that
-can reload the same member together with its stored group state. Generating a
-fresh signing identity and merely loading the old group is not an equivalent
-client and must fail closed. The process runner must also define a bounded,
+The MLS and SQLCipher boundaries now provide the prerequisite versioned durable
+owner for the client's signing identity and credential, reload the same member
+together with its stored group state, and fail closed when a fresh identity is
+paired with the old group. Current evidence crosses close/reopen inside one
+process; it does not yet prove process exit or kill. The process runner must
+also define a bounded,
 versioned IPC protocol containing only existing public wire objects and coarse
 scenario results; the controller and untrusted service may not receive vault
 keys, capabilities, plaintext, raw MLS state, or transport authority they do
@@ -219,7 +220,7 @@ passes a happy path.
   deliberately defective-adapter suite exists.
 - SQLCipher transaction, capability-admission/MLS composition, and durable
   coordinator-owner evidence and durable in-process `sessionctl` composition
-  exist, but no full client restart, process-crash, disk/power-fault, restore,
+  exist, but no independent-process restart, process-crash, disk/power-fault, restore,
   or stale-snapshot harness exists.
 - The supported-platform CI matrix exists for current Rust foundations, but no
   real transport, packet-capture lane, containerized realm, desktop application,

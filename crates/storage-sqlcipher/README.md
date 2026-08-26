@@ -22,13 +22,22 @@ required Linux, macOS, and Windows CI runners and prove that:
   the normal SQLite header; and
 - SQLCipher's page-HMAC integrity check succeeds for retained fixtures.
 
-Schema version 2 now makes the same database the sole Welcome-outbox owner. It
+Schema version 3 retains the version-2 sole Welcome-outbox owner and adds one
+opaque versioned MLS client-identity record. The MLS adapter creates that
+record once, reloads the same credential and signing key after close/reopen,
+and verifies that a loaded group's local member has the same credential and
+signing public key. Missing, malformed, replacement, or mismatched identity
+state fails closed. The outbox portion
 persists one nonzero store identity, exact canonical Welcome and LocalV1
 endpoint bytes, delivery state, bounded attempts, monotonic lease generation,
 opaque lease identity, lease expiry, and the per-row attempt ceiling so restart
 cannot reinterpret committed work. Schema metadata is bound to SQLite's
-application `user_version`, migration takes an exclusive transaction, and each
+application `user_version`; both v1-to-v2 and v2-to-v3 migrations take exclusive
+transactions, and each
 open reads back the retained rollback-journal and synchronization settings.
+Migration intentionally leaves the new identity table empty because an older
+database never retained enough material to reconstruct the same client; callers
+must not generate a replacement and attach it to an old group.
 `SqlCipherStorage` implements the
 coordinator's `WelcomeOutboxPort` with one immediate SQL transaction per lease,
 accepted result, or failed result. Explicit schema-v1 fixtures prove atomic
@@ -48,8 +57,9 @@ two-member group; replaying the protected request remains rejected.
 
 This adapter is durability-laboratory evidence, not production storage. It has
 no platform keychain integration, rollback anchor, disk-full or power-loss
-evidence, rekey/backup/deletion policy, full durable-client identity recovery,
-or secure-erasure guarantee. Hosted-runner evidence is not a production
+evidence, rekey/backup/deletion policy, independent-process client runner,
+or secure-erasure guarantee. Its exact identity/group close-reopen test is not
+process-kill, rollback, or platform-vault evidence. Hosted-runner evidence is not a production
 packaging or broader hardware/OS compatibility claim.
 
 ```sh

@@ -7,7 +7,8 @@ simulated approval, applies the MLS Add, and persists Alice's exact post-Add
 snapshot, invitation consumption, approval/replay result, and encrypted Welcome
 outbox atomically in a disposable SQLCipher database. A retained fault case
 recovers an ambiguous commit result by transaction ID. The normal flow
-reconstructs a coordinator owner from the database and delivers the Welcome through the
+closes Alice's initial MLS client, reloads her exact credential, signer, and
+group from the database, reconstructs the coordinator owner, and delivers the Welcome through the
 right-specific local mailbox, exchanges two MLS application messages over the
 deterministic memory transport, applies a path update, removes Bob, and confirms
 Bob rejects a later message.
@@ -33,8 +34,9 @@ coarse cleanup states; it receives no protocol bytes, identifiers, authority,
 plaintext, or provider error values. The default binary injects no faults.
 
 This executable still composes both logical clients and the LocalV1 adapter in
-one process. Alice's live MLS signing identity is not reloaded after process
-restart; only the coordinator owner is reconstructed from SQLCipher. The binary
-does not provide a network service, full durable-client recovery, rollback
+one process. Alice's exact identity and group now cross a real SQLCipher
+close/reopen boundary, but no operating-system process exits and Bob remains
+live in memory. The binary does not provide a network service,
+independent-process client recovery, rollback
 protection, a sealed client vault, human approval UX, anonymity, or a production
 client.
