@@ -150,9 +150,11 @@ impl DurableClientIdentity {
         let signature_public_key: [u8; SIGNATURE_PUBLIC_KEY_BYTES] = public
             .try_into()
             .map_err(|_| MlsAdapterError::ProtocolRejected)?;
-        let signature_secret_key: [u8; SIGNATURE_SECRET_KEY_BYTES] = secret
-            .try_into()
-            .map_err(|_| MlsAdapterError::ProtocolRejected)?;
+        let signature_secret_key: Zeroizing<[u8; SIGNATURE_SECRET_KEY_BYTES]> = Zeroizing::new(
+            secret
+                .try_into()
+                .map_err(|_| MlsAdapterError::ProtocolRejected)?,
+        );
         if credential_identity.iter().all(|byte| *byte == 0)
             || signature_public_key.iter().all(|byte| *byte == 0)
             || signature_secret_key.iter().all(|byte| *byte == 0)
@@ -162,7 +164,7 @@ impl DurableClientIdentity {
         let cipher_suite = crypto
             .cipher_suite_provider(CIPHERSUITE)
             .ok_or(MlsAdapterError::UnexpectedProviderOutput)?;
-        let secret_key = SignatureSecretKey::new_slice(&signature_secret_key);
+        let secret_key = SignatureSecretKey::new_slice(signature_secret_key.as_ref());
         let derived = cipher_suite
             .signature_key_derive_public(&secret_key)
             .map_err(|_| MlsAdapterError::ProtocolRejected)?;
@@ -182,7 +184,7 @@ impl DurableClientIdentity {
         Ok(Self {
             credential_identity,
             signature_public_key,
-            signature_secret_key: Zeroizing::new(signature_secret_key),
+            signature_secret_key,
         })
     }
 
