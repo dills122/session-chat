@@ -39,17 +39,24 @@ publish. The relay accepts only these existing public wire objects:
 
 The bearer invitation uses a separate direct client channel. The raw 32-byte
 SQLCipher key and exact group identifier use a mode-`0600` file where Unix
-supports it, readable only by the fresh Alice test process and deleted on
-load. This is disposable conformance state, not a vault, portable key-custody
-design, or product credential handoff.
+supports it. Only the fresh Alice process reads that file in the defined role
+flow, and it deletes the file on load; another process running as the same OS
+account could still access it. This is disposable conformance state, not a
+vault, process-isolation boundary, portable key-custody design, or product
+credential handoff.
 
 The controller accepts only fixed, bounded, secret-free child summaries and
 emits a version-1 manifest under 2 KiB. It records coarse outcomes,
-commit/dirty state when Git is available, lockfile digest, platform, command,
-timestamps, and configured budgets. It omits hashes of authority-bearing
-frames rather than creating a reusable confirmation/correlation artifact.
-All children are reaped on success and killed/reaped on controller failure;
-the marked disposable directory is then removed.
+commit/dirty state when bounded Git probes are available, lockfile digest,
+platform, command, timestamps, and configured budgets. Metadata paths resolve
+from the compiled package location rather than the caller's working directory;
+file reads and Git process time/output are bounded. Unavailable values are
+recorded explicitly, and an unavailable Git status is treated as dirty. It
+omits hashes of authority-bearing frames rather than creating a reusable
+confirmation/correlation artifact. All children are reaped on success and
+explicitly killed/reaped on controller failure. A passing report is created
+only after fallible child cleanup and marked-directory removal both succeed,
+and the manifest reports those outcomes separately.
 
 ## Consequences
 

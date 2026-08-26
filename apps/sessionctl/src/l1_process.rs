@@ -68,6 +68,10 @@ const PRIVATE_STATE_BYTES: usize = 8 + 32 + SESSION_GROUP_ID_BYTES;
 const ROOT_MARKER: &[u8] = b"sessionctl-l1-v1\n";
 const MAX_EVIDENCE_BYTES: usize = 2_048;
 const EXPECTED_FRAMES: u8 = 7;
+const MAX_LOCKFILE_BYTES: usize = 4 * 1024 * 1024;
+const MAX_TOOLCHAIN_BYTES: usize = 4_096;
+const MAX_GIT_OUTPUT_BYTES: usize = 128;
+const METADATA_COMMAND_WAIT: Duration = Duration::from_secs(5);
 
 /// Secret-free outcome of the bounded independent-process scenario.
 #[derive(Clone, Eq, PartialEq)]
@@ -115,7 +119,8 @@ impl L1ProcessReport {
                 "post_removal=rejected\n",
                 "artifact_hashes=omitted-authority-bearing\n",
                 "redaction=pass\n",
-                "child_cleanup=pass\n"
+                "child_cleanup=pass\n",
+                "directory_cleanup=pass\n"
             ),
             std::env::consts::OS,
             std::env::consts::ARCH,
@@ -137,16 +142,49 @@ impl L1ProcessReport {
 /// Runs two independent clients plus an untrusted forwarding service.
 pub fn run_l1_process_demo() -> Result<L1ProcessReport, SessionCtlError> {
     let started_at = unix_now()?;
-    let root = ProcessRoot::new()?;
-    let executable = std::env::current_exe().at_stage("process executable")?;
+    let mut root = ProcessRoot::new()?;
     let mut children = ChildSet::new();
-    children.spawn(&executable, "service", root.path())?;
-    children.spawn(&executable, "bob", root.path())?;
-    children.spawn(&executable, "alice-init", root.path())?;
+    let scenario_result = run_l1_process_children(root.path(), &mut children);
+    let child_cleanup_result = children.cleanup();
+    let directory_cleanup_result = root.cleanup();
+    scenario_result?;
+    child_cleanup_result?;
+    directory_cleanup_result?;
+
+    let repository_root = repository_root();
+
+    let report = L1ProcessReport {
+        started_at,
+        completed_at: unix_now()?,
+        commit: repository_root
+            .as_deref()
+            .map(git_commit_at)
+            .unwrap_or_else(|| String::from("unavailable")),
+        dirty: repository_root.as_deref().is_none_or(git_dirty_at),
+        toolchain: repository_root
+            .as_deref()
+            .map(pinned_toolchain_at)
+            .unwrap_or_else(|| String::from("unavailable")),
+        lock_digest: repository_root
+            .as_deref()
+            .map(lock_digest_at)
+            .unwrap_or_else(|| String::from("unavailable")),
+    };
+    if report.encode_v1().len() > MAX_EVIDENCE_BYTES {
+        return Err(stage("evidence bound"));
+    }
+    Ok(report)
+}
+
+fn run_l1_process_children(root: &Path, children: &mut ChildSet) -> Result<(), SessionCtlError> {
+    let executable = std::env::current_exe().at_stage("process executable")?;
+    children.spawn(&executable, "service", root)?;
+    children.spawn(&executable, "bob", root)?;
+    children.spawn(&executable, "alice-init", root)?;
 
     let alice_init = children.wait_role("alice-init", CHILD_WAIT)?;
     require_child_output(&alice_init, b"role=alice-init\nresult=pass\n")?;
-    children.spawn(&executable, "alice-resume", root.path())?;
+    children.spawn(&executable, "alice-resume", root)?;
 
     let alice_resume = children.wait_role("alice-resume", CHILD_WAIT)?;
     require_child_output(
@@ -166,19 +204,7 @@ pub fn run_l1_process_demo() -> Result<L1ProcessReport, SessionCtlError> {
     if !children.is_empty() {
         return Err(stage("process cleanup"));
     }
-
-    let report = L1ProcessReport {
-        started_at,
-        completed_at: unix_now()?,
-        commit: git_commit(),
-        dirty: git_dirty(),
-        toolchain: pinned_toolchain(),
-        lock_digest: lock_digest(),
-    };
-    if report.encode_v1().len() > MAX_EVIDENCE_BYTES {
-        return Err(stage("evidence bound"));
-    }
-    Ok(report)
+    Ok(())
 }
 
 /// Runs one hidden role selected only by the controller process.
@@ -931,7 +957,7 @@ fn read_private_state(
     Ok((database_key, group_id))
 }
 
-struct ProcessRoot(PathBuf);
+struct ProcessRoot(Option<PathBuf>);
 
 impl ProcessRoot {
     fn new() -> Result<Self, SessionCtlError> {
@@ -945,41 +971,59 @@ impl ProcessRoot {
         );
         let root = std::env::temp_dir().join(name);
         fs::create_dir(&root).at_stage("process root")?;
-        for directory in [
-            root.join("direct"),
-            root.join("relay"),
-            root.join("relay/in"),
-            root.join("relay/out"),
-            root.join("alice"),
-        ] {
-            fs::create_dir(&directory).at_stage("process root")?;
-        }
+        let process_root = Self(Some(root));
         atomic_write(
-            &root.join(".sessionctl-l1-root"),
+            &process_root.path().join(".sessionctl-l1-root"),
             ROOT_MARKER,
             ROOT_MARKER.len(),
         )?;
-        Ok(Self(root))
+        for directory in [
+            process_root.path().join("direct"),
+            process_root.path().join("relay"),
+            process_root.path().join("relay/in"),
+            process_root.path().join("relay/out"),
+            process_root.path().join("alice"),
+        ] {
+            fs::create_dir(&directory).at_stage("process root")?;
+        }
+        Ok(process_root)
     }
 
     fn path(&self) -> &Path {
-        &self.0
+        self.0
+            .as_deref()
+            .expect("process root is unavailable after cleanup")
+    }
+
+    fn cleanup(&mut self) -> Result<(), SessionCtlError> {
+        self.cleanup_with(|path| fs::remove_dir_all(path))
+    }
+
+    fn cleanup_with(
+        &mut self,
+        remove: impl FnOnce(&Path) -> std::io::Result<()>,
+    ) -> Result<(), SessionCtlError> {
+        let Some(path) = self.0.as_deref() else {
+            return Ok(());
+        };
+        validate_root(path)?;
+        remove(path).at_stage("process root removal")?;
+        self.0 = None;
+        Ok(())
     }
 }
 
 impl Drop for ProcessRoot {
     fn drop(&mut self) {
-        let marker = self.0.join(".sessionctl-l1-root");
-        if fs::read(&marker).ok().as_deref() == Some(ROOT_MARKER) {
-            let _ = fs::remove_dir_all(&self.0);
-        }
+        let _ = self.cleanup();
     }
 }
 
 fn validate_root(root: &Path) -> Result<(), SessionCtlError> {
     if !root.is_absolute()
         || root.as_os_str().len() > 4_096
-        || fs::read(root.join(".sessionctl-l1-root")).ok().as_deref() != Some(ROOT_MARKER)
+        || read_bounded_file(&root.join(".sessionctl-l1-root"), ROOT_MARKER.len()).as_deref()
+            != Some(ROOT_MARKER)
     {
         return Err(stage("process root validation"));
     }
@@ -988,7 +1032,47 @@ fn validate_root(root: &Path) -> Result<(), SessionCtlError> {
 
 struct ManagedChild {
     role: &'static str,
-    child: Child,
+    child: Option<Child>,
+}
+
+impl ManagedChild {
+    const fn new(role: &'static str, child: Child) -> Self {
+        Self {
+            role,
+            child: Some(child),
+        }
+    }
+
+    fn child_mut(&mut self) -> Result<&mut Child, SessionCtlError> {
+        self.child.as_mut().ok_or_else(|| stage("process child"))
+    }
+
+    fn terminate_and_reap(&mut self) -> std::io::Result<()> {
+        let Some(mut child) = self.child.take() else {
+            return Ok(());
+        };
+        let result = match child.try_wait() {
+            Ok(Some(_)) => Ok(()),
+            Ok(None) => match child.kill() {
+                Ok(()) => child.wait().map(|_| ()),
+                Err(error) if error.kind() == std::io::ErrorKind::InvalidInput => {
+                    child.wait().map(|_| ())
+                }
+                Err(error) => Err(error),
+            },
+            Err(error) => Err(error),
+        };
+        if result.is_err() {
+            self.child = Some(child);
+        }
+        result
+    }
+}
+
+impl Drop for ManagedChild {
+    fn drop(&mut self) {
+        let _ = self.terminate_and_reap();
+    }
 }
 
 struct ChildSet(Vec<ManagedChild>);
@@ -1013,7 +1097,7 @@ impl ChildSet {
             .stderr(Stdio::piped())
             .spawn()
             .at_stage("process spawn")?;
-        self.0.push(ManagedChild { role, child });
+        self.0.push(ManagedChild::new(role, child));
         Ok(())
     }
 
@@ -1022,26 +1106,51 @@ impl ChildSet {
         role: &'static str,
         timeout: Duration,
     ) -> Result<ChildOutput, SessionCtlError> {
+        self.wait_role_with(role, timeout, Child::try_wait)
+    }
+
+    fn wait_role_with(
+        &mut self,
+        role: &'static str,
+        timeout: Duration,
+        mut try_wait: impl FnMut(&mut Child) -> std::io::Result<Option<ExitStatus>>,
+    ) -> Result<ChildOutput, SessionCtlError> {
         let index = self
             .0
             .iter()
             .position(|child| child.role == role)
             .ok_or_else(|| stage("process child"))?;
-        let mut managed = self.0.remove(index);
         let deadline = Instant::now()
             .checked_add(timeout)
             .ok_or_else(|| stage("process child deadline"))?;
         loop {
-            if let Some(status) = managed.child.try_wait().at_stage("process child wait")? {
-                return collect_child_output(managed.child, status);
+            let status = try_wait(self.0[index].child_mut()?).at_stage("process child wait")?;
+            if let Some(status) = status {
+                let managed = self.0.remove(index);
+                return collect_child_output(managed, status);
             }
             if Instant::now() >= deadline {
-                let _ = managed.child.kill();
-                let _ = managed.child.wait();
                 return Err(stage("process child timeout"));
             }
             thread::sleep(POLL_INTERVAL);
         }
+    }
+
+    fn cleanup(&mut self) -> Result<(), SessionCtlError> {
+        let mut cleanup_failed = false;
+        for managed in &mut self.0 {
+            cleanup_failed |= managed.terminate_and_reap().is_err();
+        }
+        self.0.retain(|managed| managed.child.is_some());
+        if cleanup_failed || !self.0.is_empty() {
+            return Err(stage("process child cleanup"));
+        }
+        Ok(())
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.0.len()
     }
 
     fn is_empty(&self) -> bool {
@@ -1051,10 +1160,7 @@ impl ChildSet {
 
 impl Drop for ChildSet {
     fn drop(&mut self) {
-        for managed in &mut self.0 {
-            let _ = managed.child.kill();
-            let _ = managed.child.wait();
-        }
+        let _ = self.cleanup();
     }
 }
 
@@ -1065,9 +1171,10 @@ struct ChildOutput {
 }
 
 fn collect_child_output(
-    mut child: Child,
+    mut managed: ManagedChild,
     status: ExitStatus,
 ) -> Result<ChildOutput, SessionCtlError> {
+    let child = managed.child_mut()?;
     let stdout = child
         .stdout
         .take()
@@ -1089,7 +1196,7 @@ fn collect_child_output(
 
 fn read_optional_bounded(mut file: impl Read, maximum: usize) -> Result<Vec<u8>, SessionCtlError> {
     let mut bytes = Vec::with_capacity(maximum);
-    file.by_ref()
+    Read::by_ref(&mut file)
         .take(u64::try_from(maximum).map_err(|_| stage("process output"))? + 1)
         .read_to_end(&mut bytes)
         .at_stage("process output")?;
@@ -1146,38 +1253,46 @@ fn unix_now() -> Result<u64, SessionCtlError> {
         .map(|duration| duration.as_secs())
 }
 
-fn git_commit() -> String {
-    command_output("git", &["rev-parse", "HEAD"])
+fn repository_root() -> Option<PathBuf> {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()?
+        .parent()
+        .map(Path::to_path_buf)
+}
+
+fn git_commit_at(repository_root: &Path) -> String {
+    command_output_at(repository_root, "git", &["rev-parse", "HEAD"])
         .filter(|value| value.len() == 40 && value.bytes().all(|byte| byte.is_ascii_hexdigit()))
         .unwrap_or_else(|| String::from("unavailable"))
 }
 
-fn git_dirty() -> bool {
-    Command::new("git")
-        .args(["status", "--porcelain", "--untracked-files=normal"])
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .ok()
+fn git_dirty_at(repository_root: &Path) -> bool {
+    let mut command = Command::new("git");
+    command.current_dir(repository_root).args([
+        "status",
+        "--porcelain",
+        "--untracked-files=normal",
+    ]);
+    bounded_command_output(command, METADATA_COMMAND_WAIT, MAX_GIT_OUTPUT_BYTES)
         .is_none_or(|output| !output.status.success() || !output.stdout.is_empty())
 }
 
-fn lock_digest() -> String {
-    fs::read("Cargo.lock")
-        .ok()
-        .filter(|bytes| bytes.len() <= 4 * 1024 * 1024)
+fn lock_digest_at(repository_root: &Path) -> String {
+    read_bounded_file(&repository_root.join("Cargo.lock"), MAX_LOCKFILE_BYTES)
         .map(|bytes| hex(digest(&SHA256, &bytes).as_ref()))
         .unwrap_or_else(|| String::from("unavailable"))
 }
 
-fn pinned_toolchain() -> String {
-    let Ok(contents) = fs::read_to_string("rust-toolchain.toml") else {
+fn pinned_toolchain_at(repository_root: &Path) -> String {
+    let Some(encoded) = read_bounded_file(
+        &repository_root.join("rust-toolchain.toml"),
+        MAX_TOOLCHAIN_BYTES,
+    ) else {
         return String::from("unavailable");
     };
-    if contents.len() > 4_096 {
+    let Ok(contents) = String::from_utf8(encoded) else {
         return String::from("unavailable");
-    }
+    };
     contents
         .lines()
         .find_map(|line| line.trim().strip_prefix("channel = \"")?.strip_suffix('"'))
@@ -1192,19 +1307,81 @@ fn pinned_toolchain() -> String {
         .unwrap_or_else(|| String::from("unavailable"))
 }
 
-fn command_output(program: &str, arguments: &[&str]) -> Option<String> {
-    let output = Command::new(program)
-        .args(arguments)
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
+fn read_bounded_file(path: &Path, maximum: usize) -> Option<Vec<u8>> {
+    let mut file = File::open(path).ok()?;
+    if file.metadata().ok()?.len() > u64::try_from(maximum).ok()? {
+        return None;
+    }
+    let mut bytes = Vec::with_capacity(maximum.min(4_096));
+    Read::by_ref(&mut file)
+        .take(u64::try_from(maximum).ok()?.saturating_add(1))
+        .read_to_end(&mut bytes)
         .ok()?;
-    if !output.status.success() || output.stdout.len() > 128 {
+    (bytes.len() <= maximum).then_some(bytes)
+}
+
+fn command_output_at(repository_root: &Path, program: &str, arguments: &[&str]) -> Option<String> {
+    let mut command = Command::new(program);
+    command.current_dir(repository_root).args(arguments);
+    let output = bounded_command_output(command, METADATA_COMMAND_WAIT, MAX_GIT_OUTPUT_BYTES)?;
+    if !output.status.success() {
         return None;
     }
     String::from_utf8(output.stdout)
         .ok()
         .map(|value| value.trim().to_owned())
+}
+
+struct BoundedCommandOutput {
+    status: ExitStatus,
+    stdout: Vec<u8>,
+}
+
+fn bounded_command_output(
+    mut command: Command,
+    timeout: Duration,
+    maximum: usize,
+) -> Option<BoundedCommandOutput> {
+    let deadline = Instant::now().checked_add(timeout)?;
+    let child = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    let mut managed = ManagedChild::new("metadata", child);
+    let stdout = managed.child_mut().ok()?.stdout.take()?;
+    let reader = thread::spawn(move || read_optional_bounded(stdout, maximum));
+    let status = loop {
+        let wait_result = match managed.child_mut() {
+            Ok(child) => child.try_wait(),
+            Err(_) => {
+                if managed.terminate_and_reap().is_ok() {
+                    let _ = reader.join();
+                }
+                return None;
+            }
+        };
+        match wait_result {
+            Ok(Some(status)) => break status,
+            Ok(None) => {}
+            Err(_) => {
+                if managed.terminate_and_reap().is_ok() {
+                    let _ = reader.join();
+                }
+                return None;
+            }
+        }
+        if Instant::now() >= deadline {
+            if managed.terminate_and_reap().is_ok() {
+                let _ = reader.join();
+            }
+            return None;
+        }
+        thread::sleep(POLL_INTERVAL);
+    };
+    let stdout = reader.join().ok()?.ok()?;
+    Some(BoundedCommandOutput { status, stdout })
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -1219,6 +1396,100 @@ fn hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn process_root_cleanup_failure_is_reported_and_drop_retries() {
+        let mut root = ProcessRoot::new().unwrap();
+        let path = root.path().to_owned();
+
+        assert!(
+            root.cleanup_with(|_| Err(std::io::Error::other("injected removal failure")))
+                .is_err()
+        );
+        assert!(path.exists());
+
+        drop(root);
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn child_wait_error_keeps_child_owned_for_cleanup() {
+        let mut command = Command::new(std::env::current_exe().unwrap());
+        command
+            .args(["--exact", "l1_process::tests::metadata_stall_child"])
+            .env("SESSIONCTL_L1_STALL_CHILD", "1")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        let child = command.spawn().unwrap();
+        let mut children = ChildSet(vec![ManagedChild::new("fixture", child)]);
+
+        assert!(
+            children
+                .wait_role_with("fixture", Duration::from_secs(1), |_| {
+                    Err(std::io::Error::other("injected wait failure"))
+                })
+                .is_err()
+        );
+        assert_eq!(children.len(), 1);
+        assert!(children.cleanup().is_ok());
+        assert!(children.is_empty());
+    }
+
+    #[test]
+    fn oversized_repository_metadata_fails_bounded() {
+        let root = ProcessRoot::new().unwrap();
+        let lock = File::create(root.path().join("Cargo.lock")).unwrap();
+        lock.set_len(u64::try_from(MAX_LOCKFILE_BYTES + 1).unwrap())
+            .unwrap();
+        let toolchain = File::create(root.path().join("rust-toolchain.toml")).unwrap();
+        toolchain
+            .set_len(u64::try_from(MAX_TOOLCHAIN_BYTES + 1).unwrap())
+            .unwrap();
+
+        assert_eq!(lock_digest_at(root.path()), "unavailable");
+        assert_eq!(pinned_toolchain_at(root.path()), "unavailable");
+    }
+
+    #[test]
+    fn stalled_metadata_command_is_killed_within_deadline() {
+        let mut command = Command::new(std::env::current_exe().unwrap());
+        command
+            .args(["--exact", "l1_process::tests::metadata_stall_child"])
+            .env("SESSIONCTL_L1_STALL_CHILD", "1");
+        let started = Instant::now();
+
+        assert!(bounded_command_output(command, Duration::from_millis(25), 128).is_none());
+        assert!(started.elapsed() < Duration::from_secs(2));
+    }
+
+    #[test]
+    fn oversized_metadata_command_output_is_rejected() {
+        let mut command = Command::new(std::env::current_exe().unwrap());
+        command
+            .args([
+                "--exact",
+                "l1_process::tests::metadata_output_child",
+                "--nocapture",
+            ])
+            .env("SESSIONCTL_L1_OUTPUT_CHILD", "1");
+
+        assert!(bounded_command_output(command, Duration::from_secs(1), 128).is_none());
+    }
+
+    #[test]
+    fn metadata_stall_child() {
+        if std::env::var_os("SESSIONCTL_L1_STALL_CHILD").is_some() {
+            thread::sleep(Duration::from_secs(5));
+        }
+    }
+
+    #[test]
+    fn metadata_output_child() {
+        if std::env::var_os("SESSIONCTL_L1_OUTPUT_CHILD").is_some() {
+            print!("{}", "x".repeat(1_024));
+        }
+    }
 
     #[test]
     fn ipc_decoder_rejects_trailing_and_non_wire_payloads() {

@@ -2,8 +2,8 @@
 
 Status: active staged implementation plan; ADR 0015 is accepted, Task 3 is
 partial, Task 9's durable owner-store plus capability-admission/MLS composition
-checkpoints are complete, and the durable client-reload prerequisite is complete
-before independent-process or network work
+checkpoints are complete, and the durable client-reload and independent-process
+L1 checkpoints are complete before network work
 
 Date: 2026-08-20
 

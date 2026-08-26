@@ -38,6 +38,7 @@ fn independent_process_runner_emits_bounded_redacted_evidence() {
         "post_removal=rejected\n",
         "redaction=pass\n",
         "child_cleanup=pass\n",
+        "directory_cleanup=pass\n",
     ] {
         assert!(evidence.contains(required), "missing {required:?}");
     }
@@ -59,6 +60,23 @@ fn independent_process_runner_emits_bounded_redacted_evidence() {
     ] {
         assert!(!lowercase.contains(forbidden), "leaked term {forbidden:?}");
     }
+}
+
+#[test]
+fn independent_process_runner_resolves_metadata_outside_the_repository() {
+    let working_directory = marked_root("alternate-cwd");
+    let output = Command::new(env!("CARGO_BIN_EXE_sessionctl-l1"))
+        .current_dir(&working_directory)
+        .output()
+        .expect("run independent-process conformance binary outside repository");
+    fs::remove_dir_all(&working_directory).expect("remove alternate working directory");
+
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    let evidence = std::str::from_utf8(&output.stdout).expect("UTF-8 evidence");
+    assert!(!evidence.contains("commit=unavailable\n"));
+    assert!(!evidence.contains("toolchain=unavailable\n"));
+    assert!(!evidence.contains("lock_sha256=unavailable\n"));
 }
 
 #[test]

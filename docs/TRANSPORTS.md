@@ -282,8 +282,10 @@ exact-retry evidence. A retained real
 capability-admission/MLS integration recovers an ambiguous SQL commit, reopens
 that owner store, and delivers the exact Welcome once. `sessionctl` now uses the
 same transaction, reloads Alice's exact MLS identity/group, and reconstructs a
-coordinator owner from SQLCipher; the
-independent-process runner is not yet connected to it.
+coordinator owner from SQLCipher. The ADR 0021 independent-process runner uses
+the same path after graceful Alice process exit, with Bob and the untrusted
+forwarder in separate processes. This adds no network transport, abrupt-kill,
+power-loss, rollback-resistance, or platform-key-custody evidence.
 
 `RetryAdvice::Never` ends attempts under the current budget. It does not assert
 that a deposit did not commit; the coordinator may reconcile an ambiguous
