@@ -38,12 +38,14 @@ application `user_version`; the v1-to-v2, v2-to-v3, and v3-to-v4 migrations take
 exclusive transactions. A frozen schema-v2 fixture preserves leased, delivered,
 and attempts-exhausted outbox rows plus the store identity through v4, while a
 forced migration conflict proves that versions and rows roll back intact. A
-frozen schema-v3 transition proves that one legacy identity is bound only when
-exactly one valid group exists; ambiguous binding rolls back at version 3. Each
-open reads back the retained rollback-journal and synchronization settings.
-Migration intentionally leaves the new identity table empty because an older
-database never retained enough material to reconstruct the same client; callers
-must not generate a replacement and attach it to an old group.
+frozen schema-v3 transition proves that a real legacy identity/group pair stays
+reloadable when exactly one structurally valid nonzero group identifier exists;
+the migration does not decode provider-owned MLS state, which the MLS reload
+boundary still rejects when malformed. Ambiguous binding rolls back at version
+3. Each open reads back the retained rollback-journal and synchronization settings.
+Migration from versions 1 and 2 intentionally leaves the new identity table
+empty because those databases never retained enough material to reconstruct the
+same client; callers must not generate a replacement and attach it to an old group.
 `SqlCipherStorage` implements the
 coordinator's `WelcomeOutboxPort` with one immediate SQL transaction per lease,
 accepted result, or failed result. Explicit schema-v1, schema-v2, and schema-v3 fixtures

@@ -58,8 +58,11 @@ libraries across the three required CI operating systems.
   store identity through version 4, and a forced table conflict proves failed
   migration restores both schema versions and the original rows. A valid
   version-1 store advances through every retained migration. A frozen version-3
-  fixture binds its identity only when exactly one valid group exists; missing
-  or ambiguous group scope rolls the migration back intact. Migration does not
+  fixture proves that a real identity/group pair remains reloadable when exactly
+  one structurally valid nonzero group identifier exists. The storage migration
+  does not decode provider-owned MLS state; malformed state may bind structurally
+  but the MLS reload boundary still rejects it. Missing or ambiguous group scope
+  rolls the migration back intact. Migration does not
   invent missing identity material: a legacy store has no reloadable client
   identity and must fail closed rather than pair a new signer with its old group.
 - The real capability-admission/MLS composition uses an explicit

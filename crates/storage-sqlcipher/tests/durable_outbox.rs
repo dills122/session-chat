@@ -8,8 +8,9 @@ use std::{
 
 use rusqlite::{Connection, params};
 use session_crypto_mls::{
-    DurableClientIdentityStorage, SessionGroupId, create_client, create_client_with_storage,
-    create_key_package_validator,
+    DurableClientIdentityStorage, SessionGroupId, create_client,
+    create_durable_client_with_storage, create_key_package_validator,
+    load_durable_client_with_storage,
 };
 use session_protocol::{DepositCapability, LocalWelcomeDepositEndpoint, OpaqueEnvelope};
 use session_transport::{
@@ -96,6 +97,7 @@ fn canonical_endpoint(expires_at: u64) -> Vec<u8> {
 
 fn commit_real_mls_inviter(
     storage: &SqlCipherStorage,
+    group_id: SessionGroupId,
     endpoint: Vec<u8>,
     envelope_id: [u8; 16],
     fault: PersistenceFault,
@@ -103,10 +105,14 @@ fn commit_real_mls_inviter(
     storage
         .seed_reservation(INVITATION_ID, [2; 64], [3; 16], NOW + 300, NOW)
         .expect("reservation stored");
-    let alice = create_client_with_storage(storage.clone(), storage.clone()).expect("Alice client");
-    let mut alice_group = alice
-        .create_group(SessionGroupId::new([5; 32]).expect("group id"), NOW)
-        .expect("Alice group");
+    let alice = create_durable_client_with_storage(
+        group_id,
+        storage.clone(),
+        storage.clone(),
+        storage.clone(),
+    )
+    .expect("durable Alice client");
+    let mut alice_group = alice.create_group(group_id, NOW).expect("Alice group");
     let bob = create_client().expect("Bob client");
     let bob_key_package = bob.generate_key_package(NOW).expect("Bob KeyPackage");
     let validated = create_key_package_validator()
@@ -155,6 +161,7 @@ fn committed_store(name: &str) -> (TestDatabase, SqlCipherStorage) {
     let storage = SqlCipherStorage::create(&database.0, vault_key()).expect("storage created");
     let (_welcome, result) = commit_real_mls_inviter(
         &storage,
+        SessionGroupId::new([5; 32]).expect("group id"),
         canonical_endpoint(NOW + 240),
         [8; 16],
         PersistenceFault::None,
@@ -300,6 +307,17 @@ fn frozen_schema_v3_identity_is_bound_to_its_sole_group_in_v4() {
             .load_client_identity(&SessionGroupId::new([0xa2; 32]).expect("foreign group id"))
             .is_err()
     );
+    let reloaded = load_durable_client_with_storage(
+        group_id,
+        migrated.clone(),
+        migrated.clone(),
+        migrated.clone(),
+    )
+    .expect("migrated v3 identity remains usable");
+    let reloaded_group = reloaded
+        .load_group(group_id)
+        .expect("migrated v3 group remains usable by the retained identity");
+    assert_eq!(reloaded_group.group_id(), group_id.as_bytes());
     drop(migrated);
 
     let connection = open_fixture_connection(&database.0);
@@ -345,6 +363,28 @@ fn ambiguous_schema_v3_identity_binding_rolls_migration_back() {
             .expect("temporary migration tables"),
         0
     );
+}
+
+#[test]
+fn schema_v3_structural_binding_defers_malformed_group_rejection_to_mls() {
+    let database = TestDatabase::new("migration-v3-malformed-group");
+    create_schema_v3_fixture(&database.0, true);
+    let connection = open_fixture_connection(&database.0);
+    connection
+        .execute(
+            "UPDATE mls_groups SET state = ?1 WHERE group_id = ?2",
+            params![vec![0xb3_u8; 64], V3_IDENTITY_GROUP_ID],
+        )
+        .expect("malformed MLS state inserted");
+    drop(connection);
+
+    let migrated = SqlCipherStorage::open(&database.0, vault_key())
+        .expect("structurally unambiguous v3 state migrates");
+    let group_id = SessionGroupId::new(V3_IDENTITY_GROUP_ID).expect("group id");
+    let reloaded =
+        load_durable_client_with_storage(group_id, migrated.clone(), migrated.clone(), migrated)
+            .expect("valid identity reloads");
+    assert!(reloaded.load_group(group_id).is_err());
 }
 
 #[test]
@@ -627,6 +667,7 @@ fn ambiguous_prior_acceptance_retries_byte_identically_after_restart() {
         .into_parts();
     let (welcome, result) = commit_real_mls_inviter(
         &storage,
+        SessionGroupId::new([5; 32]).expect("group id"),
         endpoint.encode_canonical().expect("canonical endpoint"),
         [31; 16],
         PersistenceFault::None,
@@ -687,6 +728,7 @@ fn rolled_back_membership_exposes_no_outbox_work() {
     let mut storage = SqlCipherStorage::create(&database.0, vault_key()).expect("storage created");
     let (_welcome, result) = commit_real_mls_inviter(
         &storage,
+        SessionGroupId::new([5; 32]).expect("group id"),
         canonical_endpoint(NOW + 240),
         [41; 16],
         PersistenceFault::BeforeCommit,
@@ -863,6 +905,36 @@ fn create_schema_v2_fixture(path: &Path, welcome: &[u8], endpoint: &[u8]) {
 }
 
 fn create_schema_v3_fixture(path: &Path, include_group: bool) {
+    let source_database = TestDatabase(path.with_extension("semantic-v4-source.sqlite3"));
+    let source_storage =
+        SqlCipherStorage::create(&source_database.0, vault_key()).expect("semantic source created");
+    let group_id = SessionGroupId::new(V3_IDENTITY_GROUP_ID).expect("v3 group id");
+    let (_welcome, result) = commit_real_mls_inviter(
+        &source_storage,
+        group_id,
+        canonical_endpoint(NOW + 240),
+        [0xb0; 16],
+        PersistenceFault::None,
+    );
+    result.expect("semantic source committed");
+    drop(source_storage);
+    let source_connection = open_fixture_connection(&source_database.0);
+    let group_state = source_connection
+        .query_row(
+            "SELECT state FROM mls_groups WHERE group_id = ?1",
+            params![V3_IDENTITY_GROUP_ID],
+            |row| row.get::<_, Vec<u8>>(0),
+        )
+        .expect("semantic v3 group state");
+    let identity_record = source_connection
+        .query_row(
+            "SELECT identity_record FROM mls_client_identity WHERE singleton = 1",
+            [],
+            |row| row.get::<_, Vec<u8>>(0),
+        )
+        .expect("semantic v3 identity record");
+    drop(source_connection);
+
     let welcome = OpaqueEnvelope::new([0xb1; 16], NOW + 180, vec![0xb2; 32])
         .expect("Welcome")
         .encode_canonical()
@@ -876,14 +948,14 @@ fn create_schema_v3_fixture(path: &Path, include_group: bool) {
         connection
             .execute(
                 "INSERT INTO mls_groups(group_id, state) VALUES (?1, ?2)",
-                params![V3_IDENTITY_GROUP_ID, vec![0xb3_u8; 64]],
+                params![V3_IDENTITY_GROUP_ID, group_state],
             )
             .expect("sole v3 MLS group");
     }
     connection
         .execute(
             "INSERT INTO mls_client_identity(singleton, identity_record) VALUES (1, ?1)",
-            params![vec![0xb4_u8; 141]],
+            params![identity_record],
         )
         .expect("v3 identity fixture");
 }
