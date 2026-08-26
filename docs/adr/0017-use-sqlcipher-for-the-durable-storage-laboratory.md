@@ -50,10 +50,13 @@ libraries across the three required CI operating systems.
   and the matching signing public/secret key. Creation refuses replacement;
   reload never generates fallback material; derived-public-key validation and
   a local-member credential/public-key check precede use of loaded group state.
-  Version 2 migrates in one exclusive transaction, and a valid version-1 store
-  advances through both retained migrations. Migration does not invent missing
-  identity material: a legacy store has no reloadable client identity and must
-  fail closed rather than pair a new signer with its old group.
+  Version 2 migrates in one exclusive transaction. A frozen version-2 fixture
+  retains leased, delivered, and attempts-exhausted outbox states plus the
+  store identity through version 3, and a forced table conflict proves failed
+  migration restores both schema versions and the original rows. A valid
+  version-1 store advances through both retained migrations. Migration does not
+  invent missing identity material: a legacy store has no reloadable client
+  identity and must fail closed rather than pair a new signer with its old group.
 - The real capability-admission/MLS composition uses an explicit
   durability-pending one-shot value. A proven SQL rollback releases its
   in-memory admission reservations and requires the transient MLS group to be

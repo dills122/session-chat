@@ -25,6 +25,10 @@ use storage_sqlcipher::{
 const NOW: u64 = 1_900_000_000;
 const TRANSACTION_ID: [u8; 16] = [4; 16];
 const INVITATION_ID: [u8; 16] = [1; 16];
+const V2_LEASED_TRANSACTION_ID: [u8; 16] = [51; 16];
+const V2_DELIVERED_TRANSACTION_ID: [u8; 16] = [52; 16];
+const V2_EXHAUSTED_TRANSACTION_ID: [u8; 16] = [53; 16];
+const V2_STORE_ID: [u8; 16] = [54; 16];
 
 struct TestDatabase(PathBuf);
 
@@ -213,6 +217,113 @@ fn schema_v1_fixture_migrates_atomically_to_pending_v3_work() {
 
     let reopened = SqlCipherStorage::open(&database.0, vault_key()).expect("v3 reopens");
     assert_eq!(reopened.schema_version().expect("schema version"), 3);
+}
+
+#[test]
+fn frozen_schema_v2_fixture_preserves_nondefault_outbox_states_in_v3() {
+    let database = TestDatabase::new("migration-v2");
+    let welcome = OpaqueEnvelope::new([55; 16], NOW + 180, vec![56; 32])
+        .expect("Welcome")
+        .encode_canonical()
+        .expect("canonical Welcome");
+    create_schema_v2_fixture(&database.0, &welcome, &canonical_endpoint(NOW + 240));
+
+    let migrated = SqlCipherStorage::open(&database.0, vault_key()).expect("v2 migrates");
+    assert_eq!(migrated.schema_version().expect("schema version"), 3);
+    assert!(
+        migrated
+            .load_client_identity()
+            .expect("identity lookup")
+            .is_none()
+    );
+    let leased = migrated
+        .recover_inviter(&V2_LEASED_TRANSACTION_ID)
+        .expect("leased recovery")
+        .expect("leased fixture");
+    assert_eq!(leased.outbox_state, WelcomeOutboxState::Leased);
+    assert_eq!(leased.delivery_attempts, 2);
+    let delivered = migrated
+        .recover_inviter(&V2_DELIVERED_TRANSACTION_ID)
+        .expect("delivered recovery")
+        .expect("delivered fixture");
+    assert_eq!(delivered.outbox_state, WelcomeOutboxState::Delivered);
+    assert_eq!(delivered.delivery_attempts, 1);
+    let exhausted = migrated
+        .recover_inviter(&V2_EXHAUSTED_TRANSACTION_ID)
+        .expect("exhausted recovery")
+        .expect("exhausted fixture");
+    assert_eq!(
+        exhausted.outbox_state,
+        WelcomeOutboxState::AttemptsExhausted
+    );
+    assert_eq!(exhausted.delivery_attempts, 3);
+    drop(migrated);
+
+    let connection = open_fixture_connection(&database.0);
+    assert_eq!(fixture_versions(&connection), (3, 3));
+    assert_eq!(fixture_store_id(&connection), V2_STORE_ID);
+    assert_eq!(
+        connection
+            .query_row(
+                "SELECT lease_generation, lease_id, lease_expires_at
+                 FROM inviter_joins WHERE transaction_id = ?1",
+                params![V2_LEASED_TRANSACTION_ID],
+                |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, Vec<u8>>(1)?,
+                        row.get::<_, i64>(2)?,
+                    ))
+                },
+            )
+            .expect("leased authority survives migration"),
+        (4, vec![91_u8; 16], (NOW + 60) as i64)
+    );
+}
+
+#[test]
+fn failed_schema_v2_migration_restores_versions_and_outbox_rows() {
+    let database = TestDatabase::new("migration-v2-rollback");
+    let welcome = OpaqueEnvelope::new([57; 16], NOW + 180, vec![58; 32])
+        .expect("Welcome")
+        .encode_canonical()
+        .expect("canonical Welcome");
+    create_schema_v2_fixture(&database.0, &welcome, &canonical_endpoint(NOW + 240));
+    let connection = open_fixture_connection(&database.0);
+    connection
+        .execute_batch(
+            "CREATE TABLE mls_client_identity (
+                 conflicting INTEGER PRIMARY KEY
+             ) STRICT;",
+        )
+        .expect("conflicting future table");
+    drop(connection);
+
+    assert!(SqlCipherStorage::open(&database.0, vault_key()).is_err());
+    let connection = open_fixture_connection(&database.0);
+    assert_eq!(fixture_versions(&connection), (2, 2));
+    assert_eq!(fixture_store_id(&connection), V2_STORE_ID);
+    assert_eq!(
+        connection
+            .query_row(
+                "SELECT outbox_state FROM inviter_joins WHERE transaction_id = ?1",
+                params![V2_LEASED_TRANSACTION_ID],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("leased fixture survives rollback"),
+        2
+    );
+    assert_eq!(
+        connection
+            .query_row(
+                "SELECT count(*) FROM sqlite_master
+                 WHERE type = 'table' AND name = 'storage_metadata_v2'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("temporary metadata table lookup"),
+        0
+    );
 }
 
 #[test]
@@ -579,6 +690,133 @@ fn create_schema_v1_fixture(path: &Path, welcome: &[u8], endpoint: &[u8]) {
             ],
         )
         .expect("inviter fixture");
+}
+
+fn create_schema_v2_fixture(path: &Path, welcome: &[u8], endpoint: &[u8]) {
+    let connection = open_fixture_connection(path);
+    connection
+        .execute_batch(include_str!("fixtures/schema-v2.sql"))
+        .expect("frozen schema v2 fixture");
+    let rows = [
+        (
+            V2_LEASED_TRANSACTION_ID,
+            [61_u8; 16],
+            [71_u8; 16],
+            [81_u8; 32],
+            2_i64,
+            2_i64,
+            5_i64,
+            4_i64,
+            Some([91_u8; 16]),
+            Some((NOW + 60) as i64),
+        ),
+        (
+            V2_DELIVERED_TRANSACTION_ID,
+            [62_u8; 16],
+            [72_u8; 16],
+            [82_u8; 32],
+            3_i64,
+            1_i64,
+            5_i64,
+            1_i64,
+            None,
+            None,
+        ),
+        (
+            V2_EXHAUSTED_TRANSACTION_ID,
+            [63_u8; 16],
+            [73_u8; 16],
+            [83_u8; 32],
+            4_i64,
+            3_i64,
+            3_i64,
+            3_i64,
+            None,
+            None,
+        ),
+    ];
+    for (
+        transaction_id,
+        invitation_id,
+        join_request_id,
+        group_id,
+        outbox_state,
+        delivery_attempts,
+        maximum_delivery_attempts,
+        lease_generation,
+        lease_id,
+        lease_expires_at,
+    ) in rows
+    {
+        connection
+            .execute(
+                "INSERT INTO reservations(
+                     invitation_id, generation, join_request_id, expires_at, state
+                 ) VALUES (?1, ?2, ?3, ?4, 2)",
+                params![
+                    invitation_id,
+                    [2_u8; 64],
+                    join_request_id,
+                    (NOW + 300) as i64
+                ],
+            )
+            .expect("v2 consumed reservation fixture");
+        connection
+            .execute(
+                "INSERT INTO inviter_joins(
+                     transaction_id, invitation_id, generation, join_request_id,
+                     request_fingerprint, group_id, epoch_before, epoch_after,
+                     approval_record, welcome, endpoint, outbox_expires_at,
+                     outbox_state, delivery_attempts, maximum_delivery_attempts,
+                     lease_generation, lease_id, lease_expires_at
+                 ) VALUES (
+                     ?1, ?2, ?3, ?4, ?5, ?6, 0, 1, ?7, ?8, ?9, ?10,
+                     ?11, ?12, ?13, ?14, ?15, ?16
+                 )",
+                params![
+                    transaction_id,
+                    invitation_id,
+                    [2_u8; 64],
+                    join_request_id,
+                    [6_u8; 32],
+                    group_id,
+                    vec![7_u8; 32],
+                    welcome,
+                    endpoint,
+                    (NOW + 120) as i64,
+                    outbox_state,
+                    delivery_attempts,
+                    maximum_delivery_attempts,
+                    lease_generation,
+                    lease_id,
+                    lease_expires_at,
+                ],
+            )
+            .expect("v2 inviter fixture");
+    }
+}
+
+fn fixture_versions(connection: &Connection) -> (i64, i64) {
+    (
+        connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .expect("application schema version"),
+        connection
+            .query_row("SELECT schema_version FROM storage_metadata", [], |row| {
+                row.get(0)
+            })
+            .expect("metadata schema version"),
+    )
+}
+
+fn fixture_store_id(connection: &Connection) -> [u8; 16] {
+    connection
+        .query_row("SELECT store_id FROM storage_metadata", [], |row| {
+            row.get::<_, Vec<u8>>(0)
+        })
+        .expect("store identity")
+        .try_into()
+        .expect("exact store identity")
 }
 
 fn open_fixture_connection(path: &Path) -> Connection {

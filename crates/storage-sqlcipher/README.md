@@ -33,16 +33,19 @@ endpoint bytes, delivery state, bounded attempts, monotonic lease generation,
 opaque lease identity, lease expiry, and the per-row attempt ceiling so restart
 cannot reinterpret committed work. Schema metadata is bound to SQLite's
 application `user_version`; both v1-to-v2 and v2-to-v3 migrations take exclusive
-transactions, and each
+transactions. A frozen schema-v2 fixture preserves leased, delivered, and
+attempts-exhausted outbox rows plus the store identity through v3, while a
+forced migration conflict proves that versions and rows roll back intact. Each
 open reads back the retained rollback-journal and synchronization settings.
 Migration intentionally leaves the new identity table empty because an older
 database never retained enough material to reconstruct the same client; callers
 must not generate a replacement and attach it to an old group.
 `SqlCipherStorage` implements the
 coordinator's `WelcomeOutboxPort` with one immediate SQL transaction per lease,
-accepted result, or failed result. Explicit schema-v1 fixtures prove atomic
-migration of valid pending work and rollback of invalid legacy delivery
-material. Close/reopen tests cover old-open-scope, stale, and foreign leases,
+accepted result, or failed result. Explicit schema-v1 and schema-v2 fixtures
+prove atomic migration of valid retained work and rollback of invalid or
+conflicting migration state. Close/reopen tests cover old-open-scope, stale,
+and foreign leases,
 expiry, exhaustion,
 and byte-identical retry after an unrecorded remote acceptance without repeating
 the retained MLS epoch or reopening invitation state.
