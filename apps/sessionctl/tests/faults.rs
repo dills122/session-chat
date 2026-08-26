@@ -82,6 +82,24 @@ fn membership_apply_fault_abandons_pending_add_and_reservations() {
 }
 
 #[test]
+fn membership_persistence_fault_releases_only_after_proven_sql_rollback() {
+    assert_coarse_failure(
+        PhaseOneFaultPoint::MembershipPersistence,
+        "membership persistence",
+        PhaseOneObservation::DurableRollbackReleased,
+    );
+}
+
+#[test]
+fn ambiguous_membership_commit_response_recovers_committed_state() {
+    assert_coarse_failure(
+        PhaseOneFaultPoint::MembershipCommitResponse,
+        "membership commit response",
+        PhaseOneObservation::CommittedMembershipRetained,
+    );
+}
+
+#[test]
 fn welcome_fault_does_not_roll_back_committed_membership() {
     assert_coarse_failure(
         PhaseOneFaultPoint::WelcomeDeposit,
@@ -102,6 +120,7 @@ fn dropped_application_delivery_fails_closed_and_quiesces() {
 #[test]
 fn operation_boundary_faults_map_to_coarse_secret_free_stages() {
     for (fault, expected_stage) in [
+        (PhaseOneFaultPoint::DurableStore, "durable store"),
         (
             PhaseOneFaultPoint::InvitationGeneration,
             "invitation generation",
@@ -140,6 +159,10 @@ fn operation_boundary_faults_map_to_coarse_secret_free_stages() {
             PhaseOneFaultPoint::ApprovalReservation,
             "approval reservation",
         ),
+        (
+            PhaseOneFaultPoint::DurableReservation,
+            "durable reservation",
+        ),
         (PhaseOneFaultPoint::AliceGroup, "Alice group"),
         (
             PhaseOneFaultPoint::MembershipPreparation,
@@ -147,6 +170,14 @@ fn operation_boundary_faults_map_to_coarse_secret_free_stages() {
         ),
         (PhaseOneFaultPoint::WelcomeReceive, "Welcome receive"),
         (PhaseOneFaultPoint::WelcomeFraming, "Welcome framing"),
+        (
+            PhaseOneFaultPoint::DurableStoreReopen,
+            "durable store reopen",
+        ),
+        (
+            PhaseOneFaultPoint::WelcomeCoordinator,
+            "Welcome coordinator",
+        ),
         (PhaseOneFaultPoint::BobJoin, "Bob join"),
         (
             PhaseOneFaultPoint::WelcomeAcknowledgement,

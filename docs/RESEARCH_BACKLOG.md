@@ -369,7 +369,7 @@ coordination, or network work.
   plus inviter-join behavior on macOS Apple silicon. The integrated laboratory
   below now supplies the required three-OS CI result; production selection is
   still blocked on broader faults, a portable key-protection baseline,
-  lifecycle and rollback policy, and product-path integration.
+  lifecycle and rollback policy, and durable-client integration.
 - **Durability laboratory selected and implemented:** ADR 0017 and
   `storage-sqlcipher` exercise the real inviter and joiner MLS storage calls in
   encrypted owner-local transactions. The required Linux, macOS, and Windows CI

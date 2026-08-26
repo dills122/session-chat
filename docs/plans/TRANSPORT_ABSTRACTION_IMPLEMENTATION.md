@@ -1,8 +1,9 @@
 # Implementation plan: profile-bound transport abstraction
 
-Status: active staged implementation plan; ADR 0015 is accepted, Tasks 1 and 2
-and the cursorless Task 4 control path are complete, Task 3 is partial, and
-later lifecycle, coordinator, conformance, and network work remain gated
+Status: active staged implementation plan; ADR 0015 is accepted, Task 3 is
+partial, Task 9's durable owner-store plus capability-admission/MLS composition
+checkpoints are complete, and durable headless composition is active before
+independent-process or network work
 
 Date: 2026-08-20
 
@@ -99,6 +100,24 @@ Iroh Fast adapter       Tor/Arti spike        SimpleX SMP spike
 The external adapter spikes can run independently only after the common
 contract and harness are stable.
 
+## Active execution slice: durable headless composition
+
+This slice begins only after the separately owned `sessionctl` orchestration
+fault seams and memory/inviter schedule models merged to `master`. It reuses
+those seams and does not reinterpret their pre-merge files.
+
+| Work item | Delivery unit | Depends on | Status | Completion boundary |
+| --- | --- | --- | --- | --- |
+| `T9-SQL-OWNER` | Durable owner store | Task 8 | Complete | SQLCipher schema v2 is the sole Welcome ledger across migration, restart, leases, terminal states, and exact retry. |
+| `T9-REAL-COMPOSITION` | Admission/MLS integration | `T9-SQL-OWNER` | Complete | Real capability admission holds a one-shot durability-pending MLS result until transaction-ID recovery proves commit or rollback, then delivery restarts without another Add. |
+| `T9-SESSIONCTL` | Headless integration | merged orchestration fault seams | Complete | The existing Alice/Bob flow uses the real SQLCipher inviter transaction and reconstructed coordinator owner while preserving its coarse fault and output contracts. |
+| `L1-PROCESS` | Independent-process runner | `T9-SESSIONCTL` | Pending | Separate client and untrusted-service processes exchange only public wire objects under bounded lifecycle control and emit a redacted evidence manifest. |
+
+Full client restart is not claimed by `T9-SESSIONCTL`: the current MLS adapter
+does not persist and reload the client signing identity required to continue as
+the same Alice process after reopening the group. That missing contract must be
+resolved before `L1-PROCESS` can claim durable client recovery.
+
 ## Active execution slice: generalized dispatch boundary
 
 This slice closes the remaining Task 3 dispatch decisions before extending the
@@ -148,6 +167,35 @@ errors. Queue saturation is induced through bounded ordinary operations rather
 than a state-forging action. Positive persisted cursor issuance, rotation,
 restart, concurrency, network timing, and profile-specific privacy faults remain
 outside this slice.
+
+## Active execution slice: durable Welcome owner store
+
+This is the authoritative sequential backbone after the completed in-memory
+Task 9 checkpoint. It evolves the existing SQLCipher inviter transaction rather
+than wrapping the memory model or introducing coordinator persistence. The
+`storage-sqlcipher` database remains the sole authority for membership,
+invitation consumption, replay/approval result, exact Welcome work, attempts,
+leases, and terminal delivery state.
+
+Parallel work may own `apps/sessionctl`, new test-only property/model files for
+the existing memory paths, and a SQLCipher fault-research document. This slice
+does not edit those files before their changes merge.
+
+| Work item | Delivery unit | Depends on | Status | Completion boundary |
+| --- | --- | --- | --- | --- |
+| `D9-SCHEMA-V2` | Lead storage contract | In-memory Task 9 checkpoint | Complete | A versioned SQLCipher schema and explicit v1 compatibility fixture retain one nonzero durable store identity, exact canonical Welcome/endpoint bytes, bounded attempt count, monotonic lease generation, opaque lease identity, lease expiry, and pending/leased/delivered/exhausted/expired states. Migration is one atomic transaction and unknown schemas fail closed. |
+| `D9-RECOVERY-TESTS` | Lead storage evidence | `D9-SCHEMA-V2` design | Complete | Failing-first tests cover close/reopen coordination, stale re-lease, foreign-store leases, expiry, attempt exhaustion, ambiguous remote acceptance with byte-identical retry, and invisibility of rolled-back membership/outbox work. |
+| `D9-OWNER-PORT` | Lead storage implementation | `D9-RECOVERY-TESTS` | Complete | `SqlCipherStorage` implements `WelcomeOutboxPort`; each lease, accepted result, and failed result uses one immediate SQL transaction and validates the exact live store/transaction/generation/lease identity. |
+| `D9-DURABLE-COMPOSITION` | Lead integration | `D9-OWNER-PORT` | Complete | The real capability-admission and MLS Add path commits once through SQLCipher, reconstructs the stateless coordinator after close/reopen, and retries delivery without repeating MLS membership or reopening invitation state. |
+| `D9-FAULT-EVIDENCE` | Lead verification | `D9-DURABLE-COMPOSITION` | Complete | Retained adapter-proportionate restart and storage-fault evidence passes targeted tests, production coverage ratchets, and the available full repository gates; local dependency-policy execution remains unavailable without the CI-provided `cargo-deny`, and stronger process-kill, disk/power, rollback, and production claims remain explicitly gated unless separately proven. |
+| `D9-RESEARCH-RECONCILE` | Merged fault-research integration | companion fault packet | Complete | The per-row attempt ceiling persists; pre-reopen process-scoped leases fail closed; schema v2 is bound to `user_version`; migration is exclusive; and retained journal/synchronous configuration is read back. The portable child-kill/VFS suite, full structural fingerprint, immutable encrypted v1 artifact, and rollback anchor remain separate L2 gates. |
+
+The initial schema-v2 state codes and migration are storage-internal, not wire
+objects. Changing their observable recovery semantics requires compatibility
+fixtures and negative tests. A lease is authoritative only when its persistent
+store identity, transaction ID, generation, and opaque lease identity all match
+the currently leased row. Reopen preserves the store identity; re-lease changes
+both generation and lease identity so stale or foreign results fail closed.
 
 ## Phase A: contract adoption
 
@@ -584,11 +632,12 @@ idempotent and cannot repeat MLS Add or Commit.
 
 **Acceptance criteria:**
 
-- [ ] A committed membership transition always has recoverable outbox work.
-- [ ] An uncommitted transition exposes no deliverable job.
-- [ ] Restart recovery retries delivery without repeating MLS membership
+- [x] A committed membership transition always has recoverable outbox work in
+  the SQLCipher inviter transaction.
+- [x] An uncommitted SQLCipher transition exposes no deliverable job.
+- [x] SQLCipher restart recovery retries delivery without repeating MLS membership
   mutation or releasing the invitation.
-- [ ] Coordinator state can be discarded and reconstructed without losing or
+- [x] Coordinator state can be discarded and reconstructed without losing or
   contradicting authoritative outbox state.
 
 **In-memory checkpoint (2026-08-25):**
@@ -601,16 +650,20 @@ idempotent and cannot repeat MLS Add or Commit.
 - [x] A prior unrecorded adapter acceptance is retried with byte-identical
   envelope/endpoint identity, yields the same mailbox delivery, and does not
   repeat the atomic commit.
-- [ ] A durable implementation proves the same properties across process
-  restart and storage faults.
+- [x] The SQLCipher adapter proves the owner-port properties across close/reopen
+  and its retained pre/post-commit storage faults. Process-kill and disk/power
+  evidence remain separate L2 gates.
+- [x] The real capability-admission and MLS path defers in-memory invitation
+  consumption while SQL durability is unresolved, recovers an ambiguous commit
+  by transaction ID, finalizes once, reopens the owner store, and delivers the
+  byte-identical Welcome without repeating MLS membership.
 
 **Verification:**
 
-- [ ] Crash tests cover every write boundary before and after commit.
+- [ ] Process-crash tests cover every write boundary before and after commit.
 - [ ] Duplicate, lost, reordered, and delayed Welcome delivery remains safe.
 - [x] The in-memory conformance model passes before a durable adapter is wired.
-- [ ] Exact storage command from the selected adapter is retained in test
-  evidence.
+- [x] The exact targeted SQLCipher storage command is retained in test evidence.
 
 **Dependencies:** Task 8, the existing inviter-transaction conformance model,
 and the future durable MLS/storage increment governed by ADRs 0008 and 0015
@@ -629,17 +682,17 @@ and the future durable MLS/storage increment governed by ADRs 0008 and 0015
 
 ## Checkpoint: Phase 1 transport control path
 
-- [ ] Memory transport remains deterministic and offline.
-- [ ] The complete Phase 1 headless flow passes through the common transport
+- [x] Memory transport remains deterministic and offline.
+- [x] The complete Phase 1 headless flow passes through the common transport
   boundary.
 - [ ] Duplicate/reordered delivery and crash recovery cannot repeat membership
   transitions.
-- [ ] The owner-local transaction store is the sole durable outbox and lease
+- [x] The owner-local transaction store is the sole durable outbox and lease
   authority; coordinator restart does not create a second ledger.
-- [ ] `cargo fmt --all --check`
-- [ ] `cargo clippy --workspace --all-targets -- -D warnings`
-- [ ] `cargo test --workspace`
-- [ ] Review retained evidence before any real network adapter.
+- [x] `cargo fmt --all --check`
+- [x] `cargo clippy --workspace --all-targets -- -D warnings`
+- [x] `cargo test --workspace`
+- [x] Review retained evidence before any real network adapter.
 
 ## Phase E: real-network experiments
 

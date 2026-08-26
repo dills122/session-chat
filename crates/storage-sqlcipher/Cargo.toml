@@ -9,10 +9,17 @@ publish = false
 [dependencies]
 mls-rs-core.workspace = true
 rusqlite.workspace = true
+session-protocol = { version = "=0.1.0", path = "../session-protocol" }
+session-transport = { version = "=0.1.0", path = "../session-transport" }
 thiserror.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
+admission-capability = { version = "=0.1.0", path = "../admission-capability" }
+aws-lc-rs.workspace = true
+session-admission = { version = "=0.1.0", path = "../session-admission" }
+session-core = { version = "=0.1.0", path = "../session-core" }
+session-crypto-hpke = { version = "=0.1.0", path = "../session-crypto-hpke" }
 session-crypto-mls = { version = "=0.1.0", path = "../session-crypto-mls" }
 
 [lints]

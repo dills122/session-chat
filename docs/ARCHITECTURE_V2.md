@@ -210,9 +210,9 @@ The active Rust laboratory now contains fourteen narrow pieces of this architect
   repeating membership. A cross-platform standard-library blocking supervisor
   retains wake, cancellation, deadline, and pending-drop evidence for headless
   or worker-thread composition; a future UI may replace it behind the same
-  runtime-neutral future contract. A durable owner-store adapter does not
-  exist; Fast, Private, network authority, and network adapters remain
-  unavailable.
+  runtime-neutral future contract. The SQLCipher laboratory now implements the
+  same sole-owner port with schema-v2 lease/restart evidence. Fast, Private,
+  network authority, and network adapters remain unavailable.
 - `transport-memory` implements both traits with bounded deterministic drop,
   hold/release, duplication, reordering, retry, outage, one-shot corruption,
   exact-byte stale replay, acknowledgement-result loss, poll-page, exact-set
@@ -245,24 +245,32 @@ The active Rust laboratory now contains fourteen narrow pieces of this architect
   shared one-shot credential boundary and drives the deterministic vault model,
   but it does not supply SQLCipher or a production credential-acquisition UI.
 - `storage-sqlcipher` is a file-backed encrypted durability-laboratory adapter
-  for the real inviter and joiner MLS persistence calls. It is not connected to
-  a platform key protector and provides no rollback or production claim.
+  for the real inviter and joiner MLS persistence calls. Its version-2 schema
+  also owns exact Welcome work, bounded attempt/lease state, and terminal
+  delivery state through the coordinator's sole-owner port across close/reopen.
+  A retained integration test drives the real capability-admission/MLS path
+  through ambiguous commit recovery and post-restart Welcome delivery. It is
+  not connected to a platform key protector or durable client and provides no
+  rollback or production claim.
 - `sessionctl` composes the current local pieces into one headless Alice/Bob
-  flow: capability join, simulated approval, Welcome delivery, bidirectional
-  application messages, path update, removal, and post-removal rejection. It
-  is not a durable, hosted, or networked client.
+  flow: capability join, simulated approval, atomic SQLCipher inviter commit,
+  ambiguous-result recovery, reconstructed coordinator Welcome delivery,
+  bidirectional application messages, path update, removal, and post-removal
+  rejection. It can emit a bounded redacted scenario record. It is not a
+  process-restartable, hosted, or networked client.
 
 The invitation registry, replay verifier, and MLS adapter remain separate
-in-process state machines. The capability adapter now coordinates them through
-an approval-gated one-shot API: rejection and pre-commit failure release both
-reservations, abandonment also clears the MLS pending Commit, and successful
-in-memory Add consumes the invitation before returning its outputs. This is
-sequential in-memory coordination, not one persistent, cross-process,
-crash-atomic, or rollback-resistant transaction. Human approval UX, durable
-membership/replay integration, and durable Welcome outbox processing do not
-exist in that product path. The separate memory conformance model and SQLCipher
-laboratory exercise atomic visibility and ambiguous-result recovery without
-connecting to the sequential join path. The in-memory committed join result
+in-process state machines. The capability adapter coordinates them through an
+approval-gated one-shot API: rejection and pre-commit failure release both
+reservations, abandonment also clears the MLS pending Commit, and the legacy
+in-memory apply consumes the invitation before returning its outputs. Durable
+composition instead retains an applied, durability-pending value until SQL
+recovery proves commit or rollback. This is retained component integration, not
+a persistent cross-process or rollback-resistant client. Human approval UX and
+durable replay loading do not exist in the headless product path. The separate
+memory conformance model and SQLCipher laboratory exercise atomic visibility,
+durable Welcome-owner recovery, and ambiguous-result retry, and the real
+capability integration now crosses that store boundary. The in-memory committed join result
 now carries the
 exact authenticated deposit-only endpoint beside its MLS Welcome, and retained
 integration evidence delivers that Welcome through the local mailbox. No

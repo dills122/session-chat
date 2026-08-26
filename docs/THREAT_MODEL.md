@@ -22,25 +22,30 @@ explicit simulated approval decision before MLS preparation. Its pending value
 implements a provider-neutral, display-only approval context while retaining
 the exact provider evidence, KeyPackage, and reservation authorities. Copying
 that context or its decision grants no membership authority. Rejection and
-pre-commit failure release invitation and replay state; successful in-memory
-Add consumes the invitation. It does not perform human UI approval or
+pre-commit failure release invitation and replay state. The legacy in-memory
+apply consumes the invitation immediately; durable composition instead returns
+a one-shot applied result that preserves both reservations until SQL recovery
+proves commit or rollback. It does not perform human UI approval or
 rollback-resistant persistence. A local transport adapter implements
 bounded one-Welcome deposit, receive, and acknowledgement with independent
 provider-generated authorities. The approved in-memory join result carries only
 the authenticated deposit endpoint beside its MLS outputs, and a retained test
 delivers the encrypted Welcome through that mailbox. This provides no durable
-outbox or network behavior. The generalized transport contract now has a closed
+outbox or network behavior in the sequential admission path. The generalized transport contract now has a closed
 profile set, bounded local adapter identifiers, exact canonical-envelope
 ownership without ordinary debug output, finite operation budgets, bounded
 retry advice, context-free failures, bounded operation requests and receipts,
-and post-receive batch validation. An earlier Phase 1 increment also added a
-narrow synchronous delivery trait and deterministic memory adapter. The full
-budget-aware dispatch boundary still has no generalized capability erasure,
-profile binder, coordinator, or network authority. A separate bounded,
-fault-injectable model exercises
+and post-receive batch validation. Later Phase 1 increments added the
+runtime-neutral dispatch trait, deterministic memory adapter, LocalV1 binder,
+and deposit-only coordinator. Generalized capability issuance and network
+authority remain absent. A separate bounded, fault-injectable model exercises
 all-or-nothing inviter state, ambiguous-result recovery, and Welcome-outbox
 leasing semantics without providing storage or connecting to that sequential
-join path. A separate deterministic memory transport uses right-specific
+join path. The SQLCipher laboratory now implements the same sole-owner port
+with versioned migration and close/reopen lease recovery. A retained real
+capability-admission/MLS composition crosses that boundary, including ambiguous
+commit recovery and exact post-restart Welcome delivery, but no durable client
+or independent-process runner uses it yet. A separate deterministic memory transport uses right-specific
 authorities and bounded explicit drop, duplicate, hold/release, retry, expiry,
 and capacity behavior for headless tests. It accepts structurally opaque bytes
 but neither encrypts them nor provides a network or privacy property. The MLS
@@ -441,14 +446,19 @@ transport behavior.
 The provider owns one complete invitation-v2 creation API covering every secret
 and random field; callers supply only issue and expiration times. The in-memory
 approval path applies MLS and then consumes invitation state before returning
-the committed outputs, but that sequencing is not crash-atomic. A separate
+the committed outputs, but that sequencing is not crash-atomic. The durable
+path instead retains a one-shot applied value across SQL staging, write, and
+transaction-ID recovery; it finalizes the in-memory shadow only for a proven
+commit and releases it only for a proven rollback. A separate
 conformance model tests the accepted inviter transaction's all-or-nothing
 components, exact retries, stale-generation rejection, ambiguous commit
-recovery, and bounded outbox leases over in-memory records. It is not durable
-and is not wired to MLS, admission, or transport. Remaining requirements include
-human approval UX, a real shared MLS/Session Chat storage transaction, durable
-replay and rollback protection, vault-backed confidentiality, and crash-safe
-mutation ordering.
+recovery, and bounded outbox leases over in-memory records. The SQLCipher
+laboratory now supplies the corresponding real MLS transaction and durable
+coordinator owner port, and a retained integration test wires it to capability
+admission through restart delivery and real joiner processing. Remaining
+requirements include human approval UX, durable client/independent-process
+integration, rollback protection, vault-backed confidentiality, and broader
+process/disk crash evidence.
 
 Attacker story: Mallory captures a protected request and resubmits it after the
 invitation expires and is reissued with the same invitation and request IDs.
@@ -514,15 +524,19 @@ two-member roster enforcement, explicit prepare/apply and abandoned-pending
 handling, replay, reordering, temporarily lost epoch commits, path updates,
 removal, explicit-only group-state writes, and the provider-neutral established-
 session message interface from ADR 0013. The headless `sessionctl` acceptance
-flow now composes fresh capability admission, Welcome delivery, bidirectional
-protected messages, path update, removal, and post-removal rejection across the
-local adapters. It adds integration evidence, not persistence or networking.
+flow now composes fresh capability admission, an atomic SQLCipher inviter
+transaction, ambiguous-result recovery, reconstructed coordinator Welcome
+delivery, bidirectional protected messages, path update, removal, and
+post-removal rejection across the local adapters. It adds durable-component
+integration evidence, not full client restart, rollback resistance, or
+networking.
 The separate inviter-transaction model
 covers only the application-level all-or-nothing and recovery semantics over
-bounded memory records. Current evidence does not cover durable recovery,
-cross-implementation fixtures, a real inviter-local MLS/join/outbox storage
-transaction, joiner-local joined-state and KeyPackage-deletion atomicity,
-cross-device acknowledgement semantics, old-secret deletion, or fuzzing.
+bounded memory records. Current evidence does not cover full client identity
+and group reload, cross-implementation fixtures, cross-device acknowledgement
+semantics, old-secret deletion, or fuzzing. The separate SQLCipher laboratory
+does cover the real inviter-local MLS/join/outbox transaction and joiner-local
+joined-state plus KeyPackage-deletion atomicity.
 
 Attacker story: a malicious delivery service withholds one Commit and later
 replays it after a subsequent epoch. The client must reject it without rolling
@@ -699,9 +713,21 @@ evidence for both real owner-local MLS transactions. The inviter snapshot and
 join/outbox state share one SQL commit; the joiner snapshot and exact one-time
 KeyPackage deletion share another. Wrong-key, pre-commit rollback,
 ambiguous-result recovery, close/reopen, and closed-file checks are retained on
-the required Linux, macOS, and Windows CI runners. This does not establish a
-platform key protector, rollback resistance, production packaging, behavior on
-broader hardware/OS versions, power-loss safety, or secure deletion.
+the required Linux, macOS, and Windows CI runners. Schema version 2 also makes
+that inviter row the sole Welcome-delivery ledger with persistent store
+identity, exact canonical material, bounded attempts, generation/identity-bound
+leases, a persisted attempt ceiling, and delivered/exhausted/expired terminal
+states. The schema version is paired with SQLite's application `user_version`,
+migration is exclusive, and retained configuration is read back on open.
+Retained tests reject old-open-scope, stale, and foreign results and reconcile
+an ambiguous prior adapter acceptance byte-identically after reopen. The real
+capability path additionally recovers
+an ambiguous SQL commit before finalizing its in-memory invitation shadow,
+reopens the store, delivers once, and proves the original joiner consumes that
+Welcome without a second MLS Add. This does not establish a durable client,
+platform key protector, rollback resistance, production
+packaging, behavior on broader hardware/OS versions, power-loss safety, or
+secure deletion.
 
 ADR 0019 and `key-protector-passphrase` add only a bounded portable conformance
 construction, now connected to the deterministic ADR 0020 lifecycle boundary.

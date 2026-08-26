@@ -37,6 +37,15 @@ impl<L> LeasedWelcome<L> {
             self.outbox_expires_at_unix_seconds,
         )
     }
+
+    /// Discards the secret-bearing payload and returns only the opaque owner lease.
+    ///
+    /// This supports owner-store recovery and negative lease tests without
+    /// exposing delivery bytes through a diagnostic or cloneable view.
+    #[must_use]
+    pub fn discard_payload(self) -> L {
+        self.lease
+    }
 }
 
 /// Stable, secret-free failures from the authoritative outbox owner.

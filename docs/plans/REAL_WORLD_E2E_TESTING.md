@@ -1,6 +1,6 @@
 # Real-world end-to-end security test strategy
 
-Status: accepted test strategy; deterministic in-process protocol evidence and
+Status: accepted test strategy; durable in-process protocol composition and
 isolated SQLCipher durability-laboratory evidence exist today
 
 Date: 2026-08-20
@@ -13,10 +13,12 @@ re-run through processes, durable storage, real transports, and supported
 platforms as those components become real.
 
 This strategy defines the permanent test layers, scenario catalog, evidence
-format, CI cadence, and release gates. A headless in-process client, isolated
-SQLCipher durability laboratory, sealed-vault model, and deterministic memory
-transport exist. It does not claim that a two-process runner, product-integrated
-durable store, hosted realm, desktop client vault, or real-network adapter exists.
+format, CI cadence, and release gates. A headless in-process client, a real
+capability-admission/MLS composition test over the SQLCipher durability
+laboratory, a sealed-vault model, deterministic memory transport, and a durable
+in-process `sessionctl` composition exist. It does not claim that an
+independent-process runner, fully restartable client identity, hosted realm,
+desktop client vault, or real-network adapter exists.
 
 ## Principles
 
@@ -41,7 +43,7 @@ durable store, hosted realm, desktop client vault, or real-network adapter exist
 | Layer | Environment | What it proves | Cadence |
 | --- | --- | --- | --- |
 | L0: type, unit, parser, and model | One process, offline | Canonical formats, bounds, state transitions, right separation, redaction, crypto vectors | Every PR through `CI / Gate` |
-| L1: deterministic protocol E2E | Current in-process `sessionctl` two-client composition; later independent client/service processes | One complete invitation-to-message-to-removal flow under explicit time inputs | Every PR |
+| L1: deterministic protocol E2E | Current durable in-process `sessionctl` two-client composition; later independent client/service processes | One complete invitation-to-message-to-removal flow under explicit time inputs | Every PR |
 | L2: faulted component E2E | Multiple local processes, deterministic adverse scheduler, disposable real storage | Crash/restart, lost responses, duplicate/reordered delivery, lease recovery, rollback detection | Nightly and on affected PRs |
 | L3: containerized realm E2E | Digest-pinned disposable realm with real service boundaries and storage | Deployment wiring, TLS, quotas, migrations, restore, service isolation, operational redaction | Nightly after a deployable realm exists |
 | L4: real transport labs | NAT/relay, onion test service, SMP test servers, and local/test mixnets | Adapter conformance, outage behavior, latency/resource bounds, no unintended fallback | Scheduled and before adapter decisions |
@@ -82,13 +84,13 @@ records, roadmap gates, and external audit findings can refer to the same case.
 | --- | --- | --- |
 | `session-protocol` | Canonical fixtures and malformed/boundary tests | Continuous fuzz corpus, compatibility corpus, and cross-version decode matrix |
 | `session-core` | Invitation validation and lifecycle state tests | Two-process invitation/join orchestration with restart and concurrent request races |
-| `admission-capability` | Exact binding, replay, expiry, and reservation tests | Full hostile first-contact scenario through the headless client and transaction boundary |
+| `admission-capability` | Exact binding, replay, expiry, reservation, and durability-resolution tests | Full hostile first-contact scenario through the independent-process client boundary |
 | `session-crypto-hpke` | RFC and independent-provider vectors plus hostile context rejection | Cross-process protected join with captured ciphertext inspection |
 | `session-crypto-mls` | Two-party lifecycle, replay/reorder, update/removal, and storage-call evidence | Cross-implementation vectors where available, process restart, durable state, and corrupted-state tests |
 | `session-inviter-transaction` | Deterministic atomicity/fault model plus LocalV1 coordinator owner-port acceptance, failure, and ambiguous exact-retry integration | Real database process-kill, disk-full/I/O failure, restore, and stale-snapshot evidence |
-| `storage-sqlcipher` | Real inviter and joiner MLS transaction, rollback, ambiguous-result, and close/reopen laboratory tests | Product composition, process-kill, disk/power fault, restore, and stale-snapshot evidence |
+| `storage-sqlcipher` | Real capability admission and inviter MLS composition, ambiguous commit recovery, schema-v2 migration, sole-owner Welcome leases, stale/foreign rejection, exhaustion/expiry, exact retry, rollback, close/reopen delivery, durable `sessionctl` composition, and real joiner MLS consumption | Process-kill, disk/power fault, restore, and stale-snapshot evidence |
 | `session-transport`, `transport-memory`, and `transport-conformance` | Local and provider-neutral right separation, bounds, idempotency, canonical opaque envelopes, deterministic adverse controls, strict bounded double-replay conformance with defective bridges, fail-closed LocalV1 binding, a deposit-only coordinator, and cross-platform blocking supervision | Provider-wide conformance, durable owner-store composition, real network adapters, and packet-captured evidence |
-| `sessionctl` | In-process two-client capability join, simulated approval, Welcome delivery, messaging, update, removal, and coarse output | Independent-process L1 runner and machine-readable redacted evidence producer |
+| `sessionctl` | In-process two-client capability join through SQLCipher commit recovery and coordinator delivery, messaging, update, removal, coarse output, and a bounded redacted scenario record | Independent-process L1 runner and complete evidence-manifest producer |
 | Client vault | Sealed lifecycle, opaque locked inbox, bounded unlock orchestration, and portable passphrase laboratory | Product storage composition, OS credential input, process isolation, crash-dump, rollback, recovery, and deletion evidence |
 | Realm services | Design and disposable invitation-provider spike only | Container isolation, quotas, migration/restore, and operational redaction tests |
 
@@ -106,6 +108,17 @@ supplies:
 - disposable credentials and non-production realm keys;
 - assertions over client-visible state and redacted service observations; and
 - teardown that proves no child process or leased work remains.
+
+Before that runner can claim client restart, the MLS boundary must gain a
+versioned durable owner for the client's signing identity and credential that
+can reload the same member together with its stored group state. Generating a
+fresh signing identity and merely loading the old group is not an equivalent
+client and must fail closed. The process runner must also define a bounded,
+versioned IPC protocol containing only existing public wire objects and coarse
+scenario results; the controller and untrusted service may not receive vault
+keys, capabilities, plaintext, raw MLS state, or transport authority they do
+not exercise. These are implementation prerequisites, not properties of the
+current single-process evidence.
 
 L2 replaces one fake at a time with the real adapter under test. This isolates
 failures and prevents a single all-real stack from becoming impossible to
@@ -180,10 +193,9 @@ passes a happy path.
 1. Connect the real SQLCipher transactions through the same sole-owner
    coordinator port, with process/disk-fault evidence before any durability
    claim.
-2. Integrate the atomic inviter transaction and coordinator into the real
-   admission/MLS product composition without repeating the existing MLS
-   transition.
-3. Extend the existing in-process `sessionctl` composition into the canonical
+2. Extend the proven capability-admission/MLS/SQLCipher composition into
+   `sessionctl` without repeating the existing MLS transition.
+3. Extend that composition into the canonical
    independent-process L1 runner and redacted evidence producer.
 4. Add provider-wide lifecycle/cursor conformance and only then retain a
    packet-captured network adapter experiment.
@@ -195,16 +207,20 @@ passes a happy path.
 
 ## Current gaps
 
-- No independent-process two-client/service runner or machine-readable evidence
-  bundle exists; current `sessionctl` evidence is in process.
+- No independent-process two-client/service runner or complete evidence bundle
+  exists. Current `sessionctl` evidence is a bounded, machine-readable,
+  single-process scenario result without commit/toolchain/topology-process
+  digests.
 - The deterministic memory adapter covers explicit delivery, loss, duplication,
   hold/release reordering, retry, expiry, authority, capacity, outage,
   corruption, stale replay, and acknowledgement-result loss. The publish-disabled
   conformance crate parses retained traces and executes one normalized
   double-replay memory lifecycle, but no complete reusable adapter verdict or
   deliberately defective-adapter suite exists.
-- SQLCipher transaction evidence exists, but no product-integrated durable flow,
-  process-crash, disk/power-fault, restore, or stale-snapshot harness exists.
+- SQLCipher transaction, capability-admission/MLS composition, and durable
+  coordinator-owner evidence and durable in-process `sessionctl` composition
+  exist, but no full client restart, process-crash, disk/power-fault, restore,
+  or stale-snapshot harness exists.
 - The supported-platform CI matrix exists for current Rust foundations, but no
   real transport, packet-capture lane, containerized realm, desktop application,
   signed release, or operated release matrix exists.
