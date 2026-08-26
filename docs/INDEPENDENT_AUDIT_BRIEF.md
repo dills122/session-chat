@@ -90,21 +90,26 @@ The checked-in runtime consists of:
   join, simulated approval, an atomic SQLCipher inviter commit, ambiguous-result
   recovery, real close/reopen with exact Alice identity/group reload, resumed
   local Welcome delivery, bidirectional MLS messages, path update, removal, and
-  post-removal rejection; and
+  post-removal rejection; ADR 0021 additionally runs Alice, Bob, and an
+  untrusted forwarder as independent processes over bounded local IPC, exits
+  Alice after commit, reloads her exact state in a fresh process, and emits a
+  redacted manifest; and
 - a disposable Node.js sealed-post-office simulator used only to test boundary
   semantics such as schema rejection, right-specific authorization ordering,
   rotation, and capacity limits.
 
-There is no human approval UX, independently restartable durable product,
-network or production transport, production client vault, desktop shell, or
-hosted realm. The
+There is no human approval UX, abrupt-kill/power-loss recovery, independently
+restartable durable product, network or production transport, production
+client vault, desktop shell, or hosted realm. The
 HPKE adapter proves PSK possession only for its exact typed context; the
 capability adapter performs automated verification, explicit simulated
 approval, exact v2/replay reservation, and MLS coordination. The isolated MLS
 adapter uses exact `mls-rs` 0.56.0 and AWS-LC 0.25.0 dependencies. The headless
 path uses its storage and group-bound identity-reload boundaries through
-SQLCipher, but the restart remains inside one process with an externally
-supplied raw database key. The superseded OpenMLS selection remains
+SQLCipher. The L1 process runner crosses graceful Alice exit, but hands its
+disposable raw database key through an Alice-only test file rather than a
+platform vault and retains approval/replay shadows only in the initialization
+process. The superseded OpenMLS selection remains
 blocked by repository dependency policy. The Node simulator's custom
 composition of platform crypto and placeholder address control is explicitly
 non-production.
@@ -117,8 +122,8 @@ invitation/MLS sequencing. The right-specific local mailbox is also runtime
 inventory, and the committed approved-join result carries only its authenticated
 deposit endpoint beside the exact MLS outputs. A retained test deposits the
 encrypted Welcome. Human approval UX, durable replay loading, platform key
-custody, and complete cross-process recovery remain accepted-but-unimplemented
-contracts.
+custody, durable approval/replay reload, and abrupt-kill cross-process recovery
+remain accepted-but-unimplemented contracts.
 
 ```mermaid
 flowchart LR
@@ -128,6 +133,7 @@ flowchart LR
   E["Implemented: bounded opaque envelope"]
   M["Implemented: isolated MLS lifecycle and group-bound identity reload"]
   Q["Implemented laboratory: atomic SQLCipher inviter state and resumable outbox"]
+  L["Implemented L1: bounded independent client/service processes"]
   D["Implemented: deterministic opaque-envelope transport"]
   N["Non-production Node boundary simulator"]
   C --> O["Implemented: display-only approval context"]
@@ -138,10 +144,12 @@ flowchart LR
   M --> Q
   Q --> T
   M --> T["Implemented: local right-specific Welcome delivery"]
+  Q --> L
+  T --> L
   E --> T
   E --> D
   E --> V["Implemented: sealed lifecycle and bounded opaque inbox model"]
-  Q -. future .-> S["Independent-process recovery and platform-protected vault"]
+  L -. future .-> S["Abrupt-kill recovery and platform-protected vault"]
   T -. proposed .-> H["Portable self-hosted realm"]
 ```
 
@@ -166,7 +174,7 @@ flowchart LR
 | Durable MLS identity storage is secret-safe and bound to one exact group | Implemented and tested | The 141-byte v1 record crosses the public trait only in an opaque non-`Clone`, non-`Debug`/non-`Display` type; SQL-loaded record bytes enter zeroizing ownership before validation; schema v4 stores an exact group binding, and create/load/join reject cross-group use while the frozen RFC 8032 fixture and a semantically valid schema-v3 identity/group reload preserve compatibility |
 | Product-level forward secrecy, post-compromise security, durable removal isolation, and interoperability | Accepted contract, unimplemented | Requires cross-implementation fixtures, durable state, deletion/rollback evidence, and independent boundary review |
 | Approved in-memory join returns the exact deposit endpoint beside the encrypted MLS Welcome | Implemented and tested | The endpoint moves from the HPKE-authenticated request through approval and MLS apply; expiry is checked before reservation and MLS mutation, while local delivery and non-rollback after delivery failure are retained integration evidence |
-| Inviter reservation, MLS state, and Welcome outbox creation are atomic and delivery resumes after close/reopen | Implemented and tested in the in-process SQLCipher laboratory | The real capability path recovers an ambiguous commit, reloads the exact identity/group, leases the committed Welcome, and delivers it once; durable approval/replay reload and independent-process recovery remain unimplemented |
+| Inviter reservation, MLS state, and Welcome outbox creation are atomic and delivery resumes after close/reopen | Implemented and tested in-process and across graceful Alice process exit | The real capability path recovers an ambiguous commit, reloads the exact identity/group, leases the committed Welcome, and delivers it once. ADR 0021 repeats the positive reload in a fresh Alice process; durable approval/replay reload, abrupt kill, and power-loss recovery remain unimplemented |
 | Local deposit, receive, and acknowledge rights are non-interchangeable | Implemented and tested | `session-transport` uses separately typed provider-generated authorities, commitment checks, hostile authority tests, and an approved-join integration test |
 | Generalized dispatch keeps already-issued right wrappers out of other operation positions | Implemented and tested as a positional contract | `EnvelopeDelivery` compile-fail tests include aliased inner associated types, delivery IDs, and cursors. Wrappers alone do not prevent cross-right derivation; every provider must validate exact scope and document duplication policy per right. Deposit endpoints may support controlled transfer, while receive and acknowledgement authority should be non-cloneable by default. The memory provider supplies three private non-`Clone` types with domain-separated commitments. |
 | Generalized operations separate monotonic deadlines, fallible wall time, and cooperative cancellation | Implemented and tested as a local dispatch contract | Pre-entry rejection, post-provider checkpoints, and clock-failure tests are joined by a standard-library blocking supervisor that accepts legal delayed wakeups, wakes on external cancellation/deadline, and drops pending work. It is a cross-platform headless/worker-thread baseline, not provider preemption or a future UI-runtime selection. |
@@ -174,7 +182,7 @@ flowchart LR
 | Deterministic memory delivery models loss, duplication, reordering, replay, retry, expiry, and bounded capacity | Implemented and tested | `transport-memory` fault-plan and hostile-authority tests over `OpaqueEnvelope`; generalized tests preserve exact canonical bytes, reject changed-byte retries and every cursor, enforce count/byte/live-state ceilings, normalize unknown/repeated exact-set acknowledgement, and revalidate expiry at the final checkpoint. This is neither encryption nor a network/privacy claim. |
 | Test-only memory controls model outage, corrupt polling, stale replay, and lost acknowledgement results | Implemented and tested in memory | One-shot/persistent controls are bounded, unavailable deposit preserves the next fault, corrupt poll does not dequeue, stale replay requires the exact retained digest without restoring acknowledged state, and acknowledgement loss distinguishes before- from after-commit through secret-free counts. No remote or coordinator claim follows. |
 | Adverse trace v1 is canonical, versioned, bounded, and secret-free | Reusable runner and verdict slice implemented and tested | `transport-conformance` rejects unknown/noncanonical/oversized input, duplicate/forward aliases, excessive lines/steps/checkpoints, unreachable pending expectations, and seeded diagnostics. Executable fixtures drive the retained adverse vocabulary twice through fresh LocalV1 memory adapters; output is alias-only, exact bindings and canonical bytes are enforced, delayed wake/drop and quiescence are bounded, and deliberately defective bridges prove failure detection. Network, durability, and provider-wide conformance remain unimplemented. |
-| One headless two-client flow composes protected join through removal | Implemented and tested with an in-process SQLCipher restart | `sessionctl` explicitly approves the exact capability request, atomically commits inviter/MLS/outbox state, reconciles ambiguous SQL outcome, closes/reopens, reloads the group-bound Alice identity and group, resumes Welcome delivery, then exchanges traffic, updates, removes Bob, and observes post-removal rejection; no independent-process, power-loss, platform-vault, network, hosting, or UX claim |
+| One headless two-client flow composes protected join through removal | Implemented and tested in-process and across graceful process exit | `sessionctl` explicitly approves the exact capability request, atomically commits inviter/MLS/outbox state, closes/reopens, reloads the group-bound Alice identity and group, resumes Welcome delivery, then exchanges traffic, updates, removes Bob, and observes post-removal rejection. ADR 0021 separates Alice, Bob, and an untrusted forwarder, bounds and canonically validates seven IPC frames, reaps every child, and emits a redacted manifest; no abrupt-kill, power-loss, platform-vault, network, hosting, or UX claim |
 | Reusable or network mailbox rotation is a separate non-interchangeable right | Accepted contract, unimplemented | ADR 0010; the one-use local profile deliberately has no rotation operation, and Node simulator evidence does not establish production transport |
 | The Node simulator rejects unknown, cyclic, accessor-backed, symbol-keyed, deep, or oversized provider input before cloning or authorization | Implemented and tested | Retained non-production adversarial tests at directory and attestor entry points |
 | A sealed-session lifecycle and locked-mode capability matrix reject stale completion and gate privileged model operations | Implemented and tested in memory | ADRs 0016/0020 and `session-storage`; exact vault-instance/session/generation result binding, pre-provider cancellation checks, one-shot credentials, and bounded work are retained without a durable or production-scheduler claim |
@@ -320,7 +328,7 @@ silently re-establish continuity. None of this is implemented today.
 1. **Now — architecture and protocol contracts:** assess layer separation,
    authority, invitation state, canonical formats, threat completeness, and
    feasibility of the accepted future invariants.
-2. **Now and after independent-process recovery — MLS/storage review:** assess
+2. **Now and after abrupt-kill recovery — MLS/storage review:** assess
    the current crypto provider boundary, exact KeyPackage ownership,
    Add/Commit/Welcome, update/removal, group-bound identity record, SQLCipher
    atomicity, close/reopen recovery, outbox behavior, and explicit non-claims;
@@ -355,16 +363,19 @@ The admission increment owns the exact validated KeyPackage value, retains the
 exact HPKE-opened invitation signature, binds it to local v2 state, consumes an
 explicit simulated approval decision, and permits only that one-shot value to
 enter Add preparation. It does not accept a replacement byte string or digest.
-The in-process headless composition now crosses a real SQLCipher transaction:
-it resolves rollback or ambiguous commit, reloads the exact group-bound client
-identity and group after close/reopen, and resumes Welcome delivery from the
-sole-owner outbox. The approval/replay shadows are still process memory, and
-the raw database key is supplied directly rather than by a platform vault.
+The headless composition crosses a real SQLCipher transaction: it resolves
+rollback or ambiguous commit, reloads the exact group-bound client identity and
+group after close/reopen, and resumes Welcome delivery from the sole-owner
+outbox. ADR 0021 repeats the positive lifecycle across graceful Alice process
+exit, Bob, and an untrusted forwarder. The approval/replay shadows are still
+process memory, and the raw database key uses a disposable Alice-only test file
+rather than a platform vault.
 
 The next evidence-producing research or implementation tasks are:
 
-1. Add an independent-process runner and abrupt-power-loss evidence without
-   weakening the current exact identity/group and outbox recovery contract.
+1. Add hostile independent-process cases plus abrupt-kill, disk-full, and
+   power-loss evidence without weakening the exact identity/group and outbox
+   recovery contract.
 2. Make approval/result, replay, and invitation state reloadable with the MLS
    and Welcome-outbox transaction, including rollback-anchor research.
 3. Select a common platform key-custody baseline before connecting SQLCipher to

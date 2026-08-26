@@ -62,11 +62,12 @@ The policy makes these distinctions explicit:
 
 ## Clean-master baseline and enforced result
 
-Both columns below were produced on 2026-08-25 from the same integration-target
+Both columns below were produced on 2026-08-26 from the same integration-target
 measurement method. The baseline used a clean archive of
 `origin/master` at `0bce3a38c62356feef2a806f4eb9e7fd2c55073e`; the current result includes
-the coverage workstream, durable Welcome-delivery composition, and exact
-client-identity/group reload after their behavior-focused tests.
+the coverage workstream, durable Welcome-delivery composition, exact
+client-identity/group reload, and the ADR 0021 independent-process L1 runner
+after their behavior-focused tests.
 
 | Production component | Clean master | Enforced result | Line gate |
 | --- | ---: | ---: | ---: |
@@ -76,19 +77,19 @@ client-identity/group reload after their behavior-focused tests.
 | `session-core` | 334/376 (88.83%) | 343/376 (91.22%) | 90% |
 | `session-crypto` | 50/63 (79.37%) | 63/63 (100.00%) | 90% |
 | `session-crypto-hpke` | 229/232 (98.71%) | 229/232 (98.71%) | 90% |
-| `session-crypto-mls` | 611/687 (88.94%) | 826/886 (93.23%) | 90% |
+| `session-crypto-mls` | 611/687 (88.94%) | 860/921 (93.38%) | 90% |
 | `session-inviter-transaction` | 459/486 (94.44%) | 463/486 (95.27%) | 90% |
 | `session-protocol` | 1176/1245 (94.46%) | 1176/1245 (94.46%) | 90% |
 | `session-storage` | 501/521 (96.16%) | 501/521 (96.16%) | 90% |
 | `session-transport` | 1032/1097 (94.07%) | 1035/1100 (94.09%) | 90% |
-| `sessionctl` | 292/373 (78.28%) | 671/721 (93.07%) | 90% |
-| `storage-sqlcipher` | 650/742 (87.60%) | 1203/1299 (92.61%) | 90% |
+| `sessionctl` | 292/373 (78.28%) | 1506/1670 (90.18%) | 90% |
+| `storage-sqlcipher` | 650/742 (87.60%) | 1279/1379 (92.75%) | 90% |
 | `transport-conformance` | 1325/1514 (87.52%) | 1364/1514 (90.09%) | 90% |
 | `transport-memory` | 808/920 (87.83%) | 835/920 (90.76%) | 90% |
-| **Workspace** | **8034/8850 (90.78%)** | **9348/10018 (93.31%)** | **92.23% ratchet** |
+| **Workspace** | **8034/8850 (90.78%)** | **10293/11082 (92.88%)** | **92.23% ratchet** |
 
-The workspace also moved from 86.88% to 89.39% region coverage and from
-83.47% to 91.46% function coverage. CI retains its existing stable floors at
+The workspace also moved from 86.88% to 88.55% region coverage and from
+83.47% to 89.43% function coverage. CI retains its existing stable floors at
 92.23% lines, 88.53% regions, and 85.64% functions. The slight fractional
 margin avoids making display rounding part of the contract.
 
@@ -111,7 +112,8 @@ correctness boundaries:
 - sealed-vault lifecycle and exact-session unlock acceptance;
 - SQLCipher inviter/joiner transaction, rollback, recovery, key-package
   deletion, read bounds, and single-owner staging boundaries; and
-- the measurable `sessionctl` two-client orchestration path.
+- the measurable `sessionctl` in-process and independent-process two-client
+  orchestration paths.
 
 The added tests target malformed and oversized attacker-controlled values,
 zero and expired identifiers, illegal MLS prepare states, abandoned pending
@@ -133,7 +135,9 @@ boundaries. Its integration tests cover coarse redacted error mapping,
 reservation and pending-Commit cleanup, proven SQL rollback, ambiguous
 post-commit recovery, post-membership Welcome failure, a dropped application
 delivery, and final orchestration quiescence. The normal binary uses the
-no-fault plan and retains the successful durable two-client flow.
+no-fault plan and retains the successful durable two-client flow. The ADR 0021
+binary additionally covers bounded canonical IPC, graceful Alice process exit,
+exact durable reload, fixed coarse child summaries, and redacted evidence.
 
 Stable branch coverage should replace or supplement the region proxy only when
 the pinned Rust/LLVM toolchain provides reproducible cross-platform evidence.

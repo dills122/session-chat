@@ -45,8 +45,14 @@ join path. The SQLCipher laboratory now implements the same sole-owner port
 with versioned migration and close/reopen lease recovery. A retained real
 capability-admission/MLS composition crosses that boundary, including ambiguous
 commit recovery and exact post-restart Welcome delivery. Schema version 3
-retains Alice's exact MLS credential/signing identity, and version 4 binds it to her group
-across an in-process close/reopen, but no independent-process runner uses it yet. A separate deterministic memory transport uses right-specific
+retains Alice's exact MLS credential/signing identity, and version 4 binds it to
+her group. ADR 0021 now exercises that owner across graceful Alice process exit
+and a fresh reload process while Bob and an untrusted forwarding service remain
+separate. The bounded test-only IPC admits only canonical protected-join,
+exercised LocalV1 deposit, and opaque-envelope objects; the bearer invitation
+and disposable raw owner key stay on separate client-only channels. This does
+not establish hostile local-controller isolation, platform key custody, or
+abrupt-kill recovery. A separate deterministic memory transport uses right-specific
 authorities and bounded explicit drop, duplicate, hold/release, retry, expiry,
 and capacity behavior for headless tests. It accepts structurally opaque bytes
 but neither encrypts them nor provides a network or privacy property. The MLS
@@ -457,9 +463,9 @@ recovery, and bounded outbox leases over in-memory records. The SQLCipher
 laboratory now supplies the corresponding real MLS transaction and durable
 coordinator owner port, and a retained integration test wires it to capability
 admission through restart delivery and real joiner processing. Remaining
-requirements include human approval UX, durable client/independent-process
-integration, rollback protection, vault-backed confidentiality, and broader
-process/disk crash evidence.
+requirements include human approval UX, durable approval/replay reload, abrupt
+process-kill recovery, rollback protection, vault-backed confidentiality, and
+broader disk/power-fault evidence.
 
 Attacker story: Mallory captures a protected request and resubmits it after the
 invitation expires and is reissued with the same invitation and request IDs.
@@ -529,8 +535,10 @@ flow now composes fresh capability admission, an atomic SQLCipher inviter
 transaction, ambiguous-result recovery, exact identity/group reload, reconstructed coordinator Welcome
 delivery, bidirectional protected messages, path update, removal, and
 post-removal rejection across the local adapters. It adds durable-component
-integration evidence, not independent-process restart, rollback resistance, or
-networking.
+integration evidence, not rollback resistance or networking. The ADR 0021 L1
+runner adds graceful independent-process exit and exact Alice identity/group
+reload plus bounded child cleanup. It does not add abrupt kill,
+disk/power-fault, rollback-resistance, or network evidence.
 The separate inviter-transaction model
 covers only the application-level all-or-nothing and recovery semantics over
 bounded memory records. Current evidence does not cover process-killed client
@@ -734,11 +742,14 @@ non-`Debug`/non-`Display` opaque secret type and remains inside the keyed
 database and outside logs, transport, and evidence output. The real capability path additionally recovers
 an ambiguous SQL commit before finalizing its in-memory invitation shadow,
 reopens the store, delivers once, and proves the original joiner consumes that
-Welcome without a second MLS Add. The headless flow also reloads Alice's exact
-identity and group after close/reopen. This does not establish an
-independent-process client, platform key protector, rollback resistance, production
-packaging, behavior on broader hardware/OS versions, power-loss safety, or
-secure deletion.
+Welcome without a second MLS Add. The headless flows also reload Alice's exact
+identity and group after close/reopen, including one graceful
+independent-process exit/reload path. The test-only raw key handoff is a
+mode-`0600` file where Unix supports it and is deleted on load; it is not a
+vault or product credential path. This does not establish a deployable
+independent-process client, platform key protector, rollback resistance,
+production packaging, behavior on broader hardware/OS versions, abrupt-kill or
+power-loss safety, or secure deletion.
 
 ADR 0019 and `key-protector-passphrase` add only a bounded portable conformance
 construction, now connected to the deterministic ADR 0020 lifecycle boundary.

@@ -253,16 +253,19 @@ The active Rust laboratory now contains fourteen narrow pieces of this architect
   non-cloneable/non-debuggable; durable clients reject group creation, join, or
   reload outside that binding and verify the same local member when loading
   group state.
-  A retained integration test drives the real capability-admission/MLS path
-  through ambiguous commit recovery and post-restart Welcome delivery. It is
-  not connected to a platform key protector or independent-process client and
-  provides no rollback or production claim.
+  Retained integration tests drive the real capability-admission/MLS path
+  through ambiguous commit recovery and post-restart Welcome delivery, both
+  in-process and across graceful Alice process exit. It is not connected to a
+  platform key protector and provides no abrupt-kill, rollback, or production
+  claim.
 - `sessionctl` composes the current local pieces into one headless Alice/Bob
   flow: capability join, simulated approval, atomic SQLCipher inviter commit,
   ambiguous-result recovery, exact Alice identity/group reload, reconstructed coordinator Welcome delivery,
   bidirectional application messages, path update, removal, and post-removal
-  rejection. It can emit a bounded redacted scenario record. It is not a
-  independent-process, hosted, or networked client.
+  rejection. Its ADR 0021 conformance binary repeats that lifecycle across
+  independent Alice, Bob, and untrusted-service processes using bounded local
+  IPC and emits a redacted manifest. It is not a hosted, networked,
+  platform-vault-backed, or deployable client.
 
 The invitation registry, replay verifier, and MLS adapter remain separate
 in-process state machines. The capability adapter coordinates them through an

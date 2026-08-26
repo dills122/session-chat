@@ -71,8 +71,9 @@ Current areas:
   protection and not connected to SQLCipher
 - `crates/storage-sqlcipher`: file-backed encrypted durability-laboratory
   adapter for the real inviter and joiner MLS transactions; not production storage
-- `apps/sessionctl`: headless two-client Phase 1 composition and conformance
-  flow over the local adapters; not a networked or durable client
+- `apps/sessionctl`: headless two-client Phase 1 composition plus a bounded
+  independent-process conformance runner over local test channels; not a
+  networked, production, or platform-vault-backed client
 - `spikes/`: disposable feasibility code; production packages must not depend on it
 - `docs/`: canonical v2 product, architecture, threat-model, protocol, ADR, and legacy-evidence baseline
 - `scripts/`: tested repository and AI Central setup tooling
