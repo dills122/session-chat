@@ -150,11 +150,11 @@ impl DurableClientIdentity {
         let signature_public_key: [u8; SIGNATURE_PUBLIC_KEY_BYTES] = public
             .try_into()
             .map_err(|_| MlsAdapterError::ProtocolRejected)?;
-        let signature_secret_key: Zeroizing<[u8; SIGNATURE_SECRET_KEY_BYTES]> = Zeroizing::new(
-            secret
-                .try_into()
-                .map_err(|_| MlsAdapterError::ProtocolRejected)?,
-        );
+        if secret.len() != SIGNATURE_SECRET_KEY_BYTES {
+            return Err(MlsAdapterError::ProtocolRejected);
+        }
+        let mut signature_secret_key = Zeroizing::new([0_u8; SIGNATURE_SECRET_KEY_BYTES]);
+        signature_secret_key.copy_from_slice(secret);
         if credential_identity.iter().all(|byte| *byte == 0)
             || signature_public_key.iter().all(|byte| *byte == 0)
             || signature_secret_key.iter().all(|byte| *byte == 0)
