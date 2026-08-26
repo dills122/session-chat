@@ -248,9 +248,11 @@ rejection, exact-set acknowledgement, and redaction controls for headless tests.
 It is not a network, encryption, or privacy implementation.
 The `sessionctl` binary now composes the implemented local boundaries into one
 fresh two-client run covering protected capability admission, explicit
-simulated approval, Welcome delivery, bidirectional MLS application messages,
-path update, removal, and post-removal rejection. It prints only coarse
-milestones and is neither a durable nor networked client.
+simulated approval, atomic SQLCipher MLS join/outbox commit, ambiguous-result
+recovery, reconstructed coordinator Welcome delivery, bidirectional MLS
+application messages, path update, removal, and post-removal rejection. It
+prints coarse milestones or a versioned redacted scenario record and is neither
+a process-restartable nor networked client.
 The `session-storage` crate now retains a deterministic in-memory conformance
 model for one-session unsealing, bounded external unlock work, exact-session
 one-shot credential acquisition, forced relock events, stale/foreign-owner
@@ -275,9 +277,10 @@ and reopen on the required Linux, macOS, and Windows CI runners. Schema version
 migration fixtures, restart leasing, terminal states, and ambiguous exact retry.
 A retained real capability-admission/MLS integration now resolves an ambiguous
 SQL commit before in-memory finalization, reopens the store, and delivers the
-exact Welcome to the original joiner. It is not wired into durable `sessionctl`
-or the vault lifecycle and adds no production packaging, broader platform,
-rollback-resistance, or production-storage claim.
+exact Welcome to the original joiner. The same composition now backs the
+single-process `sessionctl` path, but it is not wired to the vault lifecycle and
+adds no production packaging, broader platform, rollback-resistance, or
+production-storage claim.
 
 ## Reference standards and projects
 

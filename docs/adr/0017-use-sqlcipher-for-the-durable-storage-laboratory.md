@@ -73,8 +73,8 @@ and Linux before adding any native enhanced protector.
   Linux Secret Service implementations in parallel;
 - test process kill at every production adapter write boundary, disk full,
   truncation, tampering, migration, rekey, backup, and deletion;
-- extend the proven capability-admission/MLS/storage composition into the
-  durable headless client and independent-process L1 runner;
+- extend the proven single-process headless composition into the
+  independent-process L1 runner and full durable-client identity recovery;
 - select or explicitly defer a trusted monotonic rollback anchor; and
 - independently review the exact MLS, SQLCipher, and platform-protector boundary.
 

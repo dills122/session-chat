@@ -15,8 +15,10 @@ session-crypto-hpke = { version = "=0.1.0", path = "../../crates/session-crypto-
 session-crypto-mls = { version = "=0.1.0", path = "../../crates/session-crypto-mls" }
 session-protocol = { version = "=0.1.0", path = "../../crates/session-protocol" }
 session-transport = { version = "=0.1.0", path = "../../crates/session-transport" }
+storage-sqlcipher = { version = "=0.1.0", path = "../../crates/storage-sqlcipher" }
 thiserror.workspace = true
 transport-memory = { version = "=0.1.0", path = "../../crates/transport-memory" }
+zeroize.workspace = true
 
 [lints]
 workspace = true

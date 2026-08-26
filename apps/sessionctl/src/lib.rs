@@ -2,28 +2,47 @@
 
 //! Headless Phase 1 composition and conformance flow.
 
+use std::{
+    fmt::Write as _,
+    path::PathBuf,
+    time::{Duration, Instant},
+};
+
 use admission_capability::{
     CapabilityAdmissionPolicy, CapabilityAdmissionVerifier, CapabilityApprovalOutcome,
     ManualApprovalDecision,
 };
-use aws_lc_rs::rand;
-use session_admission::{AdmissionMethod, PendingAdmission};
+use aws_lc_rs::{
+    digest::{SHA256, digest},
+    rand,
+};
+use session_admission::{AdmissionMethod, ApprovalContext, PendingAdmission};
 use session_core::{InvitationLifecycle, InvitationPolicy, InvitationRegistry};
 use session_crypto::{MessageEvent, MessageSession, ProtectedMessage};
 use session_crypto_hpke::{AwsLcInvitationJoinProtector, InvitationJoinProtector};
 use session_crypto_mls::{
-    SessionGroupId, WelcomeMessage, create_client, create_key_package_validator,
+    SessionGroupId, WelcomeMessage, create_client, create_client_with_storage,
+    create_key_package_validator,
 };
 use session_protocol::{
     CapabilityJoinRequest, InvitationJoinBinding, JoinRequestBinding, MlsKeyPackageBinding,
     OpaqueEnvelope,
 };
-use session_transport::{EnvelopeTransport, LocalMailboxPolicy, LocalMemoryWelcomeTransport};
+use session_transport::{
+    BlockingFutureSupervisor, CoordinatorOutcome, CoordinatorPolicy, EnvelopeTransport,
+    LocalMailboxPolicy, LocalMemoryWelcomeTransport, LocalV1DepositEndpointResolver,
+    ThreadDispatchControl, WelcomeDeliveryCoordinator,
+};
+use storage_sqlcipher::{
+    InvitationState, InviterJoinTransaction, PersistenceFault, SqlCipherStorage, VaultKey,
+    WelcomeOutboxState,
+};
 use thiserror::Error;
 use transport_memory::{
     DeliveryAction, DeterministicMemoryTransport, MemoryAcknowledgementCapability,
     MemoryDepositEndpoint, MemoryMailboxPolicy, MemoryReceiveCapability,
 };
+use zeroize::Zeroizing;
 
 const NOW: u64 = 1_900_000_000;
 const MAILBOX_EXPIRES_AT: u64 = NOW + 240;
@@ -44,6 +63,8 @@ pub enum SessionCtlError {
 /// secret-bearing value. Production execution uses a plan that never fails.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PhaseOneFaultPoint {
+    /// Fail after creating the disposable encrypted owner store.
+    DurableStore,
     /// Fail after invitation key and capability generation.
     InvitationGeneration,
     /// Fail after inviter-owned invitation issuance.
@@ -72,6 +93,8 @@ pub enum PhaseOneFaultPoint {
     AdmissionVerification,
     /// Fail after binding admission to inviter-owned invitation state.
     ApprovalReservation,
+    /// Fail after persisting the exact inviter-owned reservation.
+    DurableReservation,
     /// Stop while the exact request is reserved and awaiting approval.
     ApprovalDecision,
     /// Fail after creating Alice's initial MLS group.
@@ -80,8 +103,16 @@ pub enum PhaseOneFaultPoint {
     MembershipPreparation,
     /// Abandon the prepared MLS Add before applying its pending Commit.
     MembershipApply,
+    /// Inject a proven pre-commit SQL rollback after applying transient MLS state.
+    MembershipPersistence,
+    /// Inject an ambiguous response after the SQL membership commit succeeds.
+    MembershipCommitResponse,
     /// Stop after membership commits but before depositing the Welcome.
     WelcomeDeposit,
+    /// Fail after reopening the SQLCipher owner for delivery coordination.
+    DurableStoreReopen,
+    /// Fail after the durable coordinator records adapter acceptance.
+    WelcomeCoordinator,
     /// Fail after receiving the encrypted Welcome envelope.
     WelcomeReceive,
     /// Fail after framing the encrypted MLS Welcome.
@@ -139,6 +170,8 @@ pub enum PhaseOneObservation {
     PreparedMembershipReleased,
     /// A post-commit delivery failure did not roll membership back.
     CommittedMembershipRetained,
+    /// A proven SQL rollback released admission reservations fail-closed.
+    DurableRollbackReleased,
     /// The deterministic transport accepted but did not expose the dropped delivery.
     DroppedDeliveryObserved,
     /// All orchestration-owned values have left scope after success or failure.
@@ -220,12 +253,60 @@ impl PhaseOneReport {
     pub const fn post_removal_rejected(&self) -> bool {
         self.post_removal_rejected
     }
+
+    /// Encodes one bounded, versioned, secret-free scenario result.
+    ///
+    /// This is intentionally smaller than the future independent-process
+    /// evidence manifest: it records the current single-process topology and
+    /// coarse protocol outcomes, but no identifiers, paths, capabilities,
+    /// ciphertext, plaintext, or environment metadata.
+    #[must_use]
+    pub fn encode_scenario_evidence_v1(&self) -> String {
+        format!(
+            concat!(
+                "version=1\n",
+                "scenario=E2E-JOIN-001\n",
+                "topology=single-process-sqlcipher-local-v1\n",
+                "result=pass\n",
+                "admission={}\n",
+                "welcome={}\n",
+                "joined_epoch={}\n",
+                "messages={}\n",
+                "updated_epoch={}\n",
+                "removal={}\n",
+                "post_removal={}\n"
+            ),
+            if self.admission_approved {
+                "approved"
+            } else {
+                "rejected"
+            },
+            if self.welcome_delivered {
+                "delivered"
+            } else {
+                "not_delivered"
+            },
+            self.joined_epoch,
+            self.application_messages_received,
+            self.updated_epoch,
+            if self.removed {
+                "enforced"
+            } else {
+                "not_enforced"
+            },
+            if self.post_removal_rejected {
+                "rejected"
+            } else {
+                "accepted"
+            },
+        )
+    }
 }
 
-/// Runs the in-memory, two-client Phase 1 protocol-conformance scenario.
+/// Runs the durable-component, single-process two-client Phase 1 scenario.
 ///
-/// This composes reviewed local adapters; it is not a network, durability,
-/// anonymity, or production-hosting claim.
+/// This composes the SQLCipher laboratory and reviewed local adapters; it is
+/// not a full client-restart, network, anonymity, or production-hosting claim.
 pub fn run_phase_one_demo() -> Result<PhaseOneReport, SessionCtlError> {
     run_phase_one_demo_with_faults(&mut NoFaults)
 }
@@ -245,6 +326,17 @@ pub fn run_phase_one_demo_with_faults(
 fn run_phase_one_flow(
     faults: &mut impl PhaseOneFaultPlan,
 ) -> Result<PhaseOneReport, SessionCtlError> {
+    let database = TempDatabase::new()?;
+    let database_key = Zeroizing::new(random_nonzero()?);
+    let storage = operation_result(
+        faults,
+        PhaseOneFaultPoint::DurableStore,
+        SqlCipherStorage::create(
+            database.path(),
+            VaultKey::new(*database_key).at_stage("durable store key")?,
+        ),
+        "durable store",
+    )?;
     let protector = AwsLcInvitationJoinProtector::new();
     let generated = operation_result(
         faults,
@@ -291,7 +383,7 @@ fn run_phase_one_flow(
     let alice = operation_result(
         faults,
         PhaseOneFaultPoint::AliceClient,
-        create_client(),
+        create_client_with_storage(storage.clone(), storage.clone()),
         "Alice client",
     )?;
     let bob = operation_result(
@@ -321,13 +413,10 @@ fn run_phase_one_flow(
         *issued.invitation().inviter_verifying_key(),
     )
     .at_stage("invitation binding")?;
-    let request_binding = JoinRequestBinding::new(
-        random_nonzero()?,
-        NOW,
-        REQUEST_EXPIRES_AT,
-        random_nonzero()?,
-    )
-    .at_stage("request binding")?;
+    let join_request_id = random_nonzero()?;
+    let request_binding =
+        JoinRequestBinding::new(join_request_id, NOW, REQUEST_EXPIRES_AT, random_nonzero()?)
+            .at_stage("request binding")?;
     let mls_binding = MlsKeyPackageBinding::new(
         expected_key_package_reference,
         bob_key_package.as_bytes().to_vec(),
@@ -348,6 +437,13 @@ fn run_phase_one_flow(
         protector.seal_capability_request(issued.invitation(), &request),
         "join request protection",
     )?;
+    let protected_request_bytes = protected_request
+        .encode_canonical()
+        .at_stage("join request encoding")?;
+    let request_fingerprint = digest(&SHA256, &protected_request_bytes)
+        .as_ref()
+        .try_into()
+        .map_err(|_| stage("join request fingerprint"))?;
     let opened_request = operation_result(
         faults,
         PhaseOneFaultPoint::JoinRequestOpening,
@@ -385,6 +481,19 @@ fn run_phase_one_flow(
     {
         return Err(stage("approval context"));
     }
+    operation_result(
+        faults,
+        PhaseOneFaultPoint::DurableReservation,
+        storage.seed_reservation(
+            *issued.invitation().invitation_id(),
+            *issued.invitation().signature(),
+            join_request_id,
+            INVITATION_EXPIRES_AT,
+            NOW,
+        ),
+        "durable reservation",
+    )?;
+    let approval_record = encode_approval_record(approval_context);
     if faults.fail_at(PhaseOneFaultPoint::ApprovalDecision) {
         let invitation_id = *issued.invitation().invitation_id();
         let outcome = admission
@@ -444,36 +553,159 @@ fn run_phase_one_flow(
         faults.observe(PhaseOneObservation::PreparedMembershipReleased);
         return Err(stage("MLS Add apply"));
     }
-    let committed_join = prepared_join.apply(NOW).at_stage("MLS Add apply")?;
-    if committed_join.key_package_reference() != &expected_key_package_reference {
+    let durability_pending = prepared_join
+        .apply_awaiting_durability(NOW)
+        .at_stage("MLS Add apply")?;
+    if durability_pending.key_package_reference() != &expected_key_package_reference {
         return Err(stage("Welcome ownership"));
     }
-    let (addition, response_endpoint) = committed_join.into_parts();
+    let welcome_envelope = OpaqueEnvelope::new(
+        random_nonzero()?,
+        REQUEST_EXPIRES_AT,
+        durability_pending.welcome().as_bytes().to_vec(),
+    )
+    .at_stage("Welcome envelope")?;
+    let canonical_welcome_envelope = welcome_envelope
+        .encode_canonical()
+        .at_stage("Welcome envelope encoding")?;
+    let transaction_id = random_nonzero()?;
+    let inviter_transaction = InviterJoinTransaction::new(
+        transaction_id,
+        *issued.invitation().invitation_id(),
+        *issued.invitation().signature(),
+        join_request_id,
+        request_fingerprint,
+        *alice_group.group_id(),
+        0,
+        1,
+        approval_record,
+        canonical_welcome_envelope.clone(),
+        durability_pending
+            .response_endpoint()
+            .encode_canonical()
+            .at_stage("Welcome endpoint encoding")?,
+        REQUEST_EXPIRES_AT,
+    )
+    .at_stage("inviter transaction")?;
+    let inject_rollback = faults.fail_at(PhaseOneFaultPoint::MembershipPersistence);
+    let inject_ambiguous_response = faults.fail_at(PhaseOneFaultPoint::MembershipCommitResponse);
+    storage
+        .stage_inviter(
+            inviter_transaction,
+            NOW,
+            if inject_rollback {
+                PersistenceFault::BeforeCommit
+            } else if inject_ambiguous_response {
+                PersistenceFault::AfterCommit
+            } else {
+                PersistenceFault::None
+            },
+        )
+        .at_stage("membership persistence staging")?;
+    let write_result = alice_group.write_to_storage();
+    let recovered = storage
+        .recover_inviter(&transaction_id)
+        .at_stage("membership recovery")?;
+    if inject_rollback {
+        durability_pending
+            .release_proven_uncommitted()
+            .at_stage("membership rollback cleanup")?;
+        if write_result.is_ok()
+            || recovered.is_some()
+            || storage
+                .invitation_state(issued.invitation().invitation_id())
+                .at_stage("durable invitation cleanup")?
+                != Some(InvitationState::Reserved)
+            || invitation_registry.lifecycle(issued.invitation().invitation_id())
+                != Some(InvitationLifecycle::Available)
+            || alice_group.epoch() != 1
+            || alice_group.member_count() != 2
+        {
+            return Err(stage("membership rollback cleanup"));
+        }
+        faults.observe(PhaseOneObservation::DurableRollbackReleased);
+        return Err(stage("membership persistence"));
+    }
+    if write_result.is_ok() == inject_ambiguous_response
+        || recovered.is_none_or(|recovery| {
+            recovery.epoch_after != 1
+                || recovery.outbox_state != WelcomeOutboxState::Pending
+                || recovery.delivery_attempts != 0
+        })
+    {
+        return Err(stage("membership recovery"));
+    }
+    let committed_join = durability_pending
+        .finalize_committed()
+        .at_stage("membership finalization")?;
+    if committed_join.key_package_reference() != &expected_key_package_reference
+        || storage
+            .invitation_state(issued.invitation().invitation_id())
+            .at_stage("durable invitation state")?
+            != Some(InvitationState::Consumed)
+    {
+        return Err(stage("membership finalization"));
+    }
+    if inject_ambiguous_response {
+        faults.observe(PhaseOneObservation::CommittedMembershipRetained);
+        return Err(stage("membership commit response"));
+    }
     if faults.fail_at(PhaseOneFaultPoint::WelcomeDeposit) {
         let invitation_id = *issued.invitation().invitation_id();
         let mailbox_empty = welcome_transport
             .receive(&welcome_receive, NOW)
             .at_stage("Welcome cleanup")?
             .is_none();
+        let outbox_pending = storage
+            .recover_inviter(&transaction_id)
+            .at_stage("Welcome cleanup")?
+            .is_some_and(|recovery| recovery.outbox_state == WelcomeOutboxState::Pending);
         if invitation_registry.lifecycle(&invitation_id) != Some(InvitationLifecycle::Consumed)
             || alice_group.epoch() != 1
             || alice_group.member_count() != 2
             || !mailbox_empty
+            || !outbox_pending
         {
             return Err(stage("Welcome cleanup"));
         }
         faults.observe(PhaseOneObservation::CommittedMembershipRetained);
         return Err(stage("Welcome deposit"));
     }
-    let welcome_envelope = OpaqueEnvelope::new(
-        random_nonzero()?,
-        REQUEST_EXPIRES_AT,
-        addition.welcome().as_bytes().to_vec(),
+    drop(committed_join);
+    let mut delivery_store = operation_result(
+        faults,
+        PhaseOneFaultPoint::DurableStoreReopen,
+        SqlCipherStorage::open(
+            database.path(),
+            VaultKey::new(*database_key).at_stage("durable reopen key")?,
+        ),
+        "durable store reopen",
+    )?;
+    let coordinator = WelcomeDeliveryCoordinator::new(
+        CoordinatorPolicy::new(Duration::from_secs(1), 30, 64 * 1024)
+            .at_stage("Welcome coordinator policy")?,
+    );
+    let (dispatch_control, _cancellation) = ThreadDispatchControl::new();
+    let coordinator_outcome = BlockingFutureSupervisor::run(
+        coordinator.run_once(
+            &mut delivery_store,
+            &mut LocalV1DepositEndpointResolver,
+            &mut welcome_transport,
+            &dispatch_control,
+        ),
+        &dispatch_control,
+        Instant::now() + Duration::from_secs(2),
     )
-    .at_stage("Welcome envelope")?;
-    let welcome_delivery = welcome_transport
-        .deposit(&response_endpoint, welcome_envelope, NOW)
-        .at_stage("Welcome deposit")?;
+    .at_stage("Welcome supervision")?
+    .at_stage("Welcome coordinator")?;
+    if coordinator_outcome != CoordinatorOutcome::Accepted {
+        return Err(stage("Welcome coordinator"));
+    }
+    fail_after_operation(
+        faults,
+        PhaseOneFaultPoint::WelcomeCoordinator,
+        "Welcome coordinator",
+    )?;
     let received_welcome = operation_result(
         faults,
         PhaseOneFaultPoint::WelcomeReceive,
@@ -481,7 +713,16 @@ fn run_phase_one_flow(
         "Welcome receive",
     )?
     .ok_or_else(|| stage("Welcome receive"))?;
-    if received_welcome.delivery_id() != &welcome_delivery {
+    if received_welcome
+        .envelope()
+        .encode_canonical()
+        .at_stage("Welcome receive encoding")?
+        != canonical_welcome_envelope
+        || delivery_store
+            .recover_inviter(&transaction_id)
+            .at_stage("Welcome delivery recovery")?
+            .is_none_or(|recovery| recovery.outbox_state != WelcomeOutboxState::Delivered)
+    {
         return Err(stage("Welcome delivery identity"));
     }
     let welcome = operation_result(
@@ -499,7 +740,11 @@ fn run_phase_one_flow(
     operation_result(
         faults,
         PhaseOneFaultPoint::WelcomeAcknowledgement,
-        welcome_transport.acknowledge(&welcome_acknowledgement, welcome_delivery, NOW),
+        welcome_transport.acknowledge(
+            &welcome_acknowledgement,
+            *received_welcome.delivery_id(),
+            NOW,
+        ),
         "Welcome acknowledgement",
     )?;
     if alice_group.epoch() != 1 || bob_group.epoch() != 1 {
@@ -735,6 +980,43 @@ fn deliver_message(
         .acknowledge(acknowledgement, delivery_id, NOW)
         .at_stage("message acknowledgement")?;
     Ok(protected)
+}
+
+struct TempDatabase(PathBuf);
+
+impl TempDatabase {
+    fn new() -> Result<Self, SessionCtlError> {
+        let identifier: [u8; 16] = random_nonzero()?;
+        let mut name = String::from("session-chat-sessionctl-");
+        for byte in identifier {
+            write!(&mut name, "{byte:02x}").map_err(|_| stage("durable store path"))?;
+        }
+        name.push_str(".sqlite3");
+        Ok(Self(std::env::temp_dir().join(name)))
+    }
+
+    fn path(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+impl Drop for TempDatabase {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+        let _ = std::fs::remove_file(self.0.with_extension("sqlite3-journal"));
+    }
+}
+
+fn encode_approval_record(context: ApprovalContext) -> Vec<u8> {
+    let mut record = Vec::with_capacity(73);
+    record.push(match context.method() {
+        AdmissionMethod::SecretCapability => 1,
+    });
+    record.extend_from_slice(context.invitation_id());
+    record.extend_from_slice(context.join_request_id());
+    record.extend_from_slice(context.key_package_reference());
+    record.extend_from_slice(&context.expires_at_unix_seconds().to_be_bytes());
+    record
 }
 
 fn assert_application(event: MessageEvent, expected: &[u8]) -> Result<(), SessionCtlError> {

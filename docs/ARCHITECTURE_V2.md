@@ -253,9 +253,11 @@ The active Rust laboratory now contains fourteen narrow pieces of this architect
   not connected to a platform key protector or durable client and provides no
   rollback or production claim.
 - `sessionctl` composes the current local pieces into one headless Alice/Bob
-  flow: capability join, simulated approval, Welcome delivery, bidirectional
-  application messages, path update, removal, and post-removal rejection. It
-  is not a durable, hosted, or networked client.
+  flow: capability join, simulated approval, atomic SQLCipher inviter commit,
+  ambiguous-result recovery, reconstructed coordinator Welcome delivery,
+  bidirectional application messages, path update, removal, and post-removal
+  rejection. It can emit a bounded redacted scenario record. It is not a
+  process-restartable, hosted, or networked client.
 
 The invitation registry, replay verifier, and MLS adapter remain separate
 in-process state machines. The capability adapter coordinates them through an

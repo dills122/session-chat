@@ -524,15 +524,19 @@ two-member roster enforcement, explicit prepare/apply and abandoned-pending
 handling, replay, reordering, temporarily lost epoch commits, path updates,
 removal, explicit-only group-state writes, and the provider-neutral established-
 session message interface from ADR 0013. The headless `sessionctl` acceptance
-flow now composes fresh capability admission, Welcome delivery, bidirectional
-protected messages, path update, removal, and post-removal rejection across the
-local adapters. It adds integration evidence, not persistence or networking.
+flow now composes fresh capability admission, an atomic SQLCipher inviter
+transaction, ambiguous-result recovery, reconstructed coordinator Welcome
+delivery, bidirectional protected messages, path update, removal, and
+post-removal rejection across the local adapters. It adds durable-component
+integration evidence, not full client restart, rollback resistance, or
+networking.
 The separate inviter-transaction model
 covers only the application-level all-or-nothing and recovery semantics over
-bounded memory records. Current evidence does not cover durable recovery,
-cross-implementation fixtures, a real inviter-local MLS/join/outbox storage
-transaction, joiner-local joined-state and KeyPackage-deletion atomicity,
-cross-device acknowledgement semantics, old-secret deletion, or fuzzing.
+bounded memory records. Current evidence does not cover full client identity
+and group reload, cross-implementation fixtures, cross-device acknowledgement
+semantics, old-secret deletion, or fuzzing. The separate SQLCipher laboratory
+does cover the real inviter-local MLS/join/outbox transaction and joiner-local
+joined-state plus KeyPackage-deletion atomicity.
 
 Attacker story: a malicious delivery service withholds one Commit and later
 replays it after a subsequent epoch. The client must reject it without rolling

@@ -174,8 +174,9 @@ anonymity, or production evidence.
   network authorization remains a future research question.
 - A committed membership transition is not rolled back because Welcome deposit,
   receipt, or acknowledgement fails. Exact outbox retry is the recovery path.
-- There is still no durable approved invitation-to-admission transaction,
-  durable replay protection, outbox,
+- The SQLCipher laboratory now retains the exact approved admission evidence,
+  replay result, MLS state transition, invitation consumption, and Welcome
+  outbox in one transaction. It remains a laboratory adapter: there is still no
   deployable client, network service, hosted trust, forward-secret deletion, or
   production-security claim.
 

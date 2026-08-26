@@ -79,8 +79,8 @@ evidence against the real local mailbox. The real capability-admission/MLS path
 now crosses the SQLCipher transaction through an explicit durability-pending
 one-shot value, recovers an ambiguous commit, finalizes invitation state once,
 reopens the owner store, and delivers the exact Welcome to the original joiner.
-Human approval UX, durable `sessionctl` composition, and network transport work
-listed below remain outstanding. The separate SQLCipher laboratory now
+Human approval UX, independent-process `sessionctl` composition, and network
+transport work listed below remain outstanding. The separate SQLCipher laboratory now
 implements the same sole-owner coordinator port with version-2 migration,
 close/reopen leases, terminal states, and ambiguous exact-retry evidence; it is
 not yet a durable client or independent-process path.
@@ -113,13 +113,14 @@ provider-neutral, non-authorizing approval context and decision from ADR 0015.
 It deliberately does not generalize provider proof verification or the exact
 one-shot membership authority.
 
-The `sessionctl` binary now completes the headless in-memory Phase 1
+The `sessionctl` binary now completes the headless durable-component Phase 1
 composition: a fresh Alice/Bob capability invitation and protected request,
-explicit simulated approval, exact MLS Add and Welcome delivery, bidirectional
-application messages, path update, removal, and post-removal rejection. Its
-retained test and coarse CLI output satisfy the no-GUI/no-network laboratory
-acceptance path. Durable state, human approval, and a network profile remain
-separate gates.
+explicit simulated approval, exact MLS Add, atomic SQLCipher inviter commit,
+ambiguous-result recovery, reconstructed coordinator Welcome delivery,
+bidirectional application messages, path update, removal, and post-removal
+rejection. Its retained tests, coarse CLI output, and versioned redacted
+scenario record satisfy the no-GUI/no-network laboratory acceptance path. Full
+client restart, human approval, and a network profile remain separate gates.
 
 The Rust source-coverage gate now measures production code through integration
 targets without counting inline test helpers. The clean-master baseline was
@@ -152,7 +153,7 @@ coordinator owner port with persistent store identity, bounded attempts,
 generation/identity-bound leases, explicit terminal states, and version-1
 migration fixtures. Tests cover rollback, stale/foreign leases, ambiguous
 byte-identical delivery recovery, and close/reopen on the required Linux,
-macOS, and Windows CI runners. Durable `sessionctl` composition, platform-vault,
+macOS, and Windows CI runners. Full client restart, platform-vault,
 disk/power fault, production packaging, and rollback-anchor gates remain.
 
 ADR 0019 and `key-protector-passphrase` now retain the bounded portable

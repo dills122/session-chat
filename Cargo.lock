@@ -1062,8 +1062,10 @@ dependencies = [
  "session-crypto-mls",
  "session-protocol",
  "session-transport",
+ "storage-sqlcipher",
  "thiserror",
  "transport-memory",
+ "zeroize",
 ]
 
 [[package]]
