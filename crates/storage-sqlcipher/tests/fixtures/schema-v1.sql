@@ -1,5 +1,7 @@
 BEGIN IMMEDIATE;
 
+PRAGMA user_version = 0;
+
 CREATE TABLE storage_metadata (
     schema_version INTEGER NOT NULL CHECK(schema_version = 1)
 ) STRICT;

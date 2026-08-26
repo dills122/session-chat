@@ -25,11 +25,16 @@ required Linux, macOS, and Windows CI runners and prove that:
 Schema version 2 now makes the same database the sole Welcome-outbox owner. It
 persists one nonzero store identity, exact canonical Welcome and LocalV1
 endpoint bytes, delivery state, bounded attempts, monotonic lease generation,
-opaque lease identity, and lease expiry. `SqlCipherStorage` implements the
+opaque lease identity, lease expiry, and the per-row attempt ceiling so restart
+cannot reinterpret committed work. Schema metadata is bound to SQLite's
+application `user_version`, migration takes an exclusive transaction, and each
+open reads back the retained rollback-journal and synchronization settings.
+`SqlCipherStorage` implements the
 coordinator's `WelcomeOutboxPort` with one immediate SQL transaction per lease,
 accepted result, or failed result. Explicit schema-v1 fixtures prove atomic
 migration of valid pending work and rollback of invalid legacy delivery
-material. Close/reopen tests cover stale and foreign leases, expiry, exhaustion,
+material. Close/reopen tests cover old-open-scope, stale, and foreign leases,
+expiry, exhaustion,
 and byte-identical retry after an unrecorded remote acceptance without repeating
 the retained MLS epoch or reopening invitation state.
 
@@ -43,9 +48,9 @@ two-member group; replaying the protected request remains rejected.
 
 This adapter is durability-laboratory evidence, not production storage. It has
 no platform keychain integration, rollback anchor, disk-full or power-loss
-evidence, rekey/backup/deletion policy, durable `sessionctl` composition, or
-secure-erasure guarantee. Hosted-runner evidence is not a production packaging
-or broader hardware/OS compatibility claim.
+evidence, rekey/backup/deletion policy, full durable-client identity recovery,
+or secure-erasure guarantee. Hosted-runner evidence is not a production
+packaging or broader hardware/OS compatibility claim.
 
 ```sh
 cargo test -p storage-sqlcipher --all-features --locked --offline

@@ -82,13 +82,13 @@ their behavior-focused tests.
 | `session-storage` | 501/521 (96.16%) | 501/521 (96.16%) | 90% |
 | `session-transport` | 1032/1097 (94.07%) | 1035/1100 (94.09%) | 90% |
 | `sessionctl` | 292/373 (78.28%) | 659/709 (92.95%) | 90% |
-| `storage-sqlcipher` | 650/742 (87.60%) | 1084/1173 (92.41%) | 90% |
+| `storage-sqlcipher` | 650/742 (87.60%) | 1142/1233 (92.62%) | 90% |
 | `transport-conformance` | 1325/1514 (87.52%) | 1364/1514 (90.09%) | 90% |
 | `transport-memory` | 808/920 (87.83%) | 835/920 (90.76%) | 90% |
-| **Workspace** | **8034/8850 (90.78%)** | **9018/9681 (93.15%)** | **92.23% ratchet** |
+| **Workspace** | **8034/8850 (90.78%)** | **9076/9741 (93.17%)** | **92.23% ratchet** |
 
-The workspace also moved from 86.88% to 89.39% region coverage and from
-83.47% to 91.23% function coverage. CI retains its existing stable floors at
+The workspace also moved from 86.88% to 89.37% region coverage and from
+83.47% to 91.30% function coverage. CI retains its existing stable floors at
 92.23% lines, 88.53% regions, and 85.64% functions. The slight fractional
 margin avoids making display rounding part of the contract.
 

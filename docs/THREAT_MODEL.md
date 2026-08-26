@@ -716,9 +716,12 @@ ambiguous-result recovery, close/reopen, and closed-file checks are retained on
 the required Linux, macOS, and Windows CI runners. Schema version 2 also makes
 that inviter row the sole Welcome-delivery ledger with persistent store
 identity, exact canonical material, bounded attempts, generation/identity-bound
-leases, and delivered/exhausted/expired terminal states. Retained tests reject
-stale and foreign results and reconcile an ambiguous prior adapter acceptance
-byte-identically after reopen. The real capability path additionally recovers
+leases, a persisted attempt ceiling, and delivered/exhausted/expired terminal
+states. The schema version is paired with SQLite's application `user_version`,
+migration is exclusive, and retained configuration is read back on open.
+Retained tests reject old-open-scope, stale, and foreign results and reconcile
+an ambiguous prior adapter acceptance byte-identically after reopen. The real
+capability path additionally recovers
 an ambiguous SQL commit before finalizing its in-memory invitation shadow,
 reopens the store, delivers once, and proves the original joiner consumes that
 Welcome without a second MLS Add. This does not establish a durable client,

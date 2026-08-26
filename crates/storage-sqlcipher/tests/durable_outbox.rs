@@ -184,6 +184,26 @@ fn schema_v1_fixture_migrates_atomically_to_pending_v2_work() {
         .expect("migrated lease releases");
     drop(migrated);
 
+    let connection = open_fixture_connection(&database.0);
+    assert_eq!(
+        connection
+            .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
+            .expect("application schema version"),
+        2
+    );
+    assert_eq!(
+        connection
+            .query_row(
+                "SELECT maximum_delivery_attempts FROM inviter_joins
+                 WHERE transaction_id = ?1",
+                params![TRANSACTION_ID],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("migrated attempt ceiling"),
+        i64::from(MAXIMUM_WELCOME_DELIVERY_ATTEMPTS)
+    );
+    drop(connection);
+
     let reopened = SqlCipherStorage::open(&database.0, vault_key()).expect("v2 reopens");
     assert_eq!(reopened.schema_version().expect("schema version"), 2);
 }
@@ -203,6 +223,19 @@ fn invalid_v1_delivery_material_rolls_migration_back() {
             .expect("v1 metadata survives failed migration"),
         1
     );
+}
+
+#[test]
+fn schema_metadata_and_user_version_must_match() {
+    let (database, storage) = committed_store("version-mismatch");
+    drop(storage);
+    let connection = open_fixture_connection(&database.0);
+    connection
+        .execute_batch("PRAGMA user_version = 1;")
+        .expect("set mismatched application version");
+    drop(connection);
+
+    assert!(SqlCipherStorage::open(&database.0, vault_key()).is_err());
 }
 
 #[test]
@@ -235,6 +268,29 @@ fn close_and_reopen_reconstructs_the_sole_owner_ledger() {
             .expect("invitation state"),
         Some(InvitationState::Consumed)
     );
+}
+
+#[test]
+fn lease_from_a_previous_open_scope_cannot_report_a_result() {
+    let (database, mut first_open) = committed_store("reopen-scope");
+    let pre_reopen_lease = first_open
+        .lease_next(NOW, 1)
+        .expect("lease transition")
+        .expect("pending Welcome")
+        .discard_payload();
+
+    let mut reopened = SqlCipherStorage::open(&database.0, vault_key()).expect("second open");
+    assert_eq!(
+        reopened.report_failed(pre_reopen_lease),
+        Err(OutboxPortError::Conflict)
+    );
+    let replacement = reopened
+        .lease_next(NOW + 1, 1)
+        .expect("expired prior scope")
+        .expect("replacement lease");
+    reopened
+        .report_failed(replacement.discard_payload())
+        .expect("replacement released");
 }
 
 #[test]
@@ -274,6 +330,44 @@ fn stale_and_foreign_store_leases_fail_closed() {
     store_c
         .report_accepted(replacement, NOW + 1)
         .expect("replacement accepted");
+}
+
+#[test]
+fn persisted_attempt_ceiling_is_not_reinterpreted_after_reopen() {
+    let (database, storage) = committed_store("persisted-attempt-ceiling");
+    drop(storage);
+    let connection = open_fixture_connection(&database.0);
+    connection
+        .execute(
+            "UPDATE inviter_joins SET maximum_delivery_attempts = 1
+             WHERE transaction_id = ?1",
+            params![TRANSACTION_ID],
+        )
+        .expect("narrow retained attempt ceiling");
+    drop(connection);
+
+    let mut reopened = SqlCipherStorage::open(&database.0, vault_key()).expect("store reopens");
+    let lease = reopened
+        .lease_next(NOW, 1)
+        .expect("first lease")
+        .expect("one retained attempt");
+    reopened
+        .report_failed(lease.discard_payload())
+        .expect("attempt terminalized");
+    assert!(
+        reopened
+            .lease_next(NOW + 1, 1)
+            .expect("terminal enumeration")
+            .is_none()
+    );
+    assert_eq!(
+        reopened
+            .recover_inviter(&TRANSACTION_ID)
+            .expect("recovery")
+            .expect("transaction")
+            .outbox_state,
+        WelcomeOutboxState::AttemptsExhausted
+    );
 }
 
 #[test]

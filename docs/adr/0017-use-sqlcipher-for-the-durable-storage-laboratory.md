@@ -35,13 +35,14 @@ libraries across the three required CI operating systems.
   Rust buffers use zeroization where their types permit it.
 - Schema version 2 persists one nonzero store identity and the exact canonical
   Welcome/LocalV1 endpoint beside bounded delivery state, attempt count,
-  monotonic lease generation, opaque lease identity, and lease expiry. Valid
-  version-1 pending rows migrate atomically; invalid legacy delivery material
-  rolls the migration back.
+  persisted attempt ceiling, monotonic lease generation, opaque lease identity,
+  and lease expiry. SQLite `user_version` must agree with the singleton schema
+  metadata. Valid version-1 pending rows migrate in one exclusive transaction;
+  invalid legacy delivery material rolls the migration back.
 - The adapter implements the sole-owner `WelcomeOutboxPort`. Each lease,
   acceptance, and failure transition uses one immediate SQL transaction;
-  restart reconstructs work from this ledger, and stale or foreign lease
-  results fail closed.
+  restart reconstructs work from this ledger, and old-open-scope, stale, or
+  foreign lease results fail closed.
 - The real capability-admission/MLS composition uses an explicit
   durability-pending one-shot value. A proven SQL rollback releases its
   in-memory admission reservations and requires the transient MLS group to be
@@ -51,12 +52,13 @@ libraries across the three required CI operating systems.
   sanitizes its internal cryptographic allocations without enabling the
   optional process-wide wiping of every SQLite allocation.
 
-The adapter is compiled into the workspace for testing, but no client opens it
-and no platform protector supplies its raw key. SQLCipher is not a rollback
-anchor and this decision makes no production, cross-platform, secure-deletion,
-or power-loss claim. Vendoring OpenSSL increases the audited source, native
-build, license, advisory, and compile-time surface; the locked graph and
-dependency policy must therefore cover it explicitly.
+The headless `sessionctl` laboratory now opens this adapter with a disposable
+random raw key, but no platform protector supplies that key and no client
+signing identity can yet be reloaded across process restart. SQLCipher is not a
+rollback anchor and this decision makes no production, cross-platform,
+secure-deletion, or power-loss claim. Vendoring OpenSSL increases the audited
+source, native build, license, advisory, and compile-time surface; the locked
+graph and dependency policy must therefore cover it explicitly.
 
 ## Platform protector direction
 

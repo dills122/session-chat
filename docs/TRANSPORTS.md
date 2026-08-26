@@ -277,7 +277,8 @@ external cancellation, enforces a monotonic deadline, and drops unfinished
 adapter work; it is a cross-platform headless/worker-thread baseline, not a UI
 runtime choice. The SQLCipher laboratory now implements the same sole-owner
 port and retains close/reopen delivery, stale/foreign lease, exhaustion,
-expiry, and ambiguous exact-retry evidence. A retained real
+expiry, persisted-attempt-ceiling, old-open-scope rejection, and ambiguous
+exact-retry evidence. A retained real
 capability-admission/MLS integration recovers an ambiguous SQL commit, reopens
 that owner store, and delivers the exact Welcome once. `sessionctl` now uses the
 same transaction and reconstructs a coordinator owner from SQLCipher; the

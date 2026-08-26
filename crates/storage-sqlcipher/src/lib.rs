@@ -147,9 +147,10 @@ pub struct InviterRecovery {
 /// Opaque authority for one exact SQLCipher-owned Welcome lease.
 ///
 /// This value intentionally implements neither diagnostics nor cloning. A
-/// result is accepted only by the same persistent store identity and exact
-/// live transaction/generation/lease tuple that issued it.
+/// result is accepted only by the same open scope, persistent store identity,
+/// and exact live transaction/generation/lease tuple that issued it.
 pub struct SqlCipherWelcomeLease {
+    open_scope: Arc<()>,
     store_id: [u8; STORE_ID_BYTES],
     transaction_id: [u8; 16],
     generation: u64,
@@ -291,6 +292,7 @@ struct StorageInner {
 #[derive(Clone)]
 pub struct SqlCipherStorage {
     inner: Arc<Mutex<StorageInner>>,
+    lease_scope: Arc<()>,
 }
 
 impl SqlCipherStorage {
@@ -404,7 +406,8 @@ impl SqlCipherStorage {
         self.lock()?
             .connection
             .query_row(
-                "SELECT epoch_after, outbox_state, delivery_attempts
+                "SELECT epoch_after, outbox_state, delivery_attempts,
+                        maximum_delivery_attempts
                  FROM inviter_joins WHERE transaction_id = ?1",
                 params![transaction_id],
                 |row| {
@@ -412,23 +415,28 @@ impl SqlCipherStorage {
                         row.get::<_, i64>(0)?,
                         row.get::<_, i64>(1)?,
                         row.get::<_, i64>(2)?,
+                        row.get::<_, i64>(3)?,
                     ))
                 },
             )
             .optional()?
-            .map(|(epoch_after, outbox_state, delivery_attempts)| {
-                if epoch_after < 0
-                    || delivery_attempts < 0
-                    || delivery_attempts > i64::from(MAXIMUM_WELCOME_DELIVERY_ATTEMPTS)
-                {
-                    return Err(StoreError::Rejected);
-                }
-                Ok(InviterRecovery {
-                    epoch_after: epoch_after as u64,
-                    outbox_state: decode_outbox_state(outbox_state)?,
-                    delivery_attempts: delivery_attempts as u32,
-                })
-            })
+            .map(
+                |(epoch_after, outbox_state, delivery_attempts, maximum_delivery_attempts)| {
+                    if epoch_after < 0
+                        || delivery_attempts < 0
+                        || maximum_delivery_attempts <= 0
+                        || maximum_delivery_attempts > 32
+                        || delivery_attempts > maximum_delivery_attempts
+                    {
+                        return Err(StoreError::Rejected);
+                    }
+                    Ok(InviterRecovery {
+                        epoch_after: epoch_after as u64,
+                        outbox_state: decode_outbox_state(outbox_state)?,
+                        delivery_attempts: delivery_attempts as u32,
+                    })
+                },
+            )
             .transpose()
     }
 
@@ -529,16 +537,19 @@ impl SqlCipherStorage {
              PRAGMA trusted_schema = OFF;
              PRAGMA foreign_keys = ON;",
         )?;
+        validate_connection_configuration(&connection)?;
         if create {
             create_schema(&connection)?;
         } else {
+            let user_version = application_schema_version(&connection)?;
             let version: i64 =
                 connection.query_row("SELECT schema_version FROM storage_metadata", [], |row| {
                     row.get(0)
                 })?;
-            match version {
-                1 => migrate_schema_v1_to_v2(&connection)?,
-                version if version == i64::from(SCHEMA_VERSION) => {}
+            match (user_version, version) {
+                (0, 1) => migrate_schema_v1_to_v2(&connection)?,
+                (user_version, version)
+                    if user_version == SCHEMA_VERSION && version == i64::from(SCHEMA_VERSION) => {}
                 _ => return Err(StoreError::Rejected),
             }
         }
@@ -551,6 +562,7 @@ impl SqlCipherStorage {
                 staged_joiner: None,
                 pending_joiner: None,
             })),
+            lease_scope: Arc::new(()),
         })
     }
 }
@@ -595,14 +607,14 @@ impl WelcomeOutboxPort for SqlCipherStorage {
             .execute(
                 "UPDATE inviter_joins
                  SET outbox_state = ?1, lease_id = NULL, lease_expires_at = NULL
-                 WHERE delivery_attempts >= ?2 AND outbox_expires_at > ?3
+                 WHERE delivery_attempts >= maximum_delivery_attempts
+                   AND outbox_expires_at > ?2
                    AND (
-                       outbox_state = ?4
-                       OR (outbox_state = ?5 AND lease_expires_at <= ?3)
+                       outbox_state = ?3
+                       OR (outbox_state = ?4 AND lease_expires_at <= ?2)
                    )",
                 params![
                     OUTBOX_ATTEMPTS_EXHAUSTED,
-                    i64::from(MAXIMUM_WELCOME_DELIVERY_ATTEMPTS),
                     now_unix_seconds as i64,
                     OUTBOX_PENDING,
                     OUTBOX_LEASED
@@ -614,16 +626,16 @@ impl WelcomeOutboxPort for SqlCipherStorage {
             .query_row(
                 "SELECT transaction_id, welcome, endpoint, outbox_expires_at, lease_generation
                  FROM inviter_joins
-                 WHERE outbox_expires_at >= ?1 AND delivery_attempts < ?2
+                 WHERE outbox_expires_at >= ?1
+                   AND delivery_attempts < maximum_delivery_attempts
                    AND (
-                       outbox_state = ?3
-                       OR (outbox_state = ?4 AND lease_expires_at <= ?5)
+                       outbox_state = ?2
+                       OR (outbox_state = ?3 AND lease_expires_at <= ?4)
                    )
                  ORDER BY transaction_id
                  LIMIT 1",
                 params![
                     lease_expires_at as i64,
-                    i64::from(MAXIMUM_WELCOME_DELIVERY_ATTEMPTS),
                     OUTBOX_PENDING,
                     OUTBOX_LEASED,
                     now_unix_seconds as i64
@@ -670,10 +682,11 @@ impl WelcomeOutboxPort for SqlCipherStorage {
                      lease_id = ?3,
                      lease_expires_at = ?4
                  WHERE transaction_id = ?5 AND lease_generation = ?6
-                   AND outbox_expires_at >= ?4 AND delivery_attempts < ?7
+                   AND outbox_expires_at >= ?4
+                   AND delivery_attempts < maximum_delivery_attempts
                    AND (
-                       outbox_state = ?8
-                       OR (outbox_state = ?9 AND lease_expires_at <= ?10)
+                       outbox_state = ?7
+                       OR (outbox_state = ?8 AND lease_expires_at <= ?9)
                    )",
                 params![
                     OUTBOX_LEASED,
@@ -682,7 +695,6 @@ impl WelcomeOutboxPort for SqlCipherStorage {
                     lease_expires_at as i64,
                     transaction_id,
                     (generation - 1) as i64,
-                    i64::from(MAXIMUM_WELCOME_DELIVERY_ATTEMPTS),
                     OUTBOX_PENDING,
                     OUTBOX_LEASED,
                     now_unix_seconds as i64
@@ -697,6 +709,7 @@ impl WelcomeOutboxPort for SqlCipherStorage {
             .map_err(|_| OutboxPortError::Internal)?;
         Ok(Some(LeasedWelcome::from_owner(
             SqlCipherWelcomeLease {
+                open_scope: Arc::clone(&self.lease_scope),
                 store_id,
                 transaction_id,
                 generation,
@@ -714,6 +727,9 @@ impl WelcomeOutboxPort for SqlCipherStorage {
         now_unix_seconds: u64,
     ) -> Result<(), OutboxPortError> {
         if now_unix_seconds > i64::MAX as u64 {
+            return Err(OutboxPortError::Conflict);
+        }
+        if !Arc::ptr_eq(&self.lease_scope, &lease.open_scope) {
             return Err(OutboxPortError::Conflict);
         }
         let mut inner = self.lock().map_err(map_outbox_store_error)?;
@@ -771,6 +787,9 @@ impl WelcomeOutboxPort for SqlCipherStorage {
     }
 
     fn report_failed(&mut self, lease: Self::Lease) -> Result<(), OutboxPortError> {
+        if !Arc::ptr_eq(&self.lease_scope, &lease.open_scope) {
+            return Err(OutboxPortError::Conflict);
+        }
         let mut inner = self.lock().map_err(map_outbox_store_error)?;
         let transaction = inner
             .connection
@@ -783,15 +802,14 @@ impl WelcomeOutboxPort for SqlCipherStorage {
             .execute(
                 "UPDATE inviter_joins
                  SET outbox_state = CASE
-                         WHEN delivery_attempts >= ?1 THEN ?2
-                         ELSE ?3
+                         WHEN delivery_attempts >= maximum_delivery_attempts THEN ?1
+                         ELSE ?2
                      END,
                      lease_id = NULL,
                      lease_expires_at = NULL
-                 WHERE transaction_id = ?4 AND outbox_state = ?5
-                   AND lease_generation = ?6 AND lease_id = ?7",
+                 WHERE transaction_id = ?3 AND outbox_state = ?4
+                   AND lease_generation = ?5 AND lease_id = ?6",
                 params![
-                    i64::from(MAXIMUM_WELCOME_DELIVERY_ATTEMPTS),
                     OUTBOX_ATTEMPTS_EXHAUSTED,
                     OUTBOX_PENDING,
                     lease.transaction_id,
@@ -1030,14 +1048,18 @@ fn create_schema(connection: &Connection) -> Result<(), StoreError> {
              outbox_expires_at INTEGER NOT NULL CHECK(outbox_expires_at > 0),
              outbox_state INTEGER NOT NULL CHECK(outbox_state BETWEEN 1 AND 5),
              delivery_attempts INTEGER NOT NULL
-                 CHECK(delivery_attempts BETWEEN 0 AND 3),
+                 CHECK(delivery_attempts BETWEEN 0 AND 32),
+             maximum_delivery_attempts INTEGER NOT NULL
+                 CHECK(maximum_delivery_attempts BETWEEN 1 AND 32),
              lease_generation INTEGER NOT NULL CHECK(lease_generation >= 0),
              lease_id BLOB CHECK(lease_id IS NULL OR length(lease_id) = 16),
              lease_expires_at INTEGER CHECK(lease_expires_at IS NULL OR lease_expires_at > 0),
              CHECK(
                  (outbox_state = 2 AND lease_id IS NOT NULL AND lease_expires_at IS NOT NULL)
                  OR (outbox_state IN (1, 3, 4, 5) AND lease_id IS NULL AND lease_expires_at IS NULL)
-             )
+             ),
+             CHECK(delivery_attempts <= maximum_delivery_attempts),
+             CHECK(outbox_state != 4 OR delivery_attempts = maximum_delivery_attempts)
          ) STRICT;
 
          CREATE TABLE mls_groups (
@@ -1064,7 +1086,8 @@ fn create_schema(connection: &Connection) -> Result<(), StoreError> {
              transaction_id BLOB PRIMARY KEY CHECK(length(transaction_id) = 16),
              group_id BLOB NOT NULL UNIQUE CHECK(length(group_id) = 32),
              key_package_ref BLOB NOT NULL UNIQUE CHECK(length(key_package_ref) = 32)
-         ) STRICT;",
+         ) STRICT;
+         PRAGMA user_version = 2;",
     )?;
     if connection
         .execute(
@@ -1083,7 +1106,7 @@ fn create_schema(connection: &Connection) -> Result<(), StoreError> {
 fn migrate_schema_v1_to_v2(connection: &Connection) -> Result<(), StoreError> {
     let store_id = random_nonzero_identifier(connection)?;
     connection.execute_batch(
-        "BEGIN IMMEDIATE;
+        "BEGIN EXCLUSIVE;
          ALTER TABLE storage_metadata RENAME TO storage_metadata_v1;
          CREATE TABLE storage_metadata (
              singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
@@ -1107,14 +1130,18 @@ fn migrate_schema_v1_to_v2(connection: &Connection) -> Result<(), StoreError> {
              outbox_expires_at INTEGER NOT NULL CHECK(outbox_expires_at > 0),
              outbox_state INTEGER NOT NULL CHECK(outbox_state BETWEEN 1 AND 5),
              delivery_attempts INTEGER NOT NULL
-                 CHECK(delivery_attempts BETWEEN 0 AND 3),
+                 CHECK(delivery_attempts BETWEEN 0 AND 32),
+             maximum_delivery_attempts INTEGER NOT NULL
+                 CHECK(maximum_delivery_attempts BETWEEN 1 AND 32),
              lease_generation INTEGER NOT NULL CHECK(lease_generation >= 0),
              lease_id BLOB CHECK(lease_id IS NULL OR length(lease_id) = 16),
              lease_expires_at INTEGER CHECK(lease_expires_at IS NULL OR lease_expires_at > 0),
              CHECK(
                  (outbox_state = 2 AND lease_id IS NOT NULL AND lease_expires_at IS NOT NULL)
                  OR (outbox_state IN (1, 3, 4, 5) AND lease_id IS NULL AND lease_expires_at IS NULL)
-             )
+             ),
+             CHECK(delivery_attempts <= maximum_delivery_attempts),
+             CHECK(outbox_state != 4 OR delivery_attempts = maximum_delivery_attempts)
          ) STRICT;",
     )?;
     let migration = (|| {
@@ -1128,12 +1155,13 @@ fn migrate_schema_v1_to_v2(connection: &Connection) -> Result<(), StoreError> {
                  transaction_id, invitation_id, generation, join_request_id,
                  request_fingerprint, group_id, epoch_before, epoch_after,
                  approval_record, welcome, endpoint, outbox_expires_at, outbox_state,
-                 delivery_attempts, lease_generation, lease_id, lease_expires_at
+                 delivery_attempts, maximum_delivery_attempts, lease_generation,
+                 lease_id, lease_expires_at
              )
              SELECT transaction_id, invitation_id, generation, join_request_id,
                     request_fingerprint, group_id, epoch_before, epoch_after,
                     approval_record, welcome, endpoint, outbox_expires_at, 1,
-                    0, 0, NULL, NULL
+                    0, 3, 0, NULL, NULL
              FROM inviter_joins_v1;",
         )?;
         {
@@ -1151,6 +1179,7 @@ fn migrate_schema_v1_to_v2(connection: &Connection) -> Result<(), StoreError> {
         connection.execute_batch(
             "DROP TABLE inviter_joins_v1;
              DROP TABLE storage_metadata_v1;
+             PRAGMA user_version = 2;
              COMMIT;",
         )?;
         Ok(())
@@ -1176,11 +1205,40 @@ fn validate_schema_v2(connection: &Connection) -> Result<(), StoreError> {
         },
     )?;
     let store_id = rows.3.ok_or(StoreError::Rejected)?;
-    if rows.0 != 1
+    if application_schema_version(connection)? != SCHEMA_VERSION
+        || rows.0 != 1
         || rows.1 != Some(i64::from(SCHEMA_VERSION))
         || rows.2 != Some(i64::from(SCHEMA_VERSION))
         || store_id.len() != STORE_ID_BYTES
         || all_zero(&store_id)
+    {
+        return Err(StoreError::Rejected);
+    }
+    Ok(())
+}
+
+fn application_schema_version(connection: &Connection) -> Result<u32, StoreError> {
+    let version = connection.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))?;
+    u32::try_from(version).map_err(|_| StoreError::Rejected)
+}
+
+fn validate_connection_configuration(connection: &Connection) -> Result<(), StoreError> {
+    let journal_mode =
+        connection.query_row("PRAGMA journal_mode", [], |row| row.get::<_, String>(0))?;
+    let synchronous = connection.query_row("PRAGMA synchronous", [], |row| row.get::<_, i64>(0))?;
+    let temp_store = connection.query_row("PRAGMA temp_store", [], |row| row.get::<_, i64>(0))?;
+    let secure_delete =
+        connection.query_row("PRAGMA secure_delete", [], |row| row.get::<_, i64>(0))?;
+    let trusted_schema =
+        connection.query_row("PRAGMA trusted_schema", [], |row| row.get::<_, i64>(0))?;
+    let foreign_keys =
+        connection.query_row("PRAGMA foreign_keys", [], |row| row.get::<_, i64>(0))?;
+    if !journal_mode.eq_ignore_ascii_case("delete")
+        || synchronous != 2
+        || temp_store != 2
+        || secure_delete != 1
+        || trusted_schema != 0
+        || foreign_keys != 1
     {
         return Err(StoreError::Rejected);
     }
@@ -1331,10 +1389,11 @@ fn commit_inviter(
              transaction_id, invitation_id, generation, join_request_id,
              request_fingerprint, group_id, epoch_before, epoch_after,
              approval_record, welcome, endpoint, outbox_expires_at, outbox_state,
-             delivery_attempts, lease_generation, lease_id, lease_expires_at
+             delivery_attempts, maximum_delivery_attempts, lease_generation,
+             lease_id, lease_expires_at
          ) VALUES (
              ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
-             1, 0, 0, NULL, NULL
+             1, 0, ?13, 0, NULL, NULL
          )",
         params![
             commit.transaction_id,
@@ -1348,7 +1407,8 @@ fn commit_inviter(
             commit.approval_record,
             commit.welcome,
             commit.endpoint,
-            commit.outbox_expires_at as i64
+            commit.outbox_expires_at as i64,
+            i64::from(MAXIMUM_WELCOME_DELIVERY_ATTEMPTS)
         ],
     )?;
     let changed = transaction.execute(
