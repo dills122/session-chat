@@ -21,8 +21,10 @@ mod checked {
     };
 
     use sessionctl::l2_process::{
-        L2HarnessProbe, run_l2_process_internal_role, run_l2_process_probe,
+        L2HarnessProbe, L2ProcessCase, run_l2_process_case, run_l2_process_internal_role,
+        run_l2_process_probe,
     };
+    use storage_sqlcipher::fault_testing::Checkpoint;
 
     const MAX_EVIDENCE_BYTES: usize = 2_048;
 
@@ -57,8 +59,8 @@ mod checked {
             "result=pass\n",
             "fault_build=true\n",
             "control=continue\n",
-            "expected=I0\n",
-            "observed=I0\n",
+            "expected=I1\n",
+            "observed=I1\n",
             "commit=",
             "dirty=",
             "toolchain=1.97.1\n",
@@ -97,18 +99,49 @@ mod checked {
     }
 
     #[test]
+    fn closed_case_contract_runs_real_representative_i0_i1_j0_j1_workloads() {
+        for (checkpoint, code) in [
+            (Checkpoint::InviterBeforeBegin, "I0"),
+            (Checkpoint::InviterAfterCommitReturn, "I1"),
+            (Checkpoint::JoinerBeforeBegin, "J0"),
+            (Checkpoint::JoinerAfterCommitReturn, "J1"),
+        ] {
+            let case = L2ProcessCase::new(checkpoint, 0).expect("closed L2 case");
+            let evidence =
+                run_l2_process_case(&executable(), case, L2HarnessProbe::KillWhileBlocked)
+                    .unwrap_or_else(|error| panic!("representative {code} L2 workload: {error:?}"))
+                    .encode_v1();
+            assert!(evidence.contains(&format!("expected={code}\n")));
+            assert!(evidence.contains(&format!("observed={code}\n")));
+            assert!(evidence.contains("workload=real-storage-transaction\n"));
+        }
+
+        assert!(L2ProcessCase::new(Checkpoint::InviterAfterEpochInsert, 64).is_err());
+    }
+
+    #[test]
     fn defective_frames_diagnostics_and_semantics_fail_closed() {
         for probe in [
             L2HarnessProbe::AdvanceWithoutAcknowledgement,
             L2HarnessProbe::OversizedOutput,
             L2HarnessProbe::SecretDiagnostic,
             L2HarnessProbe::MixedFixture,
+            L2HarnessProbe::IdentityLoss,
+            L2HarnessProbe::ReservationSubstitution,
+            L2HarnessProbe::DefectiveSchema,
         ] {
             assert!(
                 run_l2_process_probe(&executable(), probe).is_err(),
                 "probe {probe:?} must fail"
             );
         }
+    }
+
+    #[test]
+    fn lingering_verifier_handle_is_bounded_reaped_and_cannot_report_pass() {
+        let started = Instant::now();
+        assert!(run_l2_process_probe(&executable(), L2HarnessProbe::LingeringHandle).is_err());
+        assert!(started.elapsed() < Duration::from_secs(5));
     }
 
     #[test]
