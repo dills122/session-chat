@@ -1,6 +1,6 @@
 # Hostile L1 and L2 execution index
 
-Status: wave 1 complete; ready for independent review
+Status: wave 1 complete; review remediation ready for instance 2 of 2
 
 ## Objective
 
@@ -21,7 +21,7 @@ at `21e1d74`.
 | --- | --- | --- | --- | --- | --- |
 | `W1-L1-HOSTILE` | Internal subagent | Positive `L1-PROCESS` | `apps/sessionctl/src/l1_process.rs`, `apps/sessionctl/tests/l1_process.rs`, new L1-only fixtures | Complete | Exact replay now crosses Bob, the untrusted service, and Alice as separate processes; Alice rejects the second protected request before approval, MLS Add, or transaction staging, and a fresh inspector proves no durable group exists. The rest of the hostile first-contact matrix remains open. |
 | `W1-T6-COMPLETE` | Internal subagent | Retained adverse trace and memory runner | `crates/transport-conformance/**`, `crates/transport-memory/**` | Complete | A bounded queue-saturation fixture rejects the ninth envelope after eight accepted deposits, reaches quiescence, double-replays identically, and catches a deliberately over-accepting bridge. Arbitrary delay and the exhaustive authority/resource matrix remain open. |
-| `W1-L2-CONTRACT` | Internal subagent | ADR 0021 and retained SQLCipher recovery evidence | `docs/plans/L2_PROCESS_FAULT_TESTING.md` only | Complete | The implementation-ready contract enumerates process-kill/write-boundary cases, complete-state oracles, evidence/redaction rules, supported-platform constraints, and wave-2 slices without claiming power-loss or rollback resistance. |
+| `W1-L2-CONTRACT` | Internal subagent | ADR 0021 and retained SQLCipher recovery evidence | `docs/plans/L2_PROCESS_FAULT_TESTING.md` only | Complete | The implementation-ready contract enumerates process-kill/write-boundary cases, complete-state oracles, evidence/redaction rules, supported-platform constraints, ownership-consumable `sessionctl` crash suites, and an explicitly owned cfg-only named-VFS open seam without claiming power-loss or rollback resistance. |
 | `W1-INTEGRATE` | Lead task | All completed work items | This index plus canonical status documents after reconciliation | Complete | All child handoffs are reconciled, targeted and workspace gates pass, documentation matches retained behavior, and atomic commits are ready for review. |
 
 ## Retained increments
@@ -29,6 +29,21 @@ at `21e1d74`.
 - `ecf68be` retains the exact-replay `E2E-JOIN-002` process slice.
 - `599105f` retains the bounded queue-saturation transport verdict.
 - `3df36cb` freezes the L2 process and storage fault-testing contract.
+
+## Independent-review disposition
+
+Review instance 1 of 1 returned `Not ready` with two P1 plan findings and no
+executable finding. Both findings are accepted. The remediated contract now:
+
+- colocates the reusable controller/oracle and every process-fault integration
+  suite under `sessionctl`, preserving the existing dependency direction; and
+- assigns L2-0 the private, cfg-only default-or-named storage open seam and its
+  ordinary-build exclusion tests, while L2-4 remains the isolated unsafe VFS
+  owner.
+
+The user authorized one additional fresh-context pass, so the revised review
+limit is instance 2 of 2. No L2 runtime implementation begins before that pass
+reconciles these ownership seams.
 
 ## Verification
 

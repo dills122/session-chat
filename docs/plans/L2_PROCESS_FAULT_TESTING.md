@@ -1,6 +1,7 @@
 # L2 process and storage fault testing plan
 
-Status: implementation-ready contract; no L2 runtime or durability claim
+Status: implementation-ready contract after independent-review remediation;
+no L2 runtime or durability claim
 
 Date: 2026-08-26
 
@@ -41,7 +42,9 @@ The implementation must exercise the current adapter rather than reproduce its
 behavior in a model:
 
 - `storage-sqlcipher` uses SQLCipher with rollback-journal `DELETE`,
-  `synchronous=FULL`, and one keyed connection behind a mutex.
+  `synchronous=FULL`, and one keyed connection behind a mutex. Its current
+  `open_internal` always calls `Connection::open_with_flags`, so the retained
+  adapter has no named-VFS selection seam yet.
 - The inviter transaction starts with one already committed `Reserved`
   reservation. One `BEGIN IMMEDIATE` transaction writes MLS group/epoch state,
   inserts the `inviter_joins` row, and marks the reservation `Consumed` before
@@ -242,6 +245,18 @@ weaken `storage-sqlcipher`'s `#![forbid(unsafe_code)]`; any native/unsafe bridge
 belongs in an isolated publish-disabled test-support crate with documented
 safety invariants.
 
+L2-0 owns the missing connection-selection seam before the VFS lane begins. A
+private `storage-sqlcipher` open path selects either the existing default VFS or,
+only under `cfg(session_chat_storage_fault_testing)`, one closed constant name
+through `Connection::open_with_flags_and_vfs`. The cfg-only `fault_testing`
+module exposes the minimum doc-hidden create/open entry points required by the
+L2 writer and verifier; the VFS name does not come from a CLI argument,
+environment variable, fixture, or other runtime input. Ordinary `create` and
+`open` continue to use the default path. A compile-fail fixture must prove the
+fault module is absent without the custom cfg, while named-VFS tests must prove
+registration does not replace the process default and that only the explicitly
+opened disposable connection reaches the delegator.
+
 Required file roles are main database, rollback journal, and any unexpected
 temporary file. WAL and shared-memory roles are recognized only so their
 appearance fails the retained `journal_mode=DELETE` baseline; they are not a
@@ -392,12 +407,21 @@ paths untouched. The lead owns workspace membership, lockfile, canonical docs,
 coverage records, and CI reconciliation so parallel lanes do not edit shared
 files concurrently.
 
+All process controller, verifier, and crash-scenario integration tests live in
+the `sessionctl` package. That package already depends on `storage-sqlcipher`
+and can exercise the real adapter without reversing the dependency direction.
+`storage-sqlcipher` never depends on the application package, and no crash
+suite duplicates the controller or semantic oracle. Storage-owned tasks retain
+only the cfg-gated hooks/open seam and ordinary in-process boundary tests; the
+unsafe named-VFS implementation remains in its separate publish-disabled crate.
+
 ### Task L2-0: Freeze the fault protocol and checked build boundary
 
 **Description:** Add the closed checkpoint enum, versioned bounded control
-frames, oracle state codes, and a checked test-only build configuration. Fault
-hooks are inert and unavailable in ordinary production builds. The production
-crate retains `#![forbid(unsafe_code)]`.
+frames, oracle state codes, checked test-only build configuration, and the
+private connection-opening seam that selects the fixed fault VFS only in that
+build. Fault hooks and the named-VFS entry points are absent from ordinary
+production builds. The production crate retains `#![forbid(unsafe_code)]`.
 
 Use the workspace-declared custom configuration
 `cfg(session_chat_storage_fault_testing)`, not a Cargo feature: the ordinary
@@ -408,8 +432,10 @@ and record `fault_build=true` in L2 evidence. No runtime environment variable
 or public command-line argument may activate hooks in an ordinary binary.
 
 **Ownership:** `crates/storage-sqlcipher/src/fault_testing.rs` (new), the
-minimal hook call sites in `crates/storage-sqlcipher/src/lib.rs`, and one
-dedicated protocol test file. Shared Cargo/check-cfg wiring is lead-owned.
+minimal hook call sites plus private default-or-named connection open path in
+`crates/storage-sqlcipher/src/lib.rs`, one dedicated protocol/build-boundary
+test file, and compile-fail fixtures. Shared Cargo/check-cfg wiring is
+lead-owned.
 
 **Acceptance:**
 
@@ -419,6 +445,9 @@ dedicated protocol test file. Shared Cargo/check-cfg wiring is lead-owned.
   and hooks in ordinary builds fail closed or are absent.
 - Hook payloads cannot carry secret bytes and an intentionally defective
   checkpoint order is detected.
+- Ordinary `create`/`open` still select the default VFS. Only the cfg-gated,
+  doc-hidden fault entry points can select the one closed fault-VFS name, and an
+  ordinary-build compile-fail fixture proves those entry points are absent.
 
 **Verification:** focused storage protocol tests, `cargo fmt --all --check`, and
 workspace Clippy with warnings denied.
@@ -427,13 +456,17 @@ workspace Clippy with warnings denied.
 
 ### Task L2-1: Build the bounded process controller and verifier
 
-**Description:** Add a hidden L2 writer/verifier role and parent controller that
-creates marked case roots, exchanges the closed protocol, kills/reaps the
-writer, and applies the full integrity/schema/semantic oracle in a fresh
-process.
+**Description:** Add the single reusable hidden L2 writer/verifier role and
+parent controller that creates marked case roots, exchanges the closed
+protocol, kills/reaps the writer, and applies the full integrity/schema/semantic
+oracle in a fresh process. Every later process-fault suite imports this one
+cfg-gated `sessionctl` module; no storage-package test imports the application
+or duplicates its supervisor/oracle.
 
-**Ownership:** new `apps/sessionctl/src/l2_process.rs`, new hidden binary entry,
-and `apps/sessionctl/tests/l2_process.rs`. Do not edit the L1 module.
+**Ownership:** new `apps/sessionctl/src/l2_process.rs`, its cfg-gated doc-hidden
+library export, new hidden binary entry, and `apps/sessionctl/tests/l2_process.rs`.
+Do not edit the L1 module. The hidden binary must fail closed without the custom
+cfg and cannot activate fault behavior through ordinary runtime input.
 
 **Acceptance:**
 
@@ -455,9 +488,9 @@ tests to prove no regression.
 baseline and classify the reopen result against `I0`/`I1`, including exact
 retry after the post-commit-result-loss checkpoints.
 
-**Ownership:** new
-`crates/storage-sqlcipher/tests/crash_restart_inviter.rs` and inviter-only
-fixtures/support under that test directory.
+**Ownership:** new `apps/sessionctl/tests/l2_crash_restart_inviter.rs` and
+inviter-only fixtures/support under the `sessionctl` test tree. It imports the
+L2-1 controller/oracle and exercises the real `storage-sqlcipher` dependency.
 
 **Acceptance:**
 
@@ -467,8 +500,8 @@ fixtures/support under that test directory.
 - Exact retry changes no complete-state digest and emits no second Welcome
   work item.
 
-**Verification:** `cargo test -p storage-sqlcipher --test
-crash_restart_inviter --all-features --locked --offline -- --test-threads=1`.
+**Verification:** `cargo test -p sessionctl --test l2_crash_restart_inviter
+--all-features --locked --offline -- --test-threads=1`.
 
 **Dependencies:** L2-0 and L2-1. **Estimated scope:** S (1-2 files).
 
@@ -477,9 +510,9 @@ crash_restart_inviter --all-features --locked --offline -- --test-threads=1`.
 **Description:** Drive the split group-write/KeyPackage-delete transaction at
 every observed checkpoint and classify `J0`/`J1` after fresh reopen.
 
-**Ownership:** new
-`crates/storage-sqlcipher/tests/crash_restart_joiner.rs` and joiner-only
-fixtures/support under that test directory.
+**Ownership:** new `apps/sessionctl/tests/l2_crash_restart_joiner.rs` and
+joiner-only fixtures/support under the `sessionctl` test tree. It imports the
+same L2-1 controller/oracle and exercises the real storage dependency.
 
 **Acceptance:**
 
@@ -489,8 +522,8 @@ fixtures/support under that test directory.
 - Post-commit recovery and exact retry perform neither a second join nor a
   second deletion.
 
-**Verification:** `cargo test -p storage-sqlcipher --test
-crash_restart_joiner --all-features --locked --offline -- --test-threads=1`.
+**Verification:** `cargo test -p sessionctl --test l2_crash_restart_joiner
+--all-features --locked --offline -- --test-threads=1`.
 
 **Dependencies:** L2-0 and L2-1. **Estimated scope:** S (1-2 files).
 
@@ -500,15 +533,18 @@ crash_restart_joiner --all-features --locked --offline -- --test-threads=1`.
 classifies file roles, counts bounded operations, pauses at commit-window
 operations, and injects actual `SQLITE_FULL`/extended `SQLITE_IOERR_*` codes.
 
-**Ownership:** new `crates/storage-sqlcipher-fault-vfs/**` only. Workspace
-membership and lockfile changes are lead-owned.
+**Ownership:** new `crates/storage-sqlcipher-fault-vfs/**` only. The storage
+connection-selection seam already belongs to L2-0; this lane does not edit
+`storage-sqlcipher`. Workspace membership and lockfile changes are lead-owned.
 
 **Acceptance:**
 
 - Unsafe/native code is isolated from `storage-sqlcipher`, documented at each
   boundary, and denied outside the minimal delegator.
-- The adapter is selected by name for one disposable connection and never
-  becomes the process default.
+- The adapter registers under the one closed name consumed by L2-0, with
+  SQLite's make-default flag disabled. Tests record the default VFS before and
+  after registration, prove an ordinary connection bypasses the delegator, and
+  prove one explicitly named disposable connection reaches it.
 - Defective tests prove wrong file-role classification, skipped ordinals,
   incorrect result codes, and an unexpected WAL/temp file are detected.
 
@@ -524,8 +560,9 @@ scope:** M (3-5 files).
 one-shot and persistent failures through the inviter and joiner transactions,
 then verify `I0|I1` and `J0|J1` after disabling the fault.
 
-**Ownership:** new `crates/storage-sqlcipher/tests/io_faults.rs` and
-I/O-only fixture manifests.
+**Ownership:** new `apps/sessionctl/tests/l2_io_faults.rs` and I/O-only fixture
+manifests. It imports the L2-1 controller/oracle and uses L2-0's cfg-only named
+open entry point with the L2-4 delegator.
 
 **Acceptance:**
 
@@ -536,10 +573,10 @@ I/O-only fixture manifests.
 - Actual primary/extended codes and last explored ordinals appear in bounded,
   redacted evidence.
 
-**Verification:** `cargo test -p storage-sqlcipher --test io_faults
+**Verification:** `cargo test -p sessionctl --test l2_io_faults
 --all-features --locked --offline -- --test-threads=1` on all three CI families.
 
-**Dependencies:** L2-1 and L2-4. **Estimated scope:** M (2-4 files).
+**Dependencies:** L2-0, L2-1, and L2-4. **Estimated scope:** M (2-4 files).
 
 ### Task L2-6: Add durable Welcome owner crash cases
 
@@ -547,9 +584,8 @@ I/O-only fixture manifests.
 acceptance ambiguity, accepted/failed result transitions, stale generations,
 and terminal attempt/expiry behavior.
 
-**Ownership:** new
-`crates/storage-sqlcipher/tests/outbox_crash_restart.rs` only; do not edit the
-inviter/joiner crash files.
+**Ownership:** new `apps/sessionctl/tests/l2_outbox_crash_restart.rs` only; do
+not edit the inviter/joiner crash files. It reuses the L2-1 controller/oracle.
 
 **Acceptance:**
 
@@ -570,9 +606,10 @@ coordinator tests.
 source-or-target-only crash classification, and retain a separate expected-gap
 stale-snapshot case.
 
-**Ownership:** new migration fault test/support files in
-`crates/storage-sqlcipher/tests/`; minimal migration checkpoint refactoring in
-`lib.rs` is scheduled only after L2-2/L2-3 and cannot overlap their owner.
+**Ownership:** new `apps/sessionctl/tests/l2_migration_restore.rs` plus
+migration-only fixtures/support under the `sessionctl` test tree. Minimal
+migration checkpoint refactoring in `storage-sqlcipher/src/lib.rs` is scheduled
+only after L2-2/L2-3 and cannot overlap the L2-0 storage owner.
 
 **Acceptance:**
 
@@ -618,9 +655,9 @@ gates. **Estimated scope:** M (3-5 integration files per atomic commit).
 ```text
 L2-0 fault protocol + exact adapter checkpoints
   |
-  +--> L2-1 process controller/verifier
-  |      +--> L2-2 inviter crash suite --+
-  |      +--> L2-3 joiner crash suite ---+--> L2-8 E2E-TXN-001 integration
+  +--> L2-1 sessionctl controller/verifier
+  |      +--> L2-2 sessionctl inviter crash suite --+
+  |      +--> L2-3 sessionctl joiner crash suite ---+--> L2-8 E2E-TXN-001 integration
   |                                      |
   +--> L2-4 isolated named VFS ----------+--> L2-5 FULL/IOERR sweep --+
                                                                     |
@@ -645,18 +682,19 @@ not broaden that claim.
 
 Candidate commands become required only after their named targets exist:
 
-The first five fault commands run in a CI/job environment with
+The L2 fault commands run in a CI/job environment with
 `RUSTFLAGS=--cfg session_chat_storage_fault_testing`; the workflow supplies the
 environment identically on all three operating systems. The ordinary full
 workspace commands run without that cfg and prove that the retained product
 graph does not expose the fault hooks.
 
 ```sh
-cargo test -p storage-sqlcipher --test crash_restart_inviter --all-features --locked --offline -- --test-threads=1
-cargo test -p storage-sqlcipher --test crash_restart_joiner --all-features --locked --offline -- --test-threads=1
-cargo test -p storage-sqlcipher --test io_faults --all-features --locked --offline -- --test-threads=1
-cargo test -p storage-sqlcipher --test outbox_crash_restart --all-features --locked --offline -- --test-threads=1
 cargo test -p sessionctl --test l2_process --all-features --locked --offline -- --test-threads=1
+cargo test -p sessionctl --test l2_crash_restart_inviter --all-features --locked --offline -- --test-threads=1
+cargo test -p sessionctl --test l2_crash_restart_joiner --all-features --locked --offline -- --test-threads=1
+cargo test -p sessionctl --test l2_io_faults --all-features --locked --offline -- --test-threads=1
+cargo test -p sessionctl --test l2_outbox_crash_restart --all-features --locked --offline -- --test-threads=1
+cargo test -p sessionctl --test l2_migration_restore --all-features --locked --offline -- --test-threads=1
 cargo test -p storage-sqlcipher --all-features --locked --offline
 cargo fmt --all --check
 cargo clippy --workspace --all-targets --all-features --locked --offline -- -D warnings
