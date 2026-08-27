@@ -12,7 +12,7 @@ use std::{
     ffi::{CStr, c_char, c_int, c_void},
     fmt,
     mem::{align_of, size_of},
-    ptr,
+    ptr::{self, NonNull},
     sync::OnceLock,
 };
 
@@ -37,6 +37,39 @@ struct WrappedFile {
     base: ffi::sqlite3_file,
     role: c_int,
     evidence: c_int,
+}
+
+/// Non-null SQLite file allocation checked once at an ABI callback boundary.
+#[derive(Clone, Copy)]
+struct CheckedFile(NonNull<ffi::sqlite3_file>);
+
+impl CheckedFile {
+    fn new(file: *mut ffi::sqlite3_file) -> Result<Self, c_int> {
+        NonNull::new(file).map(Self).ok_or(ffi::SQLITE_IOERR)
+    }
+
+    fn as_ptr(self) -> *mut ffi::sqlite3_file {
+        self.0.as_ptr()
+    }
+
+    unsafe fn delegated(self) -> Result<Self, c_int> {
+        // SAFETY: SQLite allocated the advertised wrapper prefix followed by
+        // the delegated VFS's `szOsFile` tail in this same allocation.
+        let delegated = unsafe { self.as_ptr().cast::<u8>().add(REAL_FILE_OFFSET).cast() };
+        NonNull::new(delegated).map(Self).ok_or(ffi::SQLITE_IOERR)
+    }
+
+    unsafe fn initialize_wrapper(self, wrapped: WrappedFile) {
+        // SAFETY: the checked pointer names SQLite's uninitialized wrapper
+        // prefix and the caller supplies the complete value exactly once.
+        unsafe { self.0.cast::<WrappedFile>().write(wrapped) };
+    }
+
+    unsafe fn clear_methods(mut self) {
+        // SAFETY: the checked allocation remains owned by SQLite after the
+        // delegated close; only its wrapper method slot is invalidated.
+        unsafe { self.0.as_mut() }.pMethods = ptr::null();
+    }
 }
 
 const REAL_FILE_OFFSET: usize = align_up(size_of::<WrappedFile>(), align_of::<usize>());
@@ -400,11 +433,9 @@ unsafe fn delegated_vfs(vfs: *mut ffi::sqlite3_vfs) -> Result<*mut ffi::sqlite3_
 }
 
 unsafe fn real_file(file: *mut ffi::sqlite3_file) -> Result<*mut ffi::sqlite3_file, c_int> {
-    if file.is_null() {
-        return Err(ffi::SQLITE_IOERR);
-    }
+    let file = CheckedFile::new(file)?;
     // SAFETY: SQLite allocated `szOsFile` bytes for our registered layout.
-    Ok(unsafe { file.cast::<u8>().add(REAL_FILE_OFFSET).cast() })
+    Ok(unsafe { file.delegated() }?.as_ptr())
 }
 
 unsafe fn wrapped_metadata(
@@ -548,10 +579,14 @@ unsafe extern "C" fn vfs_open(
     let Ok(delegated) = (unsafe { delegated_vfs(vfs) }) else {
         return ffi::SQLITE_IOERR;
     };
-    // SAFETY: `file` is SQLite's allocation of our advertised `szOsFile`.
-    let Ok(real) = (unsafe { real_file(file) }) else {
+    let Ok(file) = CheckedFile::new(file) else {
         return ffi::SQLITE_IOERR;
     };
+    // SAFETY: `file` is SQLite's allocation of our advertised `szOsFile`.
+    let Ok(real) = (unsafe { file.delegated() }) else {
+        return ffi::SQLITE_IOERR;
+    };
+    let real = real.as_ptr();
     // SAFETY: non-null delegated VFS came from SQLite's registry.
     let Some(open) = (unsafe { (*delegated).xOpen }) else {
         return ffi::SQLITE_IOERR;
@@ -584,16 +619,13 @@ unsafe extern "C" fn vfs_open(
     // SAFETY: write initializes the complete wrapper prefix without forming a
     // reference to SQLite's previously uninitialized allocation.
     unsafe {
-        ptr::write(
-            file.cast::<WrappedFile>(),
-            WrappedFile {
-                base: ffi::sqlite3_file {
-                    pMethods: wrapper_methods,
-                },
-                role: role as c_int,
-                evidence: evidence.code(),
+        file.initialize_wrapper(WrappedFile {
+            base: ffi::sqlite3_file {
+                pMethods: wrapper_methods,
             },
-        );
+            role: role as c_int,
+            evidence: evidence.code(),
+        });
     }
     match apply_decision(observe(role, evidence, Operation::Open), ffi::SQLITE_IOERR) {
         Ok(()) => ffi::SQLITE_OK,
@@ -608,7 +640,7 @@ unsafe extern "C" fn vfs_open(
                 }
             }
             // SAFETY: prevent SQLite from calling methods on a rejected open.
-            unsafe { (*file).pMethods = ptr::null() };
+            unsafe { file.clear_methods() };
             code
         }
     }
@@ -867,10 +899,14 @@ unsafe extern "C" fn vfs_next_system_call(
 
 /// Delegated file close boundary.
 unsafe extern "C" fn io_close(file: *mut ffi::sqlite3_file) -> c_int {
-    // SAFETY: wrapper contains a live delegated file until this callback returns.
-    let Ok(real) = (unsafe { real_file(file) }) else {
+    let Ok(file) = CheckedFile::new(file) else {
         return ffi::SQLITE_IOERR_CLOSE;
     };
+    // SAFETY: wrapper contains a live delegated file until this callback returns.
+    let Ok(real) = (unsafe { file.delegated() }) else {
+        return ffi::SQLITE_IOERR_CLOSE;
+    };
+    let real = real.as_ptr();
     // SAFETY: delegated file was initialized by successful xOpen.
     let Ok(methods) = (unsafe { io_methods(real) }) else {
         return ffi::SQLITE_IOERR_CLOSE;
@@ -882,7 +918,7 @@ unsafe extern "C" fn io_close(file: *mut ffi::sqlite3_file) -> c_int {
     // SAFETY: close receives its exact delegated file pointer.
     let result = unsafe { callback(real) };
     // SAFETY: prevent reuse of the wrapper after delegated close.
-    unsafe { (*file).pMethods = ptr::null() };
+    unsafe { file.clear_methods() };
     result
 }
 
@@ -1246,6 +1282,17 @@ mod tests {
     use std::ffi::CString;
 
     use super::*;
+
+    #[test]
+    fn checked_file_rejects_null_and_preserves_a_live_pointer() {
+        let mut file = ffi::sqlite3_file {
+            pMethods: ptr::null(),
+        };
+        let raw = ptr::from_mut(&mut file);
+
+        assert!(CheckedFile::new(ptr::null_mut()).is_err());
+        assert_eq!(CheckedFile::new(raw).map(CheckedFile::as_ptr), Ok(raw));
+    }
 
     #[test]
     fn open_flags_classify_every_closed_file_role() {
