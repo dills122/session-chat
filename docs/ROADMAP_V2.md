@@ -79,8 +79,10 @@ evidence against the real local mailbox. The real capability-admission/MLS path
 now crosses the SQLCipher transaction through an explicit durability-pending
 one-shot value, recovers an ambiguous commit, finalizes invitation state once,
 reopens the owner store, and delivers the exact Welcome to the original joiner.
-Human approval UX, hostile process-fault coverage, and network transport work
-listed below remain outstanding. The separate SQLCipher laboratory now
+Human approval UX, the remaining hostile process-fault coverage, and network
+transport work listed below remain outstanding. One independent-process exact
+replay case now rejects the duplicate before approval, MLS Add, or durable
+membership mutation. The separate SQLCipher laboratory now
 implements the same sole-owner coordinator port with version-2 migration,
 close/reopen leases, terminal states, and ambiguous exact-retry evidence; it is
 now exercised by the independent-process L1 path. Schema version 3 adds the exact
@@ -106,7 +108,9 @@ double-replay memory runner, while `transport-memory` adds
 bounded outage, corrupt-poll, exact-byte stale-replay, acknowledgement-loss,
 and secret-free state-probe controls. The retained runner proves deterministic,
 quiescent adverse delivery, exact bindings, redaction, bounded wake/drop
-behavior, and common-suite detection of deliberately defective bridges. The
+behavior, queue-saturation rejection at the retained eight-envelope bound, and
+common-suite detection of deliberately defective bridges. Arbitrary delay and
+the exhaustive authority/resource matrix remain open. The
 LocalV1 deposit-only coordinator adds one-attempt owner-store policy plus a
 cross-platform blocking wake/cancel/deadline supervisor; neither is a network
 or production-runtime claim.
@@ -133,7 +137,7 @@ separate gates.
 The Rust source-coverage gate now measures production code through integration
 targets without counting inline test helpers. The clean-master baseline was
 90.78% workspace lines; retained behavior and negative-path tests raise the
-measured result to 93.00%, with every security- and correctness-vital component
+measured result to 92.99%, with every security- and correctness-vital component
 at or above 90%. Stable region and function ratchets are also enforced. `sessionctl` now
 uses named, secret-free orchestration fault seams to cover cross-crate failure
 mapping, cleanup, post-commit Welcome failure, dropped delivery, and exact

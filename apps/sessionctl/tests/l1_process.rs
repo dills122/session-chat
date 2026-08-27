@@ -130,6 +130,36 @@ fn independent_process_runner_rejects_public_arguments() {
 }
 
 #[test]
+fn hostile_replayed_join_is_rejected_before_durable_membership_mutation() {
+    let root = marked_root("hostile-replay");
+    for directory in ["direct", "relay", "relay/in", "relay/out", "alice"] {
+        fs::create_dir(root.join(directory)).expect("create hostile process directory");
+    }
+
+    let output = Command::new(env!("CARGO_BIN_EXE_sessionctl-l1"))
+        .args(["--internal-role", "hostile-replay-controller"])
+        .arg(&root)
+        .output()
+        .expect("run hostile replay conformance scenario");
+
+    let controller_removed_root = !root.exists();
+    if !controller_removed_root {
+        fs::remove_dir_all(&root).expect("remove failed hostile replay root");
+    }
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    assert!(output.stdout.len() <= MAX_EVIDENCE_BYTES);
+    assert_eq!(
+        output.stdout,
+        b"version=1\nscenario=E2E-JOIN-002\ncase=replayed-protected-join\nresult=pass\nreplay=rejected\nmembership=unchanged\nredaction=pass\nchild_cleanup=pass\ndirectory_cleanup=pass\n"
+    );
+    assert!(
+        controller_removed_root,
+        "controller must remove the scenario root"
+    );
+}
+
+#[test]
 fn internal_role_boundary_rejects_unmarked_and_unknown_scopes() {
     assert!(run_l1_process_internal_role("bob", "/".into()).is_err());
 
@@ -162,6 +192,48 @@ fn internal_roles_fail_closed_on_missing_or_malformed_scoped_inputs() {
     fs::write(service.join("relay/in/001.frame"), b"invalid").expect("write malformed IPC frame");
     assert!(run_l1_process_internal_role("service", service.clone()).is_err());
     fs::remove_dir_all(service).expect("remove service root");
+
+    let hostile_service = marked_root("hostile-service");
+    fs::create_dir_all(hostile_service.join("relay/in"))
+        .expect("create hostile relay input directory");
+    fs::write(hostile_service.join("relay/in/001.frame"), b"invalid")
+        .expect("write malformed hostile IPC frame");
+    assert!(
+        run_l1_process_internal_role("hostile-replay-service", hostile_service.clone()).is_err()
+    );
+    fs::remove_dir_all(hostile_service).expect("remove hostile service root");
+
+    let hostile_bob = marked_root("hostile-bob");
+    fs::create_dir(hostile_bob.join("direct")).expect("create hostile Bob direct directory");
+    fs::write(hostile_bob.join("direct/invitation.v2"), b"invalid")
+        .expect("write malformed hostile invitation");
+    assert!(run_l1_process_internal_role("hostile-replay-bob", hostile_bob.clone()).is_err());
+    fs::remove_dir_all(hostile_bob).expect("remove hostile Bob root");
+
+    let hostile_inspector = marked_root("hostile-inspector");
+    fs::create_dir(hostile_inspector.join("alice"))
+        .expect("create hostile inspector state directory");
+    fs::write(hostile_inspector.join("alice/resume.state"), b"invalid")
+        .expect("write malformed hostile inspector state");
+    assert!(
+        run_l1_process_internal_role("hostile-replay-inspector", hostile_inspector.clone())
+            .is_err()
+    );
+    fs::remove_dir_all(hostile_inspector).expect("remove hostile inspector root");
+
+    let hostile_alice = marked_root("hostile-alice");
+    assert!(run_l1_process_internal_role("hostile-replay-alice", hostile_alice.clone()).is_err());
+    fs::remove_dir_all(hostile_alice).expect("remove hostile Alice root");
+
+    let hostile_controller = marked_root("hostile-controller");
+    assert!(
+        run_l1_process_internal_role("hostile-replay-controller", hostile_controller.clone())
+            .is_err()
+    );
+    assert!(
+        !hostile_controller.exists(),
+        "failed hostile controller must still reap children and remove its root"
+    );
 }
 
 fn marked_root(label: &str) -> std::path::PathBuf {
