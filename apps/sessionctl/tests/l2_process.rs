@@ -20,6 +20,7 @@ mod checked {
         time::{Duration, Instant},
     };
 
+    use sessionctl::SessionCtlError;
     use sessionctl::l2_process::{
         L2HarnessProbe, L2ProcessCase, run_l2_process_case, run_l2_process_internal_role,
         run_l2_process_probe,
@@ -136,12 +137,26 @@ mod checked {
             L2HarnessProbe::DefectiveSchema,
             L2HarnessProbe::NonzeroLeaseGeneration,
             L2HarnessProbe::ChangedAttemptCeiling,
-            L2HarnessProbe::InviterRetryMutation,
-            L2HarnessProbe::JoinerRetryMutation,
         ] {
             assert!(
                 run_l2_process_probe(&executable(), probe).is_err(),
                 "probe {probe:?} must fail"
+            );
+        }
+    }
+
+    #[test]
+    fn retry_conflict_probes_report_only_confirmed_mutation_free_rejection() {
+        for probe in [
+            L2HarnessProbe::InviterRetryMutation,
+            L2HarnessProbe::JoinerRetryMutation,
+        ] {
+            assert!(
+                matches!(
+                    run_l2_process_probe(&executable(), probe),
+                    Err(SessionCtlError::Stage("L2 retry conflict confirmed"))
+                ),
+                "probe {probe:?} must prove the exact conflict outcome",
             );
         }
     }

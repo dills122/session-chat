@@ -29,7 +29,7 @@ use session_crypto_mls::{
 use session_protocol::{DepositCapability, LocalWelcomeDepositEndpoint, OpaqueEnvelope};
 use storage_sqlcipher::{
     InvitationState, InviterJoinTransaction, JoinerTransaction, MAXIMUM_WELCOME_DELIVERY_ATTEMPTS,
-    PersistenceFault, SqlCipherStorage, VaultKey, WelcomeOutboxState, fault_testing,
+    PersistenceFault, SqlCipherStorage, StoreError, VaultKey, WelcomeOutboxState, fault_testing,
 };
 use zeroize::{Zeroize, Zeroizing};
 
@@ -58,8 +58,10 @@ const MAX_EVIDENCE_BYTES: usize = 2_048;
 const MAX_LOCKFILE_BYTES: usize = 4 * 1024 * 1024;
 const MAX_TOOLCHAIN_BYTES: usize = 4_096;
 const MAX_DATABASE_BYTES: usize = 64 * 1024 * 1024;
+const MAX_APPLICATION_CHECKPOINTS: usize = 192;
 const FRAME_WAIT: Duration = Duration::from_secs(1);
 const CHILD_WAIT: Duration = Duration::from_secs(2);
+const CASE_WAIT: Duration = Duration::from_secs(120);
 const POLL_INTERVAL: Duration = Duration::from_millis(5);
 const BASELINE_NOW: u64 = 1_900_000_000;
 const RESERVATION_EXPIRES_AT: u64 = BASELINE_NOW + 300;
@@ -106,6 +108,10 @@ pub enum L2HarnessProbe {
 }
 
 impl L2HarnessProbe {
+    const fn is_retry_conflict(self) -> bool {
+        matches!(self, Self::InviterRetryMutation | Self::JoinerRetryMutation)
+    }
+
     const fn code(self) -> u8 {
         match self {
             Self::GracefulContinue => 1,
@@ -596,7 +602,6 @@ fn run_controller(
     let stdout = verifier.stdout.collect(CHILD_WAIT)?;
     let stderr = verifier.stderr.collect(CHILD_WAIT)?;
     let expected = config.case()?.expected();
-    let verifier_evidence = parse_verifier_evidence(&stdout, expected)?;
     if !stderr.is_empty() {
         return Err(stage("L2 verifier output"));
     }
@@ -610,6 +615,14 @@ fn run_controller(
         return Err(stage("L2 fixture cleanup"));
     }
     let handle_cleanup = prove_database_handle_cleanup(root)?;
+    if config.probe.is_retry_conflict() {
+        parse_retry_conflict_evidence(&stdout, expected)?;
+        if !handle_cleanup {
+            return Err(stage("L2 handle cleanup"));
+        }
+        return Err(stage("L2 retry conflict confirmed"));
+    }
+    let verifier_evidence = parse_verifier_evidence(&stdout, expected)?;
     Ok(ControllerEvidence {
         observed: verifier_evidence.observed,
         integrity: verifier_evidence.integrity,
@@ -623,6 +636,26 @@ fn run_controller(
         handle_cleanup,
         child_cleanup: true,
     })
+}
+
+fn parse_retry_conflict_evidence(
+    bytes: &[u8],
+    expected: OracleState,
+) -> Result<(), SessionCtlError> {
+    let text = std::str::from_utf8(bytes).map_err(|_| stage("L2 verifier output"))?;
+    let expected_oracle = format!("oracle={}", oracle_label(expected));
+    if text.lines().collect::<Vec<_>>()
+        != [
+            "role=verifier",
+            "result=retry-conflict-rejected",
+            expected_oracle.as_str(),
+            "conflict=exact",
+            "mutation_free=pass",
+        ]
+    {
+        return Err(stage("L2 verifier output"));
+    }
+    Ok(())
 }
 
 struct VerifierEvidence {
@@ -1122,17 +1155,28 @@ fn run_verifier(root: &Path) -> Result<(), SessionCtlError> {
     let fixture = read_fixture(root, VERIFIER_CASE_FIXTURE_NAME)?;
     let key = read_key(root, VERIFIER_KEY_NAME)?;
     let expected = config.case()?.expected();
-    verify_complete_state(root, &key, expected, &fixture, config.probe)?;
+    let outcome = verify_complete_state(root, &key, expected, &fixture, config.probe)?;
     if config.probe == L2HarnessProbe::LingeringHandle {
         let _connection = open_keyed_connection(&root.join(DATABASE_NAME), &key)?;
         thread::sleep(Duration::from_secs(10));
         return Err(stage("L2 lingering verifier"));
     }
-    print!(
-        "role=verifier\nresult=pass\noracle={}\nintegrity=pass\nschema=pass\nsemantic_oracle=pass\nexclusive_lock=pass\nexact_retry=pass\n",
-        oracle_label(expected)
-    );
+    match outcome {
+        VerificationOutcome::Complete => print!(
+            "role=verifier\nresult=pass\noracle={}\nintegrity=pass\nschema=pass\nsemantic_oracle=pass\nexclusive_lock=pass\nexact_retry=pass\n",
+            oracle_label(expected)
+        ),
+        VerificationOutcome::RetryConflict => print!(
+            "role=verifier\nresult=retry-conflict-rejected\noracle={}\nconflict=exact\nmutation_free=pass\n",
+            oracle_label(expected)
+        ),
+    }
     Ok(())
+}
+
+enum VerificationOutcome {
+    Complete,
+    RetryConflict,
 }
 
 fn verify_complete_state(
@@ -1141,7 +1185,7 @@ fn verify_complete_state(
     expected: OracleState,
     fixture: &CaseFixture,
     probe: L2HarnessProbe,
-) -> Result<(), SessionCtlError> {
+) -> Result<VerificationOutcome, SessionCtlError> {
     let storage = SqlCipherStorage::open(
         &root.join(DATABASE_NAME),
         VaultKey::new(**key).map_err(|_| stage("L2 production reopen"))?,
@@ -1241,20 +1285,31 @@ fn verify_complete_state(
     drop(connection);
 
     let before_retry = database_digest(root)?;
-    match probe {
+    let retry_mutation = match probe {
         L2HarnessProbe::InviterRetryMutation => {
             inject_retry_mutation(root, key, fixture, Scenario::InviterTransaction)?;
+            Some(Scenario::InviterTransaction)
         }
         L2HarnessProbe::JoinerRetryMutation => {
             inject_retry_mutation(root, key, fixture, Scenario::JoinerTransaction)?;
+            Some(Scenario::JoinerTransaction)
         }
-        _ => {}
+        _ => None,
+    };
+    if let Some(scenario) = retry_mutation {
+        let injected_digest = database_digest(root)?;
+        require_exact_retry_conflict(root, key, expected, fixture, expected_welcome_bytes)?;
+        if database_digest(root)? != injected_digest {
+            return Err(stage("L2 retry conflict mutation"));
+        }
+        verify_retry_mutation(root, key, fixture, scenario)?;
+        return Ok(VerificationOutcome::RetryConflict);
     }
     perform_exact_retry(root, key, expected, fixture, expected_welcome_bytes)?;
     if database_digest(root)? != before_retry {
         return Err(stage("L2 exact retry digest"));
     }
-    Ok(())
+    Ok(VerificationOutcome::Complete)
 }
 
 fn database_digest(root: &Path) -> Result<[u8; 32], SessionCtlError> {
@@ -1305,7 +1360,41 @@ fn perform_exact_retry(
     if matches!(expected, OracleState::InviterOld | OracleState::JoinerOld) {
         return Ok(());
     }
-    let mut storage = SqlCipherStorage::open(
+    let (mut storage, state) = prepare_exact_retry(root, key, expected, fixture, expected_welcome)?;
+    GroupStateStorage::write(&mut storage, state, Vec::new(), Vec::new())
+        .map_err(|_| stage("L2 exact retry"))?;
+    if expected == OracleState::JoinerNew {
+        KeyPackageStorage::delete(&mut storage, &fixture.key_package_reference)
+            .map_err(|_| stage("L2 exact retry"))?;
+    }
+    verify_production_semantics(&storage, expected, fixture)
+}
+
+fn require_exact_retry_conflict(
+    root: &Path,
+    key: &Zeroizing<[u8; KEY_BYTES]>,
+    expected: OracleState,
+    fixture: &CaseFixture,
+    expected_welcome: Option<&[u8]>,
+) -> Result<(), SessionCtlError> {
+    let (mut storage, state) = prepare_exact_retry(root, key, expected, fixture, expected_welcome)?;
+    if GroupStateStorage::write(&mut storage, state, Vec::new(), Vec::new())
+        != Err(StoreError::Conflict)
+    {
+        return Err(stage("L2 retry conflict outcome"));
+    }
+    drop(storage);
+    Ok(())
+}
+
+fn prepare_exact_retry(
+    root: &Path,
+    key: &Zeroizing<[u8; KEY_BYTES]>,
+    expected: OracleState,
+    fixture: &CaseFixture,
+    expected_welcome: Option<&[u8]>,
+) -> Result<(SqlCipherStorage, GroupState), SessionCtlError> {
+    let storage = SqlCipherStorage::open(
         &root.join(DATABASE_NAME),
         VaultKey::new(**key).map_err(|_| stage("L2 exact retry"))?,
     )
@@ -1340,8 +1429,6 @@ fn perform_exact_retry(
                     PersistenceFault::None,
                 )
                 .map_err(|_| stage("L2 exact retry"))?;
-            GroupStateStorage::write(&mut storage, state, Vec::new(), Vec::new())
-                .map_err(|_| stage("L2 exact retry"))?;
         }
         OracleState::JoinerNew => {
             storage
@@ -1355,21 +1442,130 @@ fn perform_exact_retry(
                     PersistenceFault::None,
                 )
                 .map_err(|_| stage("L2 exact retry"))?;
-            GroupStateStorage::write(&mut storage, state, Vec::new(), Vec::new())
-                .map_err(|_| stage("L2 exact retry"))?;
-            KeyPackageStorage::delete(&mut storage, &fixture.key_package_reference)
-                .map_err(|_| stage("L2 exact retry"))?;
         }
-        OracleState::InviterOld | OracleState::JoinerOld => unreachable!("handled above"),
+        OracleState::InviterOld | OracleState::JoinerOld => {
+            return Err(stage("L2 exact retry oracle"));
+        }
     }
-    verify_production_semantics(&storage, expected, fixture)
+    Ok((storage, state))
+}
+
+fn verify_retry_mutation(
+    root: &Path,
+    key: &Zeroizing<[u8; KEY_BYTES]>,
+    fixture: &CaseFixture,
+    scenario: Scenario,
+) -> Result<(), SessionCtlError> {
+    let connection = open_keyed_connection(&root.join(DATABASE_NAME), key)?;
+    let retained = match scenario {
+        Scenario::InviterTransaction => connection
+            .query_row(
+                "SELECT approval_record FROM inviter_joins WHERE transaction_id = ?1",
+                params![fixture.transaction_id],
+                |row| row.get::<_, Vec<u8>>(0),
+            )
+            .map(|value| value == b"l2-retry-defect")
+            .map_err(|_| stage("L2 retry conflict state"))?,
+        Scenario::JoinerTransaction => connection
+            .query_row(
+                "SELECT key_package_ref FROM joiner_commits WHERE transaction_id = ?1",
+                params![fixture.transaction_id],
+                |row| row.get::<_, Vec<u8>>(0),
+            )
+            .map(|value| value == [0xD1; 32])
+            .map_err(|_| stage("L2 retry conflict state"))?,
+    };
+    if !retained {
+        return Err(stage("L2 retry conflict state"));
+    }
+    Ok(())
 }
 
 fn advance_writer_to_target(
     writer: &mut ManagedChild,
     target: ControlFrame,
 ) -> Result<ControlFrame, SessionCtlError> {
-    let checkpoints: &[Checkpoint] = match target.scenario() {
+    let mut traversal = CheckpointTraversal::new(target)?;
+    let deadline = Instant::now()
+        .checked_add(CASE_WAIT)
+        .ok_or_else(|| stage("L2 case timeout"))?;
+    for _ in 0..MAX_APPLICATION_CHECKPOINTS {
+        let wait = deadline
+            .checked_duration_since(Instant::now())
+            .ok_or_else(|| stage("L2 case timeout"))?
+            .min(FRAME_WAIT);
+        let encoded = writer.stdout.read_exact_frame(CONTROL_FRAME_BYTES, wait)?;
+        let observed = ControlFrame::decode(&encoded).map_err(|_| stage("L2 checkpoint"))?;
+        if traversal.observe(observed)? {
+            return Ok(observed);
+        }
+        writer.write_stdin(&observed.acknowledgement().encode())?;
+    }
+    Err(stage("L2 checkpoint bound"))
+}
+
+struct CheckpointTraversal {
+    target: ControlFrame,
+    checkpoints: &'static [Checkpoint],
+    target_position: usize,
+    previous: Option<(usize, u8)>,
+}
+
+impl CheckpointTraversal {
+    fn new(target: ControlFrame) -> Result<Self, SessionCtlError> {
+        let checkpoints = scenario_checkpoints(target.scenario());
+        let target_position = checkpoints
+            .iter()
+            .position(|checkpoint| *checkpoint == target.checkpoint())
+            .ok_or_else(|| stage("L2 checkpoint"))?;
+        Ok(Self {
+            target,
+            checkpoints,
+            target_position,
+            previous: None,
+        })
+    }
+
+    fn observe(&mut self, observed: ControlFrame) -> Result<bool, SessionCtlError> {
+        if observed.case_id() != self.target.case_id()
+            || observed.scenario() != self.target.scenario()
+            || observed.role() != Role::Writer
+        {
+            return Err(stage("L2 checkpoint"));
+        }
+        let position = self
+            .checkpoints
+            .iter()
+            .position(|checkpoint| *checkpoint == observed.checkpoint())
+            .ok_or_else(|| stage("L2 checkpoint"))?;
+        if let Some((previous_position, previous_occurrence)) = self.previous {
+            let ordered = if position == previous_position {
+                observed.occurrence() == previous_occurrence.saturating_add(1)
+            } else {
+                position > previous_position && observed.occurrence() == 0
+            };
+            if !ordered {
+                return Err(stage("L2 checkpoint"));
+            }
+        } else if observed.occurrence() != 0 {
+            return Err(stage("L2 checkpoint"));
+        }
+        self.previous = Some((position, observed.occurrence()));
+        if observed == self.target {
+            return Ok(true);
+        }
+        if position > self.target_position
+            || (position == self.target_position
+                && observed.occurrence() >= self.target.occurrence())
+        {
+            return Err(stage("L2 checkpoint"));
+        }
+        Ok(false)
+    }
+}
+
+fn scenario_checkpoints(scenario: Scenario) -> &'static [Checkpoint] {
+    match scenario {
         Scenario::InviterTransaction => &[
             Checkpoint::InviterBeforeBegin,
             Checkpoint::InviterAfterGroupUpsert,
@@ -1392,51 +1588,7 @@ fn advance_writer_to_target(
             Checkpoint::JoinerBeforeCommit,
             Checkpoint::JoinerAfterCommitReturn,
         ],
-    };
-    let mut previous: Option<(usize, u8)> = None;
-    for _ in 0..64 {
-        let encoded = writer
-            .stdout
-            .read_exact_frame(CONTROL_FRAME_BYTES, FRAME_WAIT)?;
-        let observed = ControlFrame::decode(&encoded).map_err(|_| stage("L2 checkpoint"))?;
-        if observed.case_id() != target.case_id()
-            || observed.scenario() != target.scenario()
-            || observed.role() != Role::Writer
-        {
-            return Err(stage("L2 checkpoint"));
-        }
-        let position = checkpoints
-            .iter()
-            .position(|checkpoint| *checkpoint == observed.checkpoint())
-            .ok_or_else(|| stage("L2 checkpoint"))?;
-        if let Some((previous_position, previous_occurrence)) = previous {
-            let ordered = if position == previous_position {
-                observed.occurrence() == previous_occurrence.saturating_add(1)
-            } else {
-                position > previous_position && observed.occurrence() == 0
-            };
-            if !ordered {
-                return Err(stage("L2 checkpoint"));
-            }
-        } else if observed.occurrence() != 0 {
-            return Err(stage("L2 checkpoint"));
-        }
-        previous = Some((position, observed.occurrence()));
-        if observed == target {
-            return Ok(observed);
-        }
-        let target_position = checkpoints
-            .iter()
-            .position(|checkpoint| *checkpoint == target.checkpoint())
-            .ok_or_else(|| stage("L2 checkpoint"))?;
-        if position > target_position
-            || (position == target_position && observed.occurrence() >= target.occurrence())
-        {
-            return Err(stage("L2 checkpoint"));
-        }
-        writer.write_stdin(&observed.acknowledgement().encode())?;
     }
-    Err(stage("L2 checkpoint"))
 }
 
 fn verify_production_semantics(
@@ -2388,6 +2540,63 @@ fn hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn canonical_checkpoint_traversal_accepts_the_maximum_depth_legal_trace() {
+        let case_id = CaseId::new([0xA5; 16]).expect("case ID");
+        let target =
+            ControlFrame::new_checkpoint(case_id, Checkpoint::InviterBeforeShadowFinalize, 0)
+                .expect("target");
+        let mut traversal = CheckpointTraversal::new(target).expect("traversal");
+        let mut frames = vec![
+            ControlFrame::new_checkpoint(case_id, Checkpoint::InviterBeforeBegin, 0)
+                .expect("before begin"),
+            ControlFrame::new_checkpoint(case_id, Checkpoint::InviterAfterGroupUpsert, 0)
+                .expect("group upsert"),
+        ];
+        for occurrence in 0..64 {
+            frames.push(
+                ControlFrame::new_checkpoint(
+                    case_id,
+                    Checkpoint::InviterAfterEpochInsert,
+                    occurrence,
+                )
+                .expect("epoch insert"),
+            );
+        }
+        for occurrence in 0..64 {
+            frames.push(
+                ControlFrame::new_checkpoint(
+                    case_id,
+                    Checkpoint::InviterAfterEpochUpdate,
+                    occurrence,
+                )
+                .expect("epoch update"),
+            );
+        }
+        for checkpoint in [
+            Checkpoint::InviterAfterJoinInsert,
+            Checkpoint::InviterAfterReservationConsumed,
+            Checkpoint::InviterBeforeCommit,
+            Checkpoint::InviterAfterCommitReturn,
+            Checkpoint::InviterBeforeShadowFinalize,
+        ] {
+            frames.push(
+                ControlFrame::new_checkpoint(case_id, checkpoint, 0).expect("later checkpoint"),
+            );
+        }
+
+        assert!(frames.len() > 64);
+        assert!(frames.len() <= MAX_APPLICATION_CHECKPOINTS);
+        for frame in &frames[..frames.len() - 1] {
+            assert!(!traversal.observe(*frame).expect("ordered checkpoint"));
+        }
+        assert!(
+            traversal
+                .observe(*frames.last().expect("target frame"))
+                .expect("target checkpoint")
+        );
+    }
 
     #[test]
     fn inherited_child_output_cannot_block_pipe_reader_drop() {
