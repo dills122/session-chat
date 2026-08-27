@@ -130,6 +130,36 @@ fn independent_process_runner_rejects_public_arguments() {
 }
 
 #[test]
+fn hostile_replayed_join_is_rejected_before_durable_membership_mutation() {
+    let root = marked_root("hostile-replay");
+    for directory in ["direct", "relay", "relay/in", "relay/out", "alice"] {
+        fs::create_dir(root.join(directory)).expect("create hostile process directory");
+    }
+
+    let output = Command::new(env!("CARGO_BIN_EXE_sessionctl-l1"))
+        .args(["--internal-role", "hostile-replay-controller"])
+        .arg(&root)
+        .output()
+        .expect("run hostile replay conformance scenario");
+
+    let controller_removed_root = !root.exists();
+    if !controller_removed_root {
+        fs::remove_dir_all(&root).expect("remove failed hostile replay root");
+    }
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    assert!(output.stdout.len() <= MAX_EVIDENCE_BYTES);
+    assert_eq!(
+        output.stdout,
+        b"version=1\nscenario=E2E-JOIN-002\ncase=replayed-protected-join\nresult=pass\nreplay=rejected\nmembership=unchanged\nredaction=pass\nchild_cleanup=pass\ndirectory_cleanup=pass\n"
+    );
+    assert!(
+        controller_removed_root,
+        "controller must remove the scenario root"
+    );
+}
+
+#[test]
 fn internal_role_boundary_rejects_unmarked_and_unknown_scopes() {
     assert!(run_l1_process_internal_role("bob", "/".into()).is_err());
 

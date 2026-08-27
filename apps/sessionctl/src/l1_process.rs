@@ -17,8 +17,8 @@ use std::{
 };
 
 use admission_capability::{
-    CapabilityAdmissionPolicy, CapabilityAdmissionVerifier, CapabilityApprovalOutcome,
-    ManualApprovalDecision,
+    CapabilityAdmissionError, CapabilityAdmissionPolicy, CapabilityAdmissionVerifier,
+    CapabilityApprovalOutcome, ManualApprovalDecision,
 };
 use aws_lc_rs::digest::{SHA256, digest};
 use session_admission::{AdmissionMethod, PendingAdmission};
@@ -216,6 +216,11 @@ pub fn run_l1_process_internal_role(role: &str, root: PathBuf) -> Result<(), Ses
         "alice-init" => run_alice_init(&root),
         "alice-resume" => run_alice_resume(&root),
         "bob" => run_bob(&root),
+        "hostile-replay-controller" => run_hostile_replay_controller(&root),
+        "hostile-replay-service" => run_hostile_replay_service(&root),
+        "hostile-replay-alice" => run_hostile_replay_alice(&root),
+        "hostile-replay-bob" => run_hostile_replay_bob(&root),
+        "hostile-replay-inspector" => run_hostile_replay_inspector(&root),
         _ => Err(stage("process role")),
     }
 }
@@ -379,6 +384,236 @@ fn run_service(root: &Path) -> Result<(), SessionCtlError> {
     }
     print!("role=untrusted-service\nresult=pass\nforwarded=7\n");
     Ok(())
+}
+
+fn run_hostile_replay_controller(root: &Path) -> Result<(), SessionCtlError> {
+    let executable = std::env::current_exe().at_stage("hostile process executable")?;
+    let mut children = ChildSet::new();
+    let scenario_result = (|| {
+        children.spawn(&executable, "hostile-replay-service", root)?;
+        children.spawn(&executable, "hostile-replay-bob", root)?;
+        children.spawn(&executable, "hostile-replay-alice", root)?;
+
+        let alice = children.wait_role("hostile-replay-alice", CHILD_WAIT)?;
+        require_child_output(
+            &alice,
+            b"role=alice\nresult=pass\nreplay=rejected\nmembership=unchanged\n",
+        )?;
+        children.spawn(&executable, "hostile-replay-inspector", root)?;
+        let inspector = children.wait_role("hostile-replay-inspector", CHILD_WAIT)?;
+        require_child_output(
+            &inspector,
+            b"role=inspector\nresult=pass\ndurable_membership=unchanged\n",
+        )?;
+        let bob = children.wait_role("hostile-replay-bob", CHILD_WAIT)?;
+        require_child_output(&bob, b"role=bob\nresult=pass\nrequests=2\n")?;
+        let service = children.wait_role("hostile-replay-service", CHILD_WAIT)?;
+        require_child_output(
+            &service,
+            b"role=untrusted-service\nresult=pass\nforwarded=2\n",
+        )?;
+        if !children.is_empty() {
+            return Err(stage("hostile process cleanup"));
+        }
+        Ok(())
+    })();
+    let child_cleanup_result = children.cleanup();
+    let directory_cleanup_result = validate_root(root)
+        .and_then(|()| fs::remove_dir_all(root).at_stage("hostile process root removal"));
+    scenario_result?;
+    child_cleanup_result?;
+    directory_cleanup_result?;
+
+    print!(
+        "version=1\nscenario=E2E-JOIN-002\ncase=replayed-protected-join\nresult=pass\nreplay=rejected\nmembership=unchanged\nredaction=pass\nchild_cleanup=pass\ndirectory_cleanup=pass\n"
+    );
+    Ok(())
+}
+
+fn run_hostile_replay_service(root: &Path) -> Result<(), SessionCtlError> {
+    for sequence in 1..=2 {
+        let encoded =
+            read_bounded_wait(&relay_in(root, sequence), MAX_IPC_FRAME_BYTES, FRAME_WAIT)?;
+        let frame = IpcFrame::decode(&encoded)?;
+        frame.require(FrameKind::ProtectedJoin, sequence)?;
+        atomic_write(&relay_out(root, sequence), &encoded, MAX_IPC_FRAME_BYTES)?;
+    }
+    print!("role=untrusted-service\nresult=pass\nforwarded=2\n");
+    Ok(())
+}
+
+fn run_hostile_replay_alice(root: &Path) -> Result<(), SessionCtlError> {
+    let database_key = Zeroizing::new(random_nonzero::<32>()?);
+    let storage = SqlCipherStorage::create(
+        &database_path(root),
+        VaultKey::new(*database_key).at_stage("hostile process owner key")?,
+    )
+    .at_stage("hostile process owner store")?;
+    let group_id = SessionGroupId::new(random_nonzero()?).at_stage("hostile process group ID")?;
+    let alice = create_durable_client_with_storage(
+        group_id,
+        storage.clone(),
+        storage.clone(),
+        storage.clone(),
+    )
+    .at_stage("hostile process Alice client")?;
+    let group = alice
+        .create_group(group_id, NOW)
+        .at_stage("hostile process Alice group")?;
+
+    let protector = AwsLcInvitationJoinProtector::new();
+    let generated = protector
+        .generate_capability_invitation(NOW, INVITATION_EXPIRES_AT)
+        .at_stage("hostile process invitation generation")?;
+    let mut registry = InvitationRegistry::new(
+        InvitationPolicy::new(3_600, 5, 8).at_stage("hostile process invitation policy")?,
+    );
+    let issued = registry
+        .issue_v2(generated, NOW)
+        .at_stage("hostile process invitation issue")?;
+    let encoded_invitation = issued
+        .encode_canonical()
+        .at_stage("hostile process invitation encoding")?;
+    atomic_write(
+        &direct_invitation_path(root),
+        &encoded_invitation,
+        MAX_WIRE_OBJECT_BYTES,
+    )?;
+
+    let first_bytes = receive_protected_join(root, 1)?;
+    let second_bytes = receive_protected_join(root, 2)?;
+    if first_bytes != second_bytes {
+        return Err(stage("hostile process exact replay"));
+    }
+    let first = ProtectedJoinRequest::decode_canonical(&first_bytes)
+        .at_stage("hostile process first protected join")?;
+    let second = ProtectedJoinRequest::decode_canonical(&second_bytes)
+        .at_stage("hostile process replayed protected join")?;
+    let opened_first = protector
+        .open_capability_request(issued.private_key(), issued.invitation(), &first)
+        .at_stage("hostile process first join opening")?;
+    let opened_second = protector
+        .open_capability_request(issued.private_key(), issued.invitation(), &second)
+        .at_stage("hostile process replayed join opening")?;
+    let mut admission = CapabilityAdmissionVerifier::new(
+        CapabilityAdmissionPolicy::new(3_600, 5, 8).at_stage("hostile process admission policy")?,
+    );
+    let _reserved = admission
+        .verify_and_reserve(opened_first, NOW)
+        .at_stage("hostile process first reservation")?;
+    if !matches!(
+        admission.verify_and_reserve(opened_second, NOW),
+        Err(CapabilityAdmissionError::Replay)
+    ) || admission.pending_count() != 1
+        || group.epoch() != 0
+        || group.member_count() != 1
+    {
+        return Err(stage("hostile process replay rejection"));
+    }
+    drop(group);
+    drop(alice);
+    drop(storage);
+    write_private_state(root, &database_key, group_id)?;
+    print!("role=alice\nresult=pass\nreplay=rejected\nmembership=unchanged\n");
+    Ok(())
+}
+
+fn run_hostile_replay_bob(root: &Path) -> Result<(), SessionCtlError> {
+    let invitation_bytes = Zeroizing::new(read_bounded_wait(
+        &direct_invitation_path(root),
+        MAX_WIRE_OBJECT_BYTES,
+        FRAME_WAIT,
+    )?);
+    let invitation = SignedCapabilityInvitationV2::decode_and_verify(&invitation_bytes)
+        .at_stage("hostile process invitation decode")?;
+    let mut welcome_transport = LocalMemoryWelcomeTransport::new(
+        LocalMailboxPolicy::new(300, 1).at_stage("hostile process Welcome policy")?,
+    )
+    .at_stage("hostile process Welcome transport")?;
+    let mailbox = welcome_transport
+        .create_welcome_mailbox(REQUEST_EXPIRES_AT, NOW)
+        .at_stage("hostile process Welcome mailbox")?;
+    let (deposit_endpoint, _, _) = mailbox.into_parts();
+    let bob = create_client().at_stage("hostile process Bob client")?;
+    let key_package = bob
+        .generate_key_package(NOW)
+        .at_stage("hostile process Bob KeyPackage")?;
+    let validated = create_key_package_validator()
+        .validate_key_package(key_package.as_bytes(), NOW)
+        .at_stage("hostile process Bob KeyPackage validation")?;
+    let request = CapabilityJoinRequest::new(
+        InvitationJoinBinding::new(
+            *invitation.invitation_id(),
+            *invitation.join_challenge(),
+            *invitation.invitation_key_id(),
+            *invitation.inviter_verifying_key(),
+        )
+        .at_stage("hostile process invitation binding")?,
+        JoinRequestBinding::new(
+            random_nonzero()?,
+            NOW,
+            REQUEST_EXPIRES_AT,
+            random_nonzero()?,
+        )
+        .at_stage("hostile process request binding")?,
+        MlsKeyPackageBinding::new(
+            *validated.key_package_reference(),
+            key_package.as_bytes().to_vec(),
+            *validated.credential_identity(),
+            *validated.leaf_signature_key(),
+        )
+        .at_stage("hostile process MLS binding")?,
+        deposit_endpoint,
+    )
+    .at_stage("hostile process join request")?;
+    let protected = AwsLcInvitationJoinProtector::new()
+        .seal_capability_request(&invitation, &request)
+        .at_stage("hostile process join protection")?
+        .encode_canonical()
+        .at_stage("hostile process join encoding")?;
+    write_frame(
+        &relay_in(root, 1),
+        IpcFrame::new(FrameKind::ProtectedJoin, 1, vec![protected.clone()])?,
+    )?;
+    write_frame(
+        &relay_in(root, 2),
+        IpcFrame::new(FrameKind::ProtectedJoin, 2, vec![protected])?,
+    )?;
+    print!("role=bob\nresult=pass\nrequests=2\n");
+    Ok(())
+}
+
+fn run_hostile_replay_inspector(root: &Path) -> Result<(), SessionCtlError> {
+    let (database_key, group_id) = read_private_state(root)?;
+    let storage = SqlCipherStorage::open(
+        &database_path(root),
+        VaultKey::new(*database_key).at_stage("hostile process reopen key")?,
+    )
+    .at_stage("hostile process owner reopen")?;
+    let alice = load_durable_client_with_storage(
+        group_id,
+        storage.clone(),
+        storage.clone(),
+        storage.clone(),
+    )
+    .at_stage("hostile process Alice identity reload")?;
+    if alice.load_group(group_id).is_ok() {
+        return Err(stage("hostile process durable membership"));
+    }
+    print!("role=inspector\nresult=pass\ndurable_membership=unchanged\n");
+    Ok(())
+}
+
+fn receive_protected_join(root: &Path, sequence: u8) -> Result<Vec<u8>, SessionCtlError> {
+    let frame = IpcFrame::decode(&read_bounded_wait(
+        &relay_out(root, sequence),
+        MAX_IPC_FRAME_BYTES,
+        FRAME_WAIT,
+    )?)?;
+    let mut parts = frame.require(FrameKind::ProtectedJoin, sequence)?;
+    parts
+        .pop()
+        .ok_or_else(|| stage("hostile process protected join"))
 }
 
 fn run_alice_init(root: &Path) -> Result<(), SessionCtlError> {
