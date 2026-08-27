@@ -1,8 +1,13 @@
 //! Checked protocol used only by the retained L2 storage-fault build.
 
-use std::sync::{Arc, Mutex};
+use std::{
+    path::Path,
+    sync::{Arc, Mutex},
+};
 
 use thiserror::Error;
+
+use super::{OpenMode, SqlCipherStorage, StoreError, VaultKey};
 
 const MAGIC: [u8; 8] = *b"SCL2CTL1";
 const PROTOCOL_VERSION: u8 = 1;
@@ -10,6 +15,46 @@ const MAX_OCCURRENCE: u8 = 64;
 
 /// Exact byte length of one canonical L2 control frame.
 pub const CONTROL_FRAME_BYTES: usize = 30;
+/// Evidence bit set only when the checked fault-testing cfg is compiled.
+pub const FAULT_BUILD: bool = true;
+/// One closed SQLite VFS name accepted by the cfg-only connection seam.
+pub const FAULT_VFS_NAME: &str = "session-chat-storage-fault-v1";
+
+/// Creates a fault-observed store while retaining SQLite's default VFS.
+pub fn create(
+    path: &Path,
+    key: VaultKey,
+    observer: FaultObserver,
+) -> Result<SqlCipherStorage, StoreError> {
+    SqlCipherStorage::open_internal(path, key, true, OpenMode::ObservedDefault(observer))
+}
+
+/// Opens a fault-observed store while retaining SQLite's default VFS.
+pub fn open(
+    path: &Path,
+    key: VaultKey,
+    observer: FaultObserver,
+) -> Result<SqlCipherStorage, StoreError> {
+    SqlCipherStorage::open_internal(path, key, false, OpenMode::ObservedDefault(observer))
+}
+
+/// Creates a fault-observed store through the one closed named VFS.
+pub fn create_with_fault_vfs(
+    path: &Path,
+    key: VaultKey,
+    observer: FaultObserver,
+) -> Result<SqlCipherStorage, StoreError> {
+    SqlCipherStorage::open_internal(path, key, true, OpenMode::ObservedFaultVfs(observer))
+}
+
+/// Opens a fault-observed store through the one closed named VFS.
+pub fn open_with_fault_vfs(
+    path: &Path,
+    key: VaultKey,
+    observer: FaultObserver,
+) -> Result<SqlCipherStorage, StoreError> {
+    SqlCipherStorage::open_internal(path, key, false, OpenMode::ObservedFaultVfs(observer))
+}
 
 /// Public, nonzero identifier for one disposable fault case.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

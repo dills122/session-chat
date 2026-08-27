@@ -294,6 +294,16 @@ struct StorageInner {
     staged_inviter: Option<StagedInviter>,
     staged_joiner: Option<StagedJoiner>,
     pending_joiner: Option<PendingJoiner>,
+    #[cfg(session_chat_storage_fault_testing)]
+    fault_observer: Option<fault_testing::FaultObserver>,
+}
+
+enum OpenMode {
+    Default,
+    #[cfg(session_chat_storage_fault_testing)]
+    ObservedDefault(fault_testing::FaultObserver),
+    #[cfg(session_chat_storage_fault_testing)]
+    ObservedFaultVfs(fault_testing::FaultObserver),
 }
 
 /// Cloneable SQLCipher provider handle shared by the MLS and application layers.
@@ -310,12 +320,12 @@ pub struct SqlCipherStorage {
 impl SqlCipherStorage {
     /// Creates a new encrypted database and schema.
     pub fn create(path: &Path, key: VaultKey) -> Result<Self, StoreError> {
-        Self::open_internal(path, key, true)
+        Self::open_internal(path, key, true, OpenMode::Default)
     }
 
     /// Opens an existing encrypted database without attempting migration.
     pub fn open(path: &Path, key: VaultKey) -> Result<Self, StoreError> {
-        Self::open_internal(path, key, false)
+        Self::open_internal(path, key, false, OpenMode::Default)
     }
 
     /// Persists one exact inviter-owned reservation before membership begins.
@@ -520,12 +530,32 @@ impl SqlCipherStorage {
         self.inner.lock().map_err(|_| StoreError::Rejected)
     }
 
-    fn open_internal(path: &Path, key: VaultKey, create: bool) -> Result<Self, StoreError> {
+    fn open_internal(
+        path: &Path,
+        key: VaultKey,
+        create: bool,
+        mode: OpenMode,
+    ) -> Result<Self, StoreError> {
         let mut flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX;
         if create {
             flags |= OpenFlags::SQLITE_OPEN_CREATE;
         }
-        let connection = Connection::open_with_flags(path, flags)?;
+        let connection = match &mode {
+            OpenMode::Default => Connection::open_with_flags(path, flags)?,
+            #[cfg(session_chat_storage_fault_testing)]
+            OpenMode::ObservedDefault(_) => Connection::open_with_flags(path, flags)?,
+            #[cfg(session_chat_storage_fault_testing)]
+            OpenMode::ObservedFaultVfs(_) => {
+                Connection::open_with_flags_and_vfs(path, flags, fault_testing::FAULT_VFS_NAME)?
+            }
+        };
+        #[cfg(session_chat_storage_fault_testing)]
+        let fault_observer = match mode {
+            OpenMode::Default => None,
+            OpenMode::ObservedDefault(observer) | OpenMode::ObservedFaultVfs(observer) => {
+                Some(observer)
+            }
+        };
 
         // Source: https://www.zetetic.net/sqlcipher/sqlcipher-api/#pragma-key
         connection.execute_batch(&key.raw_key_pragma())?;
@@ -578,6 +608,8 @@ impl SqlCipherStorage {
                 staged_inviter: None,
                 staged_joiner: None,
                 pending_joiner: None,
+                #[cfg(session_chat_storage_fault_testing)]
+                fault_observer,
             })),
             lease_scope: Arc::new(()),
         })
@@ -931,6 +963,8 @@ impl GroupStateStorage for SqlCipherStorage {
     ) -> Result<(), Self::Error> {
         validate_mls_write(&state, &epoch_inserts, &epoch_updates)?;
         let mut inner = self.lock()?;
+        #[cfg(session_chat_storage_fault_testing)]
+        let fault_observer = inner.fault_observer.clone();
         if let Some(staged) = inner.staged_inviter.take() {
             return commit_inviter(
                 &mut inner.connection,
@@ -938,10 +972,20 @@ impl GroupStateStorage for SqlCipherStorage {
                 &state,
                 &epoch_inserts,
                 &epoch_updates,
+                #[cfg(session_chat_storage_fault_testing)]
+                fault_observer.as_ref(),
             );
         }
         let staged = inner.staged_joiner.take().ok_or(StoreError::Rejected)?;
-        begin_joiner(&mut inner, staged, &state, &epoch_inserts, &epoch_updates)
+        begin_joiner(
+            &mut inner,
+            staged,
+            &state,
+            &epoch_inserts,
+            &epoch_updates,
+            #[cfg(session_chat_storage_fault_testing)]
+            fault_observer.as_ref(),
+        )
     }
 
     fn max_epoch_id(&self, group_id: &[u8]) -> Result<Option<u64>, Self::Error> {
@@ -964,6 +1008,8 @@ impl KeyPackageStorage for SqlCipherStorage {
             return Err(StoreError::Rejected);
         }
         let mut inner = self.lock()?;
+        #[cfg(session_chat_storage_fault_testing)]
+        let fault_observer = inner.fault_observer.clone();
         let pending = inner.pending_joiner.take().ok_or(StoreError::Rejected)?;
         if id != pending.transaction.key_package_reference {
             rollback(&inner.connection);
@@ -976,6 +1022,17 @@ impl KeyPackageStorage for SqlCipherStorage {
                 Ok(())
             };
         }
+        #[cfg(session_chat_storage_fault_testing)]
+        if emit_fault_checkpoint(
+            fault_observer.as_ref(),
+            fault_testing::Checkpoint::JoinerBeforeKeyPackageDelete,
+            0,
+        )
+        .is_err()
+        {
+            rollback(&inner.connection);
+            return Err(StoreError::Rejected);
+        }
         let changed = match inner.connection.execute(
             "DELETE FROM key_packages WHERE key_package_ref = ?1",
             params![id],
@@ -986,18 +1043,47 @@ impl KeyPackageStorage for SqlCipherStorage {
                 return Err(StoreError::Rejected);
             }
         };
-        if changed != 1 || pending.fault == PersistenceFault::BeforeCommit {
+        if changed != 1 {
             rollback(&inner.connection);
-            return if pending.fault == PersistenceFault::BeforeCommit {
-                Err(StoreError::InjectedFailure)
-            } else {
-                Err(StoreError::Rejected)
-            };
+            return Err(StoreError::Rejected);
+        }
+        #[cfg(session_chat_storage_fault_testing)]
+        if emit_fault_checkpoint(
+            fault_observer.as_ref(),
+            fault_testing::Checkpoint::JoinerAfterKeyPackageDelete,
+            0,
+        )
+        .is_err()
+        {
+            rollback(&inner.connection);
+            return Err(StoreError::Rejected);
+        }
+        #[cfg(session_chat_storage_fault_testing)]
+        if emit_fault_checkpoint(
+            fault_observer.as_ref(),
+            fault_testing::Checkpoint::JoinerBeforeCommit,
+            0,
+        )
+        .is_err()
+        {
+            rollback(&inner.connection);
+            return Err(StoreError::Rejected);
+        }
+        if pending.fault == PersistenceFault::BeforeCommit {
+            rollback(&inner.connection);
+            return Err(StoreError::InjectedFailure);
         }
         if inner.connection.execute_batch("COMMIT;").is_err() {
             rollback(&inner.connection);
             return Err(StoreError::Rejected);
         }
+        #[cfg(session_chat_storage_fault_testing)]
+        emit_fault_checkpoint(
+            fault_observer.as_ref(),
+            fault_testing::Checkpoint::JoinerAfterCommitReturn,
+            0,
+        )
+        .map_err(|_| StoreError::OutcomeUnknown)?;
         if pending.fault == PersistenceFault::AfterCommit {
             Err(StoreError::OutcomeUnknown)
         } else {
@@ -1481,11 +1567,20 @@ fn commit_inviter(
     state: &GroupState,
     epoch_inserts: &[EpochRecord],
     epoch_updates: &[EpochRecord],
+    #[cfg(session_chat_storage_fault_testing)] fault_observer: Option<
+        &fault_testing::FaultObserver,
+    >,
 ) -> Result<(), StoreError> {
     let commit = &staged.transaction;
     if state.id.as_slice() != commit.group_id || commit.epoch_after > i64::MAX as u64 {
         return Err(StoreError::Rejected);
     }
+    #[cfg(session_chat_storage_fault_testing)]
+    emit_fault_checkpoint(
+        fault_observer,
+        fault_testing::Checkpoint::InviterBeforeBegin,
+        0,
+    )?;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let existing = transaction
         .query_row(
@@ -1552,7 +1647,16 @@ fn commit_inviter(
         return Err(StoreError::Rejected);
     }
 
-    persist_mls(&transaction, state, epoch_inserts, epoch_updates)?;
+    persist_mls(
+        &transaction,
+        state,
+        epoch_inserts,
+        epoch_updates,
+        #[cfg(session_chat_storage_fault_testing)]
+        fault_observer,
+        #[cfg(session_chat_storage_fault_testing)]
+        fault_testing::Scenario::InviterTransaction,
+    )?;
     transaction.execute(
         "INSERT INTO inviter_joins(
              transaction_id, invitation_id, generation, join_request_id,
@@ -1580,6 +1684,12 @@ fn commit_inviter(
             i64::from(MAXIMUM_WELCOME_DELIVERY_ATTEMPTS)
         ],
     )?;
+    #[cfg(session_chat_storage_fault_testing)]
+    emit_fault_checkpoint(
+        fault_observer,
+        fault_testing::Checkpoint::InviterAfterJoinInsert,
+        0,
+    )?;
     let changed = transaction.execute(
         "UPDATE reservations SET state = 2
          WHERE invitation_id = ?1 AND generation = ?2
@@ -1593,10 +1703,29 @@ fn commit_inviter(
     if changed != 1 {
         return Err(StoreError::Rejected);
     }
+    #[cfg(session_chat_storage_fault_testing)]
+    emit_fault_checkpoint(
+        fault_observer,
+        fault_testing::Checkpoint::InviterAfterReservationConsumed,
+        0,
+    )?;
+    #[cfg(session_chat_storage_fault_testing)]
+    emit_fault_checkpoint(
+        fault_observer,
+        fault_testing::Checkpoint::InviterBeforeCommit,
+        0,
+    )?;
     if staged.fault == PersistenceFault::BeforeCommit {
         return Err(StoreError::InjectedFailure);
     }
     transaction.commit()?;
+    #[cfg(session_chat_storage_fault_testing)]
+    emit_fault_checkpoint(
+        fault_observer,
+        fault_testing::Checkpoint::InviterAfterCommitReturn,
+        0,
+    )
+    .map_err(|_| StoreError::OutcomeUnknown)?;
     if staged.fault == PersistenceFault::AfterCommit {
         Err(StoreError::OutcomeUnknown)
     } else {
@@ -1610,6 +1739,9 @@ fn begin_joiner(
     state: &GroupState,
     epoch_inserts: &[EpochRecord],
     epoch_updates: &[EpochRecord],
+    #[cfg(session_chat_storage_fault_testing)] fault_observer: Option<
+        &fault_testing::FaultObserver,
+    >,
 ) -> Result<(), StoreError> {
     if state.id.as_slice() != staged.transaction.group_id {
         return Err(StoreError::Rejected);
@@ -1654,12 +1786,27 @@ fn begin_joiner(
         return Ok(());
     }
 
+    #[cfg(session_chat_storage_fault_testing)]
+    emit_fault_checkpoint(
+        fault_observer,
+        fault_testing::Checkpoint::JoinerBeforeBegin,
+        0,
+    )?;
     inner.connection.execute_batch("BEGIN IMMEDIATE;")?;
     let result = (|| {
         if !key_package_exists_on(&inner.connection, &staged.transaction.key_package_reference)? {
             return Err(StoreError::Rejected);
         }
-        persist_mls(&inner.connection, state, epoch_inserts, epoch_updates)?;
+        persist_mls(
+            &inner.connection,
+            state,
+            epoch_inserts,
+            epoch_updates,
+            #[cfg(session_chat_storage_fault_testing)]
+            fault_observer,
+            #[cfg(session_chat_storage_fault_testing)]
+            fault_testing::Scenario::JoinerTransaction,
+        )?;
         inner.connection.execute(
             "INSERT INTO joiner_commits(transaction_id, group_id, key_package_ref)
              VALUES (?1, ?2, ?3)",
@@ -1668,6 +1815,12 @@ fn begin_joiner(
                 staged.transaction.group_id,
                 staged.transaction.key_package_reference
             ],
+        )?;
+        #[cfg(session_chat_storage_fault_testing)]
+        emit_fault_checkpoint(
+            fault_observer,
+            fault_testing::Checkpoint::JoinerAfterCommitInsert,
+            0,
         )?;
         Ok(())
     })();
@@ -1688,19 +1841,49 @@ fn persist_mls(
     state: &GroupState,
     epoch_inserts: &[EpochRecord],
     epoch_updates: &[EpochRecord],
+    #[cfg(session_chat_storage_fault_testing)] fault_observer: Option<
+        &fault_testing::FaultObserver,
+    >,
+    #[cfg(session_chat_storage_fault_testing)] scenario: fault_testing::Scenario,
 ) -> Result<(), StoreError> {
     transaction.execute(
         "INSERT INTO mls_groups(group_id, state) VALUES (?1, ?2)
          ON CONFLICT(group_id) DO UPDATE SET state = excluded.state",
         params![state.id, state.data.as_slice()],
     )?;
-    for epoch in epoch_inserts {
+    #[cfg(session_chat_storage_fault_testing)]
+    emit_fault_checkpoint(
+        fault_observer,
+        match scenario {
+            fault_testing::Scenario::InviterTransaction => {
+                fault_testing::Checkpoint::InviterAfterGroupUpsert
+            }
+            fault_testing::Scenario::JoinerTransaction => {
+                fault_testing::Checkpoint::JoinerAfterGroupUpsert
+            }
+        },
+        0,
+    )?;
+    for (_occurrence, epoch) in epoch_inserts.iter().enumerate() {
         transaction.execute(
             "INSERT INTO mls_epochs(group_id, epoch_id, data) VALUES (?1, ?2, ?3)",
             params![state.id, epoch.id as i64, epoch.data.as_slice()],
         )?;
+        #[cfg(session_chat_storage_fault_testing)]
+        emit_fault_checkpoint(
+            fault_observer,
+            match scenario {
+                fault_testing::Scenario::InviterTransaction => {
+                    fault_testing::Checkpoint::InviterAfterEpochInsert
+                }
+                fault_testing::Scenario::JoinerTransaction => {
+                    fault_testing::Checkpoint::JoinerAfterEpochInsert
+                }
+            },
+            u8::try_from(_occurrence).map_err(|_| StoreError::Rejected)?,
+        )?;
     }
-    for epoch in epoch_updates {
+    for (_occurrence, epoch) in epoch_updates.iter().enumerate() {
         let changed = transaction.execute(
             "UPDATE mls_epochs SET data = ?3 WHERE group_id = ?1 AND epoch_id = ?2",
             params![state.id, epoch.id as i64, epoch.data.as_slice()],
@@ -1708,6 +1891,19 @@ fn persist_mls(
         if changed != 1 {
             return Err(StoreError::Rejected);
         }
+        #[cfg(session_chat_storage_fault_testing)]
+        emit_fault_checkpoint(
+            fault_observer,
+            match scenario {
+                fault_testing::Scenario::InviterTransaction => {
+                    fault_testing::Checkpoint::InviterAfterEpochUpdate
+                }
+                fault_testing::Scenario::JoinerTransaction => {
+                    fault_testing::Checkpoint::JoinerAfterEpochUpdate
+                }
+            },
+            u8::try_from(_occurrence).map_err(|_| StoreError::Rejected)?,
+        )?;
     }
     Ok(())
 }
@@ -1725,6 +1921,19 @@ fn key_package_exists_on(connection: &Connection, reference: &[u8]) -> Result<bo
 
 fn rollback(connection: &Connection) {
     let _ = connection.execute_batch("ROLLBACK;");
+}
+
+#[cfg(session_chat_storage_fault_testing)]
+fn emit_fault_checkpoint(
+    observer: Option<&fault_testing::FaultObserver>,
+    checkpoint: fault_testing::Checkpoint,
+    occurrence: u8,
+) -> Result<(), StoreError> {
+    observer
+        .map(|observer| observer.checkpoint(checkpoint, occurrence))
+        .transpose()
+        .map(|_| ())
+        .map_err(|_| StoreError::Rejected)
 }
 
 fn validate_inviter(

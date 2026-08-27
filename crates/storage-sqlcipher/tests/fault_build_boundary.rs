@@ -33,11 +33,21 @@ fn ordinary_build_does_not_export_fault_testing() {
     .expect("fixture source");
 
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let target_dir = std::env::var_os("CARGO_TARGET_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            manifest_dir
+                .parent()
+                .and_then(std::path::Path::parent)
+                .expect("workspace root")
+                .join("target")
+        });
     let output = Command::new(cargo)
         .arg("check")
         .arg("--offline")
         .arg("--quiet")
         .current_dir(&fixture_root)
+        .env("CARGO_TARGET_DIR", target_dir)
         .env_remove("RUSTFLAGS")
         .env_remove("CARGO_ENCODED_RUSTFLAGS")
         .output()
