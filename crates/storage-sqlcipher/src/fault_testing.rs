@@ -464,8 +464,12 @@ pub enum BarrierFailure {
 }
 
 /// Bounded exchange implemented by the later supervised process controller.
+///
+/// The controller returns only to continue a non-target checkpoint. A target
+/// checkpoint keeps this exchange blocked until the controller terminates the
+/// supervised writer process.
 pub trait BarrierTransport: Send + Sync {
-    /// Flushes one exact checkpoint and returns one exact acknowledgement.
+    /// Flushes one exact checkpoint and returns one exact continue acknowledgement.
     fn exchange(
         &self,
         encoded: [u8; CONTROL_FRAME_BYTES],
@@ -480,7 +484,8 @@ pub enum FaultProtocolError {
     Rejected,
 }
 
-/// Shared observer that rejects duplicate or out-of-order checkpoints.
+/// Shared observer that rejects duplicate or out-of-order checkpoints and
+/// permanently closes after a barrier exchange fails.
 #[derive(Clone)]
 pub struct FaultObserver {
     inner: Arc<ObserverInner>,
@@ -490,7 +495,7 @@ struct ObserverInner {
     case_id: CaseId,
     scenario: Scenario,
     transport: Arc<dyn BarrierTransport>,
-    sequence: Mutex<Sequence>,
+    state: Mutex<ObserverState>,
 }
 
 impl FaultObserver {
@@ -501,7 +506,10 @@ impl FaultObserver {
                 case_id,
                 scenario,
                 transport,
-                sequence: Mutex::new(Sequence::new(scenario)),
+                state: Mutex::new(ObserverState {
+                    sequence: Sequence::new(scenario),
+                    terminal_failure: false,
+                }),
             }),
         }
     }
@@ -516,21 +524,36 @@ impl FaultObserver {
         if frame.scenario() != self.inner.scenario {
             return Err(FaultProtocolError::Rejected);
         }
-        self.inner
-            .sequence
-            .lock()
-            .map_err(|_| FaultProtocolError::Rejected)?
-            .accept(checkpoint, occurrence)?;
-        let acknowledgement = self
+        let mut state = self
             .inner
-            .transport
-            .exchange(frame.encode())
+            .state
+            .lock()
             .map_err(|_| FaultProtocolError::Rejected)?;
-        if ControlFrame::decode(&acknowledgement)? != frame.acknowledgement() {
+        if state.terminal_failure {
             return Err(FaultProtocolError::Rejected);
+        }
+        state.sequence.accept(checkpoint, occurrence)?;
+        let acknowledgement = match self.inner.transport.exchange(frame.encode()) {
+            Ok(acknowledgement) => acknowledgement,
+            Err(_) => {
+                state.terminal_failure = true;
+                return Err(FaultProtocolError::Rejected);
+            }
+        };
+        match ControlFrame::decode(&acknowledgement) {
+            Ok(decoded) if decoded == frame.acknowledgement() => {}
+            Ok(_) | Err(_) => {
+                state.terminal_failure = true;
+                return Err(FaultProtocolError::Rejected);
+            }
         }
         Ok(())
     }
+}
+
+struct ObserverState {
+    sequence: Sequence,
+    terminal_failure: bool,
 }
 
 #[derive(Clone, Copy)]

@@ -172,11 +172,15 @@ bounded occurrence index, and case ID. It contains no database path, authority,
 key, MLS bytes, Welcome bytes, endpoint, identity, invitation generation,
 approval record, or request fingerprint.
 
-At a checkpoint the child must flush the bounded control frame, wait for one
-parent acknowledgement, and block without beginning the next storage action.
-The parent confirms the expected checkpoint, acknowledges it, terminates the
-child, waits for confirmed termination, and only then launches the verifier.
-Sleeps are outer watchdogs, never the scheduler.
+At a checkpoint the child must flush the bounded control frame and block
+without beginning the next storage action. An acknowledgement is exclusively
+a continue command: the parent sends it only for a confirmed non-target
+checkpoint, and the child validates it before proceeding. At the target
+checkpoint the parent sends no acknowledgement; it terminates and reaps the
+still-blocked child, confirms termination, and only then launches the verifier.
+The controller must fail if a targeted writer reports or reaches any later
+checkpoint before confirmed termination. Sleeps are outer watchdogs, never the
+scheduler.
 
 ### Inviter transaction checkpoints
 
@@ -474,6 +478,9 @@ cfg and cannot activate fault behavior through ordinary runtime input.
   diagnostic fail the harness.
 - Graceful control, kill, timeout, oversized output, missing acknowledgement,
   lingering handle, and directory-cleanup cases are bounded and deterministic.
+- Non-target checkpoints advance only after an exact continue acknowledgement;
+  a target checkpoint remains unacknowledged and cannot emit or execute the
+  next boundary before the controller confirms termination.
 - A passing manifest is emitted only after fresh-process verification and all
   cleanup checks pass.
 

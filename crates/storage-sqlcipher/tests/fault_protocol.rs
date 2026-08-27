@@ -1,6 +1,9 @@
 #![cfg(session_chat_storage_fault_testing)]
 
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicUsize, Ordering},
+};
 
 use mls_rs_core::{
     crypto::HpkeSecretKey,
@@ -13,7 +16,8 @@ use storage_sqlcipher::fault_testing::{
     FAULT_BUILD, FAULT_VFS_NAME, FaultObserver, FrameKind, OracleState, Role, Scenario,
 };
 use storage_sqlcipher::{
-    InviterJoinTransaction, JoinerTransaction, PersistenceFault, VaultKey, fault_testing,
+    InvitationState, InviterJoinTransaction, InviterRecovery, JoinerRecovery, JoinerTransaction,
+    PersistenceFault, SqlCipherStorage, StoreError, VaultKey, WelcomeOutboxState, fault_testing,
 };
 use zeroize::Zeroizing;
 
@@ -38,14 +42,23 @@ impl BarrierTransport for AcknowledgingTransport {
     }
 }
 
-struct EchoingTransport;
+#[derive(Default)]
+struct WrongFirstThenAcknowledgingTransport {
+    exchanges: AtomicUsize,
+}
 
-impl BarrierTransport for EchoingTransport {
+impl BarrierTransport for WrongFirstThenAcknowledgingTransport {
     fn exchange(
         &self,
         encoded: [u8; CONTROL_FRAME_BYTES],
     ) -> Result<[u8; CONTROL_FRAME_BYTES], BarrierFailure> {
-        Ok(encoded)
+        let frame = ControlFrame::decode(&encoded).map_err(|_| BarrierFailure::Rejected)?;
+        let exchange = self.exchanges.fetch_add(1, Ordering::Relaxed);
+        if exchange == 0 {
+            Ok(encoded)
+        } else {
+            Ok(frame.acknowledgement().encode())
+        }
     }
 }
 
@@ -255,16 +268,23 @@ fn duplicate_out_of_order_and_wrong_acknowledgement_are_rejected() {
     );
     assert_eq!(transport.observed.lock().expect("observed").len(), 1);
 
+    let wrong_ack_transport = Arc::new(WrongFirstThenAcknowledgingTransport::default());
     let wrong_ack_observer = FaultObserver::new(
         CaseId::new([0x5A; 16]).expect("case id"),
         Scenario::InviterTransaction,
-        Arc::new(EchoingTransport),
+        wrong_ack_transport.clone(),
     );
     assert!(
         wrong_ack_observer
             .checkpoint(Checkpoint::InviterBeforeBegin, 0)
             .is_err()
     );
+    assert!(
+        wrong_ack_observer
+            .checkpoint(Checkpoint::InviterAfterGroupUpsert, 0)
+            .is_err()
+    );
+    assert_eq!(wrong_ack_transport.exchanges.load(Ordering::Relaxed), 1);
 }
 
 #[test]
@@ -483,5 +503,145 @@ fn rejected_joiner_barrier_rolls_back_the_open_transaction() {
             .recover_joiner(&[0x65; 16])
             .expect("recovery lookup")
             .is_none()
+    );
+}
+
+#[test]
+fn inviter_post_commit_acknowledgement_failure_is_recoverable_as_committed() {
+    let database = TestDatabase::new("inviter-post-commit-ack-failure");
+    let vault_key = [0x35; 32];
+    let observer = FaultObserver::new(
+        CaseId::new([0x25; 16]).expect("case id"),
+        Scenario::InviterTransaction,
+        Arc::new(WrongAckAt {
+            checkpoint: Checkpoint::InviterAfterCommitReturn,
+        }),
+    );
+    let mut storage = fault_testing::create(
+        &database.0,
+        VaultKey::new(vault_key).expect("key"),
+        observer,
+    )
+    .expect("fault-observed store");
+    storage
+        .seed_reservation([2; 16], [3; 64], [4; 16], NOW + 60, NOW)
+        .expect("reservation");
+    storage
+        .stage_inviter(inviter_transaction(), NOW, PersistenceFault::None)
+        .expect("staged inviter");
+
+    assert_eq!(
+        GroupStateStorage::write(
+            &mut storage,
+            GroupState {
+                id: vec![6; 32],
+                data: Zeroizing::new(vec![0x71]),
+            },
+            vec![EpochRecord::new(0, Zeroizing::new(vec![0x72]))],
+            vec![],
+        ),
+        Err(StoreError::OutcomeUnknown)
+    );
+    drop(storage);
+
+    let recovered =
+        SqlCipherStorage::open(&database.0, VaultKey::new(vault_key).expect("reopen key"))
+            .expect("reopened committed inviter store");
+    assert_eq!(
+        recovered.recover_inviter(&[1; 16]).expect("recovery"),
+        Some(InviterRecovery {
+            epoch_after: 1,
+            outbox_state: WelcomeOutboxState::Pending,
+            delivery_attempts: 0,
+        })
+    );
+    assert_eq!(
+        recovered.invitation_state(&[2; 16]).expect("invitation"),
+        Some(InvitationState::Consumed)
+    );
+    assert_eq!(
+        GroupStateStorage::state(&recovered, &[6; 32]).expect("group state"),
+        Some(Zeroizing::new(vec![0x71]))
+    );
+    assert_eq!(
+        GroupStateStorage::epoch(&recovered, &[6; 32], 0).expect("epoch state"),
+        Some(Zeroizing::new(vec![0x72]))
+    );
+}
+
+#[test]
+fn joiner_post_commit_acknowledgement_failure_is_recoverable_as_committed() {
+    let database = TestDatabase::new("joiner-post-commit-ack-failure");
+    let vault_key = [0x36; 32];
+    let observer = FaultObserver::new(
+        CaseId::new([0x26; 16]).expect("case id"),
+        Scenario::JoinerTransaction,
+        Arc::new(WrongAckAt {
+            checkpoint: Checkpoint::JoinerAfterCommitReturn,
+        }),
+    );
+    let mut storage = fault_testing::create(
+        &database.0,
+        VaultKey::new(vault_key).expect("key"),
+        observer,
+    )
+    .expect("fault-observed store");
+    let transaction_id = [0x75; 16];
+    let group_id = [0x76; 32];
+    let key_package_reference = [0x77; 32];
+    KeyPackageStorage::insert(
+        &mut storage,
+        key_package_reference.to_vec(),
+        KeyPackageData::new(
+            vec![0x78],
+            HpkeSecretKey::from(vec![0x79]),
+            HpkeSecretKey::from(vec![0x7A]),
+            NOW + 60,
+        ),
+    )
+    .expect("KeyPackage inserted");
+    storage
+        .stage_joiner(
+            JoinerTransaction::new(transaction_id, group_id, key_package_reference)
+                .expect("joiner transaction"),
+            PersistenceFault::None,
+        )
+        .expect("staged joiner");
+    GroupStateStorage::write(
+        &mut storage,
+        GroupState {
+            id: group_id.to_vec(),
+            data: Zeroizing::new(vec![0x7B]),
+        },
+        vec![EpochRecord::new(0, Zeroizing::new(vec![0x7C]))],
+        vec![],
+    )
+    .expect("joiner group staged");
+
+    assert_eq!(
+        KeyPackageStorage::delete(&mut storage, &key_package_reference),
+        Err(StoreError::OutcomeUnknown)
+    );
+    drop(storage);
+
+    let recovered =
+        SqlCipherStorage::open(&database.0, VaultKey::new(vault_key).expect("reopen key"))
+            .expect("reopened committed joiner store");
+    assert_eq!(
+        recovered.recover_joiner(&transaction_id).expect("recovery"),
+        Some(JoinerRecovery { group_id })
+    );
+    assert!(
+        !recovered
+            .key_package_exists(&key_package_reference)
+            .expect("KeyPackage lookup")
+    );
+    assert_eq!(
+        GroupStateStorage::state(&recovered, &group_id).expect("group state"),
+        Some(Zeroizing::new(vec![0x7B]))
+    );
+    assert_eq!(
+        GroupStateStorage::epoch(&recovered, &group_id, 0).expect("epoch state"),
+        Some(Zeroizing::new(vec![0x7C]))
     );
 }
