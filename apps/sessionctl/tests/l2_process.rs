@@ -55,8 +55,11 @@ mod checked {
         assert!(!evidence.contains("lock_sha256=unavailable\n"));
         for required in [
             "version=1\n",
+            "protocol=l2-harness-evidence-v1\n",
             "scenario=L2-HARNESS-001\n",
             "result=pass\n",
+            "coverage=partial\n",
+            "evidence_scope=harness-foundation\n",
             "fault_build=true\n",
             "control=continue\n",
             "expected=I1\n",
@@ -68,6 +71,8 @@ mod checked {
             "integrity=pass\n",
             "schema=pass\n",
             "semantic_oracle=pass\n",
+            "exact_retry=pass\n",
+            "fixture_cleanup=pass\n",
             "child_cleanup=pass\n",
             "directory_cleanup=pass\n",
         ] {
@@ -129,12 +134,25 @@ mod checked {
             L2HarnessProbe::IdentityLoss,
             L2HarnessProbe::ReservationSubstitution,
             L2HarnessProbe::DefectiveSchema,
+            L2HarnessProbe::NonzeroLeaseGeneration,
+            L2HarnessProbe::ChangedAttemptCeiling,
+            L2HarnessProbe::InviterRetryMutation,
+            L2HarnessProbe::JoinerRetryMutation,
         ] {
             assert!(
                 run_l2_process_probe(&executable(), probe).is_err(),
                 "probe {probe:?} must fail"
             );
         }
+    }
+
+    #[test]
+    fn missing_non_target_acknowledgement_is_bounded_and_reaped() {
+        let started = Instant::now();
+        assert!(
+            run_l2_process_probe(&executable(), L2HarnessProbe::MissingAcknowledgement).is_err()
+        );
+        assert!(started.elapsed() < Duration::from_secs(5));
     }
 
     #[test]

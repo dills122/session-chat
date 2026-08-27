@@ -8,6 +8,7 @@ publish = false
 [dependencies]
 admission-capability = { version = "=0.1.0", path = "../../crates/admission-capability" }
 aws-lc-rs.workspace = true
+mls-rs-core.workspace = true
 session-admission = { version = "=0.1.0", path = "../../crates/session-admission" }
 session-core = { version = "=0.1.0", path = "../../crates/session-core" }
 session-crypto = { version = "=0.1.0", path = "../../crates/session-crypto" }

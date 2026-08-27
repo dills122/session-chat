@@ -17,6 +17,10 @@ use std::{
 };
 
 use aws_lc_rs::digest::{SHA256, digest};
+use mls_rs_core::{
+    group::{GroupState, GroupStateStorage},
+    key_package::KeyPackageStorage,
+};
 use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
 use session_crypto_mls::{
     SessionGroupId, WelcomeMessage, create_client, create_durable_client_with_storage,
@@ -24,8 +28,8 @@ use session_crypto_mls::{
 };
 use session_protocol::{DepositCapability, LocalWelcomeDepositEndpoint, OpaqueEnvelope};
 use storage_sqlcipher::{
-    InvitationState, InviterJoinTransaction, JoinerTransaction, PersistenceFault, SqlCipherStorage,
-    VaultKey, WelcomeOutboxState, fault_testing,
+    InvitationState, InviterJoinTransaction, JoinerTransaction, MAXIMUM_WELCOME_DELIVERY_ATTEMPTS,
+    PersistenceFault, SqlCipherStorage, VaultKey, WelcomeOutboxState, fault_testing,
 };
 use zeroize::{Zeroize, Zeroizing};
 
@@ -38,7 +42,8 @@ use super::{SessionCtlError, random_nonzero, resolve_l1_process_git_commit, stag
 const ROOT_MARKER_NAME: &str = ".sessionctl-l2-root";
 const ROOT_MARKER: &[u8] = b"sessionctl-l2-v1\n";
 const CASE_CONFIG_NAME: &str = "case.config";
-const CASE_FIXTURE_NAME: &str = "case.fixture";
+const WRITER_CASE_FIXTURE_NAME: &str = "writer.fixture";
+const VERIFIER_CASE_FIXTURE_NAME: &str = "verifier.fixture";
 const WELCOME_FIXTURE_NAME: &str = "welcome.fixture";
 const DATABASE_NAME: &str = "case.sqlite3";
 const WRITER_KEY_NAME: &str = "writer.key";
@@ -52,6 +57,7 @@ const MAX_CHILD_OUTPUT_BYTES: usize = 512;
 const MAX_EVIDENCE_BYTES: usize = 2_048;
 const MAX_LOCKFILE_BYTES: usize = 4 * 1024 * 1024;
 const MAX_TOOLCHAIN_BYTES: usize = 4_096;
+const MAX_DATABASE_BYTES: usize = 64 * 1024 * 1024;
 const FRAME_WAIT: Duration = Duration::from_secs(1);
 const CHILD_WAIT: Duration = Duration::from_secs(2);
 const POLL_INTERVAL: Duration = Duration::from_millis(5);
@@ -87,6 +93,16 @@ pub enum L2HarnessProbe {
     DefectiveSchema,
     /// A verifier retains its database handle past the bounded success window.
     LingeringHandle,
+    /// A valid-schema pending row invents a lease generation.
+    NonzeroLeaseGeneration,
+    /// A valid-schema pending row changes the retained delivery-attempt ceiling.
+    ChangedAttemptCeiling,
+    /// Exact inviter retry encounters a changed committed transaction.
+    InviterRetryMutation,
+    /// Exact joiner retry encounters a changed committed transaction.
+    JoinerRetryMutation,
+    /// The controller withholds a required acknowledgement at a non-target checkpoint.
+    MissingAcknowledgement,
 }
 
 impl L2HarnessProbe {
@@ -103,6 +119,11 @@ impl L2HarnessProbe {
             Self::ReservationSubstitution => 9,
             Self::DefectiveSchema => 10,
             Self::LingeringHandle => 11,
+            Self::NonzeroLeaseGeneration => 12,
+            Self::ChangedAttemptCeiling => 13,
+            Self::InviterRetryMutation => 14,
+            Self::JoinerRetryMutation => 15,
+            Self::MissingAcknowledgement => 16,
         }
     }
 
@@ -118,7 +139,12 @@ impl L2HarnessProbe {
             | Self::IdentityLoss
             | Self::ReservationSubstitution
             | Self::DefectiveSchema
-            | Self::LingeringHandle => "negative-probe",
+            | Self::LingeringHandle
+            | Self::NonzeroLeaseGeneration
+            | Self::ChangedAttemptCeiling
+            | Self::InviterRetryMutation
+            | Self::JoinerRetryMutation
+            | Self::MissingAcknowledgement => "negative-probe",
         }
     }
 }
@@ -139,6 +165,11 @@ impl TryFrom<u8> for L2HarnessProbe {
             9 => Ok(Self::ReservationSubstitution),
             10 => Ok(Self::DefectiveSchema),
             11 => Ok(Self::LingeringHandle),
+            12 => Ok(Self::NonzeroLeaseGeneration),
+            13 => Ok(Self::ChangedAttemptCeiling),
+            14 => Ok(Self::InviterRetryMutation),
+            15 => Ok(Self::JoinerRetryMutation),
+            16 => Ok(Self::MissingAcknowledgement),
             _ => Err(stage("L2 probe")),
         }
     }
@@ -238,6 +269,8 @@ pub struct L2ProcessReport {
     integrity: bool,
     schema: bool,
     semantic_oracle: bool,
+    exact_retry: bool,
+    fixture_cleanup: bool,
     writer_termination: bool,
     fresh_verifier: bool,
     redaction: bool,
@@ -247,15 +280,17 @@ pub struct L2ProcessReport {
 }
 
 impl L2ProcessReport {
-    /// Encodes one bounded `l2-evidence-v1` harness manifest.
+    /// Encodes one bounded provisional L2 harness record.
     #[must_use]
     pub fn encode_v1(&self) -> String {
         let evidence = format!(
             concat!(
                 "version=1\n",
-                "protocol=l2-evidence-v1\n",
+                "protocol=l2-harness-evidence-v1\n",
                 "scenario=L2-HARNESS-001\n",
                 "result=pass\n",
+                "coverage=partial\n",
+                "evidence_scope=harness-foundation\n",
                 "fault_build=true\n",
                 "case_id={}\n",
                 "schedule_seed=1\n",
@@ -277,6 +312,8 @@ impl L2ProcessReport {
                 "integrity={}\n",
                 "schema={}\n",
                 "semantic_oracle={}\n",
+                "exact_retry={}\n",
+                "fixture_cleanup={}\n",
                 "writer_termination={}\n",
                 "fresh_verifier={}\n",
                 "redaction={}\n",
@@ -306,6 +343,8 @@ impl L2ProcessReport {
             pass_fail(self.integrity),
             pass_fail(self.schema),
             pass_fail(self.semantic_oracle),
+            pass_fail(self.exact_retry),
+            pass_fail(self.fixture_cleanup),
             if self.writer_termination {
                 "confirmed"
             } else {
@@ -327,10 +366,14 @@ pub fn run_l2_process_probe(
     executable: &Path,
     probe: L2HarnessProbe,
 ) -> Result<L2ProcessReport, SessionCtlError> {
-    let checkpoint = if probe == L2HarnessProbe::GracefulContinue {
-        Checkpoint::InviterBeforeShadowFinalize
-    } else {
-        Checkpoint::InviterBeforeBegin
+    let checkpoint = match probe {
+        L2HarnessProbe::GracefulContinue => Checkpoint::InviterBeforeShadowFinalize,
+        L2HarnessProbe::NonzeroLeaseGeneration
+        | L2HarnessProbe::ChangedAttemptCeiling
+        | L2HarnessProbe::InviterRetryMutation => Checkpoint::InviterAfterCommitReturn,
+        L2HarnessProbe::JoinerRetryMutation => Checkpoint::JoinerAfterCommitReturn,
+        L2HarnessProbe::MissingAcknowledgement => Checkpoint::InviterAfterGroupUpsert,
+        _ => Checkpoint::InviterBeforeBegin,
     };
     run_l2_process_case(executable, L2ProcessCase::new(checkpoint, 0)?, probe)
 }
@@ -369,6 +412,8 @@ pub fn run_l2_process_case(
         integrity: controller.integrity,
         schema: controller.schema,
         semantic_oracle: controller.semantic_oracle,
+        exact_retry: controller.exact_retry,
+        fixture_cleanup: controller.fixture_cleanup,
         writer_termination: controller.writer_termination,
         fresh_verifier: controller.fresh_verifier,
         redaction: controller.redaction,
@@ -436,6 +481,8 @@ struct ControllerEvidence {
     integrity: bool,
     schema: bool,
     semantic_oracle: bool,
+    exact_retry: bool,
+    fixture_cleanup: bool,
     writer_termination: bool,
     fresh_verifier: bool,
     redaction: bool,
@@ -452,10 +499,38 @@ fn run_controller(
     write_owned_file(&root.join(CASE_CONFIG_NAME), &config.encode(), false)?;
     let fixture = prepare_baseline(root, &key, config.target.scenario())?;
     let fixture_bytes = fixture.encode();
-    write_owned_file(&root.join(CASE_FIXTURE_NAME), fixture_bytes.as_ref(), true)?;
+    write_owned_file(
+        &root.join(WRITER_CASE_FIXTURE_NAME),
+        fixture_bytes.as_ref(),
+        true,
+    )?;
+    write_owned_file(
+        &root.join(VERIFIER_CASE_FIXTURE_NAME),
+        fixture_bytes.as_ref(),
+        true,
+    )?;
     write_owned_file(&root.join(WRITER_KEY_NAME), key.as_slice(), true)?;
 
     let mut writer = ManagedChild::spawn(executable, "writer", root, true)?;
+    if config.probe == L2HarnessProbe::MissingAcknowledgement {
+        let encoded = writer
+            .stdout
+            .read_exact_frame(CONTROL_FRAME_BYTES, FRAME_WAIT)?;
+        let first = ControlFrame::decode(&encoded).map_err(|_| stage("L2 checkpoint"))?;
+        if first == config.target || first.scenario() != config.target.scenario() {
+            return Err(stage("L2 missing acknowledgement"));
+        }
+        let blocked = writer
+            .stdout
+            .read_exact_frame(CONTROL_FRAME_BYTES, FRAME_WAIT)
+            .is_err();
+        writer.terminate_and_reap()?;
+        return if blocked {
+            Err(stage("L2 missing acknowledgement"))
+        } else {
+            Err(stage("L2 checkpoint advanced without acknowledgement"))
+        };
+    }
     let observed = advance_writer_to_target(&mut writer, config.target)?;
 
     match config.probe {
@@ -474,9 +549,14 @@ fn run_controller(
         | L2HarnessProbe::IdentityLoss
         | L2HarnessProbe::ReservationSubstitution
         | L2HarnessProbe::DefectiveSchema
-        | L2HarnessProbe::LingeringHandle => {
+        | L2HarnessProbe::LingeringHandle
+        | L2HarnessProbe::NonzeroLeaseGeneration
+        | L2HarnessProbe::ChangedAttemptCeiling
+        | L2HarnessProbe::InviterRetryMutation
+        | L2HarnessProbe::JoinerRetryMutation => {
             writer.terminate_and_reap()?;
         }
+        L2HarnessProbe::MissingAcknowledgement => unreachable!("handled before target advance"),
         L2HarnessProbe::Stall => return Err(stage("L2 checkpoint timeout")),
     }
     writer.stdout.require_empty(CHILD_WAIT)?;
@@ -492,6 +572,12 @@ fn run_controller(
             inject_reservation_substitution(root, &key, &fixture)?;
         }
         L2HarnessProbe::DefectiveSchema => inject_defective_schema(root, &key)?,
+        L2HarnessProbe::NonzeroLeaseGeneration => {
+            inject_inviter_lifecycle_defect(root, &key, &fixture, "lease_generation")?;
+        }
+        L2HarnessProbe::ChangedAttemptCeiling => {
+            inject_inviter_lifecycle_defect(root, &key, &fixture, "attempt_ceiling")?;
+        }
         _ => {}
     }
 
@@ -517,12 +603,20 @@ fn run_controller(
     if root.join(VERIFIER_KEY_NAME).exists() {
         return Err(stage("L2 verifier key cleanup"));
     }
+    let fixture_cleanup = !root.join(WRITER_CASE_FIXTURE_NAME).exists()
+        && !root.join(VERIFIER_CASE_FIXTURE_NAME).exists()
+        && !root.join(WELCOME_FIXTURE_NAME).exists();
+    if !fixture_cleanup {
+        return Err(stage("L2 fixture cleanup"));
+    }
     let handle_cleanup = prove_database_handle_cleanup(root)?;
     Ok(ControllerEvidence {
         observed: verifier_evidence.observed,
         integrity: verifier_evidence.integrity,
         schema: verifier_evidence.schema,
         semantic_oracle: verifier_evidence.semantic_oracle,
+        exact_retry: verifier_evidence.exact_retry,
+        fixture_cleanup,
         writer_termination: true,
         fresh_verifier: true,
         redaction: true,
@@ -536,6 +630,7 @@ struct VerifierEvidence {
     integrity: bool,
     schema: bool,
     semantic_oracle: bool,
+    exact_retry: bool,
 }
 
 fn parse_verifier_evidence(
@@ -544,13 +639,14 @@ fn parse_verifier_evidence(
 ) -> Result<VerifierEvidence, SessionCtlError> {
     let text = std::str::from_utf8(bytes).map_err(|_| stage("L2 verifier output"))?;
     let lines: Vec<_> = text.lines().collect();
-    if lines.len() != 7
+    if lines.len() != 8
         || lines[0] != "role=verifier"
         || lines[1] != "result=pass"
         || lines[3] != "integrity=pass"
         || lines[4] != "schema=pass"
         || lines[5] != "semantic_oracle=pass"
         || lines[6] != "exclusive_lock=pass"
+        || lines[7] != "exact_retry=pass"
     {
         return Err(stage("L2 verifier output"));
     }
@@ -569,6 +665,7 @@ fn parse_verifier_evidence(
         integrity: true,
         schema: true,
         semantic_oracle: true,
+        exact_retry: true,
     })
 }
 
@@ -673,11 +770,11 @@ impl Drop for CaseFixture {
     }
 }
 
-fn read_fixture(root: &Path) -> Result<CaseFixture, SessionCtlError> {
-    CaseFixture::decode(&read_owned_file(
-        &root.join(CASE_FIXTURE_NAME),
-        CASE_FIXTURE_BYTES,
-    )?)
+fn read_fixture(root: &Path, name: &str) -> Result<CaseFixture, SessionCtlError> {
+    let path = root.join(name);
+    let bytes = Zeroizing::new(read_owned_file(&path, CASE_FIXTURE_BYTES)?);
+    fs::remove_file(&path).map_err(|_| stage("L2 fixture cleanup"))?;
+    CaseFixture::decode(&bytes)
 }
 
 fn prepare_baseline(
@@ -807,9 +904,35 @@ fn inject_defective_schema(
         .map_err(|_| stage("L2 schema defect"))
 }
 
+fn inject_inviter_lifecycle_defect(
+    root: &Path,
+    key: &Zeroizing<[u8; KEY_BYTES]>,
+    fixture: &CaseFixture,
+    defect: &str,
+) -> Result<(), SessionCtlError> {
+    let connection = open_keyed_connection(&root.join(DATABASE_NAME), key)?;
+    let sql = match defect {
+        "lease_generation" => {
+            "UPDATE inviter_joins SET lease_generation = 1 WHERE transaction_id = ?1"
+        }
+        "attempt_ceiling" => {
+            "UPDATE inviter_joins SET maximum_delivery_attempts = 4 WHERE transaction_id = ?1"
+        }
+        _ => return Err(stage("L2 lifecycle defect")),
+    };
+    if connection
+        .execute(sql, params![fixture.transaction_id])
+        .map_err(|_| stage("L2 lifecycle defect"))?
+        != 1
+    {
+        return Err(stage("L2 lifecycle defect"));
+    }
+    Ok(())
+}
+
 fn run_writer(root: &Path) -> Result<(), SessionCtlError> {
     let config = read_case_config(root)?;
-    let fixture = read_fixture(root)?;
+    let fixture = read_fixture(root, WRITER_CASE_FIXTURE_NAME)?;
     let key = read_key(root, WRITER_KEY_NAME)?;
     let transport = std::sync::Arc::new(StdioBarrier::default());
     let observer = FaultObserver::new(config.target.case_id(), config.target.scenario(), transport);
@@ -827,7 +950,12 @@ fn run_writer(root: &Path) -> Result<(), SessionCtlError> {
         | L2HarnessProbe::IdentityLoss
         | L2HarnessProbe::ReservationSubstitution
         | L2HarnessProbe::DefectiveSchema
-        | L2HarnessProbe::LingeringHandle => run_real_storage_transaction(
+        | L2HarnessProbe::LingeringHandle
+        | L2HarnessProbe::NonzeroLeaseGeneration
+        | L2HarnessProbe::ChangedAttemptCeiling
+        | L2HarnessProbe::InviterRetryMutation
+        | L2HarnessProbe::JoinerRetryMutation
+        | L2HarnessProbe::MissingAcknowledgement => run_real_storage_transaction(
             storage,
             observer,
             config.target.scenario(),
@@ -948,7 +1076,11 @@ fn run_real_storage_transaction(
                 storage.clone(),
             )
             .map_err(|_| stage("L2 writer identity"))?;
-            let welcome_bytes = read_bounded_owned_file(&root.join(WELCOME_FIXTURE_NAME), 65_536)?;
+            let welcome_bytes = read_bounded_owned_file_once(
+                &root.join(WELCOME_FIXTURE_NAME),
+                65_536,
+                "L2 Welcome fixture cleanup",
+            )?;
             let welcome = WelcomeMessage::from_bytes(&welcome_bytes)
                 .map_err(|_| stage("L2 writer Welcome"))?;
             let mut group = bob
@@ -987,17 +1119,17 @@ fn fixture_endpoint() -> Result<Vec<u8>, SessionCtlError> {
 
 fn run_verifier(root: &Path) -> Result<(), SessionCtlError> {
     let config = read_case_config(root)?;
-    let fixture = read_fixture(root)?;
+    let fixture = read_fixture(root, VERIFIER_CASE_FIXTURE_NAME)?;
     let key = read_key(root, VERIFIER_KEY_NAME)?;
     let expected = config.case()?.expected();
-    verify_complete_state(root, &key, expected, &fixture)?;
+    verify_complete_state(root, &key, expected, &fixture, config.probe)?;
     if config.probe == L2HarnessProbe::LingeringHandle {
         let _connection = open_keyed_connection(&root.join(DATABASE_NAME), &key)?;
         thread::sleep(Duration::from_secs(10));
         return Err(stage("L2 lingering verifier"));
     }
     print!(
-        "role=verifier\nresult=pass\noracle={}\nintegrity=pass\nschema=pass\nsemantic_oracle=pass\nexclusive_lock=pass\n",
+        "role=verifier\nresult=pass\noracle={}\nintegrity=pass\nschema=pass\nsemantic_oracle=pass\nexclusive_lock=pass\nexact_retry=pass\n",
         oracle_label(expected)
     );
     Ok(())
@@ -1008,6 +1140,7 @@ fn verify_complete_state(
     key: &Zeroizing<[u8; KEY_BYTES]>,
     expected: OracleState,
     fixture: &CaseFixture,
+    probe: L2HarnessProbe,
 ) -> Result<(), SessionCtlError> {
     let storage = SqlCipherStorage::open(
         &root.join(DATABASE_NAME),
@@ -1081,10 +1214,155 @@ fn verify_complete_state(
     {
         return Err(stage("L2 schema"));
     }
-    verify_exact_sql_state(&connection, expected, fixture, root)?;
+    let welcome_path = root.join(WELCOME_FIXTURE_NAME);
+    let expected_welcome = if expected == OracleState::InviterNew {
+        Some(read_bounded_owned_file_once(
+            &welcome_path,
+            65_536,
+            "L2 Welcome fixture cleanup",
+        )?)
+    } else {
+        if welcome_path.exists() {
+            drop(read_bounded_owned_file_once(
+                &welcome_path,
+                65_536,
+                "L2 Welcome fixture cleanup",
+            )?);
+        }
+        None
+    };
+    let expected_welcome_bytes = expected_welcome.as_ref().map(|bytes| bytes.as_slice());
+    verify_exact_sql_state(&connection, expected, fixture, expected_welcome_bytes)?;
     connection
         .execute_batch("BEGIN EXCLUSIVE; ROLLBACK;")
-        .map_err(|_| stage("L2 exclusive lock"))
+        .map_err(|_| stage("L2 exclusive lock"))?;
+    drop(foreign);
+    drop(cipher);
+    drop(connection);
+
+    let before_retry = database_digest(root)?;
+    match probe {
+        L2HarnessProbe::InviterRetryMutation => {
+            inject_retry_mutation(root, key, fixture, Scenario::InviterTransaction)?;
+        }
+        L2HarnessProbe::JoinerRetryMutation => {
+            inject_retry_mutation(root, key, fixture, Scenario::JoinerTransaction)?;
+        }
+        _ => {}
+    }
+    perform_exact_retry(root, key, expected, fixture, expected_welcome_bytes)?;
+    if database_digest(root)? != before_retry {
+        return Err(stage("L2 exact retry digest"));
+    }
+    Ok(())
+}
+
+fn database_digest(root: &Path) -> Result<[u8; 32], SessionCtlError> {
+    let bytes = Zeroizing::new(read_bounded_owned_file(
+        &root.join(DATABASE_NAME),
+        MAX_DATABASE_BYTES,
+    )?);
+    digest(&SHA256, &bytes)
+        .as_ref()
+        .try_into()
+        .map_err(|_| stage("L2 database digest"))
+}
+
+fn inject_retry_mutation(
+    root: &Path,
+    key: &Zeroizing<[u8; KEY_BYTES]>,
+    fixture: &CaseFixture,
+    scenario: Scenario,
+) -> Result<(), SessionCtlError> {
+    let connection = open_keyed_connection(&root.join(DATABASE_NAME), key)?;
+    let (sql, value): (&str, &[u8]) = match scenario {
+        Scenario::InviterTransaction => (
+            "UPDATE inviter_joins SET approval_record = ?1 WHERE transaction_id = ?2",
+            b"l2-retry-defect",
+        ),
+        Scenario::JoinerTransaction => (
+            "UPDATE joiner_commits SET key_package_ref = ?1 WHERE transaction_id = ?2",
+            &[0xD1; 32],
+        ),
+    };
+    if connection
+        .execute(sql, params![value, fixture.transaction_id])
+        .map_err(|_| stage("L2 retry defect"))?
+        != 1
+    {
+        return Err(stage("L2 retry defect"));
+    }
+    Ok(())
+}
+
+fn perform_exact_retry(
+    root: &Path,
+    key: &Zeroizing<[u8; KEY_BYTES]>,
+    expected: OracleState,
+    fixture: &CaseFixture,
+    expected_welcome: Option<&[u8]>,
+) -> Result<(), SessionCtlError> {
+    if matches!(expected, OracleState::InviterOld | OracleState::JoinerOld) {
+        return Ok(());
+    }
+    let mut storage = SqlCipherStorage::open(
+        &root.join(DATABASE_NAME),
+        VaultKey::new(**key).map_err(|_| stage("L2 exact retry"))?,
+    )
+    .map_err(|_| stage("L2 exact retry"))?;
+    let state = GroupState {
+        id: fixture.group_id.to_vec(),
+        data: GroupStateStorage::state(&storage, &fixture.group_id)
+            .map_err(|_| stage("L2 exact retry"))?
+            .ok_or_else(|| stage("L2 exact retry"))?,
+    };
+    match expected {
+        OracleState::InviterNew => {
+            let welcome = expected_welcome.ok_or_else(|| stage("L2 exact retry"))?;
+            storage
+                .stage_inviter(
+                    InviterJoinTransaction::new(
+                        fixture.transaction_id,
+                        fixture.invitation_id,
+                        fixture.invitation_generation,
+                        fixture.join_request_id,
+                        fixture.request_fingerprint,
+                        fixture.group_id,
+                        0,
+                        1,
+                        APPROVAL_RECORD.to_vec(),
+                        welcome.to_vec(),
+                        fixture_endpoint()?,
+                        OUTBOX_EXPIRES_AT,
+                    )
+                    .map_err(|_| stage("L2 exact retry"))?,
+                    BASELINE_NOW,
+                    PersistenceFault::None,
+                )
+                .map_err(|_| stage("L2 exact retry"))?;
+            GroupStateStorage::write(&mut storage, state, Vec::new(), Vec::new())
+                .map_err(|_| stage("L2 exact retry"))?;
+        }
+        OracleState::JoinerNew => {
+            storage
+                .stage_joiner(
+                    JoinerTransaction::new(
+                        fixture.transaction_id,
+                        fixture.group_id,
+                        fixture.key_package_reference,
+                    )
+                    .map_err(|_| stage("L2 exact retry"))?,
+                    PersistenceFault::None,
+                )
+                .map_err(|_| stage("L2 exact retry"))?;
+            GroupStateStorage::write(&mut storage, state, Vec::new(), Vec::new())
+                .map_err(|_| stage("L2 exact retry"))?;
+            KeyPackageStorage::delete(&mut storage, &fixture.key_package_reference)
+                .map_err(|_| stage("L2 exact retry"))?;
+        }
+        OracleState::InviterOld | OracleState::JoinerOld => unreachable!("handled above"),
+    }
+    verify_production_semantics(&storage, expected, fixture)
 }
 
 fn advance_writer_to_target(
@@ -1284,7 +1562,7 @@ fn verify_exact_sql_state(
     connection: &Connection,
     expected: OracleState,
     fixture: &CaseFixture,
-    root: &Path,
+    expected_welcome: Option<&[u8]>,
 ) -> Result<(), SessionCtlError> {
     type InviterJoinRow = (
         Vec<u8>,
@@ -1297,6 +1575,7 @@ fn verify_exact_sql_state(
         i64,
         i64,
     );
+    type DeliveryLifecycleRow = (i64, i64, i64, Option<Vec<u8>>, Option<i64>);
     let identity: Option<(Vec<u8>, i64)> = connection
         .query_row(
             "SELECT group_id, length(identity_record) FROM mls_client_identity WHERE singleton = 1",
@@ -1340,8 +1619,7 @@ fn verify_exact_sql_state(
             }
         }
         OracleState::InviterNew => {
-            let expected_welcome =
-                read_bounded_owned_file(&root.join(WELCOME_FIXTURE_NAME), 65_536)?;
+            let expected_welcome = expected_welcome.ok_or_else(|| stage("L2 inviter oracle"))?;
             let endpoint = fixture_endpoint()?;
             let reservation: Option<(Vec<u8>, Vec<u8>, i64, i64)> = connection
                 .query_row(
@@ -1367,6 +1645,14 @@ fn verify_exact_sql_state(
                 )
                 .optional()
                 .map_err(|_| stage("L2 inviter oracle"))?;
+            let lifecycle: Option<DeliveryLifecycleRow> = connection
+                .query_row(
+                    "SELECT delivery_attempts, maximum_delivery_attempts, lease_generation, lease_id, lease_expires_at FROM inviter_joins WHERE transaction_id = ?1",
+                    params![fixture.transaction_id],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+                )
+                .optional()
+                .map_err(|_| stage("L2 inviter oracle"))?;
             if row
                 != Some((
                     fixture.invitation_id.to_vec(),
@@ -1386,7 +1672,20 @@ fn verify_exact_sql_state(
                         RESERVATION_EXPIRES_AT as i64,
                         2,
                     ))
-                || payloads != Some((expected_welcome, endpoint, OUTBOX_EXPIRES_AT as i64))
+                || payloads
+                    != Some((
+                        expected_welcome.to_vec(),
+                        endpoint,
+                        OUTBOX_EXPIRES_AT as i64,
+                    ))
+                || lifecycle
+                    != Some((
+                        0,
+                        i64::from(MAXIMUM_WELCOME_DELIVERY_ATTEMPTS),
+                        0,
+                        None,
+                        None,
+                    ))
                 || counts[0..2] != [1, 1]
                 || counts[2] != 1
                 || counts[3] == 0
@@ -1715,6 +2014,16 @@ fn read_bounded_owned_file(path: &Path, maximum: usize) -> Result<Vec<u8>, Sessi
     Ok(bytes)
 }
 
+fn read_bounded_owned_file_once(
+    path: &Path,
+    maximum: usize,
+    cleanup_stage: &'static str,
+) -> Result<Zeroizing<Vec<u8>>, SessionCtlError> {
+    let bytes = Zeroizing::new(read_bounded_owned_file(path, maximum)?);
+    fs::remove_file(path).map_err(|_| stage(cleanup_stage))?;
+    Ok(bytes)
+}
+
 fn read_owned_file(path: &Path, expected: usize) -> Result<Vec<u8>, SessionCtlError> {
     validate_owned_file(path, Some(expected))?;
     let file = File::open(path).map_err(|_| stage("L2 file"))?;
@@ -1993,8 +2302,12 @@ impl PipeReader {
 
 impl Drop for PipeReader {
     fn drop(&mut self) {
-        if let Some(join) = self.join.take() {
+        if self.eof
+            && let Some(join) = self.join.take()
+        {
             let _ = join.join();
+        } else {
+            self.join.take();
         }
     }
 }
@@ -2075,6 +2388,58 @@ fn hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn inherited_child_output_cannot_block_pipe_reader_drop() {
+        let mut command = Command::new(std::env::current_exe().expect("current test executable"));
+        command
+            .args([
+                "--exact",
+                "l2_process::tests::inherited_output_parent",
+                "--nocapture",
+            ])
+            .env("SESSIONCTL_L2_INHERITED_OUTPUT_PARENT", "1")
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let started = Instant::now();
+        let mut child = ManagedChild::spawn_command(command).expect("spawn output parent");
+        assert!(
+            child
+                .wait(Duration::from_secs(1))
+                .expect("parent exit")
+                .success()
+        );
+        assert!(child.stdout.collect(Duration::from_millis(25)).is_err());
+        drop(child);
+        assert!(started.elapsed() < Duration::from_millis(500));
+    }
+
+    #[test]
+    fn inherited_output_parent() {
+        if std::env::var_os("SESSIONCTL_L2_INHERITED_OUTPUT_PARENT").is_some() {
+            let mut descendant =
+                Command::new(std::env::current_exe().expect("current test executable"))
+                    .args([
+                        "--exact",
+                        "l2_process::tests::inherited_output_descendant",
+                        "--nocapture",
+                    ])
+                    .env("SESSIONCTL_L2_INHERITED_OUTPUT_DESCENDANT", "1")
+                    .spawn()
+                    .expect("spawn output descendant");
+            thread::spawn(move || {
+                let _ = descendant.wait();
+            });
+        }
+    }
+
+    #[test]
+    fn inherited_output_descendant() {
+        if std::env::var_os("SESSIONCTL_L2_INHERITED_OUTPUT_DESCENDANT").is_some() {
+            thread::sleep(Duration::from_secs(2));
+        }
+    }
 
     #[test]
     fn process_root_cleanup_failure_is_reported_and_drop_retries() {

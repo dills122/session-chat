@@ -1055,6 +1055,7 @@ version = "0.1.0"
 dependencies = [
  "admission-capability",
  "aws-lc-rs",
+ "mls-rs-core",
  "rusqlite",
  "session-admission",
  "session-core",
