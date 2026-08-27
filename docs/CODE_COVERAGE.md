@@ -52,10 +52,16 @@ The policy makes these distinctions explicit:
   LLVM region and function ratchets, while the ordinary Rust job separately
   enforces doctests.
 - There is no generated Rust source in the workspace.
-- `crates/transport-conformance/src/lib.rs` is the only explicit
+- `apps/sessionctl/src/l2_process.rs` and
+  `crates/storage-sqlcipher/src/fault_testing.rs` are explicit
+  non-instrumented allowances because they exist only under the registered
+  checked fault-testing cfg and are absent from the ordinary production
+  coverage build. Their checked-cfg test commands remain separate retained
+  evidence.
+- `crates/transport-conformance/src/lib.rs` is also an explicit
   non-instrumented allowance. It contains only the declaration `pub mod trace;`
-  and therefore exports no instrumentable region. The checker requires that the
-  file exist and fails if the allowance becomes stale.
+  and therefore exports no instrumentable region. The checker requires every
+  allowed file to exist and fails if an allowance becomes stale.
 - Provider-invariant random failures, hard-to-reach production errors, and
   platform glue are not excluded. New production source that is absent from the
   report or not assigned to exactly one component fails the gate.

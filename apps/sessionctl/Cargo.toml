@@ -8,6 +8,7 @@ publish = false
 [dependencies]
 admission-capability = { version = "=0.1.0", path = "../../crates/admission-capability" }
 aws-lc-rs.workspace = true
+mls-rs-core.workspace = true
 session-admission = { version = "=0.1.0", path = "../../crates/session-admission" }
 session-core = { version = "=0.1.0", path = "../../crates/session-core" }
 session-crypto = { version = "=0.1.0", path = "../../crates/session-crypto" }
@@ -15,6 +16,7 @@ session-crypto-hpke = { version = "=0.1.0", path = "../../crates/session-crypto-
 session-crypto-mls = { version = "=0.1.0", path = "../../crates/session-crypto-mls" }
 session-protocol = { version = "=0.1.0", path = "../../crates/session-protocol" }
 session-transport = { version = "=0.1.0", path = "../../crates/session-transport" }
+rusqlite.workspace = true
 storage-sqlcipher = { version = "=0.1.0", path = "../../crates/storage-sqlcipher" }
 thiserror.workspace = true
 transport-memory = { version = "=0.1.0", path = "../../crates/transport-memory" }

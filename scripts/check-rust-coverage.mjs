@@ -29,6 +29,7 @@ export const COVERAGE_POLICY = Object.freeze({
   minimumWorkspaceLines: 92.23,
   minimumWorkspaceRegions: 88.53,
   nonInstrumentedSources: Object.freeze([
+    'apps/sessionctl/src/l2_process.rs',
     'crates/storage-sqlcipher/src/fault_testing.rs',
     'crates/transport-conformance/src/lib.rs',
   ]),
