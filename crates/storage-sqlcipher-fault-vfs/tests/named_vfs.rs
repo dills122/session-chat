@@ -1,15 +1,16 @@
 #![forbid(unsafe_code)]
 
 use std::{
-    sync::{Arc, Mutex, MutexGuard, OnceLock},
+    sync::{Arc, Mutex, MutexGuard, OnceLock, mpsc},
     thread,
     time::Duration,
 };
 
 use rusqlite::{Connection, OpenFlags};
 use storage_sqlcipher_fault_vfs::{
-    FaultCode, FaultMode, FaultPlan, FaultTarget, FileRole, Operation, OperationDisposition,
-    PauseGate, VFS_NAME, ValidationError, controller, default_vfs_identity, register,
+    ControllerError, FaultCode, FaultMode, FaultPlan, FaultTarget, FileRole, Operation,
+    OperationDisposition, PauseGate, VFS_NAME, ValidationError, controller, default_vfs_identity,
+    register,
 };
 
 fn exclusive_controller() -> MutexGuard<'static, ()> {
@@ -186,7 +187,8 @@ fn commit_window_pause_blocks_until_the_controller_releases_it() {
         !writer.is_finished(),
         "writer must remain paused at the operation"
     );
-    gate.release();
+    gate.release().expect("release reached pause");
+    gate.release().expect("repeat reached release");
     writer.join().expect("writer thread");
 
     let snapshot = controller().snapshot();
@@ -197,6 +199,53 @@ fn commit_window_pause_blocks_until_the_controller_releases_it() {
             .operations()
             .any(|record| record.disposition() == OperationDisposition::Paused)
     );
+    controller().disable().expect("disable pause");
+}
+
+#[test]
+fn premature_pause_release_cannot_skip_the_commit_window_block() {
+    let _exclusive = exclusive_controller();
+    register().expect("register named delegator");
+    let dir = tempfile::tempdir().expect("pause tempdir");
+    let connection = named_connection(&dir.path().join("premature-release.db"));
+    connection
+        .execute_batch("PRAGMA journal_mode=DELETE; CREATE TABLE values_(value INTEGER);")
+        .expect("baseline schema");
+    controller().reset().expect("reset after baseline");
+
+    let gate = Arc::new(PauseGate::new());
+    assert_eq!(gate.release(), Err(ControllerError::Rejected));
+    controller()
+        .arm(
+            FaultPlan::pause(
+                FaultTarget::new(FileRole::RollbackJournal, Operation::Write, 0)
+                    .expect("commit-window target"),
+                Arc::clone(&gate),
+            )
+            .expect("valid pause plan"),
+        )
+        .expect("arm pause");
+
+    let (finished_tx, finished_rx) = mpsc::channel();
+    let writer = thread::spawn(move || {
+        connection
+            .execute("INSERT INTO values_ VALUES(1)", [])
+            .expect("write continues after a reached release");
+        finished_tx.send(()).expect("report writer completion");
+    });
+    assert!(gate.wait_until_reached(Duration::from_secs(5)));
+    assert_eq!(
+        finished_rx.recv_timeout(Duration::from_secs(1)),
+        Err(mpsc::RecvTimeoutError::Timeout),
+        "a release before reach must not let the target cross the commit window"
+    );
+
+    gate.release().expect("release reached pause");
+    writer.join().expect("writer thread");
+    controller()
+        .snapshot()
+        .validate()
+        .expect("actually blocked pause trace");
     controller().disable().expect("disable pause");
 }
 

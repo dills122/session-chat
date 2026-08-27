@@ -96,8 +96,8 @@ fn public_plan_contract_is_closed_bounded_and_coarse() {
 
     let gate = Arc::new(PauseGate::default());
     assert!(!gate.wait_until_reached(Duration::ZERO));
-    gate.release();
-    gate.release();
+    assert_eq!(gate.release(), Err(ControllerError::Rejected));
+    assert_eq!(gate.release(), Err(ControllerError::Rejected));
     let pause_target = FaultTarget::new(FileRole::RollbackJournal, Operation::Sync, 0)
         .expect("supported pause target");
     let pause = FaultPlan::pause(pause_target, gate).expect("commit-window pause");

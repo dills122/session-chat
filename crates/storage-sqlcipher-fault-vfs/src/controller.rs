@@ -313,12 +313,17 @@ impl PauseGate {
         state.reached
     }
 
-    /// Releases a reached operation. Repeated release is harmless.
-    pub fn release(&self) {
-        if let Ok(mut state) = self.state.lock() {
-            state.released = true;
-            self.changed.notify_all();
+    /// Releases a reached operation and rejects release before reach.
+    ///
+    /// Repeated release after the operation is reached is harmless.
+    pub fn release(&self) -> Result<(), ControllerError> {
+        let mut state = self.state.lock().map_err(|_| ControllerError::Rejected)?;
+        if !state.reached {
+            return Err(ControllerError::Rejected);
         }
+        state.released = true;
+        self.changed.notify_all();
+        Ok(())
     }
 
     pub(crate) fn block(&self) -> Result<(), ControllerError> {

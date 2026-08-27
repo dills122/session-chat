@@ -98,10 +98,10 @@ storage protocol/controller, and the publish-disabled named fault VFS.
 | `session-transport` | 1032/1097 (94.07%) | 1035/1100 (94.09%) | 90% |
 | `sessionctl` | 292/373 (78.28%) | 1866/2048 (91.11%) | 90% |
 | `storage-sqlcipher` | 650/742 (87.60%) | 1311/1414 (92.72%) | 90% |
-| `storage-sqlcipher-fault-vfs` | Not present | 1058/1164 (90.89%) | 90% |
+| `storage-sqlcipher-fault-vfs` | Not present | 1061/1167 (90.92%) | 90% |
 | `transport-conformance` | 1325/1514 (87.52%) | 1367/1514 (90.29%) | 90% |
 | `transport-memory` | 808/920 (87.83%) | 836/920 (90.87%) | 90% |
-| **Workspace** | **8034/8850 (90.78%)** | **11747/12659 (92.80%)** | **92.23% ratchet** |
+| **Workspace** | **8034/8850 (90.78%)** | **11750/12662 (92.80%)** | **92.23% ratchet** |
 
 The workspace also moved from 86.88% to 88.72% region coverage and from
 83.47% to 90.49% function coverage. CI retains its existing stable floors at
