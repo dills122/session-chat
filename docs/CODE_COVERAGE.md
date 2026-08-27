@@ -63,7 +63,9 @@ The policy makes these distinctions explicit:
 ## Clean-master baseline and enforced result
 
 Both columns below were produced on 2026-08-26 from the same integration-target
-measurement method. The baseline used a clean archive of
+measurement method. The retained current result was regenerated from a clean
+detached checkout so it does not depend on symbolic-versus-direct `HEAD` layout.
+The baseline used a clean archive of
 `origin/master` at `0bce3a38c62356feef2a806f4eb9e7fd2c55073e`; the current result includes
 the coverage workstream, durable Welcome-delivery composition, exact
 client-identity/group reload, and the ADR 0021 independent-process L1 runner
