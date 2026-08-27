@@ -30,6 +30,7 @@ use transport_memory::{
 
 const RUNNER_TRACE: &[u8] = include_bytes!("fixtures/memory-runner-v1.txt");
 const COMMON_VERDICTS_TRACE: &[u8] = include_bytes!("fixtures/memory-common-verdicts-v1.txt");
+const QUEUE_SATURATION_TRACE: &[u8] = include_bytes!("fixtures/memory-queue-saturation-v1.txt");
 
 struct MailboxRights {
     deposit: DepositRight<MemoryDepositEndpoint>,
@@ -53,6 +54,7 @@ enum AdapterBehavior {
     ChangedRetryReceipt,
     CrossScopePoll,
     IgnoreDepositControl,
+    IgnoreQueueCapacity,
     SeededOpenFailure,
 }
 
@@ -97,6 +99,13 @@ impl MemoryTraceAdapter {
     fn with_ignored_deposit_control() -> Self {
         Self {
             behavior: AdapterBehavior::IgnoreDepositControl,
+            ..Self::new()
+        }
+    }
+
+    fn with_ignored_queue_capacity() -> Self {
+        Self {
+            behavior: AdapterBehavior::IgnoreQueueCapacity,
             ..Self::new()
         }
     }
@@ -317,6 +326,14 @@ impl AdverseTraceAdapterV1 for MemoryTraceAdapter {
                 fabricated,
             )))));
         }
+        if self.behavior == AdapterBehavior::IgnoreQueueCapacity && deposit_attempt == 8 {
+            let fabricated =
+                DeliveryId::from_provider_bytes([0xfc; 16]).expect("nonzero defective receipt");
+            let result = control
+                .checkpoint(request.budget())
+                .map(|_| DepositReceipt::accepted(fabricated));
+            return Ok(Box::pin(std::future::ready(result)));
+        }
         let Self {
             transport,
             mailboxes,
@@ -455,6 +472,29 @@ fn memory_adapter_passes_the_composed_common_verdict_trace() {
     assert!(report.contains("step|27|failed|invalid-cursor|never\n"));
     assert!(report.contains("step|29|failed|expired-envelope|never\n"));
     assert!(report.ends_with("end|quiescent\n"));
+}
+
+#[test]
+fn queue_saturation_is_deterministic_and_detects_an_over_accepting_bridge() {
+    assert!(
+        !QUEUE_SATURATION_TRACE.contains(&b'\r'),
+        "canonical trace fixtures must retain LF line endings"
+    );
+    let trace = AdverseTraceV1::parse(QUEUE_SATURATION_TRACE)
+        .expect("canonical queue-saturation verdict trace");
+    let report = run_adverse_trace_twice_v1(&trace, MemoryTraceAdapter::new)
+        .expect("the bounded memory adapter must fail closed at queue saturation twice");
+    let report = std::str::from_utf8(report.as_bytes()).expect("ASCII normalized report");
+
+    assert!(report.contains("step|10|failed|queue-full|never\n"));
+    assert!(report.contains("step|11|poll-accepted|1:1,2:2,3:3,4:4,5:5,6:6,7:7,8:8|none\n"));
+    assert!(report.ends_with("end|quiescent\n"));
+
+    let failure =
+        run_adverse_trace_twice_v1(&trace, MemoryTraceAdapter::with_ignored_queue_capacity)
+            .expect_err("accepting the over-capacity deposit must fail the common verdict");
+    assert_eq!(failure.category(), RunErrorCategoryV1::UnexpectedEvent);
+    assert_eq!(failure.step(), Some(10));
 }
 
 #[test]
