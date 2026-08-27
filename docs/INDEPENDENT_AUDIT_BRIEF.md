@@ -6,8 +6,10 @@ This brief is the entry point for an independent review of Session Chat 2.0.
 It deliberately separates code-backed evidence from accepted design contracts,
 research proposals, and deferred work. It is suitable for an architecture and
 protocol review now. It is not a request to certify a production application,
-because no production client, independently restartable process, production
-durable store, network service, or deployable realm exists.
+because no independently restartable production client, production durable
+store, network service, or deployable realm exists. The publish-disabled
+conformance runner demonstrates only a bounded, graceful process close/reopen
+laboratory flow.
 
 An auditor should record the exact Git commit, parent or comparison base,
 `Cargo.lock` digest, enabled Cargo features, and tool versions used for the

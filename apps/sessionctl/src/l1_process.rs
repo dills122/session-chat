@@ -1265,6 +1265,14 @@ fn git_commit_at(repository_root: &Path) -> String {
     resolve_git_commit(repository_root).unwrap_or_else(|| String::from("unavailable"))
 }
 
+/// Resolves bounded Git commit metadata for the retained conformance harness.
+///
+/// This checkout-independent integration seam is not a product metadata API.
+#[doc(hidden)]
+pub fn resolve_l1_process_git_commit(repository_root: &Path) -> Option<String> {
+    resolve_git_commit(repository_root)
+}
+
 fn git_dirty_at(repository_root: &Path) -> bool {
     let tracked = git_status_at(repository_root, &["diff-index", "--quiet", "HEAD", "--"]);
     if tracked.is_none_or(|status| status.code() != Some(0)) {

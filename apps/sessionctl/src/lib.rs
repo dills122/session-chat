@@ -4,7 +4,10 @@
 
 mod l1_process;
 
-pub use l1_process::{L1ProcessReport, run_l1_process_demo, run_l1_process_internal_role};
+pub use l1_process::{
+    L1ProcessReport, resolve_l1_process_git_commit, run_l1_process_demo,
+    run_l1_process_internal_role,
+};
 
 use std::{
     fmt::Write as _,

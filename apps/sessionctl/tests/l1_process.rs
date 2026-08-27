@@ -6,7 +6,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use sessionctl::run_l1_process_internal_role;
+use sessionctl::{resolve_l1_process_git_commit, run_l1_process_internal_role};
 
 const MAX_EVIDENCE_BYTES: usize = 2_048;
 
@@ -77,6 +77,44 @@ fn independent_process_runner_resolves_metadata_outside_the_repository() {
     assert!(!evidence.contains("commit=unavailable\n"));
     assert!(!evidence.contains("toolchain=unavailable\n"));
     assert!(!evidence.contains("lock_sha256=unavailable\n"));
+}
+
+#[test]
+fn git_commit_resolution_is_independent_of_checkout_head_layout() {
+    let direct_root = marked_root("direct-head");
+    fs::create_dir(direct_root.join(".git")).expect("create direct Git directory");
+    fs::write(
+        direct_root.join(".git/HEAD"),
+        b"ABCDEF0123456789ABCDEF0123456789ABCDEF01\n",
+    )
+    .expect("write direct HEAD");
+    assert_eq!(
+        resolve_l1_process_git_commit(&direct_root).as_deref(),
+        Some("abcdef0123456789abcdef0123456789abcdef01")
+    );
+    fs::remove_dir_all(&direct_root).expect("remove direct-HEAD root");
+
+    let symbolic_root = marked_root("symbolic-head");
+    let git_directory = symbolic_root.join("worktree-git");
+    let common_directory = symbolic_root.join("common-git");
+    fs::create_dir(&git_directory).expect("create linked-worktree Git directory");
+    fs::create_dir_all(common_directory.join("refs/heads")).expect("create common refs directory");
+    fs::write(symbolic_root.join(".git"), b"gitdir: worktree-git\n")
+        .expect("write linked-worktree marker");
+    fs::write(git_directory.join("HEAD"), b"ref: refs/heads/fixture\n")
+        .expect("write symbolic HEAD");
+    fs::write(git_directory.join("commondir"), b"../common-git\n")
+        .expect("write common-directory marker");
+    fs::write(
+        common_directory.join("refs/heads/fixture"),
+        b"0123456789abcdef0123456789abcdef01234567\n",
+    )
+    .expect("write loose branch ref");
+    assert_eq!(
+        resolve_l1_process_git_commit(&symbolic_root).as_deref(),
+        Some("0123456789abcdef0123456789abcdef01234567")
+    );
+    fs::remove_dir_all(&symbolic_root).expect("remove symbolic-HEAD root");
 }
 
 #[test]
