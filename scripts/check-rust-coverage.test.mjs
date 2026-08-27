@@ -64,12 +64,13 @@ const policy = {
   nonInstrumentedSources: [],
 };
 
-test('ordinary production coverage explicitly excludes the checked-cfg fault module', () => {
-  assert.ok(
-    COVERAGE_POLICY.nonInstrumentedSources.includes(
-      'crates/storage-sqlcipher/src/fault_testing.rs',
-    ),
-  );
+test('ordinary production coverage explicitly excludes checked-cfg fault modules', () => {
+  for (const source of [
+    'apps/sessionctl/src/l2_process.rs',
+    'crates/storage-sqlcipher/src/fault_testing.rs',
+  ]) {
+    assert.ok(COVERAGE_POLICY.nonInstrumentedSources.includes(source), source);
+  }
 });
 
 test('aggregates every production source file and accepts exact thresholds', () => {
