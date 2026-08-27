@@ -1,0 +1,27 @@
+[package]
+name = "storage-sqlcipher-fault-vfs"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+description = "Publish-disabled named SQLite VFS fault adapter for Session Chat L2 tests"
+
+[dependencies]
+libsqlite3-sys = { version = "=0.38.2", default-features = false, features = ["bundled-sqlcipher-vendored-openssl", "min_sqlite_version_3_34_1"] }
+
+[dev-dependencies]
+rusqlite = { version = "=0.40.1", default-features = false, features = ["bundled-sqlcipher-vendored-openssl"] }
+tempfile = "=3.27.0"
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+
+# This crate is intentionally tested independently until the lead-owned
+# workspace membership and lockfile reconciliation lands.
+[workspace]
+resolver = "3"
