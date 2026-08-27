@@ -1864,7 +1864,9 @@ fn persist_mls(
         },
         0,
     )?;
-    for (_occurrence, epoch) in epoch_inserts.iter().enumerate() {
+    #[cfg(session_chat_storage_fault_testing)]
+    let mut insert_occurrence = 0_u8;
+    for epoch in epoch_inserts {
         transaction.execute(
             "INSERT INTO mls_epochs(group_id, epoch_id, data) VALUES (?1, ?2, ?3)",
             params![state.id, epoch.id as i64, epoch.data.as_slice()],
@@ -1880,10 +1882,18 @@ fn persist_mls(
                     fault_testing::Checkpoint::JoinerAfterEpochInsert
                 }
             },
-            u8::try_from(_occurrence).map_err(|_| StoreError::Rejected)?,
+            insert_occurrence,
         )?;
+        #[cfg(session_chat_storage_fault_testing)]
+        {
+            insert_occurrence = insert_occurrence
+                .checked_add(1)
+                .ok_or(StoreError::Rejected)?;
+        }
     }
-    for (_occurrence, epoch) in epoch_updates.iter().enumerate() {
+    #[cfg(session_chat_storage_fault_testing)]
+    let mut update_occurrence = 0_u8;
+    for epoch in epoch_updates {
         let changed = transaction.execute(
             "UPDATE mls_epochs SET data = ?3 WHERE group_id = ?1 AND epoch_id = ?2",
             params![state.id, epoch.id as i64, epoch.data.as_slice()],
@@ -1902,8 +1912,14 @@ fn persist_mls(
                     fault_testing::Checkpoint::JoinerAfterEpochUpdate
                 }
             },
-            u8::try_from(_occurrence).map_err(|_| StoreError::Rejected)?,
+            update_occurrence,
         )?;
+        #[cfg(session_chat_storage_fault_testing)]
+        {
+            update_occurrence = update_occurrence
+                .checked_add(1)
+                .ok_or(StoreError::Rejected)?;
+        }
     }
     Ok(())
 }
