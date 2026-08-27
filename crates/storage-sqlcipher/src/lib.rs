@@ -2,6 +2,14 @@
 
 //! SQLCipher-backed MLS persistence candidate for Session Chat.
 
+#[cfg(all(session_chat_storage_fault_testing, not(debug_assertions)))]
+compile_error!("session_chat_storage_fault_testing requires debug assertions");
+
+/// Checked, debug-only process-fault protocol and storage entry points.
+#[cfg(session_chat_storage_fault_testing)]
+#[doc(hidden)]
+pub mod fault_testing;
+
 use std::{
     path::Path,
     sync::{Arc, Mutex, MutexGuard},
