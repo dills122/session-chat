@@ -249,6 +249,88 @@ pub fn validate_null_callback_boundaries() -> Result<(), RegistrationError> {
     }
 }
 
+/// Verifies that optional services delegate through the registered wrapper.
+///
+/// The raw SQLite callback probe remains inside this module so external tests
+/// and consumers never need a second unsafe FFI boundary.
+pub fn validate_optional_service_forwarding() -> Result<(), RegistrationError> {
+    register()?;
+
+    // SAFETY: registration retains the named VFS for process lifetime. Every
+    // callback receives the exact registered pointer and initialized
+    // scalar/output arguments required by SQLite's public VFS ABI.
+    let valid = unsafe {
+        let vfs = ffi::sqlite3_vfs_find(VFS_NAME_C.as_ptr().cast());
+        let vfs = (!vfs.is_null())
+            .then_some(vfs)
+            .ok_or(RegistrationError::Rejected)?;
+
+        let randomness = (*vfs).xRandomness.ok_or(RegistrationError::Rejected)?;
+        let sleep = (*vfs).xSleep.ok_or(RegistrationError::Rejected)?;
+        let current_time = (*vfs).xCurrentTime.ok_or(RegistrationError::Rejected)?;
+        let current_time_int64 = (*vfs)
+            .xCurrentTimeInt64
+            .ok_or(RegistrationError::Rejected)?;
+        let get_last_error = (*vfs).xGetLastError.ok_or(RegistrationError::Rejected)?;
+        let next_system_call = (*vfs).xNextSystemCall.ok_or(RegistrationError::Rejected)?;
+        let get_system_call = (*vfs).xGetSystemCall.ok_or(RegistrationError::Rejected)?;
+        let set_system_call = (*vfs).xSetSystemCall.ok_or(RegistrationError::Rejected)?;
+        let dl_open = (*vfs).xDlOpen.ok_or(RegistrationError::Rejected)?;
+        let dl_error = (*vfs).xDlError.ok_or(RegistrationError::Rejected)?;
+
+        let mut randomness_buffer = [0_i8; 32];
+        let generated = randomness(vfs, 32, randomness_buffer.as_mut_ptr());
+        let slept = sleep(vfs, 0);
+
+        let mut julian_day = 0.0;
+        let time_result = current_time(vfs, &mut julian_day);
+        let mut julian_millis = 0_i64;
+        let integer_time_result = current_time_int64(vfs, &mut julian_millis);
+
+        let mut last_error = [0_i8; 256];
+        let _ = get_last_error(
+            vfs,
+            i32::try_from(last_error.len()).map_err(|_| RegistrationError::Rejected)?,
+            last_error.as_mut_ptr(),
+        );
+
+        let first_system_call = next_system_call(vfs, ptr::null());
+        let system_call_valid = if first_system_call.is_null() {
+            true
+        } else {
+            let name_valid = !CStr::from_ptr(first_system_call).to_bytes().is_empty();
+            let call = get_system_call(vfs, first_system_call);
+            name_valid
+                && call.is_some()
+                && set_system_call(vfs, first_system_call, call) == ffi::SQLITE_OK
+        };
+
+        const MISSING_LIBRARY: &[u8] = b"session-chat-vfs-missing-library\0";
+        let handle = dl_open(vfs, MISSING_LIBRARY.as_ptr().cast());
+        let mut loader_error = [0_i8; 256];
+        dl_error(
+            vfs,
+            i32::try_from(loader_error.len()).map_err(|_| RegistrationError::Rejected)?,
+            loader_error.as_mut_ptr(),
+        );
+
+        generated > 0
+            && slept >= 0
+            && time_result == ffi::SQLITE_OK
+            && julian_day > 0.0
+            && integer_time_result == ffi::SQLITE_OK
+            && julian_millis > 0
+            && system_call_valid
+            && handle.is_null()
+    };
+
+    if valid {
+        Ok(())
+    } else {
+        Err(RegistrationError::Rejected)
+    }
+}
+
 unsafe fn register_inner() -> Result<(), RegistrationError> {
     // SAFETY: process-global SQLite initialization has no Rust aliasing contract.
     if unsafe { ffi::sqlite3_initialize() } != ffi::SQLITE_OK {

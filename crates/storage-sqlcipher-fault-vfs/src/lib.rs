@@ -18,7 +18,7 @@ pub use controller::{
 };
 pub use native::{
     DefaultVfsIdentity, RegistrationError, default_vfs_identity, register,
-    validate_null_callback_boundaries,
+    validate_null_callback_boundaries, validate_optional_service_forwarding,
 };
 
 /// The one closed VFS name frozen by the L2-0 storage connection seam.

@@ -98,15 +98,22 @@ storage protocol/controller, and the publish-disabled named fault VFS.
 | `session-transport` | 1032/1097 (94.07%) | 1035/1100 (94.09%) | 90% |
 | `sessionctl` | 292/373 (78.28%) | 1866/2048 (91.11%) | 90% |
 | `storage-sqlcipher` | 650/742 (87.60%) | 1311/1414 (92.72%) | 90% |
-| `storage-sqlcipher-fault-vfs` | Not present | 990/1091 (90.74%) | 90% |
+| `storage-sqlcipher-fault-vfs` | Not present | 1058/1164 (90.89%) | 90% |
 | `transport-conformance` | 1325/1514 (87.52%) | 1367/1514 (90.29%) | 90% |
 | `transport-memory` | 808/920 (87.83%) | 836/920 (90.87%) | 90% |
-| **Workspace** | **8034/8850 (90.78%)** | **11679/12586 (92.79%)** | **92.23% ratchet** |
+| **Workspace** | **8034/8850 (90.78%)** | **11747/12659 (92.80%)** | **92.23% ratchet** |
 
-The workspace also moved from 86.88% to 88.73% region coverage and from
-83.47% to 90.48% function coverage. CI retains its existing stable floors at
+The workspace also moved from 86.88% to 88.72% region coverage and from
+83.47% to 90.49% function coverage. CI retains its existing stable floors at
 92.23% lines, 88.53% regions, and 85.64% functions. The slight fractional
 margin avoids making display rounding part of the contract.
+
+The current column is the 2026-08-27 author-worktree snapshot produced by the
+canonical command above. Separate clean-worktree runs have produced small
+fractional differences in aggregate instrumented totals even with the pinned
+toolchain; exact observed numerators are therefore informational snapshots, not
+the gate contract. The checked component and workspace floors are authoritative,
+and this table is regenerated as one snapshot whenever retained behavior changes.
 
 ## Vital initial scope
 

@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 use std::{
     sync::{Arc, Mutex, MutexGuard, OnceLock},
     thread,
@@ -141,10 +143,13 @@ fn named_vfs_returns_actual_extended_ioerr_and_full_codes() {
     snapshot.validate().expect("actual result-code trace");
     assert!(snapshot.injected_failures() >= 2);
     controller().disable().expect("disable IOERR");
+    connection
+        .execute("INSERT INTO values_ VALUES(4)", [])
+        .expect("disabled persistent plan must delegate later writes");
     controller()
         .snapshot()
         .validate()
-        .expect("disarming preserves evidence metadata");
+        .expect("post-disable delegation preserves valid evidence metadata");
     drop(connection);
 }
 

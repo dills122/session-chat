@@ -449,6 +449,7 @@ struct Event {
     role: FileRole,
     evidence: RoleEvidence,
     operation: Operation,
+    armed: bool,
     outcome: Outcome,
 }
 
@@ -558,6 +559,7 @@ pub(crate) fn observe(role: FileRole, evidence: RoleEvidence, operation: Operati
 
     let matching_ordinal = state.counts[role.index()][operation.index()];
     let global_ordinal = u16::try_from(state.events.len()).unwrap_or(u16::MAX);
+    let armed = state.armed;
     state.counts[role.index()][operation.index()] = matching_ordinal.saturating_add(1);
 
     let decision = match state.plan.as_ref().filter(|_| state.armed) {
@@ -590,6 +592,7 @@ pub(crate) fn observe(role: FileRole, evidence: RoleEvidence, operation: Operati
         role,
         evidence,
         operation,
+        armed,
         outcome,
     });
     decision
@@ -728,12 +731,30 @@ impl Snapshot {
 
     fn validate_outcome(&self, event: &Event) -> Result<(), ValidationError> {
         match event.outcome {
-            Outcome::Delegated => Ok(()),
+            Outcome::Delegated => match self.plan.as_ref() {
+                Some(plan)
+                    if event.armed
+                        && plan.mode == FaultMode::Persistent
+                        && plan.target.role == event.role
+                        && plan.target.operation == event.operation
+                        && event.matching_ordinal >= plan.target.ordinal =>
+                {
+                    Err(ValidationError::Rejected)
+                }
+                Some(_) | None => Ok(()),
+            },
             Outcome::Returned(actual) => match self.plan.as_ref() {
                 Some(plan) => match plan.action {
                     FaultAction::Return(expected)
-                        if plan.target.role == event.role
+                        if event.armed
+                            && plan.target.role == event.role
                             && plan.target.operation == event.operation
+                            && match plan.mode {
+                                FaultMode::OneShot => event.matching_ordinal == plan.target.ordinal,
+                                FaultMode::Persistent => {
+                                    event.matching_ordinal >= plan.target.ordinal
+                                }
+                            }
                             && expected.sqlite_code() == actual =>
                     {
                         Ok(())
@@ -744,9 +765,11 @@ impl Snapshot {
             },
             Outcome::Paused => match self.plan.as_ref() {
                 Some(plan)
-                    if plan.action == FaultAction::Pause
+                    if event.armed
+                        && plan.action == FaultAction::Pause
                         && plan.target.role == event.role
-                        && plan.target.operation == event.operation =>
+                        && plan.target.operation == event.operation
+                        && event.matching_ordinal == plan.target.ordinal =>
                 {
                     Ok(())
                 }
@@ -806,6 +829,7 @@ mod tests {
             role,
             evidence,
             operation,
+            armed: true,
             outcome,
         }
     }
@@ -868,6 +892,39 @@ mod tests {
                 Operation::Write,
                 Outcome::Returned(libsqlite3_sys::SQLITE_IOERR_FSYNC),
             )],
+            Some(plan),
+        );
+        assert_eq!(defective.validate(), Err(ValidationError::Rejected));
+    }
+
+    #[test]
+    fn defective_persistent_gap_after_target_is_rejected() {
+        let target =
+            FaultTarget::new(FileRole::MainDatabase, Operation::Write, 0).expect("valid target");
+        let plan = PublicPlan {
+            target,
+            mode: FaultMode::Persistent,
+            action: FaultAction::Return(FaultCode::IoErrWrite),
+        };
+        let defective = snapshot(
+            vec![
+                event(
+                    0,
+                    0,
+                    FileRole::MainDatabase,
+                    RoleEvidence::MainFlag,
+                    Operation::Write,
+                    Outcome::Returned(libsqlite3_sys::SQLITE_IOERR_WRITE),
+                ),
+                event(
+                    1,
+                    1,
+                    FileRole::MainDatabase,
+                    RoleEvidence::MainFlag,
+                    Operation::Write,
+                    Outcome::Delegated,
+                ),
+            ],
             Some(plan),
         );
         assert_eq!(defective.validate(), Err(ValidationError::Rejected));
