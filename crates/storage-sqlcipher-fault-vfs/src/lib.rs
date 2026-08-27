@@ -16,7 +16,10 @@ pub use controller::{
     FileRole, Operation, OperationDisposition, OperationRecord, PauseGate, Snapshot,
     ValidationError, controller,
 };
-pub use native::{DefaultVfsIdentity, RegistrationError, default_vfs_identity, register};
+pub use native::{
+    DefaultVfsIdentity, RegistrationError, default_vfs_identity, register,
+    validate_null_callback_boundaries,
+};
 
 /// The one closed VFS name frozen by the L2-0 storage connection seam.
 pub const VFS_NAME: &str = "session-chat-storage-fault-v1";

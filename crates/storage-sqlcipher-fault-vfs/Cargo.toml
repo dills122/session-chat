@@ -20,8 +20,3 @@ unsafe_op_in_unsafe_fn = "deny"
 dbg_macro = "deny"
 todo = "deny"
 unimplemented = "deny"
-
-# This crate is intentionally tested independently until the lead-owned
-# workspace membership and lockfile reconciliation lands.
-[workspace]
-resolver = "3"

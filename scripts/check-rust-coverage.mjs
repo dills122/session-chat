@@ -20,6 +20,7 @@ export const COVERAGE_POLICY = Object.freeze({
     'session-transport': 'crates/session-transport/src/',
     sessionctl: 'apps/sessionctl/src/',
     'storage-sqlcipher': 'crates/storage-sqlcipher/src/',
+    'storage-sqlcipher-fault-vfs': 'crates/storage-sqlcipher-fault-vfs/src/',
     'transport-conformance': 'crates/transport-conformance/src/',
     'transport-memory': 'crates/transport-memory/src/',
   }),
@@ -30,6 +31,7 @@ export const COVERAGE_POLICY = Object.freeze({
   minimumWorkspaceRegions: 88.53,
   nonInstrumentedSources: Object.freeze([
     'apps/sessionctl/src/l2_process.rs',
+    'crates/storage-sqlcipher-fault-vfs/src/lib.rs',
     'crates/storage-sqlcipher/src/fault_testing.rs',
     'crates/transport-conformance/src/lib.rs',
   ]),

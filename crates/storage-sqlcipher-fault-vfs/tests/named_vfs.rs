@@ -6,8 +6,8 @@ use std::{
 
 use rusqlite::{Connection, OpenFlags};
 use storage_sqlcipher_fault_vfs::{
-    FaultCode, FaultMode, FaultPlan, FaultTarget, FileRole, Operation, PauseGate, VFS_NAME,
-    ValidationError, controller, default_vfs_identity, register,
+    FaultCode, FaultMode, FaultPlan, FaultTarget, FileRole, Operation, OperationDisposition,
+    PauseGate, VFS_NAME, ValidationError, controller, default_vfs_identity, register,
 };
 
 fn exclusive_controller() -> MutexGuard<'static, ()> {
@@ -187,6 +187,11 @@ fn commit_window_pause_blocks_until_the_controller_releases_it() {
     let snapshot = controller().snapshot();
     snapshot.validate().expect("pause trace");
     assert_eq!(snapshot.pauses(), 1);
+    assert!(
+        snapshot
+            .operations()
+            .any(|record| record.disposition() == OperationDisposition::Paused)
+    );
     controller().disable().expect("disable pause");
 }
 

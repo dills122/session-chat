@@ -62,6 +62,10 @@ The policy makes these distinctions explicit:
   non-instrumented allowance. It contains only the declaration `pub mod trace;`
   and therefore exports no instrumentable region. The checker requires every
   allowed file to exist and fails if an allowance becomes stale.
+- `crates/storage-sqlcipher-fault-vfs/src/lib.rs` is the declaration-only root
+  of the publish-disabled native fault adapter. Its controller and isolated
+  native implementation remain measured as their own component; only the root
+  re-exports and constants have no instrumentable region.
 - Provider-invariant random failures, hard-to-reach production errors, and
   platform glue are not excluded. New production source that is absent from the
   report or not assigned to exactly one component fails the gate.
@@ -76,7 +80,8 @@ The baseline used a clean archive of
 the coverage workstream, durable Welcome-delivery composition, exact
 client-identity/group reload, the ADR 0021 independent-process L1 runner after
 its cleanup and bounded-metadata hardening tests, the first hostile exact-replay
-process case, and the bounded transport queue-saturation verdict.
+process case, the bounded transport queue-saturation verdict, the checked L2
+storage protocol/controller, and the publish-disabled named fault VFS.
 
 | Production component | Clean master | Enforced result | Line gate |
 | --- | ---: | ---: | ---: |
@@ -91,14 +96,15 @@ process case, and the bounded transport queue-saturation verdict.
 | `session-protocol` | 1176/1245 (94.46%) | 1176/1245 (94.46%) | 90% |
 | `session-storage` | 501/521 (96.16%) | 501/521 (96.16%) | 90% |
 | `session-transport` | 1032/1097 (94.07%) | 1035/1100 (94.09%) | 90% |
-| `sessionctl` | 292/373 (78.28%) | 1861/2043 (91.09%) | 90% |
-| `storage-sqlcipher` | 650/742 (87.60%) | 1279/1379 (92.75%) | 90% |
+| `sessionctl` | 292/373 (78.28%) | 1866/2048 (91.11%) | 90% |
+| `storage-sqlcipher` | 650/742 (87.60%) | 1311/1414 (92.72%) | 90% |
+| `storage-sqlcipher-fault-vfs` | Not present | 990/1091 (90.74%) | 90% |
 | `transport-conformance` | 1325/1514 (87.52%) | 1367/1514 (90.29%) | 90% |
 | `transport-memory` | 808/920 (87.83%) | 836/920 (90.87%) | 90% |
-| **Workspace** | **8034/8850 (90.78%)** | **10652/11455 (92.99%)** | **92.23% ratchet** |
+| **Workspace** | **8034/8850 (90.78%)** | **11679/12586 (92.79%)** | **92.23% ratchet** |
 
-The workspace also moved from 86.88% to 88.56% region coverage and from
-83.47% to 89.56% function coverage. CI retains its existing stable floors at
+The workspace also moved from 86.88% to 88.73% region coverage and from
+83.47% to 90.48% function coverage. CI retains its existing stable floors at
 92.23% lines, 88.53% regions, and 85.64% functions. The slight fractional
 margin avoids making display rounding part of the contract.
 

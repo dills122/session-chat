@@ -73,6 +73,18 @@ test('ordinary production coverage explicitly excludes checked-cfg fault modules
   }
 });
 
+test('measures the fault VFS and allows only its declaration-only crate root', () => {
+  assert.equal(
+    COVERAGE_POLICY.components['storage-sqlcipher-fault-vfs'],
+    'crates/storage-sqlcipher-fault-vfs/src/',
+  );
+  assert.ok(
+    COVERAGE_POLICY.nonInstrumentedSources.includes(
+      'crates/storage-sqlcipher-fault-vfs/src/lib.rs',
+    ),
+  );
+});
+
 test('aggregates every production source file and accepts exact thresholds', () => {
   const root = '/workspace';
   const input = report(

@@ -20,7 +20,7 @@ use libsqlite3_sys as ffi;
 
 use crate::{
     FileRole, Operation, VFS_NAME,
-    controller::{Decision, RoleEvidence, observe},
+    controller::{Decision, RoleEvidence, controller, observe},
 };
 
 const VFS_NAME_C: &[u8] = b"session-chat-storage-fault-v1\0";
@@ -92,6 +92,161 @@ pub fn register() -> Result<(), RegistrationError> {
         // registers it exactly once under this `OnceLock`.
         unsafe { register_inner() }
     })
+}
+
+/// Verifies that every callback rejects a null SQLite ABI owner pointer.
+///
+/// This retained self-check exists only in the publish-disabled L2 fault
+/// adapter. It passes no paths or payload bytes and restores the controller to
+/// an idle state before returning.
+pub fn validate_null_callback_boundaries() -> Result<(), RegistrationError> {
+    controller()
+        .reset()
+        .map_err(|_| RegistrationError::Rejected)?;
+
+    // SAFETY: each callback is deliberately invoked with null owner pointers to
+    // exercise its documented first-line rejection. No callback may dereference
+    // these values; the exact return codes below enforce that contract.
+    let valid = unsafe {
+        let null_vfs = ptr::null_mut();
+        let null_file = ptr::null_mut();
+        let null_char = ptr::null();
+        let null_char_mut = ptr::null_mut();
+        let null_void = ptr::null_mut();
+
+        delegated_vfs(null_vfs).is_err()
+            && real_file(null_file).is_err()
+            && wrapped_metadata(null_file).is_err()
+            && io_methods(null_file).is_err()
+            && vfs_open(null_vfs, null_char, null_file, 0, ptr::null_mut()) == ffi::SQLITE_IOERR
+            && vfs_delete(null_vfs, null_char, 0) == ffi::SQLITE_IOERR_DELETE
+            && vfs_access(null_vfs, null_char, 0, ptr::null_mut()) == ffi::SQLITE_IOERR
+            && vfs_full_pathname(null_vfs, null_char, 0, null_char_mut) == ffi::SQLITE_IOERR
+            && vfs_dl_open(null_vfs, null_char).is_null()
+            && vfs_dl_sym(null_vfs, null_void, null_char).is_none()
+            && vfs_randomness(null_vfs, 0, null_char_mut) == 0
+            && vfs_sleep(null_vfs, 0) == 0
+            && vfs_current_time(null_vfs, ptr::null_mut()) == ffi::SQLITE_IOERR
+            && vfs_get_last_error(null_vfs, 0, null_char_mut) == 0
+            && vfs_current_time_int64(null_vfs, ptr::null_mut()) == ffi::SQLITE_IOERR
+            && vfs_set_system_call(null_vfs, null_char, None) == ffi::SQLITE_NOTFOUND
+            && vfs_get_system_call(null_vfs, null_char).is_none()
+            && vfs_next_system_call(null_vfs, null_char).is_null()
+            && io_close(null_file) == ffi::SQLITE_IOERR_CLOSE
+            && io_read(null_file, null_void, 0, 0) == ffi::SQLITE_IOERR_READ
+            && io_write(null_file, ptr::null(), 0, 0) == ffi::SQLITE_IOERR
+            && io_truncate(null_file, 0) == ffi::SQLITE_IOERR
+            && io_sync(null_file, 0) == ffi::SQLITE_IOERR
+            && io_file_size(null_file, ptr::null_mut()) == ffi::SQLITE_IOERR_FSTAT
+            && io_lock(null_file, 0) == ffi::SQLITE_IOERR
+            && io_unlock(null_file, 0) == ffi::SQLITE_IOERR
+            && io_check_reserved_lock(null_file, ptr::null_mut()) == ffi::SQLITE_IOERR
+            && io_file_control(null_file, 0, null_void) == ffi::SQLITE_NOTFOUND
+            && io_sector_size(null_file) == 0
+            && io_device_characteristics(null_file) == 0
+            && io_shm_map(null_file, 0, 0, 0, ptr::null_mut()) == ffi::SQLITE_IOERR_SHMMAP
+            && io_shm_lock(null_file, 0, 0, 0) == ffi::SQLITE_IOERR_SHMLOCK
+            && io_shm_unmap(null_file, 0) == ffi::SQLITE_IOERR_SHMOPEN
+            && io_fetch(null_file, 0, 0, ptr::null_mut()) == ffi::SQLITE_IOERR
+            && io_unfetch(null_file, 0, null_void) == ffi::SQLITE_IOERR
+    };
+
+    // SAFETY: both void callbacks perform the same checked null-owner lookup
+    // and return before any forwarding or dereference.
+    unsafe {
+        vfs_dl_error(ptr::null_mut(), 0, ptr::null_mut());
+        vfs_dl_close(ptr::null_mut(), ptr::null_mut());
+        io_shm_barrier(ptr::null_mut());
+    }
+
+    #[repr(C)]
+    struct BoundaryFile {
+        wrapped: WrappedFile,
+        real: ffi::sqlite3_file,
+    }
+
+    // SAFETY: zero is a valid representation for SQLite's C ABI records: raw
+    // pointers become null and optional callback slots become `None`. The
+    // wrapper allocation below exactly mirrors the advertised prefix/tail
+    // layout, so callbacks may inspect it while proving missing slots fail
+    // closed without invoking any foreign function.
+    let missing_slots_valid = unsafe {
+        let mut delegated: ffi::sqlite3_vfs = std::mem::zeroed();
+        let mut wrapper: ffi::sqlite3_vfs = std::mem::zeroed();
+        wrapper.pAppData = ptr::from_mut(&mut delegated).cast();
+
+        let mut boundary_file = BoundaryFile {
+            wrapped: WrappedFile {
+                base: ffi::sqlite3_file {
+                    pMethods: ptr::null(),
+                },
+                role: FileRole::MainDatabase as c_int,
+                evidence: RoleEvidence::MainFlag.code(),
+            },
+            real: ffi::sqlite3_file {
+                pMethods: ptr::null(),
+            },
+        };
+        let file = ptr::from_mut(&mut boundary_file.wrapped.base);
+        let expected_real = ptr::from_mut(&mut boundary_file.real);
+        let vfs = ptr::from_mut(&mut wrapper);
+
+        delegated_vfs(vfs).is_ok()
+            && real_file(file) == Ok(expected_real)
+            && wrapped_metadata(file) == Ok((FileRole::MainDatabase, RoleEvidence::MainFlag))
+            && io_methods(expected_real).is_err()
+            && vfs_open(vfs, ptr::null(), file, 0, ptr::null_mut()) == ffi::SQLITE_IOERR
+            && vfs_delete(vfs, ptr::null(), 0) == ffi::SQLITE_IOERR_DELETE
+            && vfs_access(vfs, ptr::null(), 0, ptr::null_mut()) == ffi::SQLITE_IOERR
+            && vfs_full_pathname(vfs, ptr::null(), 0, ptr::null_mut()) == ffi::SQLITE_IOERR
+            && vfs_dl_open(vfs, ptr::null()).is_null()
+            && vfs_dl_sym(vfs, ptr::null_mut(), ptr::null()).is_none()
+            && vfs_randomness(vfs, 0, ptr::null_mut()) == 0
+            && vfs_sleep(vfs, 0) == 0
+            && vfs_current_time(vfs, ptr::null_mut()) == ffi::SQLITE_IOERR
+            && vfs_get_last_error(vfs, 0, ptr::null_mut()) == 0
+            && vfs_current_time_int64(vfs, ptr::null_mut()) == ffi::SQLITE_IOERR
+            && vfs_set_system_call(vfs, ptr::null(), None) == ffi::SQLITE_NOTFOUND
+            && vfs_get_system_call(vfs, ptr::null()).is_none()
+            && vfs_next_system_call(vfs, ptr::null()).is_null()
+            && io_close(file) == ffi::SQLITE_IOERR_CLOSE
+            && io_read(file, ptr::null_mut(), 0, 0) == ffi::SQLITE_IOERR_READ
+            && io_write(file, ptr::null(), 0, 0) == ffi::SQLITE_IOERR_WRITE
+            && io_truncate(file, 0) == ffi::SQLITE_IOERR_TRUNCATE
+            && io_sync(file, 0) == ffi::SQLITE_IOERR_FSYNC
+            && io_file_size(file, ptr::null_mut()) == ffi::SQLITE_IOERR_FSTAT
+            && io_lock(file, 0) == ffi::SQLITE_IOERR_LOCK
+            && io_unlock(file, 0) == ffi::SQLITE_IOERR_UNLOCK
+            && io_check_reserved_lock(file, ptr::null_mut()) == ffi::SQLITE_IOERR_CHECKRESERVEDLOCK
+            && io_file_control(file, 0, ptr::null_mut()) == ffi::SQLITE_NOTFOUND
+            && io_sector_size(file) == 0
+            && io_device_characteristics(file) == 0
+            && io_shm_map(file, 0, 0, 0, ptr::null_mut()) == ffi::SQLITE_IOERR_SHMMAP
+            && io_shm_lock(file, 0, 0, 0) == ffi::SQLITE_IOERR_SHMLOCK
+            && io_shm_unmap(file, 0) == ffi::SQLITE_IOERR_SHMOPEN
+            && io_fetch(file, 0, 0, ptr::null_mut()) == ffi::SQLITE_IOERR
+            && io_unfetch(file, 0, ptr::null_mut()) == ffi::SQLITE_IOERR
+    };
+
+    // SAFETY: these void callbacks receive the same synthetic VFS/file records
+    // with every delegated slot absent, and therefore return without calling
+    // foreign code.
+    unsafe {
+        let mut delegated: ffi::sqlite3_vfs = std::mem::zeroed();
+        let mut wrapper: ffi::sqlite3_vfs = std::mem::zeroed();
+        wrapper.pAppData = ptr::from_mut(&mut delegated).cast();
+        vfs_dl_error(ptr::from_mut(&mut wrapper), 0, ptr::null_mut());
+        vfs_dl_close(ptr::from_mut(&mut wrapper), ptr::null_mut());
+    }
+    controller()
+        .reset()
+        .map_err(|_| RegistrationError::Rejected)?;
+
+    if valid && missing_slots_valid {
+        Ok(())
+    } else {
+        Err(RegistrationError::Rejected)
+    }
 }
 
 unsafe fn register_inner() -> Result<(), RegistrationError> {

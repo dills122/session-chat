@@ -259,6 +259,13 @@ forwarder as independent processes, reloads Alice after graceful process exit,
 and emits a bounded redacted manifest. Neither path is a networked,
 platform-vault-backed, or deployable client; abrupt kill/power-loss evidence
 remains open.
+The checked L2 storage protocol and reusable `sessionctl` controller/verifier
+now provide a bounded application-kill foundation. A separate publish-disabled
+named SQLite VFS delegates to the unchanged process default, records bounded
+path-free operation evidence, and injects actual `SQLITE_FULL` and extended
+`SQLITE_IOERR_*` results only for explicitly named connections. Exhaustive
+crash/restart and I/O sweeps remain later L2 gates; this is not power-loss or
+filesystem-durability evidence.
 The `session-storage` crate now retains a deterministic in-memory conformance
 model for one-session unsealing, bounded external unlock work, exact-session
 one-shot credential acquisition, forced relock events, stale/foreign-owner
@@ -282,8 +289,9 @@ and reopen on the required Linux, macOS, and Windows CI runners. Schema version
 2 implements the coordinator's sole-owner Welcome port with explicit v1
 migration fixtures, restart leasing, terminal states, and ambiguous exact retry.
 Schema version 3 adds an insert-only versioned client identity; version 4 binds
-it to one exact group. The opaque non-cloneable/non-debuggable secret boundary and exact
-identity/group reload with fail-closed member and group-scope matching.
+it to one exact group. The opaque non-cloneable/non-debuggable secret boundary
+supports exact identity/group reload with fail-closed member and group-scope
+matching.
 A retained real capability-admission/MLS integration now resolves an ambiguous
 SQL commit before in-memory finalization, reopens the store, and delivers the
 exact Welcome to the original joiner. The same composition now backs the

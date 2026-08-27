@@ -13,6 +13,7 @@ members = [
   "crates/session-storage",
   "crates/session-transport",
   "crates/storage-sqlcipher",
+  "crates/storage-sqlcipher-fault-vfs",
   "crates/transport-memory",
   "crates/transport-conformance",
 ]
