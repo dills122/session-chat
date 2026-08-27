@@ -28,7 +28,10 @@ export const COVERAGE_POLICY = Object.freeze({
   minimumWorkspaceFunctions: 85.64,
   minimumWorkspaceLines: 92.23,
   minimumWorkspaceRegions: 88.53,
-  nonInstrumentedSources: Object.freeze(['crates/transport-conformance/src/lib.rs']),
+  nonInstrumentedSources: Object.freeze([
+    'crates/storage-sqlcipher/src/fault_testing.rs',
+    'crates/transport-conformance/src/lib.rs',
+  ]),
 });
 
 const PRODUCTION_SOURCE = /^(?:apps|crates)\/[^/]+\/src\/.*\.rs$/;

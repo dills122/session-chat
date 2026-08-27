@@ -2,7 +2,11 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import test from 'node:test';
 
-import { evaluateCoverageReport, integrationTestTargets } from './check-rust-coverage.mjs';
+import {
+  COVERAGE_POLICY,
+  evaluateCoverageReport,
+  integrationTestTargets,
+} from './check-rust-coverage.mjs';
 
 function metric(covered, count) {
   return {
@@ -59,6 +63,14 @@ const policy = {
   minimumWorkspaceRegions: 85,
   nonInstrumentedSources: [],
 };
+
+test('ordinary production coverage explicitly excludes the checked-cfg fault module', () => {
+  assert.ok(
+    COVERAGE_POLICY.nonInstrumentedSources.includes(
+      'crates/storage-sqlcipher/src/fault_testing.rs',
+    ),
+  );
+});
 
 test('aggregates every production source file and accepts exact thresholds', () => {
   const root = '/workspace';
@@ -143,7 +155,7 @@ test('rejects missing components and unmatched production source', () => {
   assert.match(messages, /production source is not assigned to a coverage component: crates\/unlisted\/src\/lib\.rs/);
 });
 
-test('accepts only an existing declaration-only source allowance and rejects stale allowances', () => {
+test('accepts only an existing non-instrumented source allowance and rejects stale allowances', () => {
   const root = '/workspace';
   const input = report(
     [

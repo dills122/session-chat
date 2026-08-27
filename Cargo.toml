@@ -43,6 +43,7 @@ zeroize = { version = "=1.9.0", default-features = false, features = ["alloc"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
+unexpected_cfgs = { level = "deny", check-cfg = ['cfg(session_chat_storage_fault_testing)'] }
 
 [workspace.lints.clippy]
 dbg_macro = "deny"
