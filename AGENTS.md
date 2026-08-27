@@ -58,8 +58,8 @@ Current areas:
   opaque-envelope headless and conformance tests; not a network transport
 - `crates/transport-conformance`: publish-disabled offline trace-schema and
   shared adapter-evidence support; its strict adverse-trace parser and first
-  normalized double-replay memory runner exist, while the reusable verdict
-  suite remains incomplete
+  normalized lifecycle and queue-saturation double-replay verdicts exist,
+  while the reusable verdict suite remains incomplete
 - `crates/session-inviter-transaction`: bounded, fault-injectable conformance
   model for inviter-local atomic join and Welcome-outbox recovery semantics;
   not a durable storage implementation

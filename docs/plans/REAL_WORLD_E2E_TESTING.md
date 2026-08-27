@@ -1,7 +1,8 @@
 # Real-world end-to-end security test strategy
 
-Status: accepted test strategy; deterministic independent-process L1 and
-isolated SQLCipher durability-laboratory evidence exist today
+Status: accepted test strategy; deterministic independent-process L1,
+one hostile exact-replay slice, and isolated SQLCipher durability-laboratory
+evidence exist today
 
 Date: 2026-08-20
 
@@ -17,9 +18,11 @@ format, CI cadence, and release gates. A headless in-process client, a real
 capability-admission/MLS composition test over the SQLCipher durability
 laboratory, a sealed-vault model, deterministic memory transport, a durable
 in-process `sessionctl` composition, and a bounded independent-process L1
-runner exist. It does not claim abrupt process-kill/power-loss recovery, a
-fully durable approval/replay owner, a hosted realm, desktop client vault, or
-real-network adapter.
+runner exist. The L1 runner also retains one exact protected-request replay
+case, and the transport harness retains one bounded queue-saturation verdict.
+This does not complete either hostile matrix or claim abrupt process-kill/
+power-loss recovery, a fully durable approval/replay owner, a hosted realm,
+desktop client vault, or real-network adapter.
 
 ## Principles
 
@@ -85,13 +88,13 @@ records, roadmap gates, and external audit findings can refer to the same case.
 | --- | --- | --- |
 | `session-protocol` | Canonical fixtures and malformed/boundary tests | Continuous fuzz corpus, compatibility corpus, and cross-version decode matrix |
 | `session-core` | Invitation validation and lifecycle state tests | Two-process invitation/join orchestration with restart and concurrent request races |
-| `admission-capability` | Exact binding, replay, expiry, reservation, durability-resolution tests, and the positive protected-join path through independent clients | Full hostile first-contact matrix through the independent-process client boundary |
+| `admission-capability` | Exact binding, replay, expiry, reservation, durability-resolution tests, the positive protected-join path through independent clients, and one exact-replay rejection through that process boundary | Remaining malformed, expired, copied, wrong-invitation, wrong-KeyPackage, and wrong-verifier process cases |
 | `session-crypto-hpke` | RFC and independent-provider vectors, hostile context rejection, and cross-process protected join | Captured-artifact inspection that does not retain authority-bearing material |
 | `session-crypto-mls` | Two-party lifecycle, replay/reorder, update/removal, storage-call evidence, and exact Alice process-exit reload | Cross-implementation vectors, abrupt process-kill recovery, and corrupted-state tests |
 | `session-inviter-transaction` | Deterministic atomicity/fault model plus LocalV1 coordinator owner-port acceptance, failure, and ambiguous exact-retry integration | Real database process-kill, disk-full/I/O failure, restore, and stale-snapshot evidence |
 | `storage-sqlcipher` | Real capability admission and inviter MLS composition, ambiguous commit recovery, schema migration, exact identity/group reload across graceful process exit, sole-owner Welcome leases, stale/foreign rejection, exhaustion/expiry, exact retry, rollback, durable `sessionctl` composition, and real joiner MLS consumption | Abrupt process-kill, disk/power fault, restore, and stale-snapshot evidence |
-| `session-transport`, `transport-memory`, and `transport-conformance` | Local and provider-neutral right separation, bounds, idempotency, canonical opaque envelopes, deterministic adverse controls, strict bounded double-replay conformance with defective bridges, fail-closed LocalV1 binding, a deposit-only coordinator, and cross-platform blocking supervision | Provider-wide conformance, durable owner-store composition, real network adapters, and packet-captured evidence |
-| `sessionctl` | In-process and independent-process two-client capability join through SQLCipher commit/reload and coordinator delivery, messaging, update, removal, bounded IPC, cleanup, and a redacted evidence manifest | Hostile L1 process cases followed by L2 kill/disk/power fault scheduling |
+| `session-transport`, `transport-memory`, and `transport-conformance` | Local and provider-neutral right separation, bounds, idempotency, canonical opaque envelopes, deterministic adverse controls, strict bounded double-replay and queue-saturation conformance with defective bridges, fail-closed LocalV1 binding, a deposit-only coordinator, and cross-platform blocking supervision | Arbitrary-delay and exhaustive authority/resource verdicts, provider-wide conformance, durable owner-store composition, real network adapters, and packet-captured evidence |
+| `sessionctl` | In-process and independent-process two-client capability join through SQLCipher commit/reload and coordinator delivery, messaging, update, removal, bounded IPC, cleanup, a redacted evidence manifest, and one exact-replay rejection before durable membership mutation | Remaining hostile L1 process cases followed by L2 application-kill and SQLite-visible fault scheduling; power-loss evidence remains a separate future lab |
 | Client vault | Sealed lifecycle, opaque locked inbox, bounded unlock orchestration, and portable passphrase laboratory | Product storage composition, OS credential input, process isolation, crash-dump, rollback, recovery, and deletion evidence |
 | Realm services | Design and disposable invitation-provider spike only | Container isolation, quotas, migration/restore, and operational redaction tests |
 
@@ -114,7 +117,11 @@ The MLS and SQLCipher boundaries provide the versioned durable owner for the
 client's signing identity and credential, reload the same member together with
 its stored group state, and fail closed when a fresh identity is paired with
 the old group. The L1 runner now proves graceful process exit and reload, not
-abrupt kill. Its bounded, versioned IPC admits only `ProtectedJoinRequest`,
+abrupt kill. A separate hostile role set sends one byte-identical protected
+request twice and proves that Alice rejects the second reservation before
+approval, MLS Add, transaction staging, or durable group creation. That is one
+exact-replay case, not the complete hostile first-contact matrix. Its bounded,
+versioned IPC admits only `ProtectedJoinRequest`,
 `LocalWelcomeDepositEndpoint` when the service exercises that authority, and
 `OpaqueEnvelope`; child results are coarse and bounded. The bearer invitation
 and disposable raw database key use separate client-only test channels. The
@@ -199,7 +206,8 @@ passes a happy path.
    `sessionctl` without repeating the existing MLS transition.
 3. **Complete:** extend that composition into the canonical independent-process
    L1 runner and redacted evidence producer.
-4. Add the hostile independent-process cases and L2 abrupt-kill/disk scheduler,
+4. **In progress:** add the hostile independent-process cases and L2
+   application-kill/SQLite-fault scheduler,
    then retain provider-wide lifecycle/cursor conformance before any
    packet-captured network adapter experiment.
 6. Add the containerized realm runner before deployment claims.
@@ -210,16 +218,18 @@ passes a happy path.
 
 ## Current gaps
 
-- The independent-process positive scenario and bounded manifest exist, but
-  the hostile first-contact/process-fault matrix and restricted raw artifact
-  bundle do not. Authority-bearing frame hashes are deliberately omitted from
-  the public manifest.
+- The independent-process positive scenario, bounded manifest, and one exact
+  protected-request replay rejection exist, but the remaining hostile
+  first-contact/process-fault matrix and restricted raw artifact bundle do not.
+  Authority-bearing frame hashes are deliberately omitted from the public
+  manifest.
 - The deterministic memory adapter covers explicit delivery, loss, duplication,
   hold/release reordering, retry, expiry, authority, capacity, outage,
   corruption, stale replay, and acknowledgement-result loss. The publish-disabled
-  conformance crate parses retained traces and executes one normalized
-  double-replay memory lifecycle, but no complete reusable adapter verdict or
-  deliberately defective-adapter suite exists.
+  conformance crate parses retained traces and executes normalized lifecycle
+  and queue-saturation verdicts twice against fresh adapters, with deliberately
+  defective bridges. Arbitrary delay and the exhaustive authority/resource
+  verdict matrix remain open.
 - SQLCipher transaction, capability-admission/MLS composition, durable
   coordinator-owner evidence, and graceful independent-process reload exist,
   but no abrupt process-crash, disk/power-fault, restore, or stale-snapshot

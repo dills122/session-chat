@@ -71,8 +71,9 @@ all.
   right-separation evidence without claiming a generalized provider contract.
 - `transport-conformance` retains the canonical adverse-trace parser, hostile
   fixtures, and a first normalized double-replay runner over the real memory
-  adapter. A composed verdict and paired deliberately defective bridges cover
-  the retained adverse slice; the exhaustive common verdict remains future work.
+  adapter. Composed lifecycle and queue-saturation verdicts plus deliberately
+  defective bridges cover the retained adverse slices; arbitrary delay and the
+  exhaustive authority/resource verdict remain future work.
 - [Threat model](THREAT_MODEL.md) defines assets, trust boundaries, attackers,
   invariants, and severity calibration.
 - [Rust code-coverage policy](CODE_COVERAGE.md) defines the source-based
