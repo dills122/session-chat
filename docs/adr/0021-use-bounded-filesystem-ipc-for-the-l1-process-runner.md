@@ -50,13 +50,15 @@ emits a version-1 manifest under 2 KiB. It records coarse outcomes,
 commit/dirty state when bounded Git probes are available, lockfile digest,
 platform, command, timestamps, and configured budgets. Metadata paths resolve
 from the compiled package location rather than the caller's working directory;
-file reads and Git process time/output are bounded. Unavailable values are
-recorded explicitly, and an unavailable Git status is treated as dirty. It
-omits hashes of authority-bearing frames rather than creating a reusable
-confirmation/correlation artifact. All children are reaped on success and
-explicitly killed/reaped on controller failure. A passing report is created
-only after fallible child cleanup and marked-directory removal both succeed,
-and the manifest reports those outcomes separately.
+file reads are bounded, the commit resolves through bounded Git metadata files,
+and dirty-state probes produce no output and have bounded direct-child
+lifetimes. Unavailable values are recorded explicitly, and an unavailable Git
+status is treated as dirty. It omits hashes of authority-bearing frames rather
+than creating a reusable confirmation/correlation artifact. All children are
+reaped on success and explicitly killed/reaped on controller failure. A
+passing report is created only after fallible child cleanup and
+marked-directory removal both succeed, and the manifest reports those outcomes
+separately.
 
 ## Consequences
 

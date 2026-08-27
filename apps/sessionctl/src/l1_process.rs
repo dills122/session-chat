@@ -70,7 +70,8 @@ const MAX_EVIDENCE_BYTES: usize = 2_048;
 const EXPECTED_FRAMES: u8 = 7;
 const MAX_LOCKFILE_BYTES: usize = 4 * 1024 * 1024;
 const MAX_TOOLCHAIN_BYTES: usize = 4_096;
-const MAX_GIT_OUTPUT_BYTES: usize = 128;
+const MAX_GIT_PATH_BYTES: usize = 4_096;
+const MAX_GIT_REF_BYTES: usize = 512;
 const METADATA_COMMAND_WAIT: Duration = Duration::from_secs(5);
 
 /// Secret-free outcome of the bounded independent-process scenario.
@@ -1261,20 +1262,25 @@ fn repository_root() -> Option<PathBuf> {
 }
 
 fn git_commit_at(repository_root: &Path) -> String {
-    command_output_at(repository_root, "git", &["rev-parse", "HEAD"])
-        .filter(|value| value.len() == 40 && value.bytes().all(|byte| byte.is_ascii_hexdigit()))
-        .unwrap_or_else(|| String::from("unavailable"))
+    resolve_git_commit(repository_root).unwrap_or_else(|| String::from("unavailable"))
 }
 
 fn git_dirty_at(repository_root: &Path) -> bool {
-    let mut command = Command::new("git");
-    command.current_dir(repository_root).args([
-        "status",
-        "--porcelain",
-        "--untracked-files=normal",
-    ]);
-    bounded_command_output(command, METADATA_COMMAND_WAIT, MAX_GIT_OUTPUT_BYTES)
-        .is_none_or(|output| !output.status.success() || !output.stdout.is_empty())
+    let tracked = git_status_at(repository_root, &["diff-index", "--quiet", "HEAD", "--"]);
+    if tracked.is_none_or(|status| status.code() != Some(0)) {
+        return true;
+    }
+    let untracked = git_status_at(
+        repository_root,
+        &[
+            "ls-files",
+            "--others",
+            "--exclude-standard",
+            "--error-unmatch",
+            ":(glob)**",
+        ],
+    );
+    untracked.is_none_or(|status| status.code() != Some(1))
 }
 
 fn lock_digest_at(repository_root: &Path) -> String {
@@ -1320,68 +1326,95 @@ fn read_bounded_file(path: &Path, maximum: usize) -> Option<Vec<u8>> {
     (bytes.len() <= maximum).then_some(bytes)
 }
 
-fn command_output_at(repository_root: &Path, program: &str, arguments: &[&str]) -> Option<String> {
-    let mut command = Command::new(program);
-    command.current_dir(repository_root).args(arguments);
-    let output = bounded_command_output(command, METADATA_COMMAND_WAIT, MAX_GIT_OUTPUT_BYTES)?;
-    if !output.status.success() {
+fn resolve_git_commit(repository_root: &Path) -> Option<String> {
+    let git_marker = repository_root.join(".git");
+    let git_directory = if git_marker.is_dir() {
+        git_marker
+    } else {
+        let marker = String::from_utf8(read_bounded_file(&git_marker, MAX_GIT_PATH_BYTES)?).ok()?;
+        let path = marker.trim().strip_prefix("gitdir: ")?;
+        let path = Path::new(path);
+        if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            repository_root.join(path)
+        }
+    };
+    let head = String::from_utf8(read_bounded_file(
+        &git_directory.join("HEAD"),
+        MAX_GIT_REF_BYTES,
+    )?)
+    .ok()?;
+    if let Some(commit) = parse_git_commit(head.trim()) {
+        return Some(commit);
+    }
+    let reference = head.trim().strip_prefix("ref: ")?;
+    let reference_path = Path::new(reference);
+    if !reference.starts_with("refs/")
+        || reference_path.is_absolute()
+        || !reference_path
+            .components()
+            .all(|component| matches!(component, std::path::Component::Normal(_)))
+    {
         return None;
     }
-    String::from_utf8(output.stdout)
-        .ok()
-        .map(|value| value.trim().to_owned())
+    let common_directory = read_bounded_file(&git_directory.join("commondir"), MAX_GIT_PATH_BYTES)
+        .and_then(|encoded| String::from_utf8(encoded).ok())
+        .map_or_else(
+            || git_directory.clone(),
+            |path| git_directory.join(path.trim()),
+        );
+    [git_directory, common_directory]
+        .into_iter()
+        .find_map(|directory| {
+            let encoded = read_bounded_file(&directory.join(reference_path), MAX_GIT_REF_BYTES)?;
+            let value = String::from_utf8(encoded).ok()?;
+            parse_git_commit(value.trim())
+        })
 }
 
-struct BoundedCommandOutput {
-    status: ExitStatus,
-    stdout: Vec<u8>,
+fn parse_git_commit(value: &str) -> Option<String> {
+    (value.len() == 40 && value.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        .then(|| value.to_ascii_lowercase())
 }
 
-fn bounded_command_output(
-    mut command: Command,
-    timeout: Duration,
-    maximum: usize,
-) -> Option<BoundedCommandOutput> {
+fn git_status_at(repository_root: &Path, arguments: &[&str]) -> Option<ExitStatus> {
+    let mut command = Command::new("git");
+    command.current_dir(repository_root).args(arguments);
+    bounded_command_status(command, METADATA_COMMAND_WAIT)
+}
+
+fn bounded_command_status(mut command: Command, timeout: Duration) -> Option<ExitStatus> {
     let deadline = Instant::now().checked_add(timeout)?;
     let child = command
         .stdin(Stdio::null())
-        .stdout(Stdio::piped())
+        .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
         .ok()?;
     let mut managed = ManagedChild::new("metadata", child);
-    let stdout = managed.child_mut().ok()?.stdout.take()?;
-    let reader = thread::spawn(move || read_optional_bounded(stdout, maximum));
-    let status = loop {
+    loop {
         let wait_result = match managed.child_mut() {
             Ok(child) => child.try_wait(),
             Err(_) => {
-                if managed.terminate_and_reap().is_ok() {
-                    let _ = reader.join();
-                }
+                let _ = managed.terminate_and_reap();
                 return None;
             }
         };
         match wait_result {
-            Ok(Some(status)) => break status,
+            Ok(Some(status)) => return Some(status),
             Ok(None) => {}
             Err(_) => {
-                if managed.terminate_and_reap().is_ok() {
-                    let _ = reader.join();
-                }
+                let _ = managed.terminate_and_reap();
                 return None;
             }
         }
         if Instant::now() >= deadline {
-            if managed.terminate_and_reap().is_ok() {
-                let _ = reader.join();
-            }
+            let _ = managed.terminate_and_reap();
             return None;
         }
         thread::sleep(POLL_INTERVAL);
-    };
-    let stdout = reader.join().ok()?.ok()?;
-    Some(BoundedCommandOutput { status, stdout })
+    }
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -1459,22 +1492,24 @@ mod tests {
             .env("SESSIONCTL_L1_STALL_CHILD", "1");
         let started = Instant::now();
 
-        assert!(bounded_command_output(command, Duration::from_millis(25), 128).is_none());
+        assert!(bounded_command_status(command, Duration::from_millis(25)).is_none());
         assert!(started.elapsed() < Duration::from_secs(2));
     }
 
     #[test]
-    fn oversized_metadata_command_output_is_rejected() {
+    fn metadata_command_does_not_wait_for_inherited_output() {
         let mut command = Command::new(std::env::current_exe().unwrap());
         command
             .args([
                 "--exact",
-                "l1_process::tests::metadata_output_child",
+                "l1_process::tests::metadata_inherited_output_parent",
                 "--nocapture",
             ])
-            .env("SESSIONCTL_L1_OUTPUT_CHILD", "1");
+            .env("SESSIONCTL_L1_INHERITED_OUTPUT_PARENT", "1");
+        let started = Instant::now();
 
-        assert!(bounded_command_output(command, Duration::from_secs(1), 128).is_none());
+        let _ = bounded_command_status(command, Duration::from_secs(1));
+        assert!(started.elapsed() < Duration::from_millis(500));
     }
 
     #[test]
@@ -1485,9 +1520,27 @@ mod tests {
     }
 
     #[test]
-    fn metadata_output_child() {
-        if std::env::var_os("SESSIONCTL_L1_OUTPUT_CHILD").is_some() {
-            print!("{}", "x".repeat(1_024));
+    fn metadata_inherited_output_parent() {
+        if std::env::var_os("SESSIONCTL_L1_INHERITED_OUTPUT_PARENT").is_some() {
+            let mut descendant = Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "l1_process::tests::metadata_inherited_output_descendant",
+                    "--nocapture",
+                ])
+                .env("SESSIONCTL_L1_INHERITED_OUTPUT_DESCENDANT", "1")
+                .spawn()
+                .unwrap();
+            thread::spawn(move || {
+                let _ = descendant.wait();
+            });
+        }
+    }
+
+    #[test]
+    fn metadata_inherited_output_descendant() {
+        if std::env::var_os("SESSIONCTL_L1_INHERITED_OUTPUT_DESCENDANT").is_some() {
+            thread::sleep(Duration::from_secs(2));
         }
     }
 
