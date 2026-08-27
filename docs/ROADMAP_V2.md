@@ -79,13 +79,14 @@ evidence against the real local mailbox. The real capability-admission/MLS path
 now crosses the SQLCipher transaction through an explicit durability-pending
 one-shot value, recovers an ambiguous commit, finalizes invitation state once,
 reopens the owner store, and delivers the exact Welcome to the original joiner.
-Human approval UX, independent-process `sessionctl` composition, and network
-transport work listed below remain outstanding. The separate SQLCipher laboratory now
+Human approval UX, hostile process-fault coverage, and network transport work
+listed below remain outstanding. The separate SQLCipher laboratory now
 implements the same sole-owner coordinator port with version-2 migration,
 close/reopen leases, terminal states, and ambiguous exact-retry evidence; it is
-not yet an independent-process path. Schema version 3 adds the exact
+now exercised by the independent-process L1 path. Schema version 3 adds the exact
 client-identity owner required to reload the same Alice member and stored group;
-version 4 binds it to that one group. Process exit/kill evidence remains open.
+version 4 binds it to that one group. Graceful process-exit evidence now exists;
+abrupt kill, power loss, and rollback evidence remain open.
 
 The provider-neutral right-specific transport trait and its separate
 `transport-memory` adapter now retain deterministic drop, duplicate,
@@ -122,14 +123,18 @@ ambiguous-result recovery, exact Alice identity/group reload, reconstructed coor
 bidirectional application messages, path update, removal, and post-removal
 rejection. Its retained tests, coarse CLI output, and versioned redacted
 scenario record satisfy the no-GUI/no-network laboratory acceptance path.
-Independent-process restart, human approval, and a network profile remain
+The ADR 0021 `sessionctl-l1` runner additionally places Alice, Bob, and an
+untrusted forwarding service behind bounded local IPC, exits Alice after the
+durable commit, reloads her exact identity/group in a fresh process, completes
+the lifecycle, reaps every child, and emits a bounded redacted manifest.
+Abrupt kill/power-loss recovery, human approval, and a network profile remain
 separate gates.
 
 The Rust source-coverage gate now measures production code through integration
 targets without counting inline test helpers. The clean-master baseline was
-90.78% workspace lines; retained negative-path tests raise the measured result
-to 93.31%, with every security- and correctness-vital component at or above
-90%. Stable region and function ratchets are also enforced. `sessionctl` now
+90.78% workspace lines; retained behavior and negative-path tests raise the
+measured result to 93.00%, with every security- and correctness-vital component
+at or above 90%. Stable region and function ratchets are also enforced. `sessionctl` now
 uses named, secret-free orchestration fault seams to cover cross-crate failure
 mapping, cleanup, post-commit Welcome failure, dropped delivery, and exact
 Alice identity/group reload. Exact scope, commands, counts, and exclusions are in
@@ -157,9 +162,9 @@ migration fixtures. Tests cover rollback, stale/foreign leases, ambiguous
 byte-identical delivery recovery, and close/reopen on the required Linux,
 macOS, and Windows CI runners. Schema version 3 adds an insert-only, versioned
 client identity, and version 4 adds the exact group binding and proves exact member/group
-reload plus cross-group rejection after close/reopen.
-Independent-process restart, platform-vault, disk/power fault, production
-packaging, and rollback-anchor gates remain.
+reload plus cross-group rejection after close/reopen. Graceful
+independent-process reload now exists; abrupt kill, platform-vault, disk/power
+fault, production packaging, and rollback-anchor gates remain.
 
 ADR 0019 and `key-protector-passphrase` now retain the bounded portable
 key-wrapper conformance experiment: exact Argon2id 0.5.3 and AWS-LC 1.16.3

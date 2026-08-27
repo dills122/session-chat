@@ -47,16 +47,18 @@ The Rust workspace currently contains:
   real inviter MLS/join/outbox transaction and the separate joiner MLS plus
   one-time-KeyPackage deletion transaction on required Linux, macOS, and
   Windows CI runners
-- `sessionctl`, with a headless Alice/Bob conformance flow covering protected
-  join, explicit approval, Welcome delivery, bidirectional MLS messages, path
-  update, removal, and post-removal rejection over the in-memory adapters
+- `sessionctl`, with headless in-process and bounded independent-process
+  Alice/Bob conformance flows covering protected join, explicit approval,
+  SQLCipher close/reopen, Welcome delivery, bidirectional MLS messages, path
+  update, removal, and post-removal rejection over local test adapters
 
 The signing key authenticates the invitation bytes, not a GitHub identity or
 person. The capability invitation is a secret bearer object and must not be
 posted publicly or placed in a transport envelope. The MLS adapter exposes a
-generic persistence boundary, but the capability adapter and headless client
-still coordinate it only through the in-memory approval-gated path described
-below; neither has a durable or network path.
+generic persistence boundary, and the headless conformance client composes its
+approved Add with SQLCipher and a durable Welcome outbox. Invitation,
+approval, and replay shadows remain in the initialization process and cannot be
+reloaded as one durable authorization owner; there is no network path.
 The protected-join and capability-admission adapters prove possession for one
 exact typed HPKE context, preserve the exact signed-invitation instance,
 independently validate and own the exact KeyPackage, and reserve replay values
@@ -68,16 +70,20 @@ durable transaction. A separate conformance model now proves the required
 atomic visibility, ambiguous-commit recovery, and resumable Welcome-outbox
 semantics over bounded memory records. The SQLCipher laboratory separately
 proves both owner-local transactions through actual MLS persistence calls.
-Integrated cross-layer product persistence, durable outbox delivery, network
+Integrated product persistence for approval/replay/invitation state, network
 mailbox behavior, human approval UX, and a user-facing chat interface remain
 unimplemented. The in-memory approved-join result now carries
 only the exact authenticated deposit endpoint beside its MLS outputs, and a
-retained test delivers the encrypted Welcome through the local adapter. This
-sequential path is not evidence for a durable outbox or network profile.
-The `sessionctl` binary composes those present pieces into one executable
-two-client flow and prints only coarse milestones. It is retained integration
-evidence, not a deployable client, human approval UX, durable vault, hosted
-realm, or production transport.
+retained test delivers the encrypted Welcome through the local adapter. The
+SQLCipher conformance path separately proves its durable outbox; neither path
+proves a network profile.
+The `sessionctl` binaries compose those present pieces into an in-process flow
+and an ADR 0021 independent-process conformance run. The latter keeps the
+bearer invitation and disposable SQLCipher key off the untrusted forwarding
+process, admits only canonical public wire objects to bounded IPC, reloads
+Alice in a fresh process, and prints only a redacted manifest. This is retained
+integration evidence, not a deployable client, human approval UX, durable
+vault, hosted realm, abrupt-crash guarantee, or production transport.
 
 The `session-storage` model now rejects key protectors whose factual capability
 report is weaker than the selected policy, bounds concurrent unlock work, and
@@ -110,6 +116,7 @@ cargo test --workspace --all-features --locked --offline
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps --locked --offline
 cargo deny --all-features --locked check
 cargo run -p sessionctl --locked --offline
+cargo run -p sessionctl --bin sessionctl-l1 --locked --offline
 ```
 
 The retained JavaScript research and repository tooling have no third-party

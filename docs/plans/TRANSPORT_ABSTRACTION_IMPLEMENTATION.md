@@ -2,8 +2,8 @@
 
 Status: active staged implementation plan; ADR 0015 is accepted, Task 3 is
 partial, Task 9's durable owner-store plus capability-admission/MLS composition
-checkpoints are complete, and the durable client-reload prerequisite is complete
-before independent-process or network work
+checkpoints are complete, and the durable client-reload and independent-process
+L1 checkpoints are complete before network work
 
 Date: 2026-08-20
 
@@ -111,13 +111,18 @@ those seams and does not reinterpret their pre-merge files.
 | `T9-SQL-OWNER` | Durable owner store | Task 8 | Complete | SQLCipher schema v2 is the sole Welcome ledger across migration, restart, leases, terminal states, and exact retry. |
 | `T9-REAL-COMPOSITION` | Admission/MLS integration | `T9-SQL-OWNER` | Complete | Real capability admission holds a one-shot durability-pending MLS result until transaction-ID recovery proves commit or rollback, then delivery restarts without another Add. |
 | `T9-SESSIONCTL` | Headless integration | merged orchestration fault seams | Complete | The existing Alice/Bob flow uses the real SQLCipher inviter transaction and reconstructed coordinator owner while preserving its coarse fault and output contracts. |
-| `L1-PROCESS` | Independent-process runner | `T9-SESSIONCTL` | Pending | Separate client and untrusted-service processes exchange only public wire objects under bounded lifecycle control and emit a redacted evidence manifest. |
+| `L1-PROCESS` | Independent-process runner | `T9-SESSIONCTL` | Complete | Separate client and untrusted-service processes exchange only public wire objects under bounded lifecycle control and emit a redacted evidence manifest. |
 
-`T9-SESSIONCTL` now persists and reloads Alice's exact client signing identity
-and stored group through SQLCipher schema v4, failing closed on fresh,
-malformed, missing, replacement, cross-group, or member-mismatched identity state. This is a
-real close/reopen boundary inside one process, not independent-process recovery;
-`L1-PROCESS` remains the next client-composition gate.
+`T9-SESSIONCTL` persists and reloads Alice's exact client signing identity and
+stored group through SQLCipher schema v4, failing closed on fresh, malformed,
+missing, replacement, cross-group, or member-mismatched identity state.
+`L1-PROCESS` now crosses graceful Alice process exit through a fresh reload
+process while Bob and an untrusted forwarding service remain separate. Its
+bounded filesystem IPC v1 carries only canonical protected-join,
+LocalV1-deposit, and opaque-envelope objects; the bearer invitation and
+disposable raw owner key stay on separate client-only test channels. ADR 0021
+records the boundary. Abrupt kill, power loss, rollback, network transport, and
+platform key custody remain later gates.
 
 ## Active execution slice: generalized dispatch boundary
 

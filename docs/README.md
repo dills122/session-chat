@@ -252,8 +252,12 @@ simulated approval, atomic SQLCipher MLS join/outbox commit, ambiguous-result
 recovery, reconstructed coordinator Welcome delivery, bidirectional MLS
 application messages, path update, removal, and post-removal rejection. It
 reloads Alice's exact identity and group after a SQLCipher close/reopen, prints
-coarse milestones or a versioned redacted scenario record, and is neither an
-independent-process nor networked client.
+coarse milestones or a versioned redacted scenario record. The separate ADR
+0021 `sessionctl-l1` conformance binary runs Alice, Bob, and an untrusted
+forwarder as independent processes, reloads Alice after graceful process exit,
+and emits a bounded redacted manifest. Neither path is a networked,
+platform-vault-backed, or deployable client; abrupt kill/power-loss evidence
+remains open.
 The `session-storage` crate now retains a deterministic in-memory conformance
 model for one-session unsealing, bounded external unlock work, exact-session
 one-shot credential acquisition, forced relock events, stale/foreign-owner
@@ -282,9 +286,9 @@ identity/group reload with fail-closed member and group-scope matching.
 A retained real capability-admission/MLS integration now resolves an ambiguous
 SQL commit before in-memory finalization, reopens the store, and delivers the
 exact Welcome to the original joiner. The same composition now backs the
-single-process `sessionctl` path, but it is not wired to the vault lifecycle and
-adds no production packaging, broader platform, rollback-resistance, or
-production-storage claim.
+single-process `sessionctl` path and the ADR 0021 graceful process-exit runner,
+but it is not wired to the vault lifecycle and adds no abrupt-kill, production
+packaging, broader platform, rollback-resistance, or production-storage claim.
 
 ## Reference standards and projects
 

@@ -76,12 +76,14 @@ libraries across the three required CI operating systems.
 
 The headless `sessionctl` laboratory now opens this adapter with a disposable
 random raw key and proves exact identity/group reload after a real close/reopen
-inside one process. No platform protector supplies that key, and no
-independent-process client runner uses the reload contract yet. SQLCipher is not a
-rollback anchor and this decision makes no production, cross-platform,
-secure-deletion, or power-loss claim. Vendoring OpenSSL increases the audited
-source, native build, license, advisory, and compile-time surface; the locked
-graph and dependency policy must therefore cover it explicitly.
+inside one process. The ADR 0021 runner additionally proves the same reload
+contract after graceful Alice process exit and a fresh Alice process while Bob
+and an untrusted forwarder remain separate. No platform protector supplies the
+disposable raw key. SQLCipher is not a rollback anchor and this decision makes
+no production, secure-deletion, abrupt-kill, power-loss, or broader-platform
+claim. Vendoring OpenSSL increases the audited source, native build, license,
+advisory, and compile-time surface; the locked graph and dependency policy must
+therefore cover it explicitly.
 
 The durable client-identity record has this closed layout:
 
@@ -121,8 +123,8 @@ and Linux before adding any native enhanced protector.
   Linux Secret Service implementations in parallel;
 - test process kill at every production adapter write boundary, disk full,
   truncation, tampering, migration, rekey, backup, and deletion;
-- extend the proven single-process identity/group reload into the
-  independent-process L1 runner;
+- extend the graceful independent-process identity/group reload with abrupt-kill,
+  disk-full, and power-loss recovery evidence;
 - select or explicitly defer a trusted monotonic rollback anchor; and
 - independently review the exact MLS, SQLCipher, and platform-protector boundary.
 
