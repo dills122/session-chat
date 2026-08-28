@@ -1,8 +1,9 @@
 # L2 process and storage fault testing plan
 
-Status: L2-0, L2-1, L2-4, and L2-5 retained; L2-2 and L2-3 are locally green
-with baseline-derived checked sweeps; the three-OS Checkpoint C result remains
-open; no production durability claim
+Status: L2-0 through L2-5 and the L2-8 portable evidence gate are retained;
+L2-2/L2-3 are locally green and promote only on a clean required CI runner;
+each revision still requires a green three-OS Checkpoint C result; no
+production durability claim
 
 Date: 2026-08-26
 
@@ -10,8 +11,9 @@ Date: 2026-08-26
 
 | Work item | Delivery unit and owned path | Dependencies | Acceptance | Status |
 | --- | --- | --- | --- | --- |
-| L2-2 inviter crash/restart atomicity | Lead-owned integration; `apps/sessionctl/tests/l2_crash_restart_inviter.rs` | Retained L2-0/L2-1 | Every baseline-observed inviter checkpoint is exactly I0 or I1 as specified; missing/duplicate coverage, mixed state, and conflicting retry are rejected | Locally green on macOS; portable retention pending Checkpoint C |
-| L2-3 joiner crash/restart atomicity | Lead-owned integration; `apps/sessionctl/tests/l2_crash_restart_joiner.rs` | Retained L2-0/L2-1 | Every baseline-observed joiner checkpoint is exactly J0 or J1 as specified; missing/duplicate coverage, retained KeyPackage, and conflicting retry are rejected | Locally green on macOS; portable retention pending Checkpoint C |
+| L2-2 inviter crash/restart atomicity | Lead-owned integration; `apps/sessionctl/tests/l2_crash_restart_inviter.rs` | Retained L2-0/L2-1 | Every baseline-observed inviter checkpoint is exactly I0 or I1 as specified; missing/duplicate coverage, mixed state, and conflicting retry are rejected | Locally green; public promotion requires the per-revision three-OS L2 job |
+| L2-3 joiner crash/restart atomicity | Lead-owned integration; `apps/sessionctl/tests/l2_crash_restart_joiner.rs` | Retained L2-0/L2-1 | Every baseline-observed joiner checkpoint is exactly J0 or J1 as specified; missing/duplicate coverage, retained KeyPackage, and conflicting retry are rejected | Locally green; public promotion requires the per-revision three-OS L2 job |
+| L2-8 portable evidence gate | Lead-owned integration; `apps/sessionctl/src/l2_process/evidence.rs`, checked suite promotion seams, `.github/workflows/ci.yml`, canonical claims | Retained L2-2/L2-3/L2-5 | Complete clean-runner aggregates bind exact Git/toolchain/engine/runner/binary/artifact provenance, reject seeded canaries on every bounded surface, and emit `l2-evidence-v1`; PR smoke catches defective evidence | Gate retained; passing portability evidence remains CI-owned per revision |
 
 The lead task owns shared controller changes, canonical documentation,
 integration verification, commits, and the eventual pull request. Both lanes
@@ -693,6 +695,18 @@ policy where available, and an independent review.
 
 **Dependencies:** L2-2, L2-3, and L2-5; L2-6/L2-7 may land as separately named
 gates. **Estimated scope:** M (3-5 integration files per atomic commit).
+
+**Retained implementation:** `apps/sessionctl/src/l2_process/evidence.rs`
+rejects dirty or incomplete promotion, requires exact bounded Git, toolchain,
+runner, engine, test-binary, and encrypted-artifact provenance, and scans
+stdout, stderr, diagnostics, control-frame material, the internal observation,
+the public manifest, and retained encrypted artifacts for the closed synthetic
+canary catalog. Complete checkpoint, SQLite return-code, and commit-window kill
+aggregates alone can promote to `l2-evidence-v1`. The dedicated CI matrix runs
+the failure-sensitive smoke subset on pull requests and the complete suites on
+non-PR runs for `ubuntu-24.04`, `macos-15`, and `windows-2025`. A portable
+passing claim remains conditional on that required job being green for the
+exact revision.
 
 ## Dispatch graph and checkpoints
 

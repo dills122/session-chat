@@ -289,10 +289,12 @@ result to the product path. A separate checked L2 storage laboratory now covers
 baseline-derived SQLite-visible FULL/extended-IOERR failures and direct writer
 kills at observed engine commit-window pauses and every baseline-observed
 inviter/joiner application checkpoint before fresh reopen. That narrow local
-storage evidence does not establish delivery recovery, portable passing
-evidence, power-loss safety, rollback resistance, platform key custody, or
-production transport behavior, and its observations remain non-public pending
-the L2-8 evidence/portable-CI gate.
+storage evidence does not establish delivery recovery, power-loss safety,
+rollback resistance, platform key custody, or production transport behavior.
+Its raw observations remain non-public; the retained L2-8 gate promotes only
+complete aggregates with exact provenance/artifact binding and canary scans,
+and portable passage remains conditional on the exact revision's required
+three-OS CI result.
 
 `RetryAdvice::Never` ends attempts under the current budget. It does not assert
 that a deposit did not commit; the coordinator may reconcile an ambiguous
