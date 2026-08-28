@@ -4308,7 +4308,7 @@ impl Drop for PipeReader {
 
 fn sanitize_environment(command: &mut Command) {
     command.env_clear();
-    for name in ["PATH", "SystemRoot", "WINDIR"] {
+    for name in ["PATH", "TMPDIR", "SystemRoot", "WINDIR"] {
         if let Some(value) = std::env::var_os(name).filter(|value| value.len() <= 4_096) {
             command.env(name, value);
         }
@@ -4535,6 +4535,14 @@ mod tests {
         );
         drop(connection);
         root.cleanup().expect("cleanup");
+    }
+
+    #[test]
+    fn sanitized_git_metadata_reports_a_dirty_state_instead_of_becoming_unavailable() {
+        assert!(
+            git_dirty_at(&repository_root()).is_some(),
+            "sanitized Git metadata must tolerate the platform temporary-directory environment",
+        );
     }
 
     #[test]
