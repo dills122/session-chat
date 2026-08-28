@@ -22,5 +22,8 @@ thiserror.workspace = true
 transport-memory = { version = "=0.1.0", path = "../../crates/transport-memory" }
 zeroize.workspace = true
 
+[dev-dependencies]
+storage-sqlcipher-fault-vfs = { version = "=0.1.0", path = "../../crates/storage-sqlcipher-fault-vfs" }
+
 [lints]
 workspace = true

@@ -1100,6 +1100,7 @@ dependencies = [
  "session-protocol",
  "session-transport",
  "storage-sqlcipher",
+ "storage-sqlcipher-fault-vfs",
  "thiserror",
  "transport-memory",
  "zeroize",
