@@ -15,6 +15,7 @@ fn ordinary_build_does_not_expose_the_l2_io_driver() {
 #[cfg(session_chat_storage_fault_testing)]
 mod checked {
     use std::{
+        io::Read,
         path::{Path, PathBuf},
         process::{Command, Stdio},
         sync::Arc,
@@ -23,10 +24,11 @@ mod checked {
     };
 
     use sessionctl::l2_process::{
-        L2IoBaselineObservation, L2IoDriverObservation, L2IoFaultDriver, L2IoFaultMode,
-        L2IoFaultObservation, L2IoFileRole, L2IoOperation, L2IoPauseDriver, L2IoPauseObservation,
-        L2IoPauseSweepReport, L2IoSweepReport, L2IoSweepTarget, prepare_l2_io_pause_kill_case,
-        run_l2_io_baseline, run_l2_io_fault_case, run_l2_io_pause_writer,
+        L2EvidenceChannels, L2IoBaselineObservation, L2IoDriverObservation, L2IoFaultDriver,
+        L2IoFaultMode, L2IoFaultObservation, L2IoFileRole, L2IoOperation, L2IoPauseDriver,
+        L2IoPauseObservation, L2IoPauseSweepReport, L2IoSweepReport, L2IoSweepTarget,
+        prepare_l2_io_pause_kill_case, run_l2_io_baseline, run_l2_io_fault_case,
+        run_l2_io_pause_writer,
     };
     use storage_sqlcipher::fault_testing::Scenario;
     use storage_sqlcipher_fault_vfs::{
@@ -39,6 +41,8 @@ mod checked {
     const PAUSE_CHILD_OPERATION: &str = "SESSION_CHAT_L2_PAUSE_CHILD_OPERATION";
     const PAUSE_CHILD_ORDINAL: &str = "SESSION_CHAT_L2_PAUSE_CHILD_ORDINAL";
     const PAUSE_MARKER: &str = "pause.reached";
+    const PAUSE_CHILD_DIAGNOSTIC: &str = "SESSION_CHAT_L2_PAUSE_CHILD_DIAGNOSTIC";
+    const MAX_PAUSE_CHILD_OUTPUT_BYTES: usize = 512;
 
     struct FullAtFirstJournalWrite {
         target: FaultTarget,
@@ -370,12 +374,40 @@ mod checked {
         }
     }
 
-    fn terminate_and_reap(child: &mut std::process::Child) -> std::process::ExitStatus {
+    struct ReapedPauseChild {
+        status: std::process::ExitStatus,
+        stdout: Vec<u8>,
+        stderr: Vec<u8>,
+    }
+
+    fn terminate_and_reap(child: &mut std::process::Child) -> ReapedPauseChild {
         child.kill().expect("terminate paused child");
         let deadline = Instant::now() + Duration::from_secs(30);
         while Instant::now() < deadline {
             if let Some(status) = child.try_wait().expect("poll paused child") {
-                return status;
+                let mut stdout = Vec::new();
+                child
+                    .stdout
+                    .take()
+                    .expect("captured pause stdout")
+                    .take((MAX_PAUSE_CHILD_OUTPUT_BYTES + 1) as u64)
+                    .read_to_end(&mut stdout)
+                    .expect("read pause stdout");
+                let mut stderr = Vec::new();
+                child
+                    .stderr
+                    .take()
+                    .expect("captured pause stderr")
+                    .take((MAX_PAUSE_CHILD_OUTPUT_BYTES + 1) as u64)
+                    .read_to_end(&mut stderr)
+                    .expect("read pause stderr");
+                assert!(stdout.len() <= MAX_PAUSE_CHILD_OUTPUT_BYTES);
+                assert!(stderr.len() <= MAX_PAUSE_CHILD_OUTPUT_BYTES);
+                return ReapedPauseChild {
+                    status,
+                    stdout,
+                    stderr,
+                };
             }
             thread::sleep(Duration::from_millis(10));
         }
@@ -407,8 +439,8 @@ mod checked {
             .env(PAUSE_CHILD_OPERATION, operation)
             .env(PAUSE_CHILD_ORDINAL, ordinal.to_string())
             .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()
             .expect("spawn direct pause child");
         let Some((last_observed_ordinal, total_operations)) =
@@ -417,8 +449,8 @@ mod checked {
             let _ = terminate_and_reap(&mut child);
             panic!("pause marker was not produced before the bounded deadline");
         };
-        let status = terminate_and_reap(&mut child);
-        assert!(!status.success());
+        let reaped = terminate_and_reap(&mut child);
+        assert!(!reaped.status.success());
 
         let observation = L2IoPauseObservation::new(
             target.file_role(),
@@ -429,7 +461,7 @@ mod checked {
         )
         .expect("bounded pause observation");
         prepared
-            .finish(&executable(), observation)
+            .finish(&executable(), observation, &reaped.stdout, &reaped.stderr)
             .expect("fresh verification after pause/kill")
     }
 
@@ -535,6 +567,26 @@ mod checked {
             assert!(complete_evidence.contains("publication=prohibited\n"));
             assert!(complete_evidence.contains("modes=one-shot|persistent\n"));
 
+            if let Ok(runner_image) = std::env::var("SESSION_CHAT_L2_RUNNER_IMAGE") {
+                let channels = L2EvidenceChannels::new(
+                    complete_evidence.as_bytes(),
+                    b"",
+                    b"",
+                    complete_evidence.as_bytes(),
+                    b"",
+                )
+                .expect("bounded return-code evidence surfaces");
+                let bundle = complete
+                    .promote_v1(&executable(), &runner_image, &channels)
+                    .expect("promote complete return-code evidence");
+                for manifest in bundle.manifests() {
+                    println!(
+                        "L2_PUBLIC_EVIDENCE_BEGIN\n{}L2_PUBLIC_EVIDENCE_END",
+                        manifest.encode_v1(),
+                    );
+                }
+            }
+
             cases.pop().expect("at least one completed case");
             assert!(L2IoSweepReport::new(scenario, &baseline, &cases).is_err());
         }
@@ -563,6 +615,9 @@ mod checked {
             target,
             gate: Arc::new(PauseGate::new()),
         };
+        if let Ok(diagnostic) = std::env::var(PAUSE_CHILD_DIAGNOSTIC) {
+            eprintln!("{diagnostic}");
+        }
         run_l2_io_pause_writer(&root, &mut driver).expect("pause writer must remain blocked");
     }
 
@@ -582,7 +637,57 @@ mod checked {
         let mismatched =
             L2IoPauseObservation::new(L2IoFileRole::MainDatabase, L2IoOperation::Sync, 0, 0, 1)
                 .expect("separately valid pause target");
-        assert!(prepared.finish(&executable(), mismatched).is_err());
+        assert!(
+            prepared
+                .finish(&executable(), mismatched, b"", b"")
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn pause_child_canary_is_captured_and_rejected_before_public_evidence() {
+        let scenario = Scenario::InviterTransaction;
+        let role = L2IoFileRole::RollbackJournal;
+        let operation = L2IoOperation::Write;
+        let prepared = prepare_l2_io_pause_kill_case(scenario, role, operation, 0)
+            .expect("fresh canary pause case");
+        let mut child = Command::new(std::env::current_exe().expect("current test executable"))
+            .args([
+                "checked::l2_io_pause_child",
+                "--exact",
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env(PAUSE_CHILD_ROOT, prepared.root())
+            .env(PAUSE_CHILD_ROLE, pause_role_name(role))
+            .env(
+                PAUSE_CHILD_OPERATION,
+                pause_operation_name(operation).expect("pause operation"),
+            )
+            .env(PAUSE_CHILD_ORDINAL, "0")
+            .env(PAUSE_CHILD_DIAGNOSTIC, "SC-L2-CANARY-DATABASE-KEY")
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn canary pause child");
+        let Some((last_observed_ordinal, total_operations)) =
+            wait_for_pause_marker(prepared.root())
+        else {
+            let _ = terminate_and_reap(&mut child);
+            panic!("canary pause marker was not produced before the bounded deadline");
+        };
+        let reaped = terminate_and_reap(&mut child);
+        let observation =
+            L2IoPauseObservation::new(role, operation, 0, last_observed_ordinal, total_operations)
+                .expect("bounded canary pause observation");
+
+        assert!(
+            prepared
+                .finish(&executable(), observation, &reaped.stdout, &reaped.stderr)
+                .is_err(),
+            "a captured pause-child canary must block promotion",
+        );
     }
 
     #[test]
@@ -623,6 +728,26 @@ mod checked {
             assert!(evidence.contains("sweep=pause-process-kill\n"));
             assert!(evidence.contains("coverage=complete\n"));
             assert!(evidence.contains("publication=prohibited\n"));
+
+            if let Ok(runner_image) = std::env::var("SESSION_CHAT_L2_RUNNER_IMAGE") {
+                let channels = L2EvidenceChannels::new(
+                    evidence.as_bytes(),
+                    b"",
+                    b"",
+                    evidence.as_bytes(),
+                    b"",
+                )
+                .expect("bounded pause evidence surfaces");
+                let bundle = complete
+                    .promote_v1(&executable(), &runner_image, &channels)
+                    .expect("promote complete pause evidence");
+                for manifest in bundle.manifests() {
+                    println!(
+                        "L2_PUBLIC_EVIDENCE_BEGIN\n{}L2_PUBLIC_EVIDENCE_END",
+                        manifest.encode_v1(),
+                    );
+                }
+            }
 
             cases.pop().expect("at least one pause case");
             assert!(L2IoPauseSweepReport::new(scenario, &baseline, &cases).is_err());

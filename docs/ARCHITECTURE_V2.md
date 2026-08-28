@@ -260,8 +260,12 @@ The active Rust laboratory now contains fourteen narrow pieces of this architect
   baseline-derived `SQLITE_FULL`/extended-`SQLITE_IOERR` results and kills a
   direct writer at observed SQLite commit-window pauses and every
   baseline-observed inviter/joiner application checkpoint before fresh reopen.
-  Those local internal observations are not power-loss, filesystem, rollback,
-  portable-CI, public-evidence, or production claims.
+  Raw case observations remain non-public. The retained L2-8 matrix lets only
+  sealed complete aggregates emit canonical per-case bundles after actual
+  compiler/GitHub-run/runner-tuple and artifact binding plus multi-surface
+  secret/canary scans; portable passage remains conditional on the
+  exact revision's required three-OS result. None of this is a power-loss,
+  filesystem, rollback, or production claim.
 - `sessionctl` composes the current local pieces into one headless Alice/Bob
   flow: capability join, simulated approval, atomic SQLCipher inviter commit,
   ambiguous-result recovery, exact Alice identity/group reload, reconstructed coordinator Welcome delivery,

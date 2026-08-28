@@ -1,8 +1,9 @@
 # L2 process and storage fault testing plan
 
-Status: L2-0, L2-1, L2-4, and L2-5 retained; L2-2 and L2-3 are locally green
-with baseline-derived checked sweeps; the three-OS Checkpoint C result remains
-open; no production durability claim
+Status: L2-0 through L2-5 and the L2-8 portable evidence gate are retained;
+L2-2/L2-3 are locally green and promote only on a clean required CI runner;
+each revision still requires a green three-OS Checkpoint C result; no
+production durability claim
 
 Date: 2026-08-26
 
@@ -10,8 +11,9 @@ Date: 2026-08-26
 
 | Work item | Delivery unit and owned path | Dependencies | Acceptance | Status |
 | --- | --- | --- | --- | --- |
-| L2-2 inviter crash/restart atomicity | Lead-owned integration; `apps/sessionctl/tests/l2_crash_restart_inviter.rs` | Retained L2-0/L2-1 | Every baseline-observed inviter checkpoint is exactly I0 or I1 as specified; missing/duplicate coverage, mixed state, and conflicting retry are rejected | Locally green on macOS; portable retention pending Checkpoint C |
-| L2-3 joiner crash/restart atomicity | Lead-owned integration; `apps/sessionctl/tests/l2_crash_restart_joiner.rs` | Retained L2-0/L2-1 | Every baseline-observed joiner checkpoint is exactly J0 or J1 as specified; missing/duplicate coverage, retained KeyPackage, and conflicting retry are rejected | Locally green on macOS; portable retention pending Checkpoint C |
+| L2-2 inviter crash/restart atomicity | Lead-owned integration; `apps/sessionctl/tests/l2_crash_restart_inviter.rs` | Retained L2-0/L2-1 | Every baseline-observed inviter checkpoint is exactly I0 or I1 as specified; missing/duplicate coverage, mixed state, and conflicting retry are rejected | Locally green; public promotion requires the per-revision three-OS L2 job |
+| L2-3 joiner crash/restart atomicity | Lead-owned integration; `apps/sessionctl/tests/l2_crash_restart_joiner.rs` | Retained L2-0/L2-1 | Every baseline-observed joiner checkpoint is exactly J0 or J1 as specified; missing/duplicate coverage, retained KeyPackage, and conflicting retry are rejected | Locally green; public promotion requires the per-revision three-OS L2 job |
+| L2-8 portable evidence gate | Lead-owned integration; `apps/sessionctl/src/l2_process/evidence.rs`, checked suite promotion seams, `.github/workflows/ci.yml`, canonical claims | Retained L2-2/L2-3/L2-5 | Sealed complete aggregates emit canonical per-case `l2-evidence-v1` bundles bound to actual compiler, GitHub run/workflow, engine, binary, and artifact provenance; seeded canaries and actual case secrets are absent from every bounded surface; PR smoke catches defective evidence | Gate retained; passing portability evidence remains CI-owned per revision |
 
 The lead task owns shared controller changes, canonical documentation,
 integration verification, commits, and the eventual pull request. Both lanes
@@ -372,18 +374,33 @@ The controller must:
 - use one supplied logical time and retained seed rather than wall-clock sleeps
   for lease and recovery decisions.
 
-The public `l2-evidence-v1` manifest contains only:
+The public evidence output is a canonical bundle containing one bounded
+`l2-evidence-v1` manifest per validated case. The bundle can be constructed
+only from a sealed complete aggregate; the raw textual validator and metadata
+constructors are private. Every record contains only:
 
-- scenario/case ID, seed, checkpoint or VFS operation code and ordinal;
-- expected and observed complete-state class (`I0`, `I1`, `J0`, or `J1`);
+- scenario/case ID, canonical case index/count, seed, checkpoint or VFS
+  operation code and ordinal;
+- expected complete-state class or closed allowed class set and the exact
+  observed class (`I0`, `I1`, `J0`, or `J1`);
 - normalized SQLite primary/extended result code when injected;
-- commit/dirty metadata, lock digest, toolchain, platform/architecture, runner
-  image identifier when CI supplies it, and SQLCipher/SQLite versions;
+- commit/dirty metadata, lock digest, pinned toolchain, actual `rustc -Vv`
+  release/commit/host, platform/architecture, the closed runner-image tuple,
+  GitHub run/attempt/workflow/repository/event metadata, and SQLCipher/SQLite
+  versions;
 - configured byte/time/operation bounds and last fully explored ordinal;
-- hashes of the test binary, closed baseline, and post-recovery encrypted
-  artifact set; and
+- hashes of the test binary, that case's closed baseline and post-recovery
+  encrypted artifact set, the canonical key-framed matrix, and the sealed
+  internal aggregate observation; and
 - assertion summary, integrity/schema/semantic/redaction results, child/handle/
   lease/directory cleanup results, and `coverage=complete|partial`.
+
+All case records share the exact matrix digest and declare their canonical
+index and total count. A missing, duplicated, reordered, contradictory, or
+unknown internal claim fails before any public record is created. The evidence
+record is bound to GitHub's immutable default `GITHUB_*`/`RUNNER_*` variables
+and exact run identity; consumers still verify that run in GitHub rather than
+treating an unsigned copied log fragment as independent attestation.
 
 It omits raw paths, usernames, database keys, identity records, invitation
 generations, bearer capabilities, approval records, request fingerprints, MLS
@@ -680,8 +697,8 @@ these paths concurrently.
 - Inviter and joiner process-kill plus named-VFS suites pass on all three
   required families with complete coverage manifests.
 - An intentionally defective adapter is caught in the PR smoke subset.
-- L2-5 internal observations are promoted to the public `l2-evidence-v1`
-  manifest only after exact build/platform/artifact provenance is attached and
+- L2-5 internal observations are promoted to a canonical public per-case
+  `l2-evidence-v1` bundle only after exact build/platform/artifact provenance is attached and
   synthetic canaries are absent from bounded stdout, stderr, diagnostics,
   control frames, the manifest, and retained encrypted artifacts.
 - Canonical documents claim only application-process-kill and SQLite-visible
@@ -693,6 +710,20 @@ policy where available, and an independent review.
 
 **Dependencies:** L2-2, L2-3, and L2-5; L2-6/L2-7 may land as separately named
 gates. **Estimated scope:** M (3-5 integration files per atomic commit).
+
+**Retained implementation:** `apps/sessionctl/src/l2_process/evidence.rs`
+keeps raw promotion private, rejects dirty or incomplete promotion, requires
+exact bounded Git, actual compiler, GitHub run/workflow, closed runner tuple,
+engine, test-binary, and encrypted-artifact provenance, and scans
+stdout, stderr, diagnostics, control-frame material, the internal observation,
+every public case manifest, and retained encrypted artifacts for the closed
+synthetic canary and actual-case catalogs. Complete checkpoint, SQLite
+return-code, and commit-window kill aggregates alone can emit canonical,
+key-framed per-case `l2-evidence-v1` bundles. The dedicated CI matrix runs
+the failure-sensitive smoke subset on pull requests and the complete suites on
+non-PR runs for `ubuntu-24.04`, `macos-15`, and `windows-2025`. A portable
+passing claim remains conditional on that required job being green for the
+exact revision.
 
 ## Dispatch graph and checkpoints
 

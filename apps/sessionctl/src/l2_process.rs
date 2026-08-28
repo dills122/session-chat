@@ -39,6 +39,9 @@ use self::fault_testing::{
 };
 use super::{SessionCtlError, random_nonzero, resolve_l1_process_git_commit, stage};
 
+mod evidence;
+pub use evidence::{L2EvidenceBundle, L2EvidenceChannels, L2EvidenceManifest};
+
 const ROOT_MARKER_NAME: &str = ".sessionctl-l2-root";
 const ROOT_MARKER: &[u8] = b"sessionctl-l2-v1\n";
 const CASE_CONFIG_NAME: &str = "case.config";
@@ -294,6 +297,131 @@ pub struct L2ProcessReport {
     handle_cleanup: bool,
     child_cleanup: bool,
     directory_cleanup: bool,
+    evidence_binding: L2EvidenceBinding,
+}
+
+#[derive(Clone, Eq, PartialEq)]
+struct L2EvidenceBinding {
+    sqlcipher_version: String,
+    sqlite_version: String,
+    baseline_artifact_digest: [u8; 32],
+    post_recovery_artifact_digest: [u8; 32],
+    redaction: bool,
+}
+
+#[derive(Clone, Eq, PartialEq)]
+enum L2EvidenceCaseTarget {
+    ApplicationCheckpoint {
+        checkpoint: &'static str,
+        ordinal: u16,
+        expected: &'static str,
+        observed: &'static str,
+    },
+    SqliteReturnCode {
+        file_role: &'static str,
+        operation: &'static str,
+        mode: &'static str,
+        ordinal: u16,
+        last_fully_explored_ordinal: u16,
+        expected: &'static str,
+        observed: &'static str,
+        primary_code: i32,
+        extended_code: i32,
+        transaction_result: &'static str,
+    },
+    CommitWindowProcessKill {
+        file_role: &'static str,
+        operation: &'static str,
+        ordinal: u16,
+        last_fully_explored_ordinal: u16,
+        expected: &'static str,
+        observed: &'static str,
+    },
+}
+
+#[derive(Clone, Eq, PartialEq)]
+struct L2EvidenceCase {
+    key: String,
+    target: L2EvidenceCaseTarget,
+    binding: L2EvidenceBinding,
+}
+
+impl L2EvidenceCase {
+    fn application(report: &L2ProcessReport) -> Self {
+        let checkpoint = checkpoint_label(report.case.checkpoint);
+        Self {
+            key: format!(
+                "checkpoint-{}-{}",
+                checkpoint.to_ascii_lowercase().replace('_', "-"),
+                report.case.occurrence,
+            ),
+            target: L2EvidenceCaseTarget::ApplicationCheckpoint {
+                checkpoint,
+                ordinal: u16::from(report.case.occurrence),
+                expected: oracle_label(report.case.expected()),
+                observed: oracle_label(report.observed),
+            },
+            binding: report.evidence_binding.clone(),
+        }
+    }
+
+    fn sqlite_return_code(report: &L2IoFaultReport, last_fully_explored_ordinal: u16) -> Self {
+        let file_role = report.fault.file_role.label();
+        let operation = report.fault.operation.label();
+        let mode = report.fault.mode.label();
+        Self {
+            key: format!(
+                "sqlite-{file_role}-{operation}-{mode}-{:010}-{:04}",
+                report.fault.sqlite_code, report.fault.target_ordinal,
+            ),
+            target: L2EvidenceCaseTarget::SqliteReturnCode {
+                file_role,
+                operation,
+                mode,
+                ordinal: report.fault.target_ordinal,
+                last_fully_explored_ordinal,
+                expected: match report.scenario {
+                    Scenario::InviterTransaction => "I0|I1",
+                    Scenario::JoinerTransaction => "J0|J1",
+                },
+                observed: oracle_label(report.observed),
+                primary_code: report.fault.sqlite_code & 0xff,
+                extended_code: report.fault.sqlite_code,
+                transaction_result: if report.fault.transaction_succeeded {
+                    "success"
+                } else {
+                    "rejected"
+                },
+            },
+            binding: report.evidence_binding.clone(),
+        }
+    }
+
+    fn commit_window_process_kill(
+        report: &L2IoPauseKillReport,
+        last_fully_explored_ordinal: u16,
+    ) -> Self {
+        let file_role = report.pause.file_role.label();
+        let operation = report.pause.operation.label();
+        Self {
+            key: format!(
+                "pause-{file_role}-{operation}-{:04}",
+                report.pause.target_ordinal,
+            ),
+            target: L2EvidenceCaseTarget::CommitWindowProcessKill {
+                file_role,
+                operation,
+                ordinal: report.pause.target_ordinal,
+                last_fully_explored_ordinal,
+                expected: match report.scenario {
+                    Scenario::InviterTransaction => "I0|I1",
+                    Scenario::JoinerTransaction => "J0|J1",
+                },
+                observed: oracle_label(report.observed),
+            },
+            binding: report.evidence_binding.clone(),
+        }
+    }
 }
 
 /// Baseline-observed application checkpoints for one real storage transaction.
@@ -315,6 +443,7 @@ pub struct L2ProcessSweepReport {
     cases: Vec<L2ProcessCase>,
     old_states: usize,
     new_states: usize,
+    evidence_cases: Vec<L2EvidenceCase>,
 }
 
 impl L2ProcessSweepReport {
@@ -371,11 +500,14 @@ impl L2ProcessSweepReport {
         if old_states == 0 || new_states == 0 {
             return Err(stage("L2 process sweep oracle coverage"));
         }
+        let evidence_cases =
+            canonical_evidence_cases(reports.iter().map(L2EvidenceCase::application).collect())?;
         Ok(Self {
             scenario,
             cases: baseline.cases.clone(),
             old_states,
             new_states,
+            evidence_cases,
         })
     }
 
@@ -403,7 +535,15 @@ impl L2ProcessSweepReport {
                 "checkpoint_trace_sha256={}\n",
                 "completed_cases={}\n",
                 "observed_old_states={}\n",
-                "observed_new_states={}\n"
+                "observed_new_states={}\n",
+                "integrity=pass\n",
+                "schema=pass\n",
+                "semantic_oracle=pass\n",
+                "exact_retry=pass\n",
+                "fixture_cleanup=pass\n",
+                "handle_cleanup=pass\n",
+                "child_cleanup=pass\n",
+                "directory_cleanup=pass\n"
             ),
             match self.scenario {
                 Scenario::InviterTransaction => "inviter-transaction",
@@ -818,9 +958,11 @@ pub struct L2IoBaselineReport {
     handle_cleanup: bool,
     child_cleanup: bool,
     directory_cleanup: bool,
+    _evidence_binding: L2EvidenceBinding,
 }
 
 impl L2IoBaselineReport {
+    #[allow(clippy::too_many_arguments)]
     fn new(
         scenario: Scenario,
         observed: OracleState,
@@ -829,6 +971,7 @@ impl L2IoBaselineReport {
         handle_cleanup: bool,
         child_cleanup: bool,
         directory_cleanup: bool,
+        evidence_binding: L2EvidenceBinding,
     ) -> Result<Self, SessionCtlError> {
         let is_clean_new_state = matches!(
             (scenario, observed),
@@ -851,6 +994,7 @@ impl L2IoBaselineReport {
             handle_cleanup,
             child_cleanup,
             directory_cleanup,
+            _evidence_binding: evidence_binding,
         })
     }
 
@@ -924,6 +1068,7 @@ pub struct L2IoFaultReport {
     handle_cleanup: bool,
     child_cleanup: bool,
     directory_cleanup: bool,
+    evidence_binding: L2EvidenceBinding,
 }
 
 impl L2IoFaultReport {
@@ -1000,6 +1145,7 @@ pub struct L2IoPauseKillReport {
     handle_cleanup: bool,
     child_cleanup: bool,
     directory_cleanup: bool,
+    evidence_binding: L2EvidenceBinding,
 }
 
 impl L2IoPauseKillReport {
@@ -1086,6 +1232,7 @@ pub struct L2IoSweepReport {
     completed_cases: usize,
     empty_states: usize,
     committed_states: usize,
+    evidence_cases: Vec<L2EvidenceCase>,
 }
 
 impl L2IoSweepReport {
@@ -1191,6 +1338,27 @@ impl L2IoSweepReport {
             }
         }
 
+        let evidence_cases = canonical_evidence_cases(
+            cases
+                .iter()
+                .map(|case| {
+                    let last_fully_explored_ordinal = baseline
+                        .baseline
+                        .targets
+                        .iter()
+                        .find(|target| {
+                            target.file_role == case.fault.file_role
+                                && target.operation == case.fault.operation
+                        })
+                        .map(|target| target.observed_count.saturating_sub(1))
+                        .ok_or_else(|| stage("L2 I/O evidence case"))?;
+                    Ok(L2EvidenceCase::sqlite_return_code(
+                        case,
+                        last_fully_explored_ordinal,
+                    ))
+                })
+                .collect::<Result<Vec<_>, SessionCtlError>>()?,
+        )?;
         Ok(Self {
             scenario,
             targets: baseline.baseline.targets.clone(),
@@ -1199,6 +1367,7 @@ impl L2IoSweepReport {
             completed_cases: cases.len(),
             empty_states,
             committed_states,
+            evidence_cases,
         })
     }
 
@@ -1268,7 +1437,11 @@ impl L2IoSweepReport {
                 "fixture_cleanup=pass\n",
                 "handle_cleanup=pass\n",
                 "child_cleanup=pass\n",
-                "directory_cleanup=pass\n"
+                "directory_cleanup=pass\n",
+                "integrity=pass\n",
+                "schema=pass\n",
+                "semantic_oracle=pass\n",
+                "exact_retry=pass\n"
             ),
             match self.scenario {
                 Scenario::InviterTransaction => "inviter-transaction",
@@ -1316,6 +1489,7 @@ pub struct L2IoPauseSweepReport {
     completed_cases: usize,
     empty_states: usize,
     committed_states: usize,
+    evidence_cases: Vec<L2EvidenceCase>,
 }
 
 impl L2IoPauseSweepReport {
@@ -1395,12 +1569,32 @@ impl L2IoPauseSweepReport {
             }
         }
 
+        let evidence_cases = canonical_evidence_cases(
+            cases
+                .iter()
+                .map(|case| {
+                    let last_fully_explored_ordinal = targets
+                        .iter()
+                        .find(|target| {
+                            target.file_role == case.pause.file_role
+                                && target.operation == case.pause.operation
+                        })
+                        .map(|target| target.observed_count.saturating_sub(1))
+                        .ok_or_else(|| stage("L2 I/O pause evidence case"))?;
+                    Ok(L2EvidenceCase::commit_window_process_kill(
+                        case,
+                        last_fully_explored_ordinal,
+                    ))
+                })
+                .collect::<Result<Vec<_>, SessionCtlError>>()?,
+        )?;
         Ok(Self {
             scenario,
             targets,
             completed_cases: cases.len(),
             empty_states,
             committed_states,
+            evidence_cases,
         })
     }
 
@@ -1455,7 +1649,11 @@ impl L2IoPauseSweepReport {
                 "fixture_cleanup=pass\n",
                 "handle_cleanup=pass\n",
                 "child_cleanup=pass\n",
-                "directory_cleanup=pass\n"
+                "directory_cleanup=pass\n",
+                "integrity=pass\n",
+                "schema=pass\n",
+                "semantic_oracle=pass\n",
+                "exact_retry=pass\n"
             ),
             match self.scenario {
                 Scenario::InviterTransaction => "inviter-transaction",
@@ -1566,6 +1764,7 @@ pub fn run_l2_process_case(
         handle_cleanup: controller.handle_cleanup,
         child_cleanup: controller.child_cleanup,
         directory_cleanup: true,
+        evidence_binding: controller.evidence_binding,
     };
     if report.encode_v1().len() > MAX_EVIDENCE_BYTES {
         return Err(stage("L2 evidence"));
@@ -1623,7 +1822,14 @@ pub fn run_l2_io_fault_case(
     let mut root = ProcessRoot::new()?;
     let result = run_l2_io_fault_controller(executable, root.path(), config, driver);
     let cleanup = root.cleanup();
-    let (observed, driver_observation, fixture_cleanup, handle_cleanup, child_cleanup) = result?;
+    let (
+        observed,
+        driver_observation,
+        fixture_cleanup,
+        handle_cleanup,
+        child_cleanup,
+        evidence_binding,
+    ) = result?;
     cleanup?;
     let L2IoDriverObservation::Fault(fault) = driver_observation else {
         return Err(stage("L2 I/O fault evidence"));
@@ -1636,6 +1842,7 @@ pub fn run_l2_io_fault_case(
         handle_cleanup,
         child_cleanup,
         directory_cleanup: true,
+        evidence_binding,
     };
     if report.encode_v1().len() > MAX_EVIDENCE_BYTES {
         return Err(stage("L2 I/O evidence"));
@@ -1656,7 +1863,14 @@ pub fn run_l2_io_baseline(
     let mut root = ProcessRoot::new()?;
     let result = run_l2_io_fault_controller(executable, root.path(), config, driver);
     let cleanup = root.cleanup();
-    let (observed, driver_observation, fixture_cleanup, handle_cleanup, child_cleanup) = result?;
+    let (
+        observed,
+        driver_observation,
+        fixture_cleanup,
+        handle_cleanup,
+        child_cleanup,
+        evidence_binding,
+    ) = result?;
     cleanup?;
     let L2IoDriverObservation::Baseline(baseline) = driver_observation else {
         return Err(stage("L2 I/O baseline evidence"));
@@ -1669,6 +1883,7 @@ pub fn run_l2_io_baseline(
         handle_cleanup,
         child_cleanup,
         true,
+        evidence_binding,
     )?;
     if report.encode_v1().len() > MAX_EVIDENCE_BYTES {
         return Err(stage("L2 I/O evidence"));
@@ -1682,6 +1897,9 @@ pub struct L2IoPauseKillCase {
     key: Zeroizing<[u8; KEY_BYTES]>,
     scenario: Scenario,
     expected_pause: L2IoPauseSweepCase,
+    baseline_artifact: L2ArtifactSnapshot,
+    fixture: CaseFixture,
+    welcome_canary: Option<Zeroizing<Vec<u8>>>,
 }
 
 impl L2IoPauseKillCase {
@@ -1695,7 +1913,14 @@ impl L2IoPauseKillCase {
         mut self,
         executable: &Path,
         pause: L2IoPauseObservation,
+        pause_stdout: &[u8],
+        pause_stderr: &[u8],
     ) -> Result<L2IoPauseKillReport, SessionCtlError> {
+        if pause_stdout.len() > MAX_CHILD_OUTPUT_BYTES
+            || pause_stderr.len() > MAX_CHILD_OUTPUT_BYTES
+        {
+            return Err(stage("L2 I/O pause output bound"));
+        }
         if !executable.is_absolute() || !executable.is_file() {
             return Err(stage("L2 executable"));
         }
@@ -1710,9 +1935,23 @@ impl L2IoPauseKillCase {
         {
             return Err(stage("L2 I/O pause child load"));
         }
-        let result = verify_l2_io_root(executable, self.root.path(), &self.key, self.scenario);
+        if self.welcome_canary.is_none() {
+            self.welcome_canary = read_optional_welcome_canary(self.root.path())?;
+        }
+        let result = verify_l2_io_root(
+            executable,
+            self.root.path(),
+            &self.key,
+            self.scenario,
+            L2CaseSecrets {
+                fixture: &self.fixture,
+                welcome_canary: self.welcome_canary.as_ref().map(|value| value.as_slice()),
+            },
+            self.baseline_artifact,
+            &[pause_stdout, pause_stderr],
+        );
         let cleanup = self.root.cleanup();
-        let (observed, fixture_cleanup, handle_cleanup, child_cleanup) = result?;
+        let (observed, fixture_cleanup, handle_cleanup, child_cleanup, evidence_binding) = result?;
         cleanup?;
         let report = L2IoPauseKillReport {
             scenario: self.scenario,
@@ -1722,6 +1961,7 @@ impl L2IoPauseKillCase {
             handle_cleanup,
             child_cleanup,
             directory_cleanup: true,
+            evidence_binding,
         };
         if report.encode_v1().len() > MAX_EVIDENCE_BYTES {
             return Err(stage("L2 I/O pause evidence"));
@@ -1745,6 +1985,8 @@ pub fn prepare_l2_io_pause_kill_case(
     let key = Zeroizing::new(random_nonzero::<KEY_BYTES>()?);
     write_owned_file(&root.path().join(CASE_CONFIG_NAME), &config.encode(), false)?;
     let fixture = prepare_baseline(root.path(), &key, scenario)?;
+    let baseline_artifact = encrypted_artifact_snapshot(root.path())?;
+    let welcome_canary = read_optional_welcome_canary(root.path())?;
     let fixture_bytes = fixture.encode();
     write_owned_file(
         &root.path().join(WRITER_CASE_FIXTURE_NAME),
@@ -1766,6 +2008,9 @@ pub fn prepare_l2_io_pause_kill_case(
             operation,
             target_ordinal,
         },
+        baseline_artifact,
+        fixture,
+        welcome_canary,
     })
 }
 
@@ -1822,10 +2067,22 @@ fn run_l2_io_fault_controller(
     root: &Path,
     config: CaseConfig,
     driver: &mut impl L2IoFaultDriver,
-) -> Result<(OracleState, L2IoDriverObservation, bool, bool, bool), SessionCtlError> {
+) -> Result<
+    (
+        OracleState,
+        L2IoDriverObservation,
+        bool,
+        bool,
+        bool,
+        L2EvidenceBinding,
+    ),
+    SessionCtlError,
+> {
     let key = Zeroizing::new(random_nonzero::<KEY_BYTES>()?);
     write_owned_file(&root.join(CASE_CONFIG_NAME), &config.encode(), false)?;
     let fixture = prepare_baseline(root, &key, config.target.scenario())?;
+    let baseline_artifact = encrypted_artifact_snapshot(root)?;
+    let mut welcome_canary = read_optional_welcome_canary(root)?;
     write_owned_file(
         &root.join(VERIFIER_CASE_FIXTURE_NAME),
         fixture.encode().as_ref(),
@@ -1851,20 +2108,40 @@ fn run_l2_io_fault_controller(
     let transaction_succeeded =
         run_real_storage_transaction(&storage, observer, config.target.scenario(), &fixture, root)
             .is_ok();
+    if welcome_canary.is_none() {
+        welcome_canary = read_optional_welcome_canary(root)?;
+    }
     let fault = driver
         .disable_and_observe(transaction_succeeded)
         .ok_or_else(|| stage("L2 I/O driver evidence"))?;
     drop(storage);
 
-    let (observed, fixture_cleanup, handle_cleanup, child_cleanup) =
-        verify_l2_io_root(executable, root, &key, config.target.scenario())?;
+    let (observed, fixture_cleanup, handle_cleanup, child_cleanup, evidence_binding) =
+        verify_l2_io_root(
+            executable,
+            root,
+            &key,
+            config.target.scenario(),
+            L2CaseSecrets {
+                fixture: &fixture,
+                welcome_canary: welcome_canary.as_ref().map(|value| value.as_slice()),
+            },
+            baseline_artifact,
+            &[],
+        )?;
     Ok((
         observed,
         fault,
         fixture_cleanup,
         handle_cleanup,
         child_cleanup,
+        evidence_binding,
     ))
+}
+
+struct L2CaseSecrets<'a> {
+    fixture: &'a CaseFixture,
+    welcome_canary: Option<&'a [u8]>,
 }
 
 fn verify_l2_io_root(
@@ -1872,7 +2149,10 @@ fn verify_l2_io_root(
     root: &Path,
     key: &Zeroizing<[u8; KEY_BYTES]>,
     scenario: Scenario,
-) -> Result<(OracleState, bool, bool, bool), SessionCtlError> {
+    secrets: L2CaseSecrets<'_>,
+    baseline_artifact: L2ArtifactSnapshot,
+    additional_surfaces: &[&[u8]],
+) -> Result<(OracleState, bool, bool, bool, L2EvidenceBinding), SessionCtlError> {
     write_owned_file(&root.join(VERIFIER_KEY_NAME), key.as_slice(), true)?;
     let mut verifier = ManagedChild::spawn(executable, "verifier", root, false)?;
     let status = match verifier.wait(CHILD_WAIT) {
@@ -1897,7 +2177,25 @@ fn verify_l2_io_root(
         return Err(stage("L2 I/O fixture cleanup"));
     }
     let handle_cleanup = prove_database_handle_cleanup(root)?;
-    Ok((evidence.observed, fixture_cleanup, handle_cleanup, true))
+    let mut surfaces = Vec::with_capacity(additional_surfaces.len() + 2);
+    surfaces.extend_from_slice(additional_surfaces);
+    surfaces.push(stdout.as_slice());
+    surfaces.push(stderr.as_slice());
+    let evidence_binding = collect_evidence_binding(
+        root,
+        key,
+        secrets.fixture,
+        secrets.welcome_canary,
+        baseline_artifact,
+        &surfaces,
+    )?;
+    Ok((
+        evidence.observed,
+        fixture_cleanup,
+        handle_cleanup,
+        true,
+        evidence_binding,
+    ))
 }
 
 /// Runs one hidden role selected only by the checked parent controller.
@@ -1949,6 +2247,34 @@ const fn pass_fail(value: bool) -> &'static str {
     if value { "pass" } else { "fail" }
 }
 
+fn canonical_evidence_cases(
+    mut cases: Vec<L2EvidenceCase>,
+) -> Result<Vec<L2EvidenceCase>, SessionCtlError> {
+    if cases.is_empty() || cases.len() > 4_096 {
+        return Err(stage("L2 evidence case index"));
+    }
+    cases.sort_by(|left, right| left.key.cmp(&right.key));
+    let first = cases
+        .first()
+        .ok_or_else(|| stage("L2 evidence case index"))?;
+    if cases.windows(2).any(|pair| pair[0].key == pair[1].key)
+        || cases.iter().any(|case| {
+            case.key.is_empty()
+                || case.key.len() > 256
+                || !case
+                    .key
+                    .bytes()
+                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+                || case.binding.sqlcipher_version != first.binding.sqlcipher_version
+                || case.binding.sqlite_version != first.binding.sqlite_version
+                || !case.binding.redaction
+        })
+    {
+        return Err(stage("L2 evidence case index"));
+    }
+    Ok(cases)
+}
+
 struct ControllerEvidence {
     observed: OracleState,
     trace: Vec<L2ProcessCase>,
@@ -1962,6 +2288,7 @@ struct ControllerEvidence {
     redaction: bool,
     handle_cleanup: bool,
     child_cleanup: bool,
+    evidence_binding: L2EvidenceBinding,
 }
 
 fn run_controller(
@@ -1972,6 +2299,8 @@ fn run_controller(
     let key = Zeroizing::new(random_nonzero::<KEY_BYTES>()?);
     write_owned_file(&root.join(CASE_CONFIG_NAME), &config.encode(), false)?;
     let fixture = prepare_baseline(root, &key, config.target.scenario())?;
+    let baseline_artifact = encrypted_artifact_snapshot(root)?;
+    let mut welcome_canary = read_optional_welcome_canary(root)?;
     let fixture_bytes = fixture.encode();
     write_owned_file(
         &root.join(WRITER_CASE_FIXTURE_NAME),
@@ -2038,6 +2367,9 @@ fn run_controller(
     }
     writer.stdout.require_empty(CHILD_WAIT)?;
     writer.stderr.require_empty(CHILD_WAIT)?;
+    if welcome_canary.is_none() {
+        welcome_canary = read_optional_welcome_canary(root)?;
+    }
     if root.join(WRITER_KEY_NAME).exists() {
         return Err(stage("L2 writer key cleanup"));
     }
@@ -2097,6 +2429,28 @@ fn run_controller(
         return Err(stage("L2 retry conflict confirmed"));
     }
     let verifier_evidence = parse_verifier_evidence(&stdout, expected)?;
+    let control_frames = trace
+        .cases
+        .iter()
+        .map(|case| {
+            ControlFrame::new_checkpoint(config.target.case_id(), case.checkpoint, case.occurrence)
+                .map(ControlFrame::encode)
+                .map_err(|_| stage("L2 evidence control frame"))
+        })
+        .collect::<Result<Vec<_>, _>>()?
+        .concat();
+    let evidence_binding = collect_evidence_binding(
+        root,
+        &key,
+        &fixture,
+        welcome_canary.as_ref().map(|value| value.as_slice()),
+        baseline_artifact,
+        &[
+            stdout.as_slice(),
+            stderr.as_slice(),
+            control_frames.as_slice(),
+        ],
+    )?;
     Ok(ControllerEvidence {
         observed: verifier_evidence.observed,
         trace: trace.cases,
@@ -2110,6 +2464,7 @@ fn run_controller(
         redaction: true,
         handle_cleanup,
         child_cleanup: true,
+        evidence_binding,
     })
 }
 
@@ -2316,6 +2671,18 @@ fn read_fixture(root: &Path, name: &str) -> Result<CaseFixture, SessionCtlError>
     let bytes = Zeroizing::new(read_owned_file(&path, CASE_FIXTURE_BYTES)?);
     fs::remove_file(&path).map_err(|_| stage("L2 fixture cleanup"))?;
     CaseFixture::decode(&bytes)
+}
+
+fn read_optional_welcome_canary(
+    root: &Path,
+) -> Result<Option<Zeroizing<Vec<u8>>>, SessionCtlError> {
+    let path = root.join(WELCOME_FIXTURE_NAME);
+    if !path.exists() {
+        return Ok(None);
+    }
+    Ok(Some(Zeroizing::new(read_bounded_owned_file(
+        &path, 65_536,
+    )?)))
 }
 
 fn prepare_baseline(
@@ -3513,6 +3880,104 @@ fn schema_fingerprint(connection: &Connection) -> Result<String, SessionCtlError
     Ok(hex(digest(&SHA256, &canonical).as_ref()))
 }
 
+struct L2ArtifactSnapshot {
+    digest: [u8; 32],
+    bytes: Vec<u8>,
+}
+
+fn encrypted_artifact_snapshot(root: &Path) -> Result<L2ArtifactSnapshot, SessionCtlError> {
+    let mut canonical = Vec::new();
+    let mut artifact_bytes = Vec::new();
+    let mut found_database = false;
+    for name in [
+        DATABASE_NAME,
+        "case.sqlite3-journal",
+        "case.sqlite3-wal",
+        "case.sqlite3-shm",
+    ] {
+        let path = root.join(name);
+        if !path.exists() {
+            continue;
+        }
+        validate_owned_file(&path, None)?;
+        let bytes = read_bounded_repository_file(&path, MAX_DATABASE_BYTES)
+            .ok_or_else(|| stage("L2 encrypted artifact"))?;
+        if name == DATABASE_NAME {
+            found_database = true;
+        }
+        if artifact_bytes.len().saturating_add(bytes.len()) > MAX_DATABASE_BYTES {
+            return Err(stage("L2 encrypted artifact bound"));
+        }
+        canonical.extend_from_slice(name.as_bytes());
+        canonical.push(0);
+        canonical.extend_from_slice(
+            &u64::try_from(bytes.len())
+                .map_err(|_| stage("L2 encrypted artifact"))?
+                .to_be_bytes(),
+        );
+        canonical.extend_from_slice(&bytes);
+        artifact_bytes.extend_from_slice(&bytes);
+    }
+    if !found_database || canonical.is_empty() {
+        return Err(stage("L2 encrypted artifact"));
+    }
+    Ok(L2ArtifactSnapshot {
+        digest: digest(&SHA256, &canonical)
+            .as_ref()
+            .try_into()
+            .map_err(|_| stage("L2 encrypted artifact"))?,
+        bytes: artifact_bytes,
+    })
+}
+
+fn collect_evidence_binding(
+    root: &Path,
+    key: &Zeroizing<[u8; KEY_BYTES]>,
+    fixture: &CaseFixture,
+    welcome_canary: Option<&[u8]>,
+    baseline: L2ArtifactSnapshot,
+    surfaces: &[&[u8]],
+) -> Result<L2EvidenceBinding, SessionCtlError> {
+    let post_recovery = encrypted_artifact_snapshot(root)?;
+    let connection = open_keyed_connection(&root.join(DATABASE_NAME), key)?;
+    let sqlcipher_version: String = connection
+        .query_row("PRAGMA cipher_version;", [], |row| row.get(0))
+        .map_err(|_| stage("L2 evidence SQLCipher version"))?;
+    let sqlite_version: String = connection
+        .query_row("SELECT sqlite_version();", [], |row| row.get(0))
+        .map_err(|_| stage("L2 evidence SQLite version"))?;
+    drop(connection);
+    let mut scanned = Vec::with_capacity(surfaces.len() + 2);
+    scanned.extend_from_slice(surfaces);
+    scanned.push(baseline.bytes.as_slice());
+    scanned.push(post_recovery.bytes.as_slice());
+    let endpoint = fixture_endpoint()?;
+    let mut secrets = vec![
+        key.as_slice(),
+        fixture.invitation_id.as_slice(),
+        fixture.invitation_generation.as_slice(),
+        fixture.join_request_id.as_slice(),
+        fixture.request_fingerprint.as_slice(),
+        fixture.transaction_id.as_slice(),
+        fixture.group_id.as_slice(),
+        fixture.key_package_reference.as_slice(),
+        fixture.credential_identity.as_slice(),
+        APPROVAL_RECORD,
+        endpoint.as_slice(),
+    ];
+    if let Some(welcome) = welcome_canary {
+        secrets.push(welcome);
+    }
+    evidence::scan_secret_values(scanned, secrets)?;
+    Ok(L2EvidenceBinding {
+        sqlcipher_version,
+        sqlite_version,
+        baseline_artifact_digest: baseline.digest,
+        post_recovery_artifact_digest: post_recovery.digest,
+        redaction: true,
+    })
+}
+
 fn prove_database_handle_cleanup(root: &Path) -> Result<bool, SessionCtlError> {
     let database = root.join(DATABASE_NAME);
     let guard = root.join("case.handle-guard");
@@ -4058,7 +4523,7 @@ impl Drop for PipeReader {
 
 fn sanitize_environment(command: &mut Command) {
     command.env_clear();
-    for name in ["PATH", "SystemRoot", "WINDIR"] {
+    for name in ["PATH", "TMPDIR", "SystemRoot", "WINDIR"] {
         if let Some(value) = std::env::var_os(name).filter(|value| value.len() <= 4_096) {
             command.env(name, value);
         }
@@ -4132,6 +4597,42 @@ fn hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn test_evidence_binding() -> L2EvidenceBinding {
+        L2EvidenceBinding {
+            sqlcipher_version: String::from("4.14.0"),
+            sqlite_version: String::from("3.50.4"),
+            baseline_artifact_digest: [0x11; 32],
+            post_recovery_artifact_digest: [0x22; 32],
+            redaction: true,
+        }
+    }
+
+    fn test_evidence_case(key: &str, ordinal: u16) -> L2EvidenceCase {
+        L2EvidenceCase {
+            key: key.to_owned(),
+            target: L2EvidenceCaseTarget::ApplicationCheckpoint {
+                checkpoint: "INVITER_BEFORE_BEGIN",
+                ordinal,
+                expected: "I0",
+                observed: "I0",
+            },
+            binding: test_evidence_binding(),
+        }
+    }
+
+    #[test]
+    fn evidence_case_index_is_canonical_across_input_permutations() {
+        let first = test_evidence_case("checkpoint-a-0", 0);
+        let second = test_evidence_case("checkpoint-b-1", 1);
+        let forward = canonical_evidence_cases(vec![first.clone(), second.clone()])
+            .expect("forward case index");
+        let reversed = canonical_evidence_cases(vec![second, first]).expect("reversed case index");
+        assert!(forward == reversed);
+
+        let duplicate = test_evidence_case("checkpoint-a-0", 2);
+        assert!(canonical_evidence_cases(vec![forward[0].clone(), duplicate]).is_err());
+    }
 
     #[test]
     fn canonical_checkpoint_traversal_accepts_the_maximum_depth_legal_trace() {
@@ -4278,6 +4779,14 @@ mod tests {
     }
 
     #[test]
+    fn sanitized_git_metadata_reports_a_dirty_state_instead_of_becoming_unavailable() {
+        assert!(
+            git_dirty_at(&repository_root()).is_some(),
+            "sanitized Git metadata must tolerate the platform temporary-directory environment",
+        );
+    }
+
+    #[test]
     fn clean_baseline_and_pause_aggregate_reject_old_state() {
         let target = L2IoSweepTarget::new(L2IoFileRole::RollbackJournal, L2IoOperation::Write, 1)
             .expect("baseline target");
@@ -4292,6 +4801,7 @@ mod tests {
                 true,
                 true,
                 true,
+                test_evidence_binding(),
             )
             .is_err()
         );
@@ -4305,6 +4815,7 @@ mod tests {
             handle_cleanup: true,
             child_cleanup: true,
             directory_cleanup: true,
+            _evidence_binding: test_evidence_binding(),
         };
         let old_pause_case = L2IoPauseKillReport {
             scenario: Scenario::InviterTransaction,
@@ -4321,6 +4832,7 @@ mod tests {
             handle_cleanup: true,
             child_cleanup: true,
             directory_cleanup: true,
+            evidence_binding: test_evidence_binding(),
         };
         assert!(
             L2IoPauseSweepReport::new(

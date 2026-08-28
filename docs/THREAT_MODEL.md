@@ -551,9 +551,13 @@ direct writer at every observed journal/main commit-window pause before a fresh
 verifier accepts only I0/I1 or J0/J1 with exact retry. Separate local checked
 sweeps now kill every baseline-observed inviter/joiner application checkpoint
 and enforce the same complete-state and retry invariants, including
-missing/duplicate coverage rejection. These records are non-public until
-provenance, canary scanning, and portable CI are retained. Current evidence
-still does not cover product-client recovery, cross-implementation fixtures,
+missing/duplicate coverage rejection. Raw case observations remain non-public.
+The retained L2-8 gate lets only sealed complete aggregates emit canonical
+per-case bundles after actual compiler/GitHub-run/runner-tuple, engine, binary,
+and artifact provenance plus synthetic-canary and actual-secret scans across
+every bounded evidence surface; portable passage remains per-revision three-OS CI
+evidence. Current evidence still does not cover product-client recovery,
+cross-implementation fixtures,
 cross-device acknowledgement semantics, old-secret deletion, power loss,
 filesystem faults, rollback resistance, or fuzzing.
 

@@ -82,9 +82,12 @@ and an untrusted forwarder remain separate. No platform protector supplies the
 disposable raw key. SQLCipher is not a rollback anchor. The separate checked L2
 laboratory now covers baseline-derived SQLite-visible failures, selected engine
 commit-window writer kills, and local process kills at every baseline-observed
-inviter and joiner application checkpoint. These internal observations remain
-non-public pending the required three-OS provenance and canary gate; this
-decision makes no production, secure-deletion, power-loss, filesystem,
+inviter and joiner application checkpoint. Raw observations remain non-public;
+the retained L2-8 matrix lets only sealed complete aggregates emit canonical
+per-case bundles after actual compiler/GitHub-run/runner-tuple and artifact
+binding plus multi-surface secret/canary scans. Portable
+passage remains conditional on the exact revision's required three-OS result;
+this decision makes no production, secure-deletion, power-loss, filesystem,
 rollback-resistance, product-recovery, or broader-platform claim. Vendoring
 OpenSSL increases the audited source, native build, license, advisory, and
 compile-time surface; the locked graph and dependency policy must therefore

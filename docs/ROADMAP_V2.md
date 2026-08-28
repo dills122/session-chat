@@ -183,12 +183,14 @@ clean named-VFS traces, injects one-shot and persistent FULL/extended-IOERR
 results at every observed supported inviter/joiner ordinal, and kills a
 separately supervised child at every observed journal/main commit-window pause
 before fresh-process verification. Incomplete return-code or pause matrices
-cannot emit complete matrix coverage. These are non-public internal
-observations; L2-8 still owns exact build/artifact provenance, synthetic-canary
-scanning, and promotion to the public evidence manifest. The inviter/joiner
-application-checkpoint suites are locally green but remain non-public pending
-the required three-OS L2 CI result, so this adds no power-loss, filesystem,
-rollback-resistance, or production-durability claim.
+cannot emit complete matrix coverage. Raw case observations remain non-public.
+The retained L2-8 gate lets sealed complete aggregates emit canonical per-case
+`l2-evidence-v1` bundles only after binding clean Git, actual compiler, GitHub
+run/workflow, the closed runner tuple, engine, test-binary, and encrypted-artifact
+provenance and scanning every bounded surface for synthetic canaries and actual
+case secrets. Portable
+passage remains per-revision three-OS evidence, so this adds no power-loss,
+filesystem, rollback-resistance, or production-durability claim.
 
 ADR 0019 and `key-protector-passphrase` now retain the bounded portable
 key-wrapper conformance experiment: exact Argon2id 0.5.3 and AWS-LC 1.16.3

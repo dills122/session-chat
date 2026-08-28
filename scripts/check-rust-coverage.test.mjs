@@ -67,6 +67,7 @@ const policy = {
 test('ordinary production coverage explicitly excludes checked-cfg fault modules', () => {
   for (const source of [
     'apps/sessionctl/src/l2_process.rs',
+    'apps/sessionctl/src/l2_process/evidence.rs',
     'crates/storage-sqlcipher/src/fault_testing.rs',
   ]) {
     assert.ok(COVERAGE_POLICY.nonInstrumentedSources.includes(source), source);
