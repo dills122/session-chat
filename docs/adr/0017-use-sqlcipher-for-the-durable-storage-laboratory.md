@@ -80,12 +80,15 @@ inside one process. The ADR 0021 runner additionally proves the same reload
 contract after graceful Alice process exit and a fresh Alice process while Bob
 and an untrusted forwarder remain separate. No platform protector supplies the
 disposable raw key. SQLCipher is not a rollback anchor. The separate checked L2
-laboratory now covers baseline-derived SQLite-visible failures and selected
-engine commit-window writer kills, but this decision makes no production,
-secure-deletion, complete application-checkpoint, power-loss, filesystem, or
-broader-platform claim. Vendoring OpenSSL increases the audited source, native
-build, license, advisory, and compile-time surface; the locked graph and
-dependency policy must therefore cover it explicitly.
+laboratory now covers baseline-derived SQLite-visible failures, selected engine
+commit-window writer kills, and local process kills at every baseline-observed
+inviter and joiner application checkpoint. These internal observations remain
+non-public pending the required three-OS provenance and canary gate; this
+decision makes no production, secure-deletion, power-loss, filesystem,
+rollback-resistance, product-recovery, or broader-platform claim. Vendoring
+OpenSSL increases the audited source, native build, license, advisory, and
+compile-time surface; the locked graph and dependency policy must therefore
+cover it explicitly.
 
 The durable client-identity record has this closed layout:
 
@@ -119,16 +122,18 @@ and Linux before adding any native enhanced protector.
 
 ## Required next gates
 
-- pass the exact SQLCipher graph on required Linux, macOS, and Windows CI;
+- pass the checked L2 process-kill and SQLite-visible fault suites on required
+  Linux, macOS, and Windows CI, with exact provenance and canary scanning before
+  promoting their internal observations to public evidence;
 - select and test one portable key-protection baseline on all three families;
 - only then investigate enhanced macOS Keychain, Windows Hello/CNG, and concrete
   Linux Secret Service implementations in parallel;
-- test process kill at every application checkpoint and remaining production
-  adapter write boundary, plus disk full, truncation, tampering, migration,
-  rekey, backup, and deletion;
+- extend process-kill testing to the remaining production adapter write
+  boundaries, outbox delivery, and migration/restore, plus disk full,
+  truncation, tampering, rekey, backup, and deletion;
 - extend the graceful independent-process identity/group reload beyond the
-  checked L2 engine windows with complete abrupt-kill, disk-full, and power-loss
-  recovery evidence;
+  checked local L2 process-kill laboratory with portable/public abrupt-kill,
+  disk-full, and power-loss recovery evidence;
 - select or explicitly defer a trusted monotonic rollback anchor; and
 - independently review the exact MLS, SQLCipher, and platform-protector boundary.
 
