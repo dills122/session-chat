@@ -107,6 +107,8 @@ pub enum L2HarnessProbe {
     MissingAcknowledgement,
     /// A checked integration driver injects one SQLite-visible I/O failure.
     IoFault,
+    /// A committed joiner state incorrectly retains its consumed KeyPackage.
+    JoinerRetainedKeyPackage,
 }
 
 impl L2HarnessProbe {
@@ -133,6 +135,7 @@ impl L2HarnessProbe {
             Self::JoinerRetryMutation => 15,
             Self::MissingAcknowledgement => 16,
             Self::IoFault => 17,
+            Self::JoinerRetainedKeyPackage => 18,
         }
     }
 
@@ -154,7 +157,8 @@ impl L2HarnessProbe {
             | Self::InviterRetryMutation
             | Self::JoinerRetryMutation
             | Self::MissingAcknowledgement
-            | Self::IoFault => "negative-probe",
+            | Self::IoFault
+            | Self::JoinerRetainedKeyPackage => "negative-probe",
         }
     }
 }
@@ -181,6 +185,7 @@ impl TryFrom<u8> for L2HarnessProbe {
             15 => Ok(Self::JoinerRetryMutation),
             16 => Ok(Self::MissingAcknowledgement),
             17 => Ok(Self::IoFault),
+            18 => Ok(Self::JoinerRetainedKeyPackage),
             _ => Err(stage("L2 probe")),
         }
     }
@@ -271,6 +276,7 @@ const fn checkpoint_label(checkpoint: Checkpoint) -> &'static str {
 pub struct L2ProcessReport {
     case_id: CaseId,
     case: L2ProcessCase,
+    trace: Vec<L2ProcessCase>,
     probe: L2HarnessProbe,
     commit: String,
     dirty: bool,
@@ -288,6 +294,129 @@ pub struct L2ProcessReport {
     handle_cleanup: bool,
     child_cleanup: bool,
     directory_cleanup: bool,
+}
+
+/// Baseline-observed application checkpoints for one real storage transaction.
+pub struct L2ProcessBaseline {
+    scenario: Scenario,
+    cases: Vec<L2ProcessCase>,
+}
+
+impl L2ProcessBaseline {
+    /// Iterates every checkpoint occurrence emitted by the clean transaction.
+    pub fn cases(&self) -> impl ExactSizeIterator<Item = L2ProcessCase> + '_ {
+        self.cases.iter().copied()
+    }
+}
+
+/// Non-public proof that every baseline-observed checkpoint was killed once.
+pub struct L2ProcessSweepReport {
+    scenario: Scenario,
+    cases: Vec<L2ProcessCase>,
+    old_states: usize,
+    new_states: usize,
+}
+
+impl L2ProcessSweepReport {
+    /// Requires an exact one-to-one match with the clean checkpoint trace.
+    pub fn new(
+        scenario: Scenario,
+        baseline: &L2ProcessBaseline,
+        reports: &[L2ProcessReport],
+    ) -> Result<Self, SessionCtlError> {
+        if baseline.scenario != scenario
+            || baseline.cases.is_empty()
+            || baseline.cases.len() > MAX_APPLICATION_CHECKPOINTS
+            || reports.len() != baseline.cases.len()
+        {
+            return Err(stage("L2 process sweep baseline"));
+        }
+        let mut old_states = 0_usize;
+        let mut new_states = 0_usize;
+        for (target_index, expected_case) in baseline.cases.iter().enumerate() {
+            let mut matches = reports
+                .iter()
+                .filter(|report| report.case == *expected_case);
+            let report = matches
+                .next()
+                .ok_or_else(|| stage("L2 process sweep coverage"))?;
+            if matches.next().is_some()
+                || report.probe != L2HarnessProbe::KillWhileBlocked
+                || report.case.scenario() != scenario
+                || report.trace != baseline.cases[..=target_index]
+                || report.observed != report.case.expected()
+                || !report.integrity
+                || !report.schema
+                || !report.semantic_oracle
+                || !report.exact_retry
+                || !report.fixture_cleanup
+                || !report.writer_termination
+                || !report.fresh_verifier
+                || !report.redaction
+                || !report.handle_cleanup
+                || !report.child_cleanup
+                || !report.directory_cleanup
+            {
+                return Err(stage("L2 process sweep case"));
+            }
+            match report.observed {
+                OracleState::InviterOld | OracleState::JoinerOld => {
+                    old_states = old_states.saturating_add(1);
+                }
+                OracleState::InviterNew | OracleState::JoinerNew => {
+                    new_states = new_states.saturating_add(1);
+                }
+            }
+        }
+        if old_states == 0 || new_states == 0 {
+            return Err(stage("L2 process sweep oracle coverage"));
+        }
+        Ok(Self {
+            scenario,
+            cases: baseline.cases.clone(),
+            old_states,
+            new_states,
+        })
+    }
+
+    /// Encodes bounded internal matrix coverage, not public L2 evidence.
+    #[must_use]
+    pub fn encode_v1(&self) -> String {
+        let checkpoint_transcript = self
+            .cases
+            .iter()
+            .map(|case| format!("{}:{}", checkpoint_label(case.checkpoint), case.occurrence))
+            .collect::<Vec<_>>()
+            .join(",");
+        let checkpoint_digest = hex(digest(&SHA256, checkpoint_transcript.as_bytes()).as_ref());
+        let evidence = format!(
+            concat!(
+                "version=1\n",
+                "protocol=l2-checkpoint-observation-v1\n",
+                "scenario=E2E-TXN-001\n",
+                "publication=prohibited\n",
+                "status=validated\n",
+                "coverage=complete\n",
+                "sweep=application-process-kill\n",
+                "fault_build=true\n",
+                "storage_scenario={}\n",
+                "checkpoint_trace_sha256={}\n",
+                "completed_cases={}\n",
+                "observed_old_states={}\n",
+                "observed_new_states={}\n"
+            ),
+            match self.scenario {
+                Scenario::InviterTransaction => "inviter-transaction",
+                Scenario::JoinerTransaction => "joiner-transaction",
+            },
+            checkpoint_digest,
+            self.cases.len(),
+            self.old_states,
+            self.new_states,
+        );
+        debug_assert!(evidence.len() <= MAX_EVIDENCE_BYTES);
+        evidence
+    }
 }
 
 impl L2ProcessReport {
@@ -1387,6 +1516,7 @@ pub fn run_l2_process_probe(
         | L2HarnessProbe::ChangedAttemptCeiling
         | L2HarnessProbe::InviterRetryMutation => Checkpoint::InviterAfterCommitReturn,
         L2HarnessProbe::JoinerRetryMutation => Checkpoint::JoinerAfterCommitReturn,
+        L2HarnessProbe::JoinerRetainedKeyPackage => Checkpoint::JoinerAfterCommitReturn,
         L2HarnessProbe::MissingAcknowledgement => Checkpoint::InviterAfterGroupUpsert,
         _ => Checkpoint::InviterBeforeBegin,
     };
@@ -1415,6 +1545,7 @@ pub fn run_l2_process_case(
     let report = L2ProcessReport {
         case_id,
         case,
+        trace: controller.trace,
         probe,
         commit: resolve_l1_process_git_commit(&repository_root)
             .unwrap_or_else(|| String::from("unavailable")),
@@ -1440,6 +1571,43 @@ pub fn run_l2_process_case(
         return Err(stage("L2 evidence"));
     }
     Ok(report)
+}
+
+/// Discovers the exact checkpoint occurrences emitted by one clean transaction.
+pub fn run_l2_process_baseline(
+    executable: &Path,
+    scenario: Scenario,
+) -> Result<L2ProcessBaseline, SessionCtlError> {
+    let terminal = match scenario {
+        Scenario::InviterTransaction => Checkpoint::InviterBeforeShadowFinalize,
+        Scenario::JoinerTransaction => Checkpoint::JoinerAfterCommitReturn,
+    };
+    let report = run_l2_process_case(
+        executable,
+        L2ProcessCase::new(terminal, 0)?,
+        L2HarnessProbe::GracefulContinue,
+    )?;
+    let expected = match scenario {
+        Scenario::InviterTransaction => OracleState::InviterNew,
+        Scenario::JoinerTransaction => OracleState::JoinerNew,
+    };
+    if report.observed != expected
+        || report.trace.is_empty()
+        || report.trace.len() > MAX_APPLICATION_CHECKPOINTS
+        || report.trace.last().copied() != Some(report.case)
+        || report.trace.iter().any(|case| case.scenario() != scenario)
+    {
+        return Err(stage("L2 process baseline"));
+    }
+    for (index, case) in report.trace.iter().enumerate() {
+        if report.trace[index + 1..].contains(case) {
+            return Err(stage("L2 process baseline coverage"));
+        }
+    }
+    Ok(L2ProcessBaseline {
+        scenario,
+        cases: report.trace,
+    })
 }
 
 /// Runs one SQLite-visible fault against a fresh closed baseline and verifier.
@@ -1783,6 +1951,7 @@ const fn pass_fail(value: bool) -> &'static str {
 
 struct ControllerEvidence {
     observed: OracleState,
+    trace: Vec<L2ProcessCase>,
     integrity: bool,
     schema: bool,
     semantic_oracle: bool,
@@ -1836,7 +2005,8 @@ fn run_controller(
             Err(stage("L2 checkpoint advanced without acknowledgement"))
         };
     }
-    let observed = advance_writer_to_target(&mut writer, config.target)?;
+    let trace = advance_writer_to_target(&mut writer, config.target)?;
+    let observed = trace.target;
 
     match config.probe {
         L2HarnessProbe::GracefulContinue => {
@@ -1858,7 +2028,8 @@ fn run_controller(
         | L2HarnessProbe::NonzeroLeaseGeneration
         | L2HarnessProbe::ChangedAttemptCeiling
         | L2HarnessProbe::InviterRetryMutation
-        | L2HarnessProbe::JoinerRetryMutation => {
+        | L2HarnessProbe::JoinerRetryMutation
+        | L2HarnessProbe::JoinerRetainedKeyPackage => {
             writer.terminate_and_reap()?;
         }
         L2HarnessProbe::MissingAcknowledgement => unreachable!("handled before target advance"),
@@ -1883,6 +2054,9 @@ fn run_controller(
         }
         L2HarnessProbe::ChangedAttemptCeiling => {
             inject_inviter_lifecycle_defect(root, &key, &fixture, "attempt_ceiling")?;
+        }
+        L2HarnessProbe::JoinerRetainedKeyPackage => {
+            inject_joiner_retained_key_package(root, &key, &fixture)?;
         }
         _ => {}
     }
@@ -1925,6 +2099,7 @@ fn run_controller(
     let verifier_evidence = parse_verifier_evidence(&stdout, expected)?;
     Ok(ControllerEvidence {
         observed: verifier_evidence.observed,
+        trace: trace.cases,
         integrity: verifier_evidence.integrity,
         schema: verifier_evidence.schema,
         semantic_oracle: verifier_evidence.semantic_oracle,
@@ -2296,6 +2471,33 @@ fn inject_inviter_lifecycle_defect(
     Ok(())
 }
 
+fn inject_joiner_retained_key_package(
+    root: &Path,
+    key: &Zeroizing<[u8; KEY_BYTES]>,
+    fixture: &CaseFixture,
+) -> Result<(), SessionCtlError> {
+    let connection = open_keyed_connection(&root.join(DATABASE_NAME), key)?;
+    if connection
+        .execute(
+            "INSERT INTO key_packages(
+                 key_package_ref, key_package, init_key, leaf_key, expires_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                fixture.key_package_reference,
+                [0x4b_u8],
+                [0x49_u8],
+                [0x4c_u8],
+                (BASELINE_NOW + 600) as i64,
+            ],
+        )
+        .map_err(|_| stage("L2 retained KeyPackage defect"))?
+        != 1
+    {
+        return Err(stage("L2 retained KeyPackage defect"));
+    }
+    Ok(())
+}
+
 fn run_writer(root: &Path) -> Result<(), SessionCtlError> {
     let config = read_case_config(root)?;
     let fixture = read_fixture(root, WRITER_CASE_FIXTURE_NAME)?;
@@ -2321,6 +2523,7 @@ fn run_writer(root: &Path) -> Result<(), SessionCtlError> {
         | L2HarnessProbe::ChangedAttemptCeiling
         | L2HarnessProbe::InviterRetryMutation
         | L2HarnessProbe::JoinerRetryMutation
+        | L2HarnessProbe::JoinerRetainedKeyPackage
         | L2HarnessProbe::MissingAcknowledgement => run_real_storage_transaction(
             &storage,
             observer,
@@ -2843,11 +3046,17 @@ fn verify_retry_mutation(
     Ok(())
 }
 
+struct CheckpointTrace {
+    target: ControlFrame,
+    cases: Vec<L2ProcessCase>,
+}
+
 fn advance_writer_to_target(
     writer: &mut ManagedChild,
     target: ControlFrame,
-) -> Result<ControlFrame, SessionCtlError> {
+) -> Result<CheckpointTrace, SessionCtlError> {
     let mut traversal = CheckpointTraversal::new(target)?;
+    let mut cases = Vec::new();
     let deadline = Instant::now()
         .checked_add(CASE_WAIT)
         .ok_or_else(|| stage("L2 case timeout"))?;
@@ -2858,9 +3067,15 @@ fn advance_writer_to_target(
             .min(FRAME_WAIT);
         let encoded = writer.stdout.read_exact_frame(CONTROL_FRAME_BYTES, wait)?;
         let observed = ControlFrame::decode(&encoded).map_err(|_| stage("L2 checkpoint"))?;
+        let case = L2ProcessCase::new(observed.checkpoint(), observed.occurrence())?;
         if traversal.observe(observed)? {
-            return Ok(observed);
+            cases.push(case);
+            return Ok(CheckpointTrace {
+                target: observed,
+                cases,
+            });
         }
+        cases.push(case);
         writer.write_stdin(&observed.acknowledgement().encode())?;
     }
     Err(stage("L2 checkpoint bound"))
@@ -3692,7 +3907,6 @@ impl ManagedChild {
         let Some(mut child) = self.child.take() else {
             return Ok(());
         };
-        self.stdin.take();
         if child
             .try_wait()
             .map_err(|_| stage("L2 child termination"))?
@@ -3701,6 +3915,7 @@ impl ManagedChild {
             return Err(stage("L2 child escaped barrier"));
         }
         child.kill().map_err(|_| stage("L2 child termination"))?;
+        self.stdin.take();
         child.wait().map_err(|_| stage("L2 child reap"))?;
         Ok(())
     }
