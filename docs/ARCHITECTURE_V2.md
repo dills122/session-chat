@@ -258,9 +258,10 @@ The active Rust laboratory now contains fourteen narrow pieces of this architect
   in-process and across graceful Alice process exit. It is not connected to a
   platform key protector. A separate checked L2 laboratory now injects
   baseline-derived `SQLITE_FULL`/extended-`SQLITE_IOERR` results and kills a
-  direct writer at observed SQLite commit-window pauses before fresh reopen;
-  those internal observations are not a general application-checkpoint,
-  power-loss, filesystem, rollback, portable-CI, or production claim.
+  direct writer at observed SQLite commit-window pauses and every
+  baseline-observed inviter/joiner application checkpoint before fresh reopen.
+  Those local internal observations are not power-loss, filesystem, rollback,
+  portable-CI, public-evidence, or production claims.
 - `sessionctl` composes the current local pieces into one headless Alice/Bob
   flow: capability join, simulated approval, atomic SQLCipher inviter commit,
   ambiguous-result recovery, exact Alice identity/group reload, reconstructed coordinator Welcome delivery,

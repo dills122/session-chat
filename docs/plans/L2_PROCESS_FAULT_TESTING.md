@@ -1,7 +1,8 @@
 # L2 process and storage fault testing plan
 
-Status: L2-0, L2-1, L2-4, and L2-5 retained; L2-2 and L2-3 in progress; the
-three-OS Checkpoint C result remains open; no production durability claim
+Status: L2-0, L2-1, L2-4, and L2-5 retained; L2-2 and L2-3 are locally green
+with baseline-derived checked sweeps; the three-OS Checkpoint C result remains
+open; no production durability claim
 
 Date: 2026-08-26
 
@@ -9,8 +10,8 @@ Date: 2026-08-26
 
 | Work item | Delivery unit and owned path | Dependencies | Acceptance | Status |
 | --- | --- | --- | --- | --- |
-| L2-2 inviter crash/restart atomicity | Internal worker; `apps/sessionctl/tests/l2_crash_restart_inviter.rs` | Retained L2-0/L2-1 | Every inviter checkpoint is exactly I0 or I1 as specified; mixed state, repeated Add, and second Welcome work are rejected | In progress on `codex/l2-crash-restart-sweeps` |
-| L2-3 joiner crash/restart atomicity | Internal worker; `apps/sessionctl/tests/l2_crash_restart_joiner.rs` | Retained L2-0/L2-1 | Every joiner checkpoint is exactly J0 or J1 as specified; split group/KeyPackage states, second join, and second deletion are rejected | In progress on `codex/l2-crash-restart-sweeps` |
+| L2-2 inviter crash/restart atomicity | Lead-owned integration; `apps/sessionctl/tests/l2_crash_restart_inviter.rs` | Retained L2-0/L2-1 | Every baseline-observed inviter checkpoint is exactly I0 or I1 as specified; missing/duplicate coverage, mixed state, and conflicting retry are rejected | Locally green on macOS; portable retention pending Checkpoint C |
+| L2-3 joiner crash/restart atomicity | Lead-owned integration; `apps/sessionctl/tests/l2_crash_restart_joiner.rs` | Retained L2-0/L2-1 | Every baseline-observed joiner checkpoint is exactly J0 or J1 as specified; missing/duplicate coverage, retained KeyPackage, and conflicting retry are rejected | Locally green on macOS; portable retention pending Checkpoint C |
 
 The lead task owns shared controller changes, canonical documentation,
 integration verification, commits, and the eventual pull request. Both lanes

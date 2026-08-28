@@ -264,13 +264,13 @@ now provide a bounded application-kill foundation. A separate publish-disabled
 named SQLite VFS delegates to the unchanged process default, records bounded
 path-free operation evidence, and injects actual `SQLITE_FULL` and extended
 `SQLITE_IOERR_*` results only for explicitly named connections. The checked L2
-suite now exercises every baseline-derived supported inviter/joiner I/O ordinal
-and every observed journal/main commit-window pause, killing the direct writer
-before fresh reopen and accepting only one complete state. Its records remain
-non-public internal observations pending L2-8 provenance, canary scanning, and
-the required portable CI gate; complete application-checkpoint crash/restart,
-power-loss, filesystem-durability, rollback-resistance, and production evidence
-remain open.
+suite now exercises every baseline-derived supported inviter/joiner I/O ordinal,
+every observed journal/main commit-window pause, and every baseline-observed
+application checkpoint. Each direct writer is killed while blocked before a
+fresh reopen that accepts only exact I0/I1 or J0/J1 state and unchanged exact
+retry. Its records remain non-public internal observations pending L2-8
+provenance, canary scanning, and the required portable CI gate; power-loss,
+filesystem-durability, rollback-resistance, and production evidence remain open.
 The `session-storage` crate now retains a deterministic in-memory conformance
 model for one-session unsealing, bounded external unlock work, exact-session
 one-shot credential acquisition, forced relock events, stale/foreign-owner
