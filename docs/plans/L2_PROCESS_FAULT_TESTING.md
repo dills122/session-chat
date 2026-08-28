@@ -1,9 +1,21 @@
 # L2 process and storage fault testing plan
 
-Status: L2-0, L2-1, L2-4, and L2-5 retained; L2-2, L2-3, and the
-three-OS Checkpoint C result remain open; no production durability claim
+Status: L2-0, L2-1, L2-4, and L2-5 retained; L2-2 and L2-3 in progress; the
+three-OS Checkpoint C result remains open; no production durability claim
 
 Date: 2026-08-26
+
+## Active execution index
+
+| Work item | Delivery unit and owned path | Dependencies | Acceptance | Status |
+| --- | --- | --- | --- | --- |
+| L2-2 inviter crash/restart atomicity | Internal worker; `apps/sessionctl/tests/l2_crash_restart_inviter.rs` | Retained L2-0/L2-1 | Every inviter checkpoint is exactly I0 or I1 as specified; mixed state, repeated Add, and second Welcome work are rejected | In progress on `codex/l2-crash-restart-sweeps` |
+| L2-3 joiner crash/restart atomicity | Internal worker; `apps/sessionctl/tests/l2_crash_restart_joiner.rs` | Retained L2-0/L2-1 | Every joiner checkpoint is exactly J0 or J1 as specified; split group/KeyPackage states, second join, and second deletion are rejected | In progress on `codex/l2-crash-restart-sweeps` |
+
+The lead task owns shared controller changes, canonical documentation,
+integration verification, commits, and the eventual pull request. Both lanes
+must reuse the retained L2-1 controller/oracle and must not duplicate process
+supervision or edit `storage-sqlcipher`.
 
 ## Objective
 
