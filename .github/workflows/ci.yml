@@ -76,14 +76,19 @@ jobs:
           - name: Linux x64
             os: ubuntu-24.04
             image: ubuntu-24.04
+            timeout: 25
           - name: macOS arm64
             os: macos-15
             image: macos-15
+            timeout: 25
           - name: Windows x64
             os: windows-2025
             image: windows-2025
+            # A cold checked-cfg build links the sessionctl and fault-VFS
+            # dependency graphs separately and exceeded 24 minutes in CI.
+            timeout: 45
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 25
+    timeout-minutes: ${{ matrix.timeout }}
     env:
       RUSTFLAGS: --cfg session_chat_storage_fault_testing
       SESSION_CHAT_L2_RUNNER_IMAGE: ${{ matrix.image }}
