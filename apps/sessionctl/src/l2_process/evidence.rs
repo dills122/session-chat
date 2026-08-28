@@ -1,4 +1,8 @@
-use std::{fs, path::Path, process::Command};
+use std::{
+    fs,
+    path::Path,
+    process::{Command, Stdio},
+};
 
 use super::{
     CHILD_WAIT, L2EvidenceCase, L2EvidenceCaseTarget, L2IoPauseSweepReport, L2IoSweepReport,
@@ -218,7 +222,11 @@ impl L2EvidenceMetadata {
 fn collect_rustc_provenance(pinned_toolchain: &str) -> Result<RustcProvenance, SessionCtlError> {
     let rustc = std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
     let mut command = Command::new(rustc);
-    command.arg("-Vv");
+    command
+        .arg("-Vv")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     sanitize_environment(&mut command);
     let mut child = ManagedChild::spawn_command(command)?;
     let status = child.wait(CHILD_WAIT)?;
@@ -976,6 +984,17 @@ mod tests {
             commit: String::from("0123456789abcdef0123456789abcdef01234567"),
             host: String::from("aarch64-apple-darwin"),
         }
+    }
+
+    #[test]
+    fn rustc_provenance_collects_from_bounded_child_pipes() {
+        let repository = repository_root();
+        let pinned = pinned_toolchain_at(&repository).expect("pinned Rust toolchain");
+        let provenance = collect_rustc_provenance(&pinned).expect("collect rustc provenance");
+
+        assert_eq!(provenance.release, pinned);
+        assert!(is_lower_hex(&provenance.commit, 40));
+        assert!(is_token(&provenance.host, 128));
     }
 
     fn ci_context(commit: &str) -> L2CiContext {

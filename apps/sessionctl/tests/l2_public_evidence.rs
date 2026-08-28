@@ -23,6 +23,20 @@ mod checked {
     #[test]
     fn low_level_evidence_forgery_api_is_not_public() {
         let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let workspace_root = manifest_dir
+            .parent()
+            .and_then(std::path::Path::parent)
+            .expect("sessionctl belongs to the workspace");
+        let target_dir = std::env::var_os("CARGO_TARGET_DIR")
+            .map(std::path::PathBuf::from)
+            .map(|path| {
+                if path.is_absolute() {
+                    path
+                } else {
+                    workspace_root.join(path)
+                }
+            })
+            .unwrap_or_else(|| workspace_root.join("target"));
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("system clock after epoch")
@@ -54,9 +68,11 @@ mod checked {
         let output = Command::new(cargo)
             .args(["check", "--offline", "--quiet"])
             .current_dir(&fixture_root)
+            .env("CARGO_TARGET_DIR", &target_dir)
             .output()
             .expect("compile-fail cargo check");
         let stderr = String::from_utf8_lossy(&output.stderr);
+        let isolated_target_created = fixture_root.join("target").exists();
         let cleanup = fs::remove_dir_all(&fixture_root);
 
         assert!(
@@ -66,6 +82,10 @@ mod checked {
         assert!(
             stderr.contains("private") || stderr.contains("unresolved import"),
             "fixture failed for an unrelated reason: {stderr}",
+        );
+        assert!(
+            !isolated_target_created,
+            "compile-fail fixture must reuse the bounded workspace target directory",
         );
         cleanup.expect("fixture cleanup");
     }
