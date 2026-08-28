@@ -19,8 +19,8 @@ mod checked {
     use sessionctl::{
         SessionCtlError,
         l2_process::{
-            L2HarnessProbe, L2ProcessSweepReport, run_l2_process_baseline, run_l2_process_case,
-            run_l2_process_probe,
+            L2EvidenceChannels, L2HarnessProbe, L2ProcessSweepReport, run_l2_process_baseline,
+            run_l2_process_case, run_l2_process_probe,
         },
     };
     use storage_sqlcipher::fault_testing::Scenario;
@@ -83,6 +83,17 @@ mod checked {
         assert!(evidence.contains("checkpoint_trace_sha256="));
         assert!(evidence.contains(&format!("completed_cases={expected_cases}\n")));
         assert!(evidence.contains("observed_new_states=1\n"));
+
+        if let Ok(runner_image) = std::env::var("SESSION_CHAT_L2_RUNNER_IMAGE") {
+            let channels =
+                L2EvidenceChannels::new(evidence.as_bytes(), b"", b"", evidence.as_bytes(), b"")
+                    .expect("bounded joiner evidence surfaces");
+            let manifest = sweep
+                .promote_v1(&executable(), &runner_image, &channels)
+                .expect("promote complete joiner evidence")
+                .encode_v1();
+            println!("L2_PUBLIC_EVIDENCE_BEGIN\n{manifest}L2_PUBLIC_EVIDENCE_END");
+        }
 
         reports.pop().expect("at least one observed checkpoint");
         assert!(

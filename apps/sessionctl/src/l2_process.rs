@@ -300,6 +300,16 @@ pub struct L2ProcessReport {
     handle_cleanup: bool,
     child_cleanup: bool,
     directory_cleanup: bool,
+    evidence_binding: L2EvidenceBinding,
+}
+
+#[derive(Clone, Eq, PartialEq)]
+struct L2EvidenceBinding {
+    sqlcipher_version: String,
+    sqlite_version: String,
+    baseline_artifact_digest: [u8; 32],
+    post_recovery_artifact_digest: [u8; 32],
+    redaction: bool,
 }
 
 /// Baseline-observed application checkpoints for one real storage transaction.
@@ -321,6 +331,7 @@ pub struct L2ProcessSweepReport {
     cases: Vec<L2ProcessCase>,
     old_states: usize,
     new_states: usize,
+    evidence_binding: L2EvidenceBinding,
 }
 
 impl L2ProcessSweepReport {
@@ -377,11 +388,14 @@ impl L2ProcessSweepReport {
         if old_states == 0 || new_states == 0 {
             return Err(stage("L2 process sweep oracle coverage"));
         }
+        let evidence_binding =
+            aggregate_evidence_bindings(reports.iter().map(|report| &report.evidence_binding))?;
         Ok(Self {
             scenario,
             cases: baseline.cases.clone(),
             old_states,
             new_states,
+            evidence_binding,
         })
     }
 
@@ -409,7 +423,15 @@ impl L2ProcessSweepReport {
                 "checkpoint_trace_sha256={}\n",
                 "completed_cases={}\n",
                 "observed_old_states={}\n",
-                "observed_new_states={}\n"
+                "observed_new_states={}\n",
+                "integrity=pass\n",
+                "schema=pass\n",
+                "semantic_oracle=pass\n",
+                "exact_retry=pass\n",
+                "fixture_cleanup=pass\n",
+                "handle_cleanup=pass\n",
+                "child_cleanup=pass\n",
+                "directory_cleanup=pass\n"
             ),
             match self.scenario {
                 Scenario::InviterTransaction => "inviter-transaction",
@@ -824,9 +846,11 @@ pub struct L2IoBaselineReport {
     handle_cleanup: bool,
     child_cleanup: bool,
     directory_cleanup: bool,
+    evidence_binding: L2EvidenceBinding,
 }
 
 impl L2IoBaselineReport {
+    #[allow(clippy::too_many_arguments)]
     fn new(
         scenario: Scenario,
         observed: OracleState,
@@ -835,6 +859,7 @@ impl L2IoBaselineReport {
         handle_cleanup: bool,
         child_cleanup: bool,
         directory_cleanup: bool,
+        evidence_binding: L2EvidenceBinding,
     ) -> Result<Self, SessionCtlError> {
         let is_clean_new_state = matches!(
             (scenario, observed),
@@ -857,6 +882,7 @@ impl L2IoBaselineReport {
             handle_cleanup,
             child_cleanup,
             directory_cleanup,
+            evidence_binding,
         })
     }
 
@@ -930,6 +956,7 @@ pub struct L2IoFaultReport {
     handle_cleanup: bool,
     child_cleanup: bool,
     directory_cleanup: bool,
+    evidence_binding: L2EvidenceBinding,
 }
 
 impl L2IoFaultReport {
@@ -1006,6 +1033,7 @@ pub struct L2IoPauseKillReport {
     handle_cleanup: bool,
     child_cleanup: bool,
     directory_cleanup: bool,
+    evidence_binding: L2EvidenceBinding,
 }
 
 impl L2IoPauseKillReport {
@@ -1092,6 +1120,7 @@ pub struct L2IoSweepReport {
     completed_cases: usize,
     empty_states: usize,
     committed_states: usize,
+    evidence_binding: L2EvidenceBinding,
 }
 
 impl L2IoSweepReport {
@@ -1197,6 +1226,10 @@ impl L2IoSweepReport {
             }
         }
 
+        let evidence_binding = aggregate_evidence_bindings(
+            std::iter::once(&baseline.evidence_binding)
+                .chain(cases.iter().map(|case| &case.evidence_binding)),
+        )?;
         Ok(Self {
             scenario,
             targets: baseline.baseline.targets.clone(),
@@ -1205,6 +1238,7 @@ impl L2IoSweepReport {
             completed_cases: cases.len(),
             empty_states,
             committed_states,
+            evidence_binding,
         })
     }
 
@@ -1274,7 +1308,11 @@ impl L2IoSweepReport {
                 "fixture_cleanup=pass\n",
                 "handle_cleanup=pass\n",
                 "child_cleanup=pass\n",
-                "directory_cleanup=pass\n"
+                "directory_cleanup=pass\n",
+                "integrity=pass\n",
+                "schema=pass\n",
+                "semantic_oracle=pass\n",
+                "exact_retry=pass\n"
             ),
             match self.scenario {
                 Scenario::InviterTransaction => "inviter-transaction",
@@ -1322,6 +1360,7 @@ pub struct L2IoPauseSweepReport {
     completed_cases: usize,
     empty_states: usize,
     committed_states: usize,
+    evidence_binding: L2EvidenceBinding,
 }
 
 impl L2IoPauseSweepReport {
@@ -1401,12 +1440,17 @@ impl L2IoPauseSweepReport {
             }
         }
 
+        let evidence_binding = aggregate_evidence_bindings(
+            std::iter::once(&baseline.evidence_binding)
+                .chain(cases.iter().map(|case| &case.evidence_binding)),
+        )?;
         Ok(Self {
             scenario,
             targets,
             completed_cases: cases.len(),
             empty_states,
             committed_states,
+            evidence_binding,
         })
     }
 
@@ -1461,7 +1505,11 @@ impl L2IoPauseSweepReport {
                 "fixture_cleanup=pass\n",
                 "handle_cleanup=pass\n",
                 "child_cleanup=pass\n",
-                "directory_cleanup=pass\n"
+                "directory_cleanup=pass\n",
+                "integrity=pass\n",
+                "schema=pass\n",
+                "semantic_oracle=pass\n",
+                "exact_retry=pass\n"
             ),
             match self.scenario {
                 Scenario::InviterTransaction => "inviter-transaction",
@@ -1572,6 +1620,7 @@ pub fn run_l2_process_case(
         handle_cleanup: controller.handle_cleanup,
         child_cleanup: controller.child_cleanup,
         directory_cleanup: true,
+        evidence_binding: controller.evidence_binding,
     };
     if report.encode_v1().len() > MAX_EVIDENCE_BYTES {
         return Err(stage("L2 evidence"));
@@ -1629,7 +1678,14 @@ pub fn run_l2_io_fault_case(
     let mut root = ProcessRoot::new()?;
     let result = run_l2_io_fault_controller(executable, root.path(), config, driver);
     let cleanup = root.cleanup();
-    let (observed, driver_observation, fixture_cleanup, handle_cleanup, child_cleanup) = result?;
+    let (
+        observed,
+        driver_observation,
+        fixture_cleanup,
+        handle_cleanup,
+        child_cleanup,
+        evidence_binding,
+    ) = result?;
     cleanup?;
     let L2IoDriverObservation::Fault(fault) = driver_observation else {
         return Err(stage("L2 I/O fault evidence"));
@@ -1642,6 +1698,7 @@ pub fn run_l2_io_fault_case(
         handle_cleanup,
         child_cleanup,
         directory_cleanup: true,
+        evidence_binding,
     };
     if report.encode_v1().len() > MAX_EVIDENCE_BYTES {
         return Err(stage("L2 I/O evidence"));
@@ -1662,7 +1719,14 @@ pub fn run_l2_io_baseline(
     let mut root = ProcessRoot::new()?;
     let result = run_l2_io_fault_controller(executable, root.path(), config, driver);
     let cleanup = root.cleanup();
-    let (observed, driver_observation, fixture_cleanup, handle_cleanup, child_cleanup) = result?;
+    let (
+        observed,
+        driver_observation,
+        fixture_cleanup,
+        handle_cleanup,
+        child_cleanup,
+        evidence_binding,
+    ) = result?;
     cleanup?;
     let L2IoDriverObservation::Baseline(baseline) = driver_observation else {
         return Err(stage("L2 I/O baseline evidence"));
@@ -1675,6 +1739,7 @@ pub fn run_l2_io_baseline(
         handle_cleanup,
         child_cleanup,
         true,
+        evidence_binding,
     )?;
     if report.encode_v1().len() > MAX_EVIDENCE_BYTES {
         return Err(stage("L2 I/O evidence"));
@@ -1688,6 +1753,7 @@ pub struct L2IoPauseKillCase {
     key: Zeroizing<[u8; KEY_BYTES]>,
     scenario: Scenario,
     expected_pause: L2IoPauseSweepCase,
+    baseline_artifact: L2ArtifactSnapshot,
 }
 
 impl L2IoPauseKillCase {
@@ -1716,9 +1782,15 @@ impl L2IoPauseKillCase {
         {
             return Err(stage("L2 I/O pause child load"));
         }
-        let result = verify_l2_io_root(executable, self.root.path(), &self.key, self.scenario);
+        let result = verify_l2_io_root(
+            executable,
+            self.root.path(),
+            &self.key,
+            self.scenario,
+            self.baseline_artifact,
+        );
         let cleanup = self.root.cleanup();
-        let (observed, fixture_cleanup, handle_cleanup, child_cleanup) = result?;
+        let (observed, fixture_cleanup, handle_cleanup, child_cleanup, evidence_binding) = result?;
         cleanup?;
         let report = L2IoPauseKillReport {
             scenario: self.scenario,
@@ -1728,6 +1800,7 @@ impl L2IoPauseKillCase {
             handle_cleanup,
             child_cleanup,
             directory_cleanup: true,
+            evidence_binding,
         };
         if report.encode_v1().len() > MAX_EVIDENCE_BYTES {
             return Err(stage("L2 I/O pause evidence"));
@@ -1751,6 +1824,7 @@ pub fn prepare_l2_io_pause_kill_case(
     let key = Zeroizing::new(random_nonzero::<KEY_BYTES>()?);
     write_owned_file(&root.path().join(CASE_CONFIG_NAME), &config.encode(), false)?;
     let fixture = prepare_baseline(root.path(), &key, scenario)?;
+    let baseline_artifact = encrypted_artifact_snapshot(root.path())?;
     let fixture_bytes = fixture.encode();
     write_owned_file(
         &root.path().join(WRITER_CASE_FIXTURE_NAME),
@@ -1772,6 +1846,7 @@ pub fn prepare_l2_io_pause_kill_case(
             operation,
             target_ordinal,
         },
+        baseline_artifact,
     })
 }
 
@@ -1828,10 +1903,21 @@ fn run_l2_io_fault_controller(
     root: &Path,
     config: CaseConfig,
     driver: &mut impl L2IoFaultDriver,
-) -> Result<(OracleState, L2IoDriverObservation, bool, bool, bool), SessionCtlError> {
+) -> Result<
+    (
+        OracleState,
+        L2IoDriverObservation,
+        bool,
+        bool,
+        bool,
+        L2EvidenceBinding,
+    ),
+    SessionCtlError,
+> {
     let key = Zeroizing::new(random_nonzero::<KEY_BYTES>()?);
     write_owned_file(&root.join(CASE_CONFIG_NAME), &config.encode(), false)?;
     let fixture = prepare_baseline(root, &key, config.target.scenario())?;
+    let baseline_artifact = encrypted_artifact_snapshot(root)?;
     write_owned_file(
         &root.join(VERIFIER_CASE_FIXTURE_NAME),
         fixture.encode().as_ref(),
@@ -1862,14 +1948,21 @@ fn run_l2_io_fault_controller(
         .ok_or_else(|| stage("L2 I/O driver evidence"))?;
     drop(storage);
 
-    let (observed, fixture_cleanup, handle_cleanup, child_cleanup) =
-        verify_l2_io_root(executable, root, &key, config.target.scenario())?;
+    let (observed, fixture_cleanup, handle_cleanup, child_cleanup, evidence_binding) =
+        verify_l2_io_root(
+            executable,
+            root,
+            &key,
+            config.target.scenario(),
+            baseline_artifact,
+        )?;
     Ok((
         observed,
         fault,
         fixture_cleanup,
         handle_cleanup,
         child_cleanup,
+        evidence_binding,
     ))
 }
 
@@ -1878,7 +1971,8 @@ fn verify_l2_io_root(
     root: &Path,
     key: &Zeroizing<[u8; KEY_BYTES]>,
     scenario: Scenario,
-) -> Result<(OracleState, bool, bool, bool), SessionCtlError> {
+    baseline_artifact: L2ArtifactSnapshot,
+) -> Result<(OracleState, bool, bool, bool, L2EvidenceBinding), SessionCtlError> {
     write_owned_file(&root.join(VERIFIER_KEY_NAME), key.as_slice(), true)?;
     let mut verifier = ManagedChild::spawn(executable, "verifier", root, false)?;
     let status = match verifier.wait(CHILD_WAIT) {
@@ -1903,7 +1997,19 @@ fn verify_l2_io_root(
         return Err(stage("L2 I/O fixture cleanup"));
     }
     let handle_cleanup = prove_database_handle_cleanup(root)?;
-    Ok((evidence.observed, fixture_cleanup, handle_cleanup, true))
+    let evidence_binding = collect_evidence_binding(
+        root,
+        key,
+        baseline_artifact,
+        &[stdout.as_slice(), stderr.as_slice()],
+    )?;
+    Ok((
+        evidence.observed,
+        fixture_cleanup,
+        handle_cleanup,
+        true,
+        evidence_binding,
+    ))
 }
 
 /// Runs one hidden role selected only by the checked parent controller.
@@ -1955,6 +2061,42 @@ const fn pass_fail(value: bool) -> &'static str {
     if value { "pass" } else { "fail" }
 }
 
+fn aggregate_evidence_bindings<'a>(
+    bindings: impl IntoIterator<Item = &'a L2EvidenceBinding>,
+) -> Result<L2EvidenceBinding, SessionCtlError> {
+    let bindings = bindings.into_iter().collect::<Vec<_>>();
+    let first = bindings
+        .first()
+        .copied()
+        .ok_or_else(|| stage("L2 evidence artifact index"))?;
+    if bindings.iter().any(|binding| {
+        binding.sqlcipher_version != first.sqlcipher_version
+            || binding.sqlite_version != first.sqlite_version
+            || !binding.redaction
+    }) {
+        return Err(stage("L2 evidence artifact index"));
+    }
+    let mut baseline_index = Vec::with_capacity(bindings.len() * 32);
+    let mut post_recovery_index = Vec::with_capacity(bindings.len() * 32);
+    for binding in bindings {
+        baseline_index.extend_from_slice(&binding.baseline_artifact_digest);
+        post_recovery_index.extend_from_slice(&binding.post_recovery_artifact_digest);
+    }
+    Ok(L2EvidenceBinding {
+        sqlcipher_version: first.sqlcipher_version.clone(),
+        sqlite_version: first.sqlite_version.clone(),
+        baseline_artifact_digest: digest(&SHA256, &baseline_index)
+            .as_ref()
+            .try_into()
+            .map_err(|_| stage("L2 evidence artifact index"))?,
+        post_recovery_artifact_digest: digest(&SHA256, &post_recovery_index)
+            .as_ref()
+            .try_into()
+            .map_err(|_| stage("L2 evidence artifact index"))?,
+        redaction: true,
+    })
+}
+
 struct ControllerEvidence {
     observed: OracleState,
     trace: Vec<L2ProcessCase>,
@@ -1968,6 +2110,7 @@ struct ControllerEvidence {
     redaction: bool,
     handle_cleanup: bool,
     child_cleanup: bool,
+    evidence_binding: L2EvidenceBinding,
 }
 
 fn run_controller(
@@ -1978,6 +2121,7 @@ fn run_controller(
     let key = Zeroizing::new(random_nonzero::<KEY_BYTES>()?);
     write_owned_file(&root.join(CASE_CONFIG_NAME), &config.encode(), false)?;
     let fixture = prepare_baseline(root, &key, config.target.scenario())?;
+    let baseline_artifact = encrypted_artifact_snapshot(root)?;
     let fixture_bytes = fixture.encode();
     write_owned_file(
         &root.join(WRITER_CASE_FIXTURE_NAME),
@@ -2103,6 +2247,26 @@ fn run_controller(
         return Err(stage("L2 retry conflict confirmed"));
     }
     let verifier_evidence = parse_verifier_evidence(&stdout, expected)?;
+    let control_frames = trace
+        .cases
+        .iter()
+        .map(|case| {
+            ControlFrame::new_checkpoint(config.target.case_id(), case.checkpoint, case.occurrence)
+                .map(ControlFrame::encode)
+                .map_err(|_| stage("L2 evidence control frame"))
+        })
+        .collect::<Result<Vec<_>, _>>()?
+        .concat();
+    let evidence_binding = collect_evidence_binding(
+        root,
+        &key,
+        baseline_artifact,
+        &[
+            stdout.as_slice(),
+            stderr.as_slice(),
+            control_frames.as_slice(),
+        ],
+    )?;
     Ok(ControllerEvidence {
         observed: verifier_evidence.observed,
         trace: trace.cases,
@@ -2116,6 +2280,7 @@ fn run_controller(
         redaction: true,
         handle_cleanup,
         child_cleanup: true,
+        evidence_binding,
     })
 }
 
@@ -3519,6 +3684,85 @@ fn schema_fingerprint(connection: &Connection) -> Result<String, SessionCtlError
     Ok(hex(digest(&SHA256, &canonical).as_ref()))
 }
 
+struct L2ArtifactSnapshot {
+    digest: [u8; 32],
+    bytes: Vec<u8>,
+}
+
+fn encrypted_artifact_snapshot(root: &Path) -> Result<L2ArtifactSnapshot, SessionCtlError> {
+    let mut canonical = Vec::new();
+    let mut artifact_bytes = Vec::new();
+    let mut found_database = false;
+    for name in [
+        DATABASE_NAME,
+        "case.sqlite3-journal",
+        "case.sqlite3-wal",
+        "case.sqlite3-shm",
+    ] {
+        let path = root.join(name);
+        if !path.exists() {
+            continue;
+        }
+        validate_owned_file(&path, None)?;
+        let bytes = read_bounded_repository_file(&path, MAX_DATABASE_BYTES)
+            .ok_or_else(|| stage("L2 encrypted artifact"))?;
+        if name == DATABASE_NAME {
+            found_database = true;
+        }
+        if artifact_bytes.len().saturating_add(bytes.len()) > MAX_DATABASE_BYTES {
+            return Err(stage("L2 encrypted artifact bound"));
+        }
+        canonical.extend_from_slice(name.as_bytes());
+        canonical.push(0);
+        canonical.extend_from_slice(
+            &u64::try_from(bytes.len())
+                .map_err(|_| stage("L2 encrypted artifact"))?
+                .to_be_bytes(),
+        );
+        canonical.extend_from_slice(&bytes);
+        artifact_bytes.extend_from_slice(&bytes);
+    }
+    if !found_database || canonical.is_empty() {
+        return Err(stage("L2 encrypted artifact"));
+    }
+    Ok(L2ArtifactSnapshot {
+        digest: digest(&SHA256, &canonical)
+            .as_ref()
+            .try_into()
+            .map_err(|_| stage("L2 encrypted artifact"))?,
+        bytes: artifact_bytes,
+    })
+}
+
+fn collect_evidence_binding(
+    root: &Path,
+    key: &Zeroizing<[u8; KEY_BYTES]>,
+    baseline: L2ArtifactSnapshot,
+    surfaces: &[&[u8]],
+) -> Result<L2EvidenceBinding, SessionCtlError> {
+    let post_recovery = encrypted_artifact_snapshot(root)?;
+    let connection = open_keyed_connection(&root.join(DATABASE_NAME), key)?;
+    let sqlcipher_version: String = connection
+        .query_row("PRAGMA cipher_version;", [], |row| row.get(0))
+        .map_err(|_| stage("L2 evidence SQLCipher version"))?;
+    let sqlite_version: String = connection
+        .query_row("SELECT sqlite_version();", [], |row| row.get(0))
+        .map_err(|_| stage("L2 evidence SQLite version"))?;
+    drop(connection);
+    let mut scanned = Vec::with_capacity(surfaces.len() + 2);
+    scanned.extend_from_slice(surfaces);
+    scanned.push(baseline.bytes.as_slice());
+    scanned.push(post_recovery.bytes.as_slice());
+    evidence::scan_synthetic_canaries(scanned)?;
+    Ok(L2EvidenceBinding {
+        sqlcipher_version,
+        sqlite_version,
+        baseline_artifact_digest: baseline.digest,
+        post_recovery_artifact_digest: post_recovery.digest,
+        redaction: true,
+    })
+}
+
 fn prove_database_handle_cleanup(root: &Path) -> Result<bool, SessionCtlError> {
     let database = root.join(DATABASE_NAME);
     let guard = root.join("case.handle-guard");
@@ -4139,6 +4383,16 @@ fn hex(bytes: &[u8]) -> String {
 mod tests {
     use super::*;
 
+    fn test_evidence_binding() -> L2EvidenceBinding {
+        L2EvidenceBinding {
+            sqlcipher_version: String::from("4.14.0"),
+            sqlite_version: String::from("3.50.4"),
+            baseline_artifact_digest: [0x11; 32],
+            post_recovery_artifact_digest: [0x22; 32],
+            redaction: true,
+        }
+    }
+
     #[test]
     fn canonical_checkpoint_traversal_accepts_the_maximum_depth_legal_trace() {
         let case_id = CaseId::new([0xA5; 16]).expect("case ID");
@@ -4298,6 +4552,7 @@ mod tests {
                 true,
                 true,
                 true,
+                test_evidence_binding(),
             )
             .is_err()
         );
@@ -4311,6 +4566,7 @@ mod tests {
             handle_cleanup: true,
             child_cleanup: true,
             directory_cleanup: true,
+            evidence_binding: test_evidence_binding(),
         };
         let old_pause_case = L2IoPauseKillReport {
             scenario: Scenario::InviterTransaction,
@@ -4327,6 +4583,7 @@ mod tests {
             handle_cleanup: true,
             child_cleanup: true,
             directory_cleanup: true,
+            evidence_binding: test_evidence_binding(),
         };
         assert!(
             L2IoPauseSweepReport::new(

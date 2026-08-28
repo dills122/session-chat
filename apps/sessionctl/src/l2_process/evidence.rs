@@ -1,4 +1,10 @@
-use super::{SHA256, Scenario, SessionCtlError, digest, hex, stage};
+use std::{fs, path::Path};
+
+use super::{
+    L2EvidenceBinding, L2IoPauseSweepReport, L2IoSweepReport, L2ProcessSweepReport, SHA256,
+    Scenario, SessionCtlError, digest, git_dirty_at, hex, lock_digest_at, pinned_toolchain_at,
+    repository_root, resolve_l1_process_git_commit, stage,
+};
 
 const MAX_CHANNEL_BYTES: usize = 64 * 1024 * 1024;
 const MAX_DIAGNOSTIC_BYTES: usize = 4 * 1024;
@@ -109,6 +115,50 @@ impl L2EvidenceMetadata {
             baseline_artifact_digest,
             post_recovery_artifact_digest,
         })
+    }
+
+    fn collect(
+        executable: &Path,
+        runner_image: &str,
+        binding: &L2EvidenceBinding,
+    ) -> Result<Self, SessionCtlError> {
+        let repository = repository_root();
+        let executable_metadata =
+            fs::metadata(executable).map_err(|_| stage("L2 evidence test binary"))?;
+        if !executable.is_absolute()
+            || !executable_metadata.is_file()
+            || executable_metadata.len() == 0
+            || executable_metadata.len() > 256 * 1024 * 1024
+        {
+            return Err(stage("L2 evidence test binary"));
+        }
+        let executable_bytes =
+            fs::read(executable).map_err(|_| stage("L2 evidence test binary"))?;
+        let test_binary_digest = digest(&SHA256, &executable_bytes)
+            .as_ref()
+            .try_into()
+            .map_err(|_| stage("L2 evidence test binary"))?;
+        let platform = match std::env::consts::OS {
+            "linux" => "linux",
+            "macos" => "macos",
+            "windows" => "windows",
+            _ => return Err(stage("L2 evidence platform")),
+        };
+        Self::new(
+            &resolve_l1_process_git_commit(&repository)
+                .ok_or_else(|| stage("L2 evidence commit"))?,
+            git_dirty_at(&repository).ok_or_else(|| stage("L2 evidence dirty state"))?,
+            &pinned_toolchain_at(&repository).ok_or_else(|| stage("L2 evidence toolchain"))?,
+            &lock_digest_at(&repository).ok_or_else(|| stage("L2 evidence lockfile"))?,
+            runner_image,
+            platform,
+            std::env::consts::ARCH,
+            &binding.sqlcipher_version,
+            &binding.sqlite_version,
+            test_binary_digest,
+            binding.baseline_artifact_digest,
+            binding.post_recovery_artifact_digest,
+        )
     }
 }
 
@@ -257,6 +307,60 @@ pub fn promote_l2_evidence(
     Ok(L2EvidenceManifest(manifest))
 }
 
+impl L2ProcessSweepReport {
+    /// Promotes one complete application-checkpoint sweep using exact runtime provenance.
+    pub fn promote_v1(
+        &self,
+        executable: &Path,
+        runner_image: &str,
+        channels: &L2EvidenceChannels<'_>,
+    ) -> Result<L2EvidenceManifest, SessionCtlError> {
+        promote_l2_evidence(
+            L2EvidenceSweep::ApplicationProcessKill,
+            self.scenario,
+            &self.encode_v1(),
+            &L2EvidenceMetadata::collect(executable, runner_image, &self.evidence_binding)?,
+            channels,
+        )
+    }
+}
+
+impl L2IoSweepReport {
+    /// Promotes one complete SQLite return-code sweep using exact runtime provenance.
+    pub fn promote_v1(
+        &self,
+        executable: &Path,
+        runner_image: &str,
+        channels: &L2EvidenceChannels<'_>,
+    ) -> Result<L2EvidenceManifest, SessionCtlError> {
+        promote_l2_evidence(
+            L2EvidenceSweep::SqliteReturnCode,
+            self.scenario,
+            &self.encode_v1(),
+            &L2EvidenceMetadata::collect(executable, runner_image, &self.evidence_binding)?,
+            channels,
+        )
+    }
+}
+
+impl L2IoPauseSweepReport {
+    /// Promotes one complete commit-window process-kill sweep using exact provenance.
+    pub fn promote_v1(
+        &self,
+        executable: &Path,
+        runner_image: &str,
+        channels: &L2EvidenceChannels<'_>,
+    ) -> Result<L2EvidenceManifest, SessionCtlError> {
+        promote_l2_evidence(
+            L2EvidenceSweep::CommitWindowProcessKill,
+            self.scenario,
+            &self.encode_v1(),
+            &L2EvidenceMetadata::collect(executable, runner_image, &self.evidence_binding)?,
+            channels,
+        )
+    }
+}
+
 fn validate_observation(
     sweep: L2EvidenceSweep,
     scenario: Scenario,
@@ -319,6 +423,12 @@ fn scan_canaries<'a>(surfaces: impl IntoIterator<Item = &'a [u8]>) -> Result<(),
         }
     }
     Ok(())
+}
+
+pub(super) fn scan_synthetic_canaries<'a>(
+    surfaces: impl IntoIterator<Item = &'a [u8]>,
+) -> Result<(), SessionCtlError> {
+    scan_canaries(surfaces)
 }
 
 fn contains_subslice(haystack: &[u8], needle: &[u8]) -> bool {
