@@ -1754,6 +1754,8 @@ pub struct L2IoPauseKillCase {
     scenario: Scenario,
     expected_pause: L2IoPauseSweepCase,
     baseline_artifact: L2ArtifactSnapshot,
+    fixture: CaseFixture,
+    welcome_canary: Option<Zeroizing<Vec<u8>>>,
 }
 
 impl L2IoPauseKillCase {
@@ -1789,11 +1791,18 @@ impl L2IoPauseKillCase {
         {
             return Err(stage("L2 I/O pause child load"));
         }
+        if self.welcome_canary.is_none() {
+            self.welcome_canary = read_optional_welcome_canary(self.root.path())?;
+        }
         let result = verify_l2_io_root(
             executable,
             self.root.path(),
             &self.key,
             self.scenario,
+            L2CaseSecrets {
+                fixture: &self.fixture,
+                welcome_canary: self.welcome_canary.as_ref().map(|value| value.as_slice()),
+            },
             self.baseline_artifact,
             &[pause_stdout, pause_stderr],
         );
@@ -1833,6 +1842,7 @@ pub fn prepare_l2_io_pause_kill_case(
     write_owned_file(&root.path().join(CASE_CONFIG_NAME), &config.encode(), false)?;
     let fixture = prepare_baseline(root.path(), &key, scenario)?;
     let baseline_artifact = encrypted_artifact_snapshot(root.path())?;
+    let welcome_canary = read_optional_welcome_canary(root.path())?;
     let fixture_bytes = fixture.encode();
     write_owned_file(
         &root.path().join(WRITER_CASE_FIXTURE_NAME),
@@ -1855,6 +1865,8 @@ pub fn prepare_l2_io_pause_kill_case(
             target_ordinal,
         },
         baseline_artifact,
+        fixture,
+        welcome_canary,
     })
 }
 
@@ -1926,6 +1938,7 @@ fn run_l2_io_fault_controller(
     write_owned_file(&root.join(CASE_CONFIG_NAME), &config.encode(), false)?;
     let fixture = prepare_baseline(root, &key, config.target.scenario())?;
     let baseline_artifact = encrypted_artifact_snapshot(root)?;
+    let mut welcome_canary = read_optional_welcome_canary(root)?;
     write_owned_file(
         &root.join(VERIFIER_CASE_FIXTURE_NAME),
         fixture.encode().as_ref(),
@@ -1951,6 +1964,9 @@ fn run_l2_io_fault_controller(
     let transaction_succeeded =
         run_real_storage_transaction(&storage, observer, config.target.scenario(), &fixture, root)
             .is_ok();
+    if welcome_canary.is_none() {
+        welcome_canary = read_optional_welcome_canary(root)?;
+    }
     let fault = driver
         .disable_and_observe(transaction_succeeded)
         .ok_or_else(|| stage("L2 I/O driver evidence"))?;
@@ -1962,6 +1978,10 @@ fn run_l2_io_fault_controller(
             root,
             &key,
             config.target.scenario(),
+            L2CaseSecrets {
+                fixture: &fixture,
+                welcome_canary: welcome_canary.as_ref().map(|value| value.as_slice()),
+            },
             baseline_artifact,
             &[],
         )?;
@@ -1975,11 +1995,17 @@ fn run_l2_io_fault_controller(
     ))
 }
 
+struct L2CaseSecrets<'a> {
+    fixture: &'a CaseFixture,
+    welcome_canary: Option<&'a [u8]>,
+}
+
 fn verify_l2_io_root(
     executable: &Path,
     root: &Path,
     key: &Zeroizing<[u8; KEY_BYTES]>,
     scenario: Scenario,
+    secrets: L2CaseSecrets<'_>,
     baseline_artifact: L2ArtifactSnapshot,
     additional_surfaces: &[&[u8]],
 ) -> Result<(OracleState, bool, bool, bool, L2EvidenceBinding), SessionCtlError> {
@@ -2011,7 +2037,14 @@ fn verify_l2_io_root(
     surfaces.extend_from_slice(additional_surfaces);
     surfaces.push(stdout.as_slice());
     surfaces.push(stderr.as_slice());
-    let evidence_binding = collect_evidence_binding(root, key, baseline_artifact, &surfaces)?;
+    let evidence_binding = collect_evidence_binding(
+        root,
+        key,
+        secrets.fixture,
+        secrets.welcome_canary,
+        baseline_artifact,
+        &surfaces,
+    )?;
     Ok((
         evidence.observed,
         fixture_cleanup,
@@ -2131,6 +2164,7 @@ fn run_controller(
     write_owned_file(&root.join(CASE_CONFIG_NAME), &config.encode(), false)?;
     let fixture = prepare_baseline(root, &key, config.target.scenario())?;
     let baseline_artifact = encrypted_artifact_snapshot(root)?;
+    let mut welcome_canary = read_optional_welcome_canary(root)?;
     let fixture_bytes = fixture.encode();
     write_owned_file(
         &root.join(WRITER_CASE_FIXTURE_NAME),
@@ -2197,6 +2231,9 @@ fn run_controller(
     }
     writer.stdout.require_empty(CHILD_WAIT)?;
     writer.stderr.require_empty(CHILD_WAIT)?;
+    if welcome_canary.is_none() {
+        welcome_canary = read_optional_welcome_canary(root)?;
+    }
     if root.join(WRITER_KEY_NAME).exists() {
         return Err(stage("L2 writer key cleanup"));
     }
@@ -2269,6 +2306,8 @@ fn run_controller(
     let evidence_binding = collect_evidence_binding(
         root,
         &key,
+        &fixture,
+        welcome_canary.as_ref().map(|value| value.as_slice()),
         baseline_artifact,
         &[
             stdout.as_slice(),
@@ -2496,6 +2535,18 @@ fn read_fixture(root: &Path, name: &str) -> Result<CaseFixture, SessionCtlError>
     let bytes = Zeroizing::new(read_owned_file(&path, CASE_FIXTURE_BYTES)?);
     fs::remove_file(&path).map_err(|_| stage("L2 fixture cleanup"))?;
     CaseFixture::decode(&bytes)
+}
+
+fn read_optional_welcome_canary(
+    root: &Path,
+) -> Result<Option<Zeroizing<Vec<u8>>>, SessionCtlError> {
+    let path = root.join(WELCOME_FIXTURE_NAME);
+    if !path.exists() {
+        return Ok(None);
+    }
+    Ok(Some(Zeroizing::new(read_bounded_owned_file(
+        &path, 65_536,
+    )?)))
 }
 
 fn prepare_baseline(
@@ -3746,6 +3797,8 @@ fn encrypted_artifact_snapshot(root: &Path) -> Result<L2ArtifactSnapshot, Sessio
 fn collect_evidence_binding(
     root: &Path,
     key: &Zeroizing<[u8; KEY_BYTES]>,
+    fixture: &CaseFixture,
+    welcome_canary: Option<&[u8]>,
     baseline: L2ArtifactSnapshot,
     surfaces: &[&[u8]],
 ) -> Result<L2EvidenceBinding, SessionCtlError> {
@@ -3762,7 +3815,24 @@ fn collect_evidence_binding(
     scanned.extend_from_slice(surfaces);
     scanned.push(baseline.bytes.as_slice());
     scanned.push(post_recovery.bytes.as_slice());
-    evidence::scan_synthetic_canaries(scanned)?;
+    let endpoint = fixture_endpoint()?;
+    let mut secrets = vec![
+        key.as_slice(),
+        fixture.invitation_id.as_slice(),
+        fixture.invitation_generation.as_slice(),
+        fixture.join_request_id.as_slice(),
+        fixture.request_fingerprint.as_slice(),
+        fixture.transaction_id.as_slice(),
+        fixture.group_id.as_slice(),
+        fixture.key_package_reference.as_slice(),
+        fixture.credential_identity.as_slice(),
+        APPROVAL_RECORD,
+        endpoint.as_slice(),
+    ];
+    if let Some(welcome) = welcome_canary {
+        secrets.push(welcome);
+    }
+    evidence::scan_secret_values(scanned, secrets)?;
     Ok(L2EvidenceBinding {
         sqlcipher_version,
         sqlite_version,

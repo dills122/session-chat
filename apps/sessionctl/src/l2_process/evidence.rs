@@ -425,10 +425,30 @@ fn scan_canaries<'a>(surfaces: impl IntoIterator<Item = &'a [u8]>) -> Result<(),
     Ok(())
 }
 
-pub(super) fn scan_synthetic_canaries<'a>(
+pub(super) fn scan_secret_values<'a, 'b>(
     surfaces: impl IntoIterator<Item = &'a [u8]>,
+    secrets: impl IntoIterator<Item = &'b [u8]>,
 ) -> Result<(), SessionCtlError> {
-    scan_canaries(surfaces)
+    let surfaces = surfaces.into_iter().collect::<Vec<_>>();
+    scan_canaries(surfaces.iter().copied())?;
+    let secrets = secrets.into_iter().collect::<Vec<_>>();
+    if secrets.is_empty()
+        || secrets.len() > 32
+        || secrets
+            .iter()
+            .any(|secret| secret.len() < 8 || secret.len() > 65_536)
+    {
+        return Err(stage("L2 evidence secret catalog"));
+    }
+    for secret in secrets {
+        let encoded = hex(secret);
+        if surfaces.iter().any(|surface| {
+            contains_subslice(surface, secret) || contains_subslice(surface, encoded.as_bytes())
+        }) {
+            return Err(stage("L2 evidence redaction"));
+        }
+    }
+    Ok(())
 }
 
 fn contains_subslice(haystack: &[u8], needle: &[u8]) -> bool {
@@ -461,4 +481,20 @@ fn is_version(value: &str) -> bool {
             byte.is_ascii_alphanumeric()
                 || matches!(byte, b'.' | b'-' | b'_' | b'+' | b':' | b' ' | b'(' | b')')
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn actual_secret_scanner_rejects_raw_and_hex_encoded_values() {
+        let secret = b"actual-case-secret";
+        assert!(scan_secret_values([secret.as_slice()], [secret.as_slice()]).is_err());
+        let encoded = hex(secret);
+        assert!(scan_secret_values([encoded.as_bytes()], [secret.as_slice()]).is_err());
+        assert!(
+            scan_secret_values([b"coarse-clean-output".as_slice()], [secret.as_slice()]).is_ok()
+        );
+    }
 }
