@@ -40,10 +40,7 @@ use self::fault_testing::{
 use super::{SessionCtlError, random_nonzero, resolve_l1_process_git_commit, stage};
 
 mod evidence;
-pub use evidence::{
-    L2EvidenceChannels, L2EvidenceManifest, L2EvidenceMetadata, L2EvidenceSweep,
-    promote_l2_evidence,
-};
+pub use evidence::{L2EvidenceChannels, L2EvidenceManifest};
 
 const ROOT_MARKER_NAME: &str = ".sessionctl-l2-root";
 const ROOT_MARKER: &[u8] = b"sessionctl-l2-v1\n";

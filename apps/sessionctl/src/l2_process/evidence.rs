@@ -27,7 +27,7 @@ const SYNTHETIC_CANARIES: [&[u8]; 12] = [
 
 /// Closed L2 sweep classes eligible for public evidence promotion.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum L2EvidenceSweep {
+enum L2EvidenceSweep {
     /// Every baseline-observed application checkpoint was killed once.
     ApplicationProcessKill,
     /// Every baseline-derived supported SQLite result-code ordinal was injected.
@@ -54,7 +54,7 @@ impl L2EvidenceSweep {
 }
 
 /// Exact build, runner, engine, and encrypted-artifact binding for one L2 manifest.
-pub struct L2EvidenceMetadata {
+struct L2EvidenceMetadata {
     commit: String,
     dirty: bool,
     toolchain: String,
@@ -72,7 +72,7 @@ pub struct L2EvidenceMetadata {
 impl L2EvidenceMetadata {
     /// Constructs closed provenance. Dirty, unavailable, or malformed inputs fail closed.
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
+    fn new(
         commit: &str,
         dirty: bool,
         toolchain: &str,
@@ -220,7 +220,7 @@ impl L2EvidenceManifest {
 }
 
 /// Promotes one complete internal observation to public evidence after every L2-8 gate passes.
-pub fn promote_l2_evidence(
+fn promote_l2_evidence(
     sweep: L2EvidenceSweep,
     scenario: Scenario,
     observation: &str,
@@ -379,6 +379,104 @@ fn validate_observation(
     {
         return Err(stage("L2 internal observation"));
     }
+    let expected_fields: &[&str] = match sweep {
+        L2EvidenceSweep::ApplicationProcessKill => &[
+            "version",
+            "protocol",
+            "scenario",
+            "publication",
+            "status",
+            "coverage",
+            "sweep",
+            "fault_build",
+            "storage_scenario",
+            "checkpoint_trace_sha256",
+            "completed_cases",
+            "observed_old_states",
+            "observed_new_states",
+            "integrity",
+            "schema",
+            "semantic_oracle",
+            "exact_retry",
+            "fixture_cleanup",
+            "handle_cleanup",
+            "child_cleanup",
+            "directory_cleanup",
+        ],
+        L2EvidenceSweep::SqliteReturnCode => &[
+            "version",
+            "protocol",
+            "scenario",
+            "publication",
+            "status",
+            "coverage",
+            "sweep",
+            "fault_build",
+            "storage_scenario",
+            "allowed",
+            "modes",
+            "sqlite_primary_codes",
+            "sqlite_extended_codes",
+            "target_counts",
+            "last_fully_explored_ordinals",
+            "baseline_last_observed_ordinal",
+            "baseline_total_observed_operations",
+            "completed_cases",
+            "observed_empty_states",
+            "observed_committed_states",
+            "fixture_cleanup",
+            "handle_cleanup",
+            "child_cleanup",
+            "directory_cleanup",
+            "integrity",
+            "schema",
+            "semantic_oracle",
+            "exact_retry",
+        ],
+        L2EvidenceSweep::CommitWindowProcessKill => &[
+            "version",
+            "protocol",
+            "scenario",
+            "publication",
+            "status",
+            "coverage",
+            "sweep",
+            "fault_build",
+            "storage_scenario",
+            "allowed",
+            "target_counts",
+            "last_fully_explored_ordinals",
+            "completed_cases",
+            "observed_empty_states",
+            "observed_committed_states",
+            "pause",
+            "process_termination",
+            "fixture_cleanup",
+            "handle_cleanup",
+            "child_cleanup",
+            "directory_cleanup",
+            "integrity",
+            "schema",
+            "semantic_oracle",
+            "exact_retry",
+        ],
+    };
+    let fields = observation
+        .lines()
+        .map(|line| {
+            line.split_once('=')
+                .map(|(field, _)| field)
+                .ok_or_else(|| stage("L2 internal observation"))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    if fields.len() != expected_fields.len()
+        || fields.iter().any(|field| !expected_fields.contains(field))
+        || expected_fields
+            .iter()
+            .any(|expected| fields.iter().filter(|field| *field == expected).count() != 1)
+    {
+        return Err(stage("L2 internal observation"));
+    }
     let storage_scenario = match scenario {
         Scenario::InviterTransaction => "inviter-transaction",
         Scenario::JoinerTransaction => "joiner-transaction",
@@ -486,6 +584,157 @@ fn is_version(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const COMPLETE_PROCESS_OBSERVATION: &str = concat!(
+        "version=1\n",
+        "protocol=l2-checkpoint-observation-v1\n",
+        "scenario=E2E-TXN-001\n",
+        "publication=prohibited\n",
+        "status=validated\n",
+        "coverage=complete\n",
+        "sweep=application-process-kill\n",
+        "fault_build=true\n",
+        "storage_scenario=inviter-transaction\n",
+        "checkpoint_trace_sha256=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n",
+        "completed_cases=9\n",
+        "observed_old_states=7\n",
+        "observed_new_states=2\n",
+        "integrity=pass\n",
+        "schema=pass\n",
+        "semantic_oracle=pass\n",
+        "exact_retry=pass\n",
+        "fixture_cleanup=pass\n",
+        "handle_cleanup=pass\n",
+        "child_cleanup=pass\n",
+        "directory_cleanup=pass\n",
+    );
+
+    fn metadata() -> L2EvidenceMetadata {
+        L2EvidenceMetadata::new(
+            "0123456789abcdef0123456789abcdef01234567",
+            false,
+            "1.97.1",
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "macos-15",
+            "macos",
+            "aarch64",
+            "4.14.0 community",
+            "3.50.4",
+            [0x11; 32],
+            [0x22; 32],
+            [0x33; 32],
+        )
+        .expect("closed provenance")
+    }
+
+    fn clean_channels() -> L2EvidenceChannels<'static> {
+        L2EvidenceChannels::new(b"", b"", b"", b"checkpoint-only", b"encrypted-artifacts")
+            .expect("bounded channels")
+    }
+
+    #[test]
+    fn sealed_promotion_builds_a_bounded_manifest() {
+        let manifest = promote_l2_evidence(
+            L2EvidenceSweep::ApplicationProcessKill,
+            Scenario::InviterTransaction,
+            COMPLETE_PROCESS_OBSERVATION,
+            &metadata(),
+            &clean_channels(),
+        )
+        .expect("promote complete checked evidence")
+        .encode_v1();
+
+        for required in [
+            "protocol=l2-evidence-v1\n",
+            "result=pass\n",
+            "coverage=complete\n",
+            "commit=0123456789abcdef0123456789abcdef01234567\n",
+            "platform=macos-aarch64\n",
+            "sqlcipher_version=4.14.0 community\n",
+            "redaction=pass\n",
+            "cleanup=pass\n",
+        ] {
+            assert!(manifest.contains(required), "missing {required:?}");
+        }
+        assert!(manifest.len() <= MAX_MANIFEST_BYTES);
+        assert!(!manifest.contains("publication=prohibited"));
+    }
+
+    #[test]
+    fn sealed_promotion_rejects_canaries_on_every_surface() {
+        const CANARY: &[u8] = b"SC-L2-CANARY-DATABASE-KEY";
+        for channels in [
+            L2EvidenceChannels::new(CANARY, b"", b"", b"", b""),
+            L2EvidenceChannels::new(b"", CANARY, b"", b"", b""),
+            L2EvidenceChannels::new(b"", b"", CANARY, b"", b""),
+            L2EvidenceChannels::new(b"", b"", b"", CANARY, b""),
+            L2EvidenceChannels::new(b"", b"", b"", b"", CANARY),
+        ] {
+            assert!(
+                promote_l2_evidence(
+                    L2EvidenceSweep::ApplicationProcessKill,
+                    Scenario::InviterTransaction,
+                    COMPLETE_PROCESS_OBSERVATION,
+                    &metadata(),
+                    &channels.expect("bounded hostile channel"),
+                )
+                .is_err(),
+                "canary-bearing evidence surface must fail closed",
+            );
+        }
+    }
+
+    #[test]
+    fn sealed_promotion_rejects_unbound_or_dirty_provenance() {
+        for (commit, dirty) in [
+            ("unavailable", false),
+            ("0123456789abcdef0123456789abcdef01234567", true),
+        ] {
+            assert!(
+                L2EvidenceMetadata::new(
+                    commit,
+                    dirty,
+                    "1.97.1",
+                    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "macos-15",
+                    "macos",
+                    "aarch64",
+                    "4.14.0",
+                    "3.50.4",
+                    [0x11; 32],
+                    [0x22; 32],
+                    [0x33; 32],
+                )
+                .is_err(),
+            );
+        }
+    }
+
+    #[test]
+    fn internal_observation_rejects_unknown_and_contradictory_fields() {
+        for hostile in [
+            COMPLETE_PROCESS_OBSERVATION.replace(
+                "coverage=complete\n",
+                "coverage=complete\ncoverage=partial\n",
+            ),
+            COMPLETE_PROCESS_OBSERVATION
+                .replace("exact_retry=pass\n", "exact_retry=pass\nexact_retry=fail\n"),
+            COMPLETE_PROCESS_OBSERVATION.replace(
+                "directory_cleanup=pass\n",
+                "directory_cleanup=pass\nunknown_claim=pass\n",
+            ),
+        ] {
+            assert!(
+                validate_observation(
+                    L2EvidenceSweep::ApplicationProcessKill,
+                    Scenario::InviterTransaction,
+                    &hostile,
+                )
+                .is_err(),
+                "hostile extra field must fail closed: {hostile}",
+            );
+        }
+    }
 
     #[test]
     fn actual_secret_scanner_rejects_raw_and_hex_encoded_values() {
