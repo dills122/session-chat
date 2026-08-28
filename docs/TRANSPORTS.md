@@ -287,11 +287,12 @@ the same path after graceful Alice process exit, with Bob and the untrusted
 forwarder in separate processes. This adds no network transport or abrupt-kill
 result to the product path. A separate checked L2 storage laboratory now covers
 baseline-derived SQLite-visible FULL/extended-IOERR failures and direct writer
-kills at observed engine commit-window pauses before fresh reopen. That narrow
-storage evidence does not establish delivery recovery, complete
-application-checkpoint recovery, power-loss safety, rollback resistance,
-platform key custody, or production transport behavior, and its observations
-remain non-public pending the L2-8 evidence/portable-CI gate.
+kills at observed engine commit-window pauses and every baseline-observed
+inviter/joiner application checkpoint before fresh reopen. That narrow local
+storage evidence does not establish delivery recovery, portable passing
+evidence, power-loss safety, rollback resistance, platform key custody, or
+production transport behavior, and its observations remain non-public pending
+the L2-8 evidence/portable-CI gate.
 
 `RetryAdvice::Never` ends attempts under the current budget. It does not assert
 that a deposit did not commit; the coordinator may reconcile an ambiguous
