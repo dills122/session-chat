@@ -454,5 +454,11 @@ fn is_token(value: &str, maximum: usize) -> bool {
 }
 
 fn is_version(value: &str) -> bool {
-    is_token(value, 64) && value.bytes().any(|byte| byte.is_ascii_digit())
+    !value.is_empty()
+        && value.len() <= 64
+        && value.bytes().any(|byte| byte.is_ascii_digit())
+        && value.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric()
+                || matches!(byte, b'.' | b'-' | b'_' | b'+' | b':' | b' ' | b'(' | b')')
+        })
 }
