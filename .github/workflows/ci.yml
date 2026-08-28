@@ -7,7 +7,7 @@ on:
       - master
   workflow_dispatch:
   schedule:
-    - cron: '17 7 * * 1'
+    - cron: '17 7 * * *'
 
 permissions:
   contents: read
@@ -66,6 +66,58 @@ jobs:
         env:
           RUSTDOCFLAGS: -D warnings
         run: cargo doc --workspace --all-features --no-deps --locked --offline
+
+  l2-evidence:
+    name: L2 evidence (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x64
+            os: ubuntu-24.04
+            image: ubuntu-24.04
+          - name: macOS arm64
+            os: macos-15
+            image: macos-15
+          - name: Windows x64
+            os: windows-2025
+            image: windows-2025
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    env:
+      RUSTFLAGS: --cfg session_chat_storage_fault_testing
+      SESSION_CHAT_L2_RUNNER_IMAGE: ${{ matrix.image }}
+    steps:
+      - name: Check out source without retained credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Restore Rust dependency build cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          cache-bin: false
+          cache-workspace-crates: false
+          shared-key: l2-evidence
+
+      - name: Fetch the locked dependency graph
+        run: cargo fetch --locked
+
+      - name: Prove the pull-request smoke catches defective evidence
+        if: github.event_name == 'pull_request'
+        run: |
+          cargo test -p sessionctl --test l2_public_evidence --locked --offline
+          cargo test -p storage-sqlcipher-fault-vfs controller::tests::defective_persistent_gap_after_target_is_rejected --locked --offline -- --exact
+          cargo test -p sessionctl --test l2_process checked::defective_frames_diagnostics_and_semantics_fail_closed --locked --offline -- --exact --test-threads=1
+          cargo test -p sessionctl --test l2_io_faults checked::one_shot_full_reopens_as_one_complete_inviter_state --locked --offline -- --exact --test-threads=1
+
+      - name: Run complete portable L2 evidence suites
+        if: github.event_name != 'pull_request'
+        run: |
+          cargo test -p sessionctl --test l2_public_evidence --locked --offline
+          cargo test -p sessionctl --test l2_crash_restart_inviter --locked --offline -- --nocapture --test-threads=1
+          cargo test -p sessionctl --test l2_crash_restart_joiner --locked --offline -- --nocapture --test-threads=1
+          cargo test -p sessionctl --test l2_io_faults --locked --offline -- --nocapture --test-threads=1
 
   node:
     name: Retained Node tools
@@ -204,6 +256,7 @@ jobs:
     if: always()
     needs:
       - rust
+      - l2-evidence
       - node
       - coverage
       - site
@@ -217,6 +270,7 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           RUST_RESULT: ${{ needs.rust.result }}
+          L2_EVIDENCE_RESULT: ${{ needs.l2-evidence.result }}
           NODE_RESULT: ${{ needs.node.result }}
           COVERAGE_RESULT: ${{ needs.coverage.result }}
           SITE_RESULT: ${{ needs.site.result }}
@@ -225,6 +279,7 @@ jobs:
           DEPENDENCY_REVIEW_RESULT: ${{ needs.dependency-review.result }}
         run: |
           test "$RUST_RESULT" = success
+          test "$L2_EVIDENCE_RESULT" = success
           test "$NODE_RESULT" = success
           test "$COVERAGE_RESULT" = success
           test "$SITE_RESULT" = success
