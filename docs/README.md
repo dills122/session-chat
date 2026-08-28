@@ -257,15 +257,20 @@ coarse milestones or a versioned redacted scenario record. The separate ADR
 0021 `sessionctl-l1` conformance binary runs Alice, Bob, and an untrusted
 forwarder as independent processes, reloads Alice after graceful process exit,
 and emits a bounded redacted manifest. Neither path is a networked,
-platform-vault-backed, or deployable client; abrupt kill/power-loss evidence
-remains open.
+platform-vault-backed, or deployable client; that product path still has no
+general abrupt-kill or power-loss result.
 The checked L2 storage protocol and reusable `sessionctl` controller/verifier
 now provide a bounded application-kill foundation. A separate publish-disabled
 named SQLite VFS delegates to the unchanged process default, records bounded
 path-free operation evidence, and injects actual `SQLITE_FULL` and extended
-`SQLITE_IOERR_*` results only for explicitly named connections. Exhaustive
-crash/restart and I/O sweeps remain later L2 gates; this is not power-loss or
-filesystem-durability evidence.
+`SQLITE_IOERR_*` results only for explicitly named connections. The checked L2
+suite now exercises every baseline-derived supported inviter/joiner I/O ordinal
+and every observed journal/main commit-window pause, killing the direct writer
+before fresh reopen and accepting only one complete state. Its records remain
+non-public internal observations pending L2-8 provenance, canary scanning, and
+the required portable CI gate; complete application-checkpoint crash/restart,
+power-loss, filesystem-durability, rollback-resistance, and production evidence
+remain open.
 The `session-storage` crate now retains a deterministic in-memory conformance
 model for one-session unsealing, bounded external unlock work, exact-session
 one-shot credential acquisition, forced relock events, stale/foreign-owner
@@ -296,8 +301,10 @@ A retained real capability-admission/MLS integration now resolves an ambiguous
 SQL commit before in-memory finalization, reopens the store, and delivers the
 exact Welcome to the original joiner. The same composition now backs the
 single-process `sessionctl` path and the ADR 0021 graceful process-exit runner,
-but it is not wired to the vault lifecycle and adds no abrupt-kill, production
-packaging, broader platform, rollback-resistance, or production-storage claim.
+but it is not wired to the vault lifecycle and adds no general abrupt-kill,
+production packaging, broader platform, rollback-resistance, or
+production-storage claim beyond the separate checked L2 engine-window
+laboratory described above.
 
 ## Reference standards and projects
 

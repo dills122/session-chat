@@ -105,6 +105,8 @@ pub enum L2HarnessProbe {
     JoinerRetryMutation,
     /// The controller withholds a required acknowledgement at a non-target checkpoint.
     MissingAcknowledgement,
+    /// A checked integration driver injects one SQLite-visible I/O failure.
+    IoFault,
 }
 
 impl L2HarnessProbe {
@@ -130,6 +132,7 @@ impl L2HarnessProbe {
             Self::InviterRetryMutation => 14,
             Self::JoinerRetryMutation => 15,
             Self::MissingAcknowledgement => 16,
+            Self::IoFault => 17,
         }
     }
 
@@ -150,7 +153,8 @@ impl L2HarnessProbe {
             | Self::ChangedAttemptCeiling
             | Self::InviterRetryMutation
             | Self::JoinerRetryMutation
-            | Self::MissingAcknowledgement => "negative-probe",
+            | Self::MissingAcknowledgement
+            | Self::IoFault => "negative-probe",
         }
     }
 }
@@ -176,6 +180,7 @@ impl TryFrom<u8> for L2HarnessProbe {
             14 => Ok(Self::InviterRetryMutation),
             15 => Ok(Self::JoinerRetryMutation),
             16 => Ok(Self::MissingAcknowledgement),
+            17 => Ok(Self::IoFault),
             _ => Err(stage("L2 probe")),
         }
     }
@@ -367,6 +372,1010 @@ impl L2ProcessReport {
     }
 }
 
+/// Closed file roles retained by the L2 I/O evidence schema.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum L2IoFileRole {
+    /// SQLCipher's main database file.
+    MainDatabase,
+    /// SQLCipher's rollback journal under the frozen DELETE-journal baseline.
+    RollbackJournal,
+}
+
+impl L2IoFileRole {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::MainDatabase => "main-database",
+            Self::RollbackJournal => "rollback-journal",
+        }
+    }
+}
+
+/// Closed SQLite operations retained by the L2 I/O evidence schema.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum L2IoOperation {
+    /// File read.
+    Read,
+    /// File write.
+    Write,
+    /// File truncation.
+    Truncate,
+    /// File synchronization.
+    Sync,
+    /// File deletion.
+    Delete,
+    /// File lock acquisition.
+    Lock,
+    /// File lock release.
+    Unlock,
+    /// Reserved-lock query.
+    CheckReservedLock,
+}
+
+impl L2IoOperation {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Read => "read",
+            Self::Write => "write",
+            Self::Truncate => "truncate",
+            Self::Sync => "sync",
+            Self::Delete => "delete",
+            Self::Lock => "lock",
+            Self::Unlock => "unlock",
+            Self::CheckReservedLock => "check-reserved-lock",
+        }
+    }
+}
+
+/// Closed injection modes retained by the L2 I/O evidence schema.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum L2IoFaultMode {
+    /// Return one failure at the exact target ordinal.
+    OneShot,
+    /// Return the failure at and after the exact target ordinal.
+    Persistent,
+}
+
+impl L2IoFaultMode {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::OneShot => "one-shot",
+            Self::Persistent => "persistent",
+        }
+    }
+}
+
+/// Bounded, path-free observation returned by a checked L2 I/O driver.
+pub struct L2IoFaultObservation {
+    file_role: L2IoFileRole,
+    operation: L2IoOperation,
+    mode: L2IoFaultMode,
+    sqlite_code: i32,
+    target_ordinal: u16,
+    last_observed_ordinal: u16,
+    total_operations: usize,
+    injected_failures: usize,
+    transaction_succeeded: bool,
+}
+
+/// One observed role/operation pair and its complete baseline ordinal count.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct L2IoSweepTarget {
+    file_role: L2IoFileRole,
+    operation: L2IoOperation,
+    observed_count: u16,
+}
+
+impl L2IoSweepTarget {
+    /// Constructs one nonempty supported target count below the operation bound.
+    pub fn new(
+        file_role: L2IoFileRole,
+        operation: L2IoOperation,
+        observed_count: usize,
+    ) -> Result<Self, SessionCtlError> {
+        if observed_count == 0 || observed_count > 4_096 {
+            return Err(stage("L2 I/O baseline target"));
+        }
+        Ok(Self {
+            file_role,
+            operation,
+            observed_count: u16::try_from(observed_count)
+                .map_err(|_| stage("L2 I/O baseline target"))?,
+        })
+    }
+
+    /// Retained file role.
+    pub const fn file_role(self) -> L2IoFileRole {
+        self.file_role
+    }
+
+    /// Retained operation.
+    pub const fn operation(self) -> L2IoOperation {
+        self.operation
+    }
+
+    /// Number of matching operations in the clean transaction trace.
+    pub const fn observed_count(self) -> u16 {
+        self.observed_count
+    }
+}
+
+/// Validated transaction-only operation coverage from one clean named-VFS run.
+pub struct L2IoBaselineObservation {
+    targets: Vec<L2IoSweepTarget>,
+    last_observed_ordinal: u16,
+    total_operations: usize,
+}
+
+impl L2IoBaselineObservation {
+    /// Constructs a bounded baseline and rejects duplicate or incomplete target counts.
+    pub fn new(
+        targets: Vec<L2IoSweepTarget>,
+        last_observed_ordinal: u16,
+        total_operations: usize,
+    ) -> Result<Self, SessionCtlError> {
+        if targets.is_empty()
+            || targets.len() > 16
+            || total_operations == 0
+            || total_operations > 4_096
+            || usize::from(last_observed_ordinal) + 1 != total_operations
+        {
+            return Err(stage("L2 I/O baseline observation"));
+        }
+        let mut covered = 0_usize;
+        for (index, target) in targets.iter().enumerate() {
+            if targets[..index].iter().any(|prior| {
+                prior.file_role == target.file_role && prior.operation == target.operation
+            }) {
+                return Err(stage("L2 I/O baseline observation"));
+            }
+            covered = covered
+                .checked_add(usize::from(target.observed_count))
+                .ok_or_else(|| stage("L2 I/O baseline observation"))?;
+        }
+        if covered > total_operations {
+            return Err(stage("L2 I/O baseline observation"));
+        }
+        Ok(Self {
+            targets,
+            last_observed_ordinal,
+            total_operations,
+        })
+    }
+}
+
+/// Closed result returned by an L2 named-VFS driver.
+pub enum L2IoDriverObservation {
+    /// Clean transaction-only trace used to enumerate the sweep.
+    Baseline(L2IoBaselineObservation),
+    /// One actual injected SQLite failure.
+    Fault(L2IoFaultObservation),
+}
+
+impl L2IoFaultObservation {
+    /// Constructs one closed observation and rejects incomplete or inconsistent evidence.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        file_role: L2IoFileRole,
+        operation: L2IoOperation,
+        mode: L2IoFaultMode,
+        sqlite_code: i32,
+        target_ordinal: u16,
+        last_observed_ordinal: u16,
+        total_operations: usize,
+        injected_failures: usize,
+        transaction_succeeded: bool,
+    ) -> Result<Self, SessionCtlError> {
+        let code_matches_operation = matches!(
+            (sqlite_code, operation),
+            (rusqlite::ffi::SQLITE_FULL, L2IoOperation::Write)
+                | (rusqlite::ffi::SQLITE_IOERR_READ, L2IoOperation::Read)
+                | (rusqlite::ffi::SQLITE_IOERR_WRITE, L2IoOperation::Write)
+                | (
+                    rusqlite::ffi::SQLITE_IOERR_TRUNCATE,
+                    L2IoOperation::Truncate
+                )
+                | (rusqlite::ffi::SQLITE_IOERR_FSYNC, L2IoOperation::Sync)
+                | (rusqlite::ffi::SQLITE_IOERR_DELETE, L2IoOperation::Delete)
+                | (rusqlite::ffi::SQLITE_IOERR_LOCK, L2IoOperation::Lock)
+                | (rusqlite::ffi::SQLITE_IOERR_UNLOCK, L2IoOperation::Unlock)
+                | (
+                    rusqlite::ffi::SQLITE_IOERR_CHECKRESERVEDLOCK,
+                    L2IoOperation::CheckReservedLock,
+                )
+        );
+        let injection_count_is_valid = match mode {
+            L2IoFaultMode::OneShot => injected_failures == 1,
+            L2IoFaultMode::Persistent => injected_failures >= 1,
+        };
+        if !code_matches_operation
+            || total_operations == 0
+            || total_operations > 4_096
+            || usize::from(last_observed_ordinal) + 1 != total_operations
+            || usize::from(target_ordinal) >= 4_096
+            || !injection_count_is_valid
+            || injected_failures > total_operations
+        {
+            return Err(stage("L2 I/O observation"));
+        }
+        Ok(Self {
+            file_role,
+            operation,
+            mode,
+            sqlite_code,
+            target_ordinal,
+            last_observed_ordinal,
+            total_operations,
+            injected_failures,
+            transaction_succeeded,
+        })
+    }
+}
+
+/// Test-only bridge implemented by the isolated named-VFS adapter consumer.
+pub trait L2IoFaultDriver {
+    /// Registers or resets the driver before the named connection opens.
+    fn prepare_before_open(&mut self) -> bool;
+    /// Clears open-time observations and arms the transaction-only fault.
+    fn arm_after_open(&mut self) -> bool;
+    /// Disables the fault before close and returns validated path-free evidence.
+    fn disable_and_observe(&mut self, transaction_succeeded: bool)
+    -> Option<L2IoDriverObservation>;
+}
+
+/// Test-only bridge that arms one process-blocking named-VFS pause.
+pub trait L2IoPauseDriver {
+    /// Registers or resets the driver before the named connection opens.
+    fn prepare_before_open(&mut self) -> bool;
+    /// Clears open-time observations and arms the transaction-only pause.
+    fn arm_after_open(&mut self) -> bool;
+}
+
+/// Bounded, path-free proof that a child reached one commit-window pause.
+pub struct L2IoPauseObservation {
+    file_role: L2IoFileRole,
+    operation: L2IoOperation,
+    target_ordinal: u16,
+    last_observed_ordinal: u16,
+    total_operations: usize,
+}
+
+impl L2IoPauseObservation {
+    /// Constructs one supported pause observation below the operation bound.
+    pub fn new(
+        file_role: L2IoFileRole,
+        operation: L2IoOperation,
+        target_ordinal: u16,
+        last_observed_ordinal: u16,
+        total_operations: usize,
+    ) -> Result<Self, SessionCtlError> {
+        let supported = matches!(
+            (file_role, operation),
+            (
+                L2IoFileRole::RollbackJournal,
+                L2IoOperation::Write | L2IoOperation::Sync | L2IoOperation::Delete,
+            ) | (
+                L2IoFileRole::MainDatabase,
+                L2IoOperation::Write | L2IoOperation::Sync,
+            )
+        );
+        if !supported
+            || total_operations == 0
+            || total_operations > 4_096
+            || usize::from(last_observed_ordinal) + 1 != total_operations
+            || usize::from(target_ordinal) >= total_operations
+        {
+            return Err(stage("L2 I/O pause observation"));
+        }
+        Ok(Self {
+            file_role,
+            operation,
+            target_ordinal,
+            last_observed_ordinal,
+            total_operations,
+        })
+    }
+}
+
+/// Bounded internal observation from one clean named-VFS baseline.
+///
+/// This is not the public `l2-evidence-v1` manifest and must not be published
+/// or treated as a security-gate result before L2-8 adds provenance, artifact
+/// binding, and synthetic-canary scans.
+pub struct L2IoBaselineReport {
+    scenario: Scenario,
+    observed: OracleState,
+    baseline: L2IoBaselineObservation,
+    fixture_cleanup: bool,
+    handle_cleanup: bool,
+    child_cleanup: bool,
+    directory_cleanup: bool,
+}
+
+impl L2IoBaselineReport {
+    fn new(
+        scenario: Scenario,
+        observed: OracleState,
+        baseline: L2IoBaselineObservation,
+        fixture_cleanup: bool,
+        handle_cleanup: bool,
+        child_cleanup: bool,
+        directory_cleanup: bool,
+    ) -> Result<Self, SessionCtlError> {
+        let is_clean_new_state = matches!(
+            (scenario, observed),
+            (Scenario::InviterTransaction, OracleState::InviterNew)
+                | (Scenario::JoinerTransaction, OracleState::JoinerNew)
+        );
+        if !is_clean_new_state
+            || !fixture_cleanup
+            || !handle_cleanup
+            || !child_cleanup
+            || !directory_cleanup
+        {
+            return Err(stage("L2 I/O clean baseline"));
+        }
+        Ok(Self {
+            scenario,
+            observed,
+            baseline,
+            fixture_cleanup,
+            handle_cleanup,
+            child_cleanup,
+            directory_cleanup,
+        })
+    }
+
+    /// Iterates every supported role/operation count observed in the clean trace.
+    pub fn targets(&self) -> impl ExactSizeIterator<Item = L2IoSweepTarget> + '_ {
+        self.baseline.targets.iter().copied()
+    }
+
+    /// Encodes a bounded, non-public baseline-discovery observation.
+    #[must_use]
+    pub fn encode_v1(&self) -> String {
+        let target_counts = self
+            .baseline
+            .targets
+            .iter()
+            .map(|target| {
+                format!(
+                    "{}:{}={}",
+                    target.file_role.label(),
+                    target.operation.label(),
+                    target.observed_count,
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(",");
+        let evidence = format!(
+            concat!(
+                "version=1\n",
+                "protocol=l2-io-observation-v1\n",
+                "scenario=E2E-TXN-001\n",
+                "publication=prohibited\n",
+                "status=validated\n",
+                "coverage=partial\n",
+                "sweep=baseline\n",
+                "baseline=validated\n",
+                "fault_build=true\n",
+                "storage_scenario={}\n",
+                "observed={}\n",
+                "target_counts={}\n",
+                "last_observed_ordinal={}\n",
+                "total_observed_operations={}\n",
+                "fixture_cleanup={}\n",
+                "handle_cleanup={}\n",
+                "child_cleanup={}\n",
+                "directory_cleanup={}\n"
+            ),
+            match self.scenario {
+                Scenario::InviterTransaction => "inviter-transaction",
+                Scenario::JoinerTransaction => "joiner-transaction",
+            },
+            oracle_label(self.observed),
+            target_counts,
+            self.baseline.last_observed_ordinal,
+            self.baseline.total_operations,
+            pass_fail(self.fixture_cleanup),
+            pass_fail(self.handle_cleanup),
+            pass_fail(self.child_cleanup),
+            pass_fail(self.directory_cleanup),
+        );
+        debug_assert!(evidence.len() <= MAX_EVIDENCE_BYTES);
+        evidence
+    }
+}
+
+/// Bounded internal observation from one SQLite-visible L2 I/O failure case.
+pub struct L2IoFaultReport {
+    scenario: Scenario,
+    observed: OracleState,
+    fault: L2IoFaultObservation,
+    fixture_cleanup: bool,
+    handle_cleanup: bool,
+    child_cleanup: bool,
+    directory_cleanup: bool,
+}
+
+impl L2IoFaultReport {
+    /// Encodes one bounded, non-public partial-coverage I/O observation.
+    #[must_use]
+    pub fn encode_v1(&self) -> String {
+        let evidence = format!(
+            concat!(
+                "version=1\n",
+                "protocol=l2-io-observation-v1\n",
+                "scenario=E2E-TXN-001\n",
+                "publication=prohibited\n",
+                "status=validated\n",
+                "coverage=partial\n",
+                "sweep=return-code\n",
+                "fault_build=true\n",
+                "storage_scenario={}\n",
+                "allowed={}\n",
+                "observed={}\n",
+                "file_role={}\n",
+                "operation={}\n",
+                "mode={}\n",
+                "target_ordinal={}\n",
+                "last_observed_ordinal={}\n",
+                "total_observed_operations={}\n",
+                "injected_failures={}\n",
+                "sqlite_primary_code={}\n",
+                "sqlite_extended_code={}\n",
+                "transaction_result={}\n",
+                "fixture_cleanup={}\n",
+                "handle_cleanup={}\n",
+                "child_cleanup={}\n",
+                "directory_cleanup={}\n"
+            ),
+            match self.scenario {
+                Scenario::InviterTransaction => "inviter-transaction",
+                Scenario::JoinerTransaction => "joiner-transaction",
+            },
+            match self.scenario {
+                Scenario::InviterTransaction => "I0|I1",
+                Scenario::JoinerTransaction => "J0|J1",
+            },
+            oracle_label(self.observed),
+            self.fault.file_role.label(),
+            self.fault.operation.label(),
+            self.fault.mode.label(),
+            self.fault.target_ordinal,
+            self.fault.last_observed_ordinal,
+            self.fault.total_operations,
+            self.fault.injected_failures,
+            self.fault.sqlite_code & 0xff,
+            self.fault.sqlite_code,
+            if self.fault.transaction_succeeded {
+                "success"
+            } else {
+                "rejected"
+            },
+            pass_fail(self.fixture_cleanup),
+            pass_fail(self.handle_cleanup),
+            pass_fail(self.child_cleanup),
+            pass_fail(self.directory_cleanup),
+        );
+        debug_assert!(evidence.len() <= MAX_EVIDENCE_BYTES);
+        evidence
+    }
+}
+
+/// Bounded internal observation from one commit-window pause/process kill.
+pub struct L2IoPauseKillReport {
+    scenario: Scenario,
+    observed: OracleState,
+    pause: L2IoPauseObservation,
+    fixture_cleanup: bool,
+    handle_cleanup: bool,
+    child_cleanup: bool,
+    directory_cleanup: bool,
+}
+
+impl L2IoPauseKillReport {
+    /// Encodes one bounded, non-public pause/process-kill observation.
+    #[must_use]
+    pub fn encode_v1(&self) -> String {
+        let evidence = format!(
+            concat!(
+                "version=1\n",
+                "protocol=l2-io-observation-v1\n",
+                "scenario=E2E-TXN-001\n",
+                "publication=prohibited\n",
+                "status=validated\n",
+                "coverage=partial\n",
+                "sweep=pause-process-kill\n",
+                "fault_build=true\n",
+                "storage_scenario={}\n",
+                "allowed={}\n",
+                "observed={}\n",
+                "file_role={}\n",
+                "operation={}\n",
+                "mode=pause-process-kill\n",
+                "target_ordinal={}\n",
+                "last_observed_ordinal={}\n",
+                "total_observed_operations={}\n",
+                "pause=confirmed\n",
+                "process_termination=confirmed\n",
+                "fixture_cleanup={}\n",
+                "handle_cleanup={}\n",
+                "child_cleanup={}\n",
+                "directory_cleanup={}\n"
+            ),
+            match self.scenario {
+                Scenario::InviterTransaction => "inviter-transaction",
+                Scenario::JoinerTransaction => "joiner-transaction",
+            },
+            match self.scenario {
+                Scenario::InviterTransaction => "I0|I1",
+                Scenario::JoinerTransaction => "J0|J1",
+            },
+            oracle_label(self.observed),
+            self.pause.file_role.label(),
+            self.pause.operation.label(),
+            self.pause.target_ordinal,
+            self.pause.last_observed_ordinal,
+            self.pause.total_operations,
+            pass_fail(self.fixture_cleanup),
+            pass_fail(self.handle_cleanup),
+            pass_fail(self.child_cleanup),
+            pass_fail(self.directory_cleanup),
+        );
+        debug_assert!(evidence.len() <= MAX_EVIDENCE_BYTES);
+        evidence
+    }
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+struct L2IoSweepCase {
+    file_role: L2IoFileRole,
+    operation: L2IoOperation,
+    mode: L2IoFaultMode,
+    sqlite_code: i32,
+    target_ordinal: u16,
+}
+
+impl L2IoFaultReport {
+    const fn sweep_case(&self) -> L2IoSweepCase {
+        L2IoSweepCase {
+            file_role: self.fault.file_role,
+            operation: self.fault.operation,
+            mode: self.fault.mode,
+            sqlite_code: self.fault.sqlite_code,
+            target_ordinal: self.fault.target_ordinal,
+        }
+    }
+}
+
+/// Internal observation that every baseline-derived I/O case completed once.
+pub struct L2IoSweepReport {
+    scenario: Scenario,
+    targets: Vec<L2IoSweepTarget>,
+    baseline_last_observed_ordinal: u16,
+    baseline_total_operations: usize,
+    completed_cases: usize,
+    empty_states: usize,
+    committed_states: usize,
+}
+
+impl L2IoSweepReport {
+    /// Validates exact coverage of every supported code, mode, and observed ordinal.
+    pub fn new(
+        scenario: Scenario,
+        baseline: &L2IoBaselineReport,
+        cases: &[L2IoFaultReport],
+    ) -> Result<Self, SessionCtlError> {
+        if baseline.scenario != scenario
+            || !baseline.fixture_cleanup
+            || !baseline.handle_cleanup
+            || !baseline.child_cleanup
+            || !baseline.directory_cleanup
+            || !matches!(
+                (scenario, baseline.observed),
+                (Scenario::InviterTransaction, OracleState::InviterNew)
+                    | (Scenario::JoinerTransaction, OracleState::JoinerNew)
+            )
+        {
+            return Err(stage("L2 I/O sweep baseline"));
+        }
+
+        let mut expected = Vec::new();
+        for target in &baseline.baseline.targets {
+            for target_ordinal in 0..target.observed_count {
+                for mode in [L2IoFaultMode::OneShot, L2IoFaultMode::Persistent] {
+                    for &sqlite_code in l2_io_supported_codes(target.operation) {
+                        expected.push(L2IoSweepCase {
+                            file_role: target.file_role,
+                            operation: target.operation,
+                            mode,
+                            sqlite_code,
+                            target_ordinal,
+                        });
+                    }
+                }
+            }
+        }
+        if expected.is_empty() || expected.len() > 32_768 || cases.len() != expected.len() {
+            return Err(stage("L2 I/O sweep coverage"));
+        }
+
+        let mut actual = Vec::with_capacity(cases.len());
+        let mut empty_states = 0_usize;
+        let mut committed_states = 0_usize;
+        for case in cases {
+            if case.scenario != scenario
+                || !case.fixture_cleanup
+                || !case.handle_cleanup
+                || !case.child_cleanup
+                || !case.directory_cleanup
+            {
+                return Err(stage("L2 I/O sweep case"));
+            }
+            match (scenario, case.observed) {
+                (Scenario::InviterTransaction, OracleState::InviterOld)
+                | (Scenario::JoinerTransaction, OracleState::JoinerOld) => {
+                    empty_states = empty_states.saturating_add(1);
+                }
+                (Scenario::InviterTransaction, OracleState::InviterNew)
+                | (Scenario::JoinerTransaction, OracleState::JoinerNew) => {
+                    committed_states = committed_states.saturating_add(1);
+                }
+                _ => return Err(stage("L2 I/O sweep oracle")),
+            }
+            if case.fault.transaction_succeeded {
+                let target = baseline
+                    .baseline
+                    .targets
+                    .iter()
+                    .find(|target| {
+                        target.file_role == case.fault.file_role
+                            && target.operation == case.fault.operation
+                    })
+                    .ok_or_else(|| stage("L2 I/O sweep success"))?;
+                let committed = matches!(
+                    (scenario, case.observed),
+                    (Scenario::InviterTransaction, OracleState::InviterNew)
+                        | (Scenario::JoinerTransaction, OracleState::JoinerNew)
+                );
+                let remaining = usize::from(target.observed_count)
+                    .saturating_sub(usize::from(case.fault.target_ordinal));
+                let persistent_suffix_is_exact = case.fault.mode != L2IoFaultMode::Persistent
+                    || case.fault.injected_failures == remaining;
+                if case.fault.operation != L2IoOperation::Unlock
+                    || !committed
+                    || !persistent_suffix_is_exact
+                {
+                    return Err(stage("L2 I/O sweep success"));
+                }
+            }
+            actual.push(case.sweep_case());
+        }
+        for expected_case in &expected {
+            if actual
+                .iter()
+                .filter(|actual_case| *actual_case == expected_case)
+                .count()
+                != 1
+            {
+                return Err(stage("L2 I/O sweep coverage"));
+            }
+        }
+
+        Ok(Self {
+            scenario,
+            targets: baseline.baseline.targets.clone(),
+            baseline_last_observed_ordinal: baseline.baseline.last_observed_ordinal,
+            baseline_total_operations: baseline.baseline.total_operations,
+            completed_cases: cases.len(),
+            empty_states,
+            committed_states,
+        })
+    }
+
+    /// Encodes the bounded, non-public complete-coverage observation.
+    #[must_use]
+    pub fn encode_v1(&self) -> String {
+        let target_counts = self
+            .targets
+            .iter()
+            .map(|target| {
+                format!(
+                    "{}:{}={}",
+                    target.file_role.label(),
+                    target.operation.label(),
+                    target.observed_count,
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(",");
+        let last_explored = self
+            .targets
+            .iter()
+            .map(|target| {
+                format!(
+                    "{}:{}={}",
+                    target.file_role.label(),
+                    target.operation.label(),
+                    target.observed_count.saturating_sub(1),
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(",");
+        let mut extended_codes = self
+            .targets
+            .iter()
+            .flat_map(|target| l2_io_supported_codes(target.operation).iter().copied())
+            .collect::<Vec<_>>();
+        extended_codes.sort_unstable();
+        extended_codes.dedup();
+        let extended_codes = extended_codes
+            .iter()
+            .map(i32::to_string)
+            .collect::<Vec<_>>()
+            .join("|");
+        let evidence = format!(
+            concat!(
+                "version=1\n",
+                "protocol=l2-io-observation-v1\n",
+                "scenario=E2E-TXN-001\n",
+                "publication=prohibited\n",
+                "status=validated\n",
+                "coverage=complete\n",
+                "sweep=return-code\n",
+                "fault_build=true\n",
+                "storage_scenario={}\n",
+                "allowed={}\n",
+                "modes=one-shot|persistent\n",
+                "sqlite_primary_codes=10|13\n",
+                "sqlite_extended_codes={}\n",
+                "target_counts={}\n",
+                "last_fully_explored_ordinals={}\n",
+                "baseline_last_observed_ordinal={}\n",
+                "baseline_total_observed_operations={}\n",
+                "completed_cases={}\n",
+                "observed_empty_states={}\n",
+                "observed_committed_states={}\n",
+                "fixture_cleanup=pass\n",
+                "handle_cleanup=pass\n",
+                "child_cleanup=pass\n",
+                "directory_cleanup=pass\n"
+            ),
+            match self.scenario {
+                Scenario::InviterTransaction => "inviter-transaction",
+                Scenario::JoinerTransaction => "joiner-transaction",
+            },
+            match self.scenario {
+                Scenario::InviterTransaction => "I0|I1",
+                Scenario::JoinerTransaction => "J0|J1",
+            },
+            extended_codes,
+            target_counts,
+            last_explored,
+            self.baseline_last_observed_ordinal,
+            self.baseline_total_operations,
+            self.completed_cases,
+            self.empty_states,
+            self.committed_states,
+        );
+        debug_assert!(evidence.len() <= MAX_EVIDENCE_BYTES);
+        evidence
+    }
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+struct L2IoPauseSweepCase {
+    file_role: L2IoFileRole,
+    operation: L2IoOperation,
+    target_ordinal: u16,
+}
+
+impl L2IoPauseKillReport {
+    const fn sweep_case(&self) -> L2IoPauseSweepCase {
+        L2IoPauseSweepCase {
+            file_role: self.pause.file_role,
+            operation: self.pause.operation,
+            target_ordinal: self.pause.target_ordinal,
+        }
+    }
+}
+
+/// Internal observation that every baseline-derived commit-window pause was killed once.
+pub struct L2IoPauseSweepReport {
+    scenario: Scenario,
+    targets: Vec<L2IoSweepTarget>,
+    completed_cases: usize,
+    empty_states: usize,
+    committed_states: usize,
+}
+
+impl L2IoPauseSweepReport {
+    /// Validates exact pause/process-kill coverage for all supported baseline ordinals.
+    pub fn new(
+        scenario: Scenario,
+        baseline: &L2IoBaselineReport,
+        cases: &[L2IoPauseKillReport],
+    ) -> Result<Self, SessionCtlError> {
+        if baseline.scenario != scenario
+            || !baseline.fixture_cleanup
+            || !baseline.handle_cleanup
+            || !baseline.child_cleanup
+            || !baseline.directory_cleanup
+            || !matches!(
+                (scenario, baseline.observed),
+                (Scenario::InviterTransaction, OracleState::InviterNew)
+                    | (Scenario::JoinerTransaction, OracleState::JoinerNew)
+            )
+        {
+            return Err(stage("L2 I/O pause sweep baseline"));
+        }
+        let targets = baseline
+            .baseline
+            .targets
+            .iter()
+            .copied()
+            .filter(|target| l2_io_pause_supported(target.file_role, target.operation))
+            .collect::<Vec<_>>();
+        let expected = targets
+            .iter()
+            .flat_map(|target| {
+                (0..target.observed_count).map(|target_ordinal| L2IoPauseSweepCase {
+                    file_role: target.file_role,
+                    operation: target.operation,
+                    target_ordinal,
+                })
+            })
+            .collect::<Vec<_>>();
+        if expected.is_empty() || expected.len() > 4_096 || cases.len() != expected.len() {
+            return Err(stage("L2 I/O pause sweep coverage"));
+        }
+
+        let mut actual = Vec::with_capacity(cases.len());
+        let mut empty_states = 0_usize;
+        let mut committed_states = 0_usize;
+        for case in cases {
+            if case.scenario != scenario
+                || !case.fixture_cleanup
+                || !case.handle_cleanup
+                || !case.child_cleanup
+                || !case.directory_cleanup
+            {
+                return Err(stage("L2 I/O pause sweep case"));
+            }
+            match (scenario, case.observed) {
+                (Scenario::InviterTransaction, OracleState::InviterOld)
+                | (Scenario::JoinerTransaction, OracleState::JoinerOld) => {
+                    empty_states = empty_states.saturating_add(1);
+                }
+                (Scenario::InviterTransaction, OracleState::InviterNew)
+                | (Scenario::JoinerTransaction, OracleState::JoinerNew) => {
+                    committed_states = committed_states.saturating_add(1);
+                }
+                _ => return Err(stage("L2 I/O pause sweep oracle")),
+            }
+            actual.push(case.sweep_case());
+        }
+        for expected_case in &expected {
+            if actual
+                .iter()
+                .filter(|actual_case| *actual_case == expected_case)
+                .count()
+                != 1
+            {
+                return Err(stage("L2 I/O pause sweep coverage"));
+            }
+        }
+
+        Ok(Self {
+            scenario,
+            targets,
+            completed_cases: cases.len(),
+            empty_states,
+            committed_states,
+        })
+    }
+
+    /// Encodes the bounded, non-public pause/process-kill coverage observation.
+    #[must_use]
+    pub fn encode_v1(&self) -> String {
+        let target_counts = self
+            .targets
+            .iter()
+            .map(|target| {
+                format!(
+                    "{}:{}={}",
+                    target.file_role.label(),
+                    target.operation.label(),
+                    target.observed_count,
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(",");
+        let last_explored = self
+            .targets
+            .iter()
+            .map(|target| {
+                format!(
+                    "{}:{}={}",
+                    target.file_role.label(),
+                    target.operation.label(),
+                    target.observed_count.saturating_sub(1),
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(",");
+        let evidence = format!(
+            concat!(
+                "version=1\n",
+                "protocol=l2-io-observation-v1\n",
+                "scenario=E2E-TXN-001\n",
+                "publication=prohibited\n",
+                "status=validated\n",
+                "coverage=complete\n",
+                "sweep=pause-process-kill\n",
+                "fault_build=true\n",
+                "storage_scenario={}\n",
+                "allowed={}\n",
+                "target_counts={}\n",
+                "last_fully_explored_ordinals={}\n",
+                "completed_cases={}\n",
+                "observed_empty_states={}\n",
+                "observed_committed_states={}\n",
+                "pause=confirmed\n",
+                "process_termination=confirmed\n",
+                "fixture_cleanup=pass\n",
+                "handle_cleanup=pass\n",
+                "child_cleanup=pass\n",
+                "directory_cleanup=pass\n"
+            ),
+            match self.scenario {
+                Scenario::InviterTransaction => "inviter-transaction",
+                Scenario::JoinerTransaction => "joiner-transaction",
+            },
+            match self.scenario {
+                Scenario::InviterTransaction => "I0|I1",
+                Scenario::JoinerTransaction => "J0|J1",
+            },
+            target_counts,
+            last_explored,
+            self.completed_cases,
+            self.empty_states,
+            self.committed_states,
+        );
+        debug_assert!(evidence.len() <= MAX_EVIDENCE_BYTES);
+        evidence
+    }
+}
+
+const fn l2_io_pause_supported(file_role: L2IoFileRole, operation: L2IoOperation) -> bool {
+    matches!(
+        (file_role, operation),
+        (
+            L2IoFileRole::RollbackJournal,
+            L2IoOperation::Write | L2IoOperation::Sync | L2IoOperation::Delete,
+        ) | (
+            L2IoFileRole::MainDatabase,
+            L2IoOperation::Write | L2IoOperation::Sync,
+        )
+    )
+}
+
+fn l2_io_supported_codes(operation: L2IoOperation) -> &'static [i32] {
+    match operation {
+        L2IoOperation::Read => &[rusqlite::ffi::SQLITE_IOERR_READ],
+        L2IoOperation::Write => &[
+            rusqlite::ffi::SQLITE_FULL,
+            rusqlite::ffi::SQLITE_IOERR_WRITE,
+        ],
+        L2IoOperation::Truncate => &[rusqlite::ffi::SQLITE_IOERR_TRUNCATE],
+        L2IoOperation::Sync => &[rusqlite::ffi::SQLITE_IOERR_FSYNC],
+        L2IoOperation::Delete => &[rusqlite::ffi::SQLITE_IOERR_DELETE],
+        L2IoOperation::Lock => &[rusqlite::ffi::SQLITE_IOERR_LOCK],
+        L2IoOperation::Unlock => &[rusqlite::ffi::SQLITE_IOERR_UNLOCK],
+        L2IoOperation::CheckReservedLock => &[rusqlite::ffi::SQLITE_IOERR_CHECKRESERVEDLOCK],
+    }
+}
+
 /// Runs one bounded controller probe through the checked hidden binary.
 pub fn run_l2_process_probe(
     executable: &Path,
@@ -431,6 +1440,296 @@ pub fn run_l2_process_case(
         return Err(stage("L2 evidence"));
     }
     Ok(report)
+}
+
+/// Runs one SQLite-visible fault against a fresh closed baseline and verifier.
+pub fn run_l2_io_fault_case(
+    executable: &Path,
+    scenario: Scenario,
+    driver: &mut impl L2IoFaultDriver,
+) -> Result<L2IoFaultReport, SessionCtlError> {
+    if !executable.is_absolute() || !executable.is_file() {
+        return Err(stage("L2 executable"));
+    }
+    let config = l2_io_case_config(scenario)?;
+    let mut root = ProcessRoot::new()?;
+    let result = run_l2_io_fault_controller(executable, root.path(), config, driver);
+    let cleanup = root.cleanup();
+    let (observed, driver_observation, fixture_cleanup, handle_cleanup, child_cleanup) = result?;
+    cleanup?;
+    let L2IoDriverObservation::Fault(fault) = driver_observation else {
+        return Err(stage("L2 I/O fault evidence"));
+    };
+    let report = L2IoFaultReport {
+        scenario,
+        observed,
+        fault,
+        fixture_cleanup,
+        handle_cleanup,
+        child_cleanup,
+        directory_cleanup: true,
+    };
+    if report.encode_v1().len() > MAX_EVIDENCE_BYTES {
+        return Err(stage("L2 I/O evidence"));
+    }
+    Ok(report)
+}
+
+/// Discovers one clean transaction-only named-VFS trace on a fresh baseline.
+pub fn run_l2_io_baseline(
+    executable: &Path,
+    scenario: Scenario,
+    driver: &mut impl L2IoFaultDriver,
+) -> Result<L2IoBaselineReport, SessionCtlError> {
+    if !executable.is_absolute() || !executable.is_file() {
+        return Err(stage("L2 executable"));
+    }
+    let config = l2_io_case_config(scenario)?;
+    let mut root = ProcessRoot::new()?;
+    let result = run_l2_io_fault_controller(executable, root.path(), config, driver);
+    let cleanup = root.cleanup();
+    let (observed, driver_observation, fixture_cleanup, handle_cleanup, child_cleanup) = result?;
+    cleanup?;
+    let L2IoDriverObservation::Baseline(baseline) = driver_observation else {
+        return Err(stage("L2 I/O baseline evidence"));
+    };
+    let report = L2IoBaselineReport::new(
+        scenario,
+        observed,
+        baseline,
+        fixture_cleanup,
+        handle_cleanup,
+        child_cleanup,
+        true,
+    )?;
+    if report.encode_v1().len() > MAX_EVIDENCE_BYTES {
+        return Err(stage("L2 I/O evidence"));
+    }
+    Ok(report)
+}
+
+/// Parent-owned fresh baseline and key for one killable pause child.
+pub struct L2IoPauseKillCase {
+    root: ProcessRoot,
+    key: Zeroizing<[u8; KEY_BYTES]>,
+    scenario: Scenario,
+    expected_pause: L2IoPauseSweepCase,
+}
+
+impl L2IoPauseKillCase {
+    /// Absolute marked root passed only to the direct checked test child.
+    pub fn root(&self) -> &Path {
+        self.root.path()
+    }
+
+    /// Verifies the killed child's database in a fresh process, then removes the case root.
+    pub fn finish(
+        mut self,
+        executable: &Path,
+        pause: L2IoPauseObservation,
+    ) -> Result<L2IoPauseKillReport, SessionCtlError> {
+        if !executable.is_absolute() || !executable.is_file() {
+            return Err(stage("L2 executable"));
+        }
+        if pause.file_role != self.expected_pause.file_role
+            || pause.operation != self.expected_pause.operation
+            || pause.target_ordinal != self.expected_pause.target_ordinal
+        {
+            return Err(stage("L2 I/O pause binding"));
+        }
+        if self.root.path().join(WRITER_KEY_NAME).exists()
+            || self.root.path().join(WRITER_CASE_FIXTURE_NAME).exists()
+        {
+            return Err(stage("L2 I/O pause child load"));
+        }
+        let result = verify_l2_io_root(executable, self.root.path(), &self.key, self.scenario);
+        let cleanup = self.root.cleanup();
+        let (observed, fixture_cleanup, handle_cleanup, child_cleanup) = result?;
+        cleanup?;
+        let report = L2IoPauseKillReport {
+            scenario: self.scenario,
+            observed,
+            pause,
+            fixture_cleanup,
+            handle_cleanup,
+            child_cleanup,
+            directory_cleanup: true,
+        };
+        if report.encode_v1().len() > MAX_EVIDENCE_BYTES {
+            return Err(stage("L2 I/O pause evidence"));
+        }
+        Ok(report)
+    }
+}
+
+/// Prepares a fresh closed baseline and parent-retained verifier key for one pause child.
+pub fn prepare_l2_io_pause_kill_case(
+    scenario: Scenario,
+    file_role: L2IoFileRole,
+    operation: L2IoOperation,
+    target_ordinal: u16,
+) -> Result<L2IoPauseKillCase, SessionCtlError> {
+    if !l2_io_pause_supported(file_role, operation) || usize::from(target_ordinal) >= 4_096 {
+        return Err(stage("L2 I/O pause target"));
+    }
+    let config = l2_io_case_config(scenario)?;
+    let root = ProcessRoot::new()?;
+    let key = Zeroizing::new(random_nonzero::<KEY_BYTES>()?);
+    write_owned_file(&root.path().join(CASE_CONFIG_NAME), &config.encode(), false)?;
+    let fixture = prepare_baseline(root.path(), &key, scenario)?;
+    let fixture_bytes = fixture.encode();
+    write_owned_file(
+        &root.path().join(WRITER_CASE_FIXTURE_NAME),
+        fixture_bytes.as_ref(),
+        true,
+    )?;
+    write_owned_file(
+        &root.path().join(VERIFIER_CASE_FIXTURE_NAME),
+        fixture_bytes.as_ref(),
+        true,
+    )?;
+    write_owned_file(&root.path().join(WRITER_KEY_NAME), key.as_slice(), true)?;
+    Ok(L2IoPauseKillCase {
+        root,
+        key,
+        scenario,
+        expected_pause: L2IoPauseSweepCase {
+            file_role,
+            operation,
+            target_ordinal,
+        },
+    })
+}
+
+/// Runs the checked child transaction and must remain blocked until the process is killed.
+pub fn run_l2_io_pause_writer(
+    root: &Path,
+    driver: &mut impl L2IoPauseDriver,
+) -> Result<(), SessionCtlError> {
+    validate_root(root)?;
+    let config = read_case_config(root)?;
+    if config.probe != L2HarnessProbe::IoFault {
+        return Err(stage("L2 I/O pause config"));
+    }
+    let fixture = read_fixture(root, WRITER_CASE_FIXTURE_NAME)?;
+    let key = read_key(root, WRITER_KEY_NAME)?;
+    if !driver.prepare_before_open() {
+        return Err(stage("L2 I/O pause preparation"));
+    }
+    let observer = FaultObserver::new(
+        config.target.case_id(),
+        config.target.scenario(),
+        std::sync::Arc::new(AutoContinueBarrier),
+    );
+    let storage = fault_testing::open_with_fault_vfs(
+        &root.join(DATABASE_NAME),
+        VaultKey::new(*key).map_err(|_| stage("L2 I/O pause writer"))?,
+        observer.clone(),
+    )
+    .map_err(|_| stage("L2 I/O pause writer open"))?;
+    if !driver.arm_after_open() {
+        return Err(stage("L2 I/O pause arm"));
+    }
+    let _ =
+        run_real_storage_transaction(&storage, observer, config.target.scenario(), &fixture, root);
+    Err(stage("L2 I/O pause escaped"))
+}
+
+fn l2_io_case_config(scenario: Scenario) -> Result<CaseConfig, SessionCtlError> {
+    let checkpoint = match scenario {
+        Scenario::InviterTransaction => Checkpoint::InviterBeforeShadowFinalize,
+        Scenario::JoinerTransaction => Checkpoint::JoinerAfterCommitReturn,
+    };
+    let case_id = CaseId::new(random_nonzero()?).map_err(|_| stage("L2 I/O case"))?;
+    let target =
+        ControlFrame::new_checkpoint(case_id, checkpoint, 0).map_err(|_| stage("L2 I/O case"))?;
+    Ok(CaseConfig {
+        target,
+        probe: L2HarnessProbe::IoFault,
+    })
+}
+
+fn run_l2_io_fault_controller(
+    executable: &Path,
+    root: &Path,
+    config: CaseConfig,
+    driver: &mut impl L2IoFaultDriver,
+) -> Result<(OracleState, L2IoDriverObservation, bool, bool, bool), SessionCtlError> {
+    let key = Zeroizing::new(random_nonzero::<KEY_BYTES>()?);
+    write_owned_file(&root.join(CASE_CONFIG_NAME), &config.encode(), false)?;
+    let fixture = prepare_baseline(root, &key, config.target.scenario())?;
+    write_owned_file(
+        &root.join(VERIFIER_CASE_FIXTURE_NAME),
+        fixture.encode().as_ref(),
+        true,
+    )?;
+    if !driver.prepare_before_open() {
+        return Err(stage("L2 I/O driver preparation"));
+    }
+    let observer = FaultObserver::new(
+        config.target.case_id(),
+        config.target.scenario(),
+        std::sync::Arc::new(AutoContinueBarrier),
+    );
+    let storage = fault_testing::open_with_fault_vfs(
+        &root.join(DATABASE_NAME),
+        VaultKey::new(*key).map_err(|_| stage("L2 I/O writer"))?,
+        observer.clone(),
+    )
+    .map_err(|_| stage("L2 I/O writer open"))?;
+    if !driver.arm_after_open() {
+        return Err(stage("L2 I/O driver arm"));
+    }
+    let transaction_succeeded =
+        run_real_storage_transaction(&storage, observer, config.target.scenario(), &fixture, root)
+            .is_ok();
+    let fault = driver
+        .disable_and_observe(transaction_succeeded)
+        .ok_or_else(|| stage("L2 I/O driver evidence"))?;
+    drop(storage);
+
+    let (observed, fixture_cleanup, handle_cleanup, child_cleanup) =
+        verify_l2_io_root(executable, root, &key, config.target.scenario())?;
+    Ok((
+        observed,
+        fault,
+        fixture_cleanup,
+        handle_cleanup,
+        child_cleanup,
+    ))
+}
+
+fn verify_l2_io_root(
+    executable: &Path,
+    root: &Path,
+    key: &Zeroizing<[u8; KEY_BYTES]>,
+    scenario: Scenario,
+) -> Result<(OracleState, bool, bool, bool), SessionCtlError> {
+    write_owned_file(&root.join(VERIFIER_KEY_NAME), key.as_slice(), true)?;
+    let mut verifier = ManagedChild::spawn(executable, "verifier", root, false)?;
+    let status = match verifier.wait(CHILD_WAIT) {
+        Ok(status) => status,
+        Err(error) => {
+            verifier.terminate_and_reap()?;
+            return Err(error);
+        }
+    };
+    if !status.success() {
+        return Err(stage("L2 I/O verifier"));
+    }
+    let stdout = verifier.stdout.collect(CHILD_WAIT)?;
+    let stderr = verifier.stderr.collect(CHILD_WAIT)?;
+    if !stderr.is_empty() || root.join(VERIFIER_KEY_NAME).exists() {
+        return Err(stage("L2 I/O verifier output"));
+    }
+    let evidence = parse_io_verifier_evidence(&stdout, scenario)?;
+    let fixture_cleanup = !root.join(VERIFIER_CASE_FIXTURE_NAME).exists()
+        && !root.join(WELCOME_FIXTURE_NAME).exists();
+    if !fixture_cleanup {
+        return Err(stage("L2 I/O fixture cleanup"));
+    }
+    let handle_cleanup = prove_database_handle_cleanup(root)?;
+    Ok((evidence.observed, fixture_cleanup, handle_cleanup, true))
 }
 
 /// Runs one hidden role selected only by the checked parent controller.
@@ -564,6 +1863,7 @@ fn run_controller(
         }
         L2HarnessProbe::MissingAcknowledgement => unreachable!("handled before target advance"),
         L2HarnessProbe::Stall => return Err(stage("L2 checkpoint timeout")),
+        L2HarnessProbe::IoFault => return Err(stage("L2 process probe")),
     }
     writer.stdout.require_empty(CHILD_WAIT)?;
     writer.stderr.require_empty(CHILD_WAIT)?;
@@ -693,6 +1993,39 @@ fn parse_verifier_evidence(
     if observed != expected {
         return Err(stage("L2 verifier output"));
     }
+    Ok(VerifierEvidence {
+        observed,
+        integrity: true,
+        schema: true,
+        semantic_oracle: true,
+        exact_retry: true,
+    })
+}
+
+fn parse_io_verifier_evidence(
+    bytes: &[u8],
+    scenario: Scenario,
+) -> Result<VerifierEvidence, SessionCtlError> {
+    let text = std::str::from_utf8(bytes).map_err(|_| stage("L2 I/O verifier output"))?;
+    let lines: Vec<_> = text.lines().collect();
+    if lines.len() != 8
+        || lines[0] != "role=verifier"
+        || lines[1] != "result=pass"
+        || lines[3] != "integrity=pass"
+        || lines[4] != "schema=pass"
+        || lines[5] != "semantic_oracle=pass"
+        || lines[6] != "exclusive_lock=pass"
+        || lines[7] != "exact_retry=pass"
+    {
+        return Err(stage("L2 I/O verifier output"));
+    }
+    let observed = match (scenario, lines[2]) {
+        (Scenario::InviterTransaction, "oracle=I0") => OracleState::InviterOld,
+        (Scenario::InviterTransaction, "oracle=I1") => OracleState::InviterNew,
+        (Scenario::JoinerTransaction, "oracle=J0") => OracleState::JoinerOld,
+        (Scenario::JoinerTransaction, "oracle=J1") => OracleState::JoinerNew,
+        _ => return Err(stage("L2 I/O verifier output")),
+    };
     Ok(VerifierEvidence {
         observed,
         integrity: true,
@@ -989,12 +2322,13 @@ fn run_writer(root: &Path) -> Result<(), SessionCtlError> {
         | L2HarnessProbe::InviterRetryMutation
         | L2HarnessProbe::JoinerRetryMutation
         | L2HarnessProbe::MissingAcknowledgement => run_real_storage_transaction(
-            storage,
+            &storage,
             observer,
             config.target.scenario(),
             &fixture,
             root,
         ),
+        L2HarnessProbe::IoFault => Err(stage("L2 writer mode")),
         L2HarnessProbe::SecretDiagnostic => {
             eprintln!("seeded-secret-diagnostic");
             observer
@@ -1035,7 +2369,7 @@ fn run_writer(root: &Path) -> Result<(), SessionCtlError> {
 }
 
 fn run_real_storage_transaction(
-    storage: SqlCipherStorage,
+    storage: &SqlCipherStorage,
     observer: FaultObserver,
     scenario: Scenario,
     fixture: &CaseFixture,
@@ -1154,7 +2488,11 @@ fn run_verifier(root: &Path) -> Result<(), SessionCtlError> {
     let config = read_case_config(root)?;
     let fixture = read_fixture(root, VERIFIER_CASE_FIXTURE_NAME)?;
     let key = read_key(root, VERIFIER_KEY_NAME)?;
-    let expected = config.case()?.expected();
+    let expected = if config.probe == L2HarnessProbe::IoFault {
+        classify_io_oracle_state(root, &key, config.target.scenario(), &fixture)?
+    } else {
+        config.case()?.expected()
+    };
     let outcome = verify_complete_state(root, &key, expected, &fixture, config.probe)?;
     if config.probe == L2HarnessProbe::LingeringHandle {
         let _connection = open_keyed_connection(&root.join(DATABASE_NAME), &key)?;
@@ -1172,6 +2510,30 @@ fn run_verifier(root: &Path) -> Result<(), SessionCtlError> {
         ),
     }
     Ok(())
+}
+
+fn classify_io_oracle_state(
+    root: &Path,
+    key: &Zeroizing<[u8; KEY_BYTES]>,
+    scenario: Scenario,
+    fixture: &CaseFixture,
+) -> Result<OracleState, SessionCtlError> {
+    let connection = open_keyed_connection(&root.join(DATABASE_NAME), key)?;
+    let table = match scenario {
+        Scenario::InviterTransaction => "inviter_joins",
+        Scenario::JoinerTransaction => "joiner_commits",
+    };
+    let sql = format!("SELECT count(*) FROM {table} WHERE transaction_id = ?1");
+    let count: i64 = connection
+        .query_row(&sql, params![fixture.transaction_id], |row| row.get(0))
+        .map_err(|_| stage("L2 I/O oracle classification"))?;
+    match (scenario, count) {
+        (Scenario::InviterTransaction, 0) => Ok(OracleState::InviterOld),
+        (Scenario::InviterTransaction, 1) => Ok(OracleState::InviterNew),
+        (Scenario::JoinerTransaction, 0) => Ok(OracleState::JoinerOld),
+        (Scenario::JoinerTransaction, 1) => Ok(OracleState::JoinerNew),
+        _ => Err(stage("L2 I/O oracle classification")),
+    }
 }
 
 enum VerificationOutcome {
@@ -2001,6 +3363,21 @@ fn open_keyed_connection(
     Ok(connection)
 }
 
+struct AutoContinueBarrier;
+
+impl BarrierTransport for AutoContinueBarrier {
+    fn exchange(
+        &self,
+        encoded: [u8; CONTROL_FRAME_BYTES],
+    ) -> Result<[u8; CONTROL_FRAME_BYTES], BarrierFailure> {
+        let checkpoint = ControlFrame::decode(&encoded).map_err(|_| BarrierFailure::Rejected)?;
+        if checkpoint.kind() != FrameKind::Checkpoint || checkpoint.role() != Role::Writer {
+            return Err(BarrierFailure::Rejected);
+        }
+        Ok(checkpoint.acknowledgement().encode())
+    }
+}
+
 #[derive(Default)]
 struct StdioBarrier(std::sync::Mutex<()>);
 
@@ -2683,5 +4060,60 @@ mod tests {
         );
         drop(connection);
         root.cleanup().expect("cleanup");
+    }
+
+    #[test]
+    fn clean_baseline_and_pause_aggregate_reject_old_state() {
+        let target = L2IoSweepTarget::new(L2IoFileRole::RollbackJournal, L2IoOperation::Write, 1)
+            .expect("baseline target");
+        let observation =
+            L2IoBaselineObservation::new(vec![target], 0, 1).expect("baseline observation");
+        assert!(
+            L2IoBaselineReport::new(
+                Scenario::InviterTransaction,
+                OracleState::InviterOld,
+                observation,
+                true,
+                true,
+                true,
+                true,
+            )
+            .is_err()
+        );
+
+        let old_baseline = L2IoBaselineReport {
+            scenario: Scenario::InviterTransaction,
+            observed: OracleState::InviterOld,
+            baseline: L2IoBaselineObservation::new(vec![target], 0, 1)
+                .expect("old baseline observation"),
+            fixture_cleanup: true,
+            handle_cleanup: true,
+            child_cleanup: true,
+            directory_cleanup: true,
+        };
+        let old_pause_case = L2IoPauseKillReport {
+            scenario: Scenario::InviterTransaction,
+            observed: OracleState::InviterOld,
+            pause: L2IoPauseObservation::new(
+                L2IoFileRole::RollbackJournal,
+                L2IoOperation::Write,
+                0,
+                0,
+                1,
+            )
+            .expect("pause observation"),
+            fixture_cleanup: true,
+            handle_cleanup: true,
+            child_cleanup: true,
+            directory_cleanup: true,
+        };
+        assert!(
+            L2IoPauseSweepReport::new(
+                Scenario::InviterTransaction,
+                &old_baseline,
+                &[old_pause_case],
+            )
+            .is_err()
+        );
     }
 }

@@ -463,9 +463,12 @@ recovery, and bounded outbox leases over in-memory records. The SQLCipher
 laboratory now supplies the corresponding real MLS transaction and durable
 coordinator owner port, and a retained integration test wires it to capability
 admission through restart delivery and real joiner processing. Remaining
-requirements include human approval UX, durable approval/replay reload, abrupt
-process-kill recovery, rollback protection, vault-backed confidentiality, and
-broader disk/power-fault evidence.
+requirements include human approval UX, durable approval/replay reload,
+complete application-checkpoint process-kill recovery, rollback protection,
+vault-backed confidentiality, and broader disk/power-fault evidence. The
+separate checked L2 laboratory now covers only baseline-derived SQLite-visible
+FULL/extended-IOERR failures and observed engine commit-window process kills;
+its internal observations still await public-manifest and portable-CI gates.
 
 Attacker story: Mallory captures a protected request and resubmits it after the
 invitation expires and is reissued with the same invitation and request IDs.
@@ -541,11 +544,16 @@ reload plus bounded child cleanup. It does not add abrupt kill,
 disk/power-fault, rollback-resistance, or network evidence.
 The separate inviter-transaction model
 covers only the application-level all-or-nothing and recovery semantics over
-bounded memory records. Current evidence does not cover process-killed client
-identity/group recovery, cross-implementation fixtures, cross-device acknowledgement
-semantics, old-secret deletion, or fuzzing. The separate SQLCipher laboratory
-does cover the real inviter-local MLS/join/outbox transaction and joiner-local
-joined-state plus KeyPackage-deletion atomicity.
+bounded memory records. The checked SQLCipher L2 laboratory additionally
+injects every baseline-derived supported FULL/extended-IOERR result and kills a
+direct writer at every observed journal/main commit-window pause before a fresh
+verifier accepts only I0/I1 or J0/J1 with exact retry. That is narrow
+engine-window evidence, not complete application-checkpoint recovery; its
+records are non-public until provenance, canary scanning, and portable CI are
+retained. Current evidence still does not cover general process-killed client
+recovery, cross-implementation fixtures, cross-device acknowledgement
+semantics, old-secret deletion, power loss, filesystem faults, rollback
+resistance, or fuzzing.
 
 Attacker story: a malicious delivery service withholds one Commit and later
 replays it after a subsequent epoch. The client must reject it without rolling
@@ -748,8 +756,9 @@ independent-process exit/reload path. The test-only raw key handoff is a
 mode-`0600` file where Unix supports it and is deleted on load; it is not a
 vault or product credential path. This does not establish a deployable
 independent-process client, platform key protector, rollback resistance,
-production packaging, behavior on broader hardware/OS versions, abrupt-kill or
-power-loss safety, or secure deletion.
+production packaging, behavior on broader hardware/OS versions, general
+abrupt-kill or power-loss safety beyond the checked L2 engine-window
+laboratory, or secure deletion.
 
 ADR 0019 and `key-protector-passphrase` add only a bounded portable conformance
 construction, now connected to the deterministic ADR 0020 lifecycle boundary.

@@ -284,8 +284,14 @@ that owner store, and delivers the exact Welcome once. `sessionctl` now uses the
 same transaction, reloads Alice's exact MLS identity/group, and reconstructs a
 coordinator owner from SQLCipher. The ADR 0021 independent-process runner uses
 the same path after graceful Alice process exit, with Bob and the untrusted
-forwarder in separate processes. This adds no network transport, abrupt-kill,
-power-loss, rollback-resistance, or platform-key-custody evidence.
+forwarder in separate processes. This adds no network transport or abrupt-kill
+result to the product path. A separate checked L2 storage laboratory now covers
+baseline-derived SQLite-visible FULL/extended-IOERR failures and direct writer
+kills at observed engine commit-window pauses before fresh reopen. That narrow
+storage evidence does not establish delivery recovery, complete
+application-checkpoint recovery, power-loss safety, rollback resistance,
+platform key custody, or production transport behavior, and its observations
+remain non-public pending the L2-8 evidence/portable-CI gate.
 
 `RetryAdvice::Never` ends attempts under the current budget. It does not assert
 that a deposit did not commit; the coordinator may reconcile an ambiguous
