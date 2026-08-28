@@ -168,15 +168,23 @@ byte-identical delivery recovery, and close/reopen on the required Linux,
 macOS, and Windows CI runners. Schema version 3 adds an insert-only, versioned
 client identity, and version 4 adds the exact group binding and proves exact member/group
 reload plus cross-group rejection after close/reopen. Graceful
-independent-process reload now exists; abrupt kill, platform-vault, disk/power
-fault, production packaging, and rollback-anchor gates remain.
+independent-process reload now exists; complete application-checkpoint abrupt
+kill, platform-vault, disk/power fault, production packaging, and
+rollback-anchor gates remain.
 The checked L2 storage fault protocol and reusable `sessionctl` process
 controller/verifier are now retained. A publish-disabled named SQLite VFS also
 delegates ordinary behavior to the captured process default, remains non-default
 after registration, records bounded path-free operation evidence, and returns
 actual `SQLITE_FULL`/extended `SQLITE_IOERR_*` codes only to explicitly named
-connections. The exhaustive inviter/joiner crash and I/O sweeps remain open, so
-this adds no power-loss, filesystem, or production-durability claim.
+connections. The checked `sessionctl` L2 I/O suite now derives its matrix from
+clean named-VFS traces, injects one-shot and persistent FULL/extended-IOERR
+results at every observed supported inviter/joiner ordinal, and kills a
+separately supervised child at every observed journal/main commit-window pause
+before fresh-process verification. Incomplete return-code or pause matrices
+cannot emit complete coverage. The separate inviter/joiner
+application-checkpoint crash suites and the required three-OS L2 CI result
+remain open, so this adds no power-loss, filesystem, rollback-resistance, or
+production-durability claim.
 
 ADR 0019 and `key-protector-passphrase` now retain the bounded portable
 key-wrapper conformance experiment: exact Argon2id 0.5.3 and AWS-LC 1.16.3

@@ -88,6 +88,10 @@ The checked-in runtime consists of:
   the real inviter and joiner MLS storage calls, one group-bound client identity,
   atomic inviter reservation/MLS/Welcome-outbox persistence, and restartable
   outbox leasing on the required Linux, macOS, and Windows CI runners;
+- `storage-sqlcipher-fault-vfs`: a publish-disabled, non-default named SQLite
+  delegator used only by checked L2 builds to retain bounded path-free operation
+  evidence, inject actual FULL/extended-IOERR codes, and block at selected
+  rollback-journal/main-database commit-window operations;
 - `sessionctl`: a headless two-client composition covering protected capability
   join, simulated approval, an atomic SQLCipher inviter commit, ambiguous-result
   recovery, real close/reopen with exact Alice identity/group reload, resumed
@@ -95,12 +99,15 @@ The checked-in runtime consists of:
   post-removal rejection; ADR 0021 additionally runs Alice, Bob, and an
   untrusted forwarder as independent processes over bounded local IPC, exits
   Alice after commit, reloads her exact state in a fresh process, and emits a
-  redacted manifest; and
+  redacted manifest. Its checked L2 support also derives and exhausts the
+  named-VFS return-code matrix and kills a separate child at each observed
+  supported commit-window pause before fresh-process verification; and
 - a disposable Node.js sealed-post-office simulator used only to test boundary
   semantics such as schema rejection, right-specific authorization ordering,
   rotation, and capacity limits.
 
-There is no human approval UX, abrupt-kill/power-loss recovery, independently
+There is no human approval UX, complete all-checkpoint abrupt-kill or power-loss
+recovery, independently
 restartable durable product, network or production transport, production
 client vault, desktop shell, or hosted realm. The
 HPKE adapter proves PSK possession only for its exact typed context; the
@@ -190,6 +197,7 @@ flowchart LR
 | A sealed-session lifecycle and locked-mode capability matrix reject stale completion and gate privileged model operations | Implemented and tested in memory | ADRs 0016/0020 and `session-storage`; exact vault-instance/session/generation result binding, pre-provider cancellation checks, one-shot credentials, and bounded work are retained without a durable or production-scheduler claim |
 | Sealed mode accepts only bounded canonical opaque receipt, and local import requires the exact open and insertion generations | Implemented and tested in memory | `session-storage` malformed, expiry, quota, all-state append, and vault/inbox ABA tests; local removal is not remote acknowledgement |
 | Inviter MLS/join/Welcome state and joiner MLS/KeyPackage deletion are each one owner-local encrypted file transaction | Implemented and tested on three CI OS families | ADR 0017 and `storage-sqlcipher` use the real MLS storage path with rollback, ambiguous-result, exact-retry, wrong-key, and close/reopen evidence; hosted runners do not establish production packaging or broader platform support |
+| SQLite-visible FULL/extended-IOERR failures and named commit-window process kills reopen to one exact complete inviter/joiner state | Implemented and tested in the checked L2 laboratory; portable CI gate pending | `sessionctl` derives every target ordinal from a fresh named-VFS baseline, rejects incomplete return-code/pause coverage, disables faults or confirms child termination before a fresh verifier, and accepts only I0/I1 or J0/J1 with exact retry. Separate application-checkpoint sweeps, power loss, filesystem behavior, rollback resistance, and production durability remain unimplemented or unclaimed |
 | Key protector claims are factually capability-gated | Implemented and tested as a contract | `session-storage` rejects a protector weaker than `TestOnly`, `DeviceBound`, or `FreshUserPresence`; no native adapter exists |
 | The portable wrapped-key protector can drive the deterministic lifecycle without retaining a passphrase | Implemented and tested as non-production conformance | `key-protector-passphrase` owns only the wrapped record, consumes one exact-session credential, reports `ApplicationWrapped`/`MayBackup`, and remains disconnected from SQLCipher |
 | Local-app foundations require one common macOS, Windows, and Linux baseline | Accepted contract; CI gate implemented | ADR 0018 and the required Rust matrix; no desktop shell or portable production key protector exists yet |

@@ -1,7 +1,7 @@
 # L2 process and storage fault testing plan
 
-Status: implementation-ready contract after independent-review remediation;
-no L2 runtime or durability claim
+Status: L2-0, L2-1, L2-4, and L2-5 retained; L2-2, L2-3, and the
+three-OS Checkpoint C result remain open; no production durability claim
 
 Date: 2026-08-26
 
@@ -42,9 +42,9 @@ The implementation must exercise the current adapter rather than reproduce its
 behavior in a model:
 
 - `storage-sqlcipher` uses SQLCipher with rollback-journal `DELETE`,
-  `synchronous=FULL`, and one keyed connection behind a mutex. Its current
-  `open_internal` always calls `Connection::open_with_flags`, so the retained
-  adapter has no named-VFS selection seam yet.
+  `synchronous=FULL`, and one keyed connection behind a mutex. Ordinary opens
+  still use `Connection::open_with_flags`; only the checked L2 entry point can
+  select the closed non-default fault-VFS name.
 - The inviter transaction starts with one already committed `Reserved`
   reservation. One `BEGIN IMMEDIATE` transaction writes MLS group/epoch state,
   inserts the `inviter_joins` row, and marks the reservation `Consumed` before
@@ -584,6 +584,13 @@ open entry point with the L2-4 delegator.
 --all-features --locked --offline -- --test-threads=1` on all three CI families.
 
 **Dependencies:** L2-0, L2-1, and L2-4. **Estimated scope:** M (2-4 files).
+
+**Retained implementation:** `apps/sessionctl/tests/l2_io_faults.rs` discovers
+the exact clean inviter/joiner operation counts, sweeps every supported ordinal
+in one-shot and persistent modes, and separately pauses/kills a direct child at
+every observed journal write/sync/delete and main-file write/sync ordinal. Each
+case uses a fresh closed baseline and the L2-1 fresh verifier. Closed aggregate
+manifests reject missing or duplicate cases before reporting complete coverage.
 
 ### Task L2-6: Add durable Welcome owner crash cases
 

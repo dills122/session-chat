@@ -622,6 +622,60 @@ pub trait L2IoFaultDriver {
     -> Option<L2IoDriverObservation>;
 }
 
+/// Test-only bridge that arms one process-blocking named-VFS pause.
+pub trait L2IoPauseDriver {
+    /// Registers or resets the driver before the named connection opens.
+    fn prepare_before_open(&mut self) -> bool;
+    /// Clears open-time observations and arms the transaction-only pause.
+    fn arm_after_open(&mut self) -> bool;
+}
+
+/// Bounded, path-free proof that a child reached one commit-window pause.
+pub struct L2IoPauseObservation {
+    file_role: L2IoFileRole,
+    operation: L2IoOperation,
+    target_ordinal: u16,
+    last_observed_ordinal: u16,
+    total_operations: usize,
+}
+
+impl L2IoPauseObservation {
+    /// Constructs one supported pause observation below the operation bound.
+    pub fn new(
+        file_role: L2IoFileRole,
+        operation: L2IoOperation,
+        target_ordinal: u16,
+        last_observed_ordinal: u16,
+        total_operations: usize,
+    ) -> Result<Self, SessionCtlError> {
+        let supported = matches!(
+            (file_role, operation),
+            (
+                L2IoFileRole::RollbackJournal,
+                L2IoOperation::Write | L2IoOperation::Sync | L2IoOperation::Delete,
+            ) | (
+                L2IoFileRole::MainDatabase,
+                L2IoOperation::Write | L2IoOperation::Sync,
+            )
+        );
+        if !supported
+            || total_operations == 0
+            || total_operations > 4_096
+            || usize::from(last_observed_ordinal) + 1 != total_operations
+            || usize::from(target_ordinal) >= total_operations
+        {
+            return Err(stage("L2 I/O pause observation"));
+        }
+        Ok(Self {
+            file_role,
+            operation,
+            target_ordinal,
+            last_observed_ordinal,
+            total_operations,
+        })
+    }
+}
+
 /// Secret-free evidence from one clean named-VFS baseline.
 pub struct L2IoBaselineReport {
     scenario: Scenario,
@@ -663,6 +717,7 @@ impl L2IoBaselineReport {
                 "scenario=E2E-TXN-001\n",
                 "result=pass\n",
                 "coverage=partial\n",
+                "sweep=baseline\n",
                 "baseline=pass\n",
                 "fault_build=true\n",
                 "storage_scenario={}\n",
@@ -721,6 +776,7 @@ impl L2IoFaultReport {
                 "scenario=E2E-TXN-001\n",
                 "result=pass\n",
                 "coverage=partial\n",
+                "sweep=return-code\n",
                 "fault_build=true\n",
                 "storage_scenario={}\n",
                 "allowed={}\n",
@@ -769,6 +825,76 @@ impl L2IoFaultReport {
             } else {
                 "rejected"
             },
+            pass_fail(self.fixture_cleanup),
+            pass_fail(self.handle_cleanup),
+            pass_fail(self.child_cleanup),
+            pass_fail(self.directory_cleanup),
+        );
+        debug_assert!(evidence.len() <= MAX_EVIDENCE_BYTES);
+        evidence
+    }
+}
+
+/// Secret-free result from one confirmed commit-window pause/process kill.
+pub struct L2IoPauseKillReport {
+    scenario: Scenario,
+    observed: OracleState,
+    pause: L2IoPauseObservation,
+    fixture_cleanup: bool,
+    handle_cleanup: bool,
+    child_cleanup: bool,
+    directory_cleanup: bool,
+}
+
+impl L2IoPauseKillReport {
+    /// Encodes one bounded partial-coverage pause/process-kill record.
+    #[must_use]
+    pub fn encode_v1(&self) -> String {
+        let evidence = format!(
+            concat!(
+                "version=1\n",
+                "protocol=l2-io-evidence-v1\n",
+                "scenario=E2E-TXN-001\n",
+                "result=pass\n",
+                "coverage=partial\n",
+                "sweep=pause-process-kill\n",
+                "fault_build=true\n",
+                "storage_scenario={}\n",
+                "allowed={}\n",
+                "observed={}\n",
+                "file_role={}\n",
+                "operation={}\n",
+                "mode=pause-process-kill\n",
+                "target_ordinal={}\n",
+                "last_observed_ordinal={}\n",
+                "total_observed_operations={}\n",
+                "pause=confirmed\n",
+                "process_termination=confirmed\n",
+                "integrity=pass\n",
+                "schema=pass\n",
+                "semantic_oracle=pass\n",
+                "exact_retry=pass\n",
+                "fixture_cleanup={}\n",
+                "handle_cleanup={}\n",
+                "fresh_verifier=pass\n",
+                "redaction=pass\n",
+                "child_cleanup={}\n",
+                "directory_cleanup={}\n"
+            ),
+            match self.scenario {
+                Scenario::InviterTransaction => "inviter-transaction",
+                Scenario::JoinerTransaction => "joiner-transaction",
+            },
+            match self.scenario {
+                Scenario::InviterTransaction => "I0|I1",
+                Scenario::JoinerTransaction => "J0|J1",
+            },
+            oracle_label(self.observed),
+            self.pause.file_role.label(),
+            self.pause.operation.label(),
+            self.pause.target_ordinal,
+            self.pause.last_observed_ordinal,
+            self.pause.total_operations,
             pass_fail(self.fixture_cleanup),
             pass_fail(self.handle_cleanup),
             pass_fail(self.child_cleanup),
@@ -973,6 +1099,7 @@ impl L2IoSweepReport {
                 "scenario=E2E-TXN-001\n",
                 "result=pass\n",
                 "coverage=complete\n",
+                "sweep=return-code\n",
                 "fault_build=true\n",
                 "storage_scenario={}\n",
                 "allowed={}\n",
@@ -1017,6 +1144,203 @@ impl L2IoSweepReport {
         debug_assert!(evidence.len() <= MAX_EVIDENCE_BYTES);
         evidence
     }
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+struct L2IoPauseSweepCase {
+    file_role: L2IoFileRole,
+    operation: L2IoOperation,
+    target_ordinal: u16,
+}
+
+impl L2IoPauseKillReport {
+    const fn sweep_case(&self) -> L2IoPauseSweepCase {
+        L2IoPauseSweepCase {
+            file_role: self.pause.file_role,
+            operation: self.pause.operation,
+            target_ordinal: self.pause.target_ordinal,
+        }
+    }
+}
+
+/// Secret-free evidence that every baseline-derived commit-window pause was killed once.
+pub struct L2IoPauseSweepReport {
+    scenario: Scenario,
+    targets: Vec<L2IoSweepTarget>,
+    completed_cases: usize,
+    empty_states: usize,
+    committed_states: usize,
+}
+
+impl L2IoPauseSweepReport {
+    /// Validates exact pause/process-kill coverage for all supported baseline ordinals.
+    pub fn new(
+        scenario: Scenario,
+        baseline: &L2IoBaselineReport,
+        cases: &[L2IoPauseKillReport],
+    ) -> Result<Self, SessionCtlError> {
+        if baseline.scenario != scenario
+            || !baseline.fixture_cleanup
+            || !baseline.handle_cleanup
+            || !baseline.child_cleanup
+            || !baseline.directory_cleanup
+        {
+            return Err(stage("L2 I/O pause sweep baseline"));
+        }
+        let targets = baseline
+            .baseline
+            .targets
+            .iter()
+            .copied()
+            .filter(|target| l2_io_pause_supported(target.file_role, target.operation))
+            .collect::<Vec<_>>();
+        let expected = targets
+            .iter()
+            .flat_map(|target| {
+                (0..target.observed_count).map(|target_ordinal| L2IoPauseSweepCase {
+                    file_role: target.file_role,
+                    operation: target.operation,
+                    target_ordinal,
+                })
+            })
+            .collect::<Vec<_>>();
+        if expected.is_empty() || expected.len() > 4_096 || cases.len() != expected.len() {
+            return Err(stage("L2 I/O pause sweep coverage"));
+        }
+
+        let mut actual = Vec::with_capacity(cases.len());
+        let mut empty_states = 0_usize;
+        let mut committed_states = 0_usize;
+        for case in cases {
+            if case.scenario != scenario
+                || !case.fixture_cleanup
+                || !case.handle_cleanup
+                || !case.child_cleanup
+                || !case.directory_cleanup
+            {
+                return Err(stage("L2 I/O pause sweep case"));
+            }
+            match (scenario, case.observed) {
+                (Scenario::InviterTransaction, OracleState::InviterOld)
+                | (Scenario::JoinerTransaction, OracleState::JoinerOld) => {
+                    empty_states = empty_states.saturating_add(1);
+                }
+                (Scenario::InviterTransaction, OracleState::InviterNew)
+                | (Scenario::JoinerTransaction, OracleState::JoinerNew) => {
+                    committed_states = committed_states.saturating_add(1);
+                }
+                _ => return Err(stage("L2 I/O pause sweep oracle")),
+            }
+            actual.push(case.sweep_case());
+        }
+        for expected_case in &expected {
+            if actual
+                .iter()
+                .filter(|actual_case| *actual_case == expected_case)
+                .count()
+                != 1
+            {
+                return Err(stage("L2 I/O pause sweep coverage"));
+            }
+        }
+
+        Ok(Self {
+            scenario,
+            targets,
+            completed_cases: cases.len(),
+            empty_states,
+            committed_states,
+        })
+    }
+
+    /// Encodes the bounded complete-coverage pause/process-kill manifest.
+    #[must_use]
+    pub fn encode_v1(&self) -> String {
+        let target_counts = self
+            .targets
+            .iter()
+            .map(|target| {
+                format!(
+                    "{}:{}={}",
+                    target.file_role.label(),
+                    target.operation.label(),
+                    target.observed_count,
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(",");
+        let last_explored = self
+            .targets
+            .iter()
+            .map(|target| {
+                format!(
+                    "{}:{}={}",
+                    target.file_role.label(),
+                    target.operation.label(),
+                    target.observed_count.saturating_sub(1),
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(",");
+        let evidence = format!(
+            concat!(
+                "version=1\n",
+                "protocol=l2-io-evidence-v1\n",
+                "scenario=E2E-TXN-001\n",
+                "result=pass\n",
+                "coverage=complete\n",
+                "sweep=pause-process-kill\n",
+                "fault_build=true\n",
+                "storage_scenario={}\n",
+                "allowed={}\n",
+                "target_counts={}\n",
+                "last_fully_explored_ordinals={}\n",
+                "completed_cases={}\n",
+                "observed_empty_states={}\n",
+                "observed_committed_states={}\n",
+                "pause=confirmed\n",
+                "process_termination=confirmed\n",
+                "integrity=pass\n",
+                "schema=pass\n",
+                "semantic_oracle=pass\n",
+                "exact_retry=pass\n",
+                "fixture_cleanup=pass\n",
+                "handle_cleanup=pass\n",
+                "fresh_verifier=pass\n",
+                "redaction=pass\n",
+                "child_cleanup=pass\n",
+                "directory_cleanup=pass\n"
+            ),
+            match self.scenario {
+                Scenario::InviterTransaction => "inviter-transaction",
+                Scenario::JoinerTransaction => "joiner-transaction",
+            },
+            match self.scenario {
+                Scenario::InviterTransaction => "I0|I1",
+                Scenario::JoinerTransaction => "J0|J1",
+            },
+            target_counts,
+            last_explored,
+            self.completed_cases,
+            self.empty_states,
+            self.committed_states,
+        );
+        debug_assert!(evidence.len() <= MAX_EVIDENCE_BYTES);
+        evidence
+    }
+}
+
+const fn l2_io_pause_supported(file_role: L2IoFileRole, operation: L2IoOperation) -> bool {
+    matches!(
+        (file_role, operation),
+        (
+            L2IoFileRole::RollbackJournal,
+            L2IoOperation::Write | L2IoOperation::Sync | L2IoOperation::Delete,
+        ) | (
+            L2IoFileRole::MainDatabase,
+            L2IoOperation::Write | L2IoOperation::Sync,
+        )
+    )
 }
 
 fn l2_io_supported_codes(operation: L2IoOperation) -> &'static [i32] {
@@ -1167,6 +1491,133 @@ pub fn run_l2_io_baseline(
     Ok(report)
 }
 
+/// Parent-owned fresh baseline and key for one killable pause child.
+pub struct L2IoPauseKillCase {
+    root: ProcessRoot,
+    key: Zeroizing<[u8; KEY_BYTES]>,
+    scenario: Scenario,
+    expected_pause: L2IoPauseSweepCase,
+}
+
+impl L2IoPauseKillCase {
+    /// Absolute marked root passed only to the direct checked test child.
+    pub fn root(&self) -> &Path {
+        self.root.path()
+    }
+
+    /// Verifies the killed child's database in a fresh process, then removes the case root.
+    pub fn finish(
+        mut self,
+        executable: &Path,
+        pause: L2IoPauseObservation,
+    ) -> Result<L2IoPauseKillReport, SessionCtlError> {
+        if !executable.is_absolute() || !executable.is_file() {
+            return Err(stage("L2 executable"));
+        }
+        if pause.file_role != self.expected_pause.file_role
+            || pause.operation != self.expected_pause.operation
+            || pause.target_ordinal != self.expected_pause.target_ordinal
+        {
+            return Err(stage("L2 I/O pause binding"));
+        }
+        if self.root.path().join(WRITER_KEY_NAME).exists()
+            || self.root.path().join(WRITER_CASE_FIXTURE_NAME).exists()
+        {
+            return Err(stage("L2 I/O pause child load"));
+        }
+        let result = verify_l2_io_root(executable, self.root.path(), &self.key, self.scenario);
+        let cleanup = self.root.cleanup();
+        let (observed, fixture_cleanup, handle_cleanup, child_cleanup) = result?;
+        cleanup?;
+        let report = L2IoPauseKillReport {
+            scenario: self.scenario,
+            observed,
+            pause,
+            fixture_cleanup,
+            handle_cleanup,
+            child_cleanup,
+            directory_cleanup: true,
+        };
+        if report.encode_v1().len() > MAX_EVIDENCE_BYTES {
+            return Err(stage("L2 I/O pause evidence"));
+        }
+        Ok(report)
+    }
+}
+
+/// Prepares a fresh closed baseline and parent-retained verifier key for one pause child.
+pub fn prepare_l2_io_pause_kill_case(
+    scenario: Scenario,
+    file_role: L2IoFileRole,
+    operation: L2IoOperation,
+    target_ordinal: u16,
+) -> Result<L2IoPauseKillCase, SessionCtlError> {
+    if !l2_io_pause_supported(file_role, operation) || usize::from(target_ordinal) >= 4_096 {
+        return Err(stage("L2 I/O pause target"));
+    }
+    let config = l2_io_case_config(scenario)?;
+    let root = ProcessRoot::new()?;
+    let key = Zeroizing::new(random_nonzero::<KEY_BYTES>()?);
+    write_owned_file(&root.path().join(CASE_CONFIG_NAME), &config.encode(), false)?;
+    let fixture = prepare_baseline(root.path(), &key, scenario)?;
+    let fixture_bytes = fixture.encode();
+    write_owned_file(
+        &root.path().join(WRITER_CASE_FIXTURE_NAME),
+        fixture_bytes.as_ref(),
+        true,
+    )?;
+    write_owned_file(
+        &root.path().join(VERIFIER_CASE_FIXTURE_NAME),
+        fixture_bytes.as_ref(),
+        true,
+    )?;
+    write_owned_file(&root.path().join(WRITER_KEY_NAME), key.as_slice(), true)?;
+    Ok(L2IoPauseKillCase {
+        root,
+        key,
+        scenario,
+        expected_pause: L2IoPauseSweepCase {
+            file_role,
+            operation,
+            target_ordinal,
+        },
+    })
+}
+
+/// Runs the checked child transaction and must remain blocked until the process is killed.
+pub fn run_l2_io_pause_writer(
+    root: &Path,
+    driver: &mut impl L2IoPauseDriver,
+) -> Result<(), SessionCtlError> {
+    validate_root(root)?;
+    let config = read_case_config(root)?;
+    if config.probe != L2HarnessProbe::IoFault {
+        return Err(stage("L2 I/O pause config"));
+    }
+    let fixture = read_fixture(root, WRITER_CASE_FIXTURE_NAME)?;
+    let key = read_key(root, WRITER_KEY_NAME)?;
+    if !driver.prepare_before_open() {
+        return Err(stage("L2 I/O pause preparation"));
+    }
+    let observer = FaultObserver::new(
+        config.target.case_id(),
+        config.target.scenario(),
+        std::sync::Arc::new(AutoContinueBarrier),
+    );
+    let storage = fault_testing::open_with_fault_vfs(
+        &root.join(DATABASE_NAME),
+        VaultKey::new(*key).map_err(|_| stage("L2 I/O pause writer"))?,
+        observer.clone(),
+    )
+    .map_err(|_| stage("L2 I/O pause writer open"))?;
+    if !driver.arm_after_open() {
+        return Err(stage("L2 I/O pause arm"));
+    }
+    let _ =
+        run_real_storage_transaction(&storage, observer, config.target.scenario(), &fixture, root);
+    Err(stage("L2 I/O pause escaped"))
+}
+
 fn l2_io_case_config(scenario: Scenario) -> Result<CaseConfig, SessionCtlError> {
     let checkpoint = match scenario {
         Scenario::InviterTransaction => Checkpoint::InviterBeforeShadowFinalize,
@@ -1220,6 +1671,23 @@ fn run_l2_io_fault_controller(
         .ok_or_else(|| stage("L2 I/O driver evidence"))?;
     drop(storage);
 
+    let (observed, fixture_cleanup, handle_cleanup, child_cleanup) =
+        verify_l2_io_root(executable, root, &key, config.target.scenario())?;
+    Ok((
+        observed,
+        fault,
+        fixture_cleanup,
+        handle_cleanup,
+        child_cleanup,
+    ))
+}
+
+fn verify_l2_io_root(
+    executable: &Path,
+    root: &Path,
+    key: &Zeroizing<[u8; KEY_BYTES]>,
+    scenario: Scenario,
+) -> Result<(OracleState, bool, bool, bool), SessionCtlError> {
     write_owned_file(&root.join(VERIFIER_KEY_NAME), key.as_slice(), true)?;
     let mut verifier = ManagedChild::spawn(executable, "verifier", root, false)?;
     let status = match verifier.wait(CHILD_WAIT) {
@@ -1237,20 +1705,14 @@ fn run_l2_io_fault_controller(
     if !stderr.is_empty() || root.join(VERIFIER_KEY_NAME).exists() {
         return Err(stage("L2 I/O verifier output"));
     }
-    let evidence = parse_io_verifier_evidence(&stdout, config.target.scenario())?;
+    let evidence = parse_io_verifier_evidence(&stdout, scenario)?;
     let fixture_cleanup = !root.join(VERIFIER_CASE_FIXTURE_NAME).exists()
         && !root.join(WELCOME_FIXTURE_NAME).exists();
     if !fixture_cleanup {
         return Err(stage("L2 I/O fixture cleanup"));
     }
     let handle_cleanup = prove_database_handle_cleanup(root)?;
-    Ok((
-        evidence.observed,
-        fault,
-        fixture_cleanup,
-        handle_cleanup,
-        true,
-    ))
+    Ok((evidence.observed, fixture_cleanup, handle_cleanup, true))
 }
 
 /// Runs one hidden role selected only by the checked parent controller.
