@@ -445,9 +445,10 @@ mod checked {
         let evidence = report.encode_v1();
 
         for required in [
-            "protocol=l2-io-evidence-v1\n",
+            "protocol=l2-io-observation-v1\n",
             "scenario=E2E-TXN-001\n",
-            "result=pass\n",
+            "publication=prohibited\n",
+            "status=validated\n",
             "coverage=partial\n",
             "storage_scenario=inviter-transaction\n",
             "file_role=rollback-journal\n",
@@ -456,16 +457,23 @@ mod checked {
             "target_ordinal=0\n",
             "sqlite_primary_code=13\n",
             "sqlite_extended_code=13\n",
-            "integrity=pass\n",
-            "schema=pass\n",
-            "semantic_oracle=pass\n",
-            "exact_retry=pass\n",
-            "fresh_verifier=pass\n",
-            "redaction=pass\n",
             "child_cleanup=pass\n",
             "directory_cleanup=pass\n",
         ] {
             assert!(evidence.contains(required), "missing {required:?}");
+        }
+        for unsupported in [
+            "\nresult=",
+            "\nintegrity=",
+            "\nschema=",
+            "\nsemantic_oracle=",
+            "\nexact_retry=",
+            "\nredaction=",
+        ] {
+            assert!(
+                !evidence.contains(unsupported),
+                "unsupported public-evidence assertion {unsupported:?}",
+            );
         }
         for forbidden in [".sqlite", "/tmp/", "\\temp\\", "database_key", "vault"] {
             assert!(
@@ -485,8 +493,8 @@ mod checked {
             assert!(!targets.is_empty());
             assert!(targets.iter().all(|target| target.observed_count() > 0));
             assert!(report.encode_v1().contains("coverage=partial\n"));
-            assert!(report.encode_v1().contains("baseline=pass\n"));
-            assert!(report.encode_v1().contains("fresh_verifier=pass\n"));
+            assert!(report.encode_v1().contains("baseline=validated\n"));
+            assert!(report.encode_v1().contains("publication=prohibited\n"));
         }
     }
 
@@ -511,9 +519,8 @@ mod checked {
                                 )
                             });
                             let evidence = report.encode_v1();
-                            assert!(evidence.contains("result=pass\n"));
+                            assert!(evidence.contains("status=validated\n"));
                             assert!(evidence.contains("coverage=partial\n"));
-                            assert!(evidence.contains("fresh_verifier=pass\n"));
                             assert!(evidence.contains("directory_cleanup=pass\n"));
                             cases.push(report);
                         }
@@ -524,7 +531,8 @@ mod checked {
                 .expect("complete baseline-derived sweep");
             let complete_evidence = complete.encode_v1();
             assert!(complete_evidence.contains("coverage=complete\n"));
-            assert!(complete_evidence.contains("result=pass\n"));
+            assert!(complete_evidence.contains("status=validated\n"));
+            assert!(complete_evidence.contains("publication=prohibited\n"));
             assert!(complete_evidence.contains("modes=one-shot|persistent\n"));
 
             cases.pop().expect("at least one completed case");
@@ -605,7 +613,6 @@ mod checked {
                     let evidence = report.encode_v1();
                     assert!(evidence.contains("process_termination=confirmed\n"));
                     assert!(evidence.contains("pause=confirmed\n"));
-                    assert!(evidence.contains("fresh_verifier=pass\n"));
                     assert!(evidence.contains("directory_cleanup=pass\n"));
                     cases.push(report);
                 }
@@ -615,6 +622,7 @@ mod checked {
             let evidence = complete.encode_v1();
             assert!(evidence.contains("sweep=pause-process-kill\n"));
             assert!(evidence.contains("coverage=complete\n"));
+            assert!(evidence.contains("publication=prohibited\n"));
 
             cases.pop().expect("at least one pause case");
             assert!(L2IoPauseSweepReport::new(scenario, &baseline, &cases).is_err());

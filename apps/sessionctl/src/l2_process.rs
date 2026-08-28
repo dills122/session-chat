@@ -676,7 +676,11 @@ impl L2IoPauseObservation {
     }
 }
 
-/// Secret-free evidence from one clean named-VFS baseline.
+/// Bounded internal observation from one clean named-VFS baseline.
+///
+/// This is not the public `l2-evidence-v1` manifest and must not be published
+/// or treated as a security-gate result before L2-8 adds provenance, artifact
+/// binding, and synthetic-canary scans.
 pub struct L2IoBaselineReport {
     scenario: Scenario,
     observed: OracleState,
@@ -726,7 +730,7 @@ impl L2IoBaselineReport {
         self.baseline.targets.iter().copied()
     }
 
-    /// Encodes a bounded baseline-discovery record.
+    /// Encodes a bounded, non-public baseline-discovery observation.
     #[must_use]
     pub fn encode_v1(&self) -> String {
         let target_counts = self
@@ -746,26 +750,21 @@ impl L2IoBaselineReport {
         let evidence = format!(
             concat!(
                 "version=1\n",
-                "protocol=l2-io-evidence-v1\n",
+                "protocol=l2-io-observation-v1\n",
                 "scenario=E2E-TXN-001\n",
-                "result=pass\n",
+                "publication=prohibited\n",
+                "status=validated\n",
                 "coverage=partial\n",
                 "sweep=baseline\n",
-                "baseline=pass\n",
+                "baseline=validated\n",
                 "fault_build=true\n",
                 "storage_scenario={}\n",
                 "observed={}\n",
                 "target_counts={}\n",
                 "last_observed_ordinal={}\n",
                 "total_observed_operations={}\n",
-                "integrity=pass\n",
-                "schema=pass\n",
-                "semantic_oracle=pass\n",
-                "exact_retry=pass\n",
                 "fixture_cleanup={}\n",
                 "handle_cleanup={}\n",
-                "fresh_verifier=pass\n",
-                "redaction=pass\n",
                 "child_cleanup={}\n",
                 "directory_cleanup={}\n"
             ),
@@ -787,7 +786,7 @@ impl L2IoBaselineReport {
     }
 }
 
-/// Secret-free evidence from one SQLite-visible L2 I/O failure case.
+/// Bounded internal observation from one SQLite-visible L2 I/O failure case.
 pub struct L2IoFaultReport {
     scenario: Scenario,
     observed: OracleState,
@@ -799,15 +798,16 @@ pub struct L2IoFaultReport {
 }
 
 impl L2IoFaultReport {
-    /// Encodes one bounded partial-coverage I/O case record.
+    /// Encodes one bounded, non-public partial-coverage I/O observation.
     #[must_use]
     pub fn encode_v1(&self) -> String {
         let evidence = format!(
             concat!(
                 "version=1\n",
-                "protocol=l2-io-evidence-v1\n",
+                "protocol=l2-io-observation-v1\n",
                 "scenario=E2E-TXN-001\n",
-                "result=pass\n",
+                "publication=prohibited\n",
+                "status=validated\n",
                 "coverage=partial\n",
                 "sweep=return-code\n",
                 "fault_build=true\n",
@@ -824,14 +824,8 @@ impl L2IoFaultReport {
                 "sqlite_primary_code={}\n",
                 "sqlite_extended_code={}\n",
                 "transaction_result={}\n",
-                "integrity=pass\n",
-                "schema=pass\n",
-                "semantic_oracle=pass\n",
-                "exact_retry=pass\n",
                 "fixture_cleanup={}\n",
                 "handle_cleanup={}\n",
-                "fresh_verifier=pass\n",
-                "redaction=pass\n",
                 "child_cleanup={}\n",
                 "directory_cleanup={}\n"
             ),
@@ -868,7 +862,7 @@ impl L2IoFaultReport {
     }
 }
 
-/// Secret-free result from one confirmed commit-window pause/process kill.
+/// Bounded internal observation from one commit-window pause/process kill.
 pub struct L2IoPauseKillReport {
     scenario: Scenario,
     observed: OracleState,
@@ -880,15 +874,16 @@ pub struct L2IoPauseKillReport {
 }
 
 impl L2IoPauseKillReport {
-    /// Encodes one bounded partial-coverage pause/process-kill record.
+    /// Encodes one bounded, non-public pause/process-kill observation.
     #[must_use]
     pub fn encode_v1(&self) -> String {
         let evidence = format!(
             concat!(
                 "version=1\n",
-                "protocol=l2-io-evidence-v1\n",
+                "protocol=l2-io-observation-v1\n",
                 "scenario=E2E-TXN-001\n",
-                "result=pass\n",
+                "publication=prohibited\n",
+                "status=validated\n",
                 "coverage=partial\n",
                 "sweep=pause-process-kill\n",
                 "fault_build=true\n",
@@ -903,14 +898,8 @@ impl L2IoPauseKillReport {
                 "total_observed_operations={}\n",
                 "pause=confirmed\n",
                 "process_termination=confirmed\n",
-                "integrity=pass\n",
-                "schema=pass\n",
-                "semantic_oracle=pass\n",
-                "exact_retry=pass\n",
                 "fixture_cleanup={}\n",
                 "handle_cleanup={}\n",
-                "fresh_verifier=pass\n",
-                "redaction=pass\n",
                 "child_cleanup={}\n",
                 "directory_cleanup={}\n"
             ),
@@ -959,7 +948,7 @@ impl L2IoFaultReport {
     }
 }
 
-/// Secret-free evidence that every baseline-derived I/O case completed exactly once.
+/// Internal observation that every baseline-derived I/O case completed once.
 pub struct L2IoSweepReport {
     scenario: Scenario,
     targets: Vec<L2IoSweepTarget>,
@@ -1084,7 +1073,7 @@ impl L2IoSweepReport {
         })
     }
 
-    /// Encodes the bounded complete-coverage manifest for one transaction role.
+    /// Encodes the bounded, non-public complete-coverage observation.
     #[must_use]
     pub fn encode_v1(&self) -> String {
         let target_counts = self
@@ -1128,9 +1117,10 @@ impl L2IoSweepReport {
         let evidence = format!(
             concat!(
                 "version=1\n",
-                "protocol=l2-io-evidence-v1\n",
+                "protocol=l2-io-observation-v1\n",
                 "scenario=E2E-TXN-001\n",
-                "result=pass\n",
+                "publication=prohibited\n",
+                "status=validated\n",
                 "coverage=complete\n",
                 "sweep=return-code\n",
                 "fault_build=true\n",
@@ -1146,14 +1136,8 @@ impl L2IoSweepReport {
                 "completed_cases={}\n",
                 "observed_empty_states={}\n",
                 "observed_committed_states={}\n",
-                "integrity=pass\n",
-                "schema=pass\n",
-                "semantic_oracle=pass\n",
-                "exact_retry=pass\n",
                 "fixture_cleanup=pass\n",
                 "handle_cleanup=pass\n",
-                "fresh_verifier=pass\n",
-                "redaction=pass\n",
                 "child_cleanup=pass\n",
                 "directory_cleanup=pass\n"
             ),
@@ -1196,7 +1180,7 @@ impl L2IoPauseKillReport {
     }
 }
 
-/// Secret-free evidence that every baseline-derived commit-window pause was killed once.
+/// Internal observation that every baseline-derived commit-window pause was killed once.
 pub struct L2IoPauseSweepReport {
     scenario: Scenario,
     targets: Vec<L2IoSweepTarget>,
@@ -1291,7 +1275,7 @@ impl L2IoPauseSweepReport {
         })
     }
 
-    /// Encodes the bounded complete-coverage pause/process-kill manifest.
+    /// Encodes the bounded, non-public pause/process-kill coverage observation.
     #[must_use]
     pub fn encode_v1(&self) -> String {
         let target_counts = self
@@ -1323,9 +1307,10 @@ impl L2IoPauseSweepReport {
         let evidence = format!(
             concat!(
                 "version=1\n",
-                "protocol=l2-io-evidence-v1\n",
+                "protocol=l2-io-observation-v1\n",
                 "scenario=E2E-TXN-001\n",
-                "result=pass\n",
+                "publication=prohibited\n",
+                "status=validated\n",
                 "coverage=complete\n",
                 "sweep=pause-process-kill\n",
                 "fault_build=true\n",
@@ -1338,14 +1323,8 @@ impl L2IoPauseSweepReport {
                 "observed_committed_states={}\n",
                 "pause=confirmed\n",
                 "process_termination=confirmed\n",
-                "integrity=pass\n",
-                "schema=pass\n",
-                "semantic_oracle=pass\n",
-                "exact_retry=pass\n",
                 "fixture_cleanup=pass\n",
                 "handle_cleanup=pass\n",
-                "fresh_verifier=pass\n",
-                "redaction=pass\n",
                 "child_cleanup=pass\n",
                 "directory_cleanup=pass\n"
             ),

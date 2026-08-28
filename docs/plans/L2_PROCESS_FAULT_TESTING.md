@@ -381,6 +381,17 @@ manifests, and retained artifacts. Hashes of authority-bearing protocol values
 remain omitted rather than becoming reusable confirmation or correlation
 artifacts.
 
+Task L2-5 does not yet emit that public manifest. Its checked tests retain only
+`l2-io-observation-v1`: a bounded, closed-field, non-public diagnostic record
+used in memory by the exhaustive-matrix constructors. It must say
+`publication=prohibited`, cannot say `result=pass`, and cannot assert public
+integrity, schema, retry, provenance, artifact-binding, or redaction results.
+Task L2-8 owns promotion to `l2-evidence-v1` after it binds the observations to
+the exact build/platform/artifact metadata above and scans the required
+synthetic canaries, including captured pause-child stdout and stderr. Until
+that promotion passes, L2-5 observations are test diagnostics rather than
+portable or publishable security evidence.
+
 ## Supported-platform requirements
 
 The required portable process-kill and named-VFS suites must pass the existing
@@ -578,7 +589,7 @@ open entry point with the L2-4 delegator.
 - Persistent failure fails closed while armed; clean reopen never accepts a
   mixed state or silently removes a hot journal.
 - Actual primary/extended codes and last explored ordinals appear in bounded,
-  redacted evidence.
+  closed-field internal observations that explicitly prohibit publication.
 
 **Verification:** `cargo test -p sessionctl --test l2_io_faults
 --all-features --locked --offline -- --test-threads=1` on all three CI families.
@@ -590,7 +601,9 @@ the exact clean inviter/joiner operation counts, sweeps every supported ordinal
 in one-shot and persistent modes, and separately pauses/kills a direct child at
 every observed journal write/sync/delete and main-file write/sync ordinal. Each
 case uses a fresh closed baseline and the L2-1 fresh verifier. Closed aggregate
-manifests reject missing or duplicate cases before reporting complete coverage.
+observations reject missing or duplicate cases before reporting complete matrix
+coverage. These `l2-io-observation-v1` records are not the public
+`l2-evidence-v1` manifest and carry no public redaction or provenance verdict.
 
 ### Task L2-6: Add durable Welcome owner crash cases
 
@@ -654,6 +667,10 @@ these paths concurrently.
 - Inviter and joiner process-kill plus named-VFS suites pass on all three
   required families with complete coverage manifests.
 - An intentionally defective adapter is caught in the PR smoke subset.
+- L2-5 internal observations are promoted to the public `l2-evidence-v1`
+  manifest only after exact build/platform/artifact provenance is attached and
+  synthetic canaries are absent from bounded stdout, stderr, diagnostics,
+  control frames, the manifest, and retained encrypted artifacts.
 - Canonical documents claim only application-process-kill and SQLite-visible
   fault evidence and retain every prohibition below.
 

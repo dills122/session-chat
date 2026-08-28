@@ -181,7 +181,9 @@ clean named-VFS traces, injects one-shot and persistent FULL/extended-IOERR
 results at every observed supported inviter/joiner ordinal, and kills a
 separately supervised child at every observed journal/main commit-window pause
 before fresh-process verification. Incomplete return-code or pause matrices
-cannot emit complete coverage. The separate inviter/joiner
+cannot emit complete matrix coverage. These are non-public internal
+observations; L2-8 still owns exact build/artifact provenance, synthetic-canary
+scanning, and promotion to the public evidence manifest. The separate inviter/joiner
 application-checkpoint crash suites and the required three-OS L2 CI result
 remain open, so this adds no power-loss, filesystem, rollback-resistance, or
 production-durability claim.
