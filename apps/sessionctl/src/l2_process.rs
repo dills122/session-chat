@@ -688,6 +688,39 @@ pub struct L2IoBaselineReport {
 }
 
 impl L2IoBaselineReport {
+    fn new(
+        scenario: Scenario,
+        observed: OracleState,
+        baseline: L2IoBaselineObservation,
+        fixture_cleanup: bool,
+        handle_cleanup: bool,
+        child_cleanup: bool,
+        directory_cleanup: bool,
+    ) -> Result<Self, SessionCtlError> {
+        let is_clean_new_state = matches!(
+            (scenario, observed),
+            (Scenario::InviterTransaction, OracleState::InviterNew)
+                | (Scenario::JoinerTransaction, OracleState::JoinerNew)
+        );
+        if !is_clean_new_state
+            || !fixture_cleanup
+            || !handle_cleanup
+            || !child_cleanup
+            || !directory_cleanup
+        {
+            return Err(stage("L2 I/O clean baseline"));
+        }
+        Ok(Self {
+            scenario,
+            observed,
+            baseline,
+            fixture_cleanup,
+            handle_cleanup,
+            child_cleanup,
+            directory_cleanup,
+        })
+    }
+
     /// Iterates every supported role/operation count observed in the clean trace.
     pub fn targets(&self) -> impl ExactSizeIterator<Item = L2IoSweepTarget> + '_ {
         self.baseline.targets.iter().copied()
@@ -1184,6 +1217,11 @@ impl L2IoPauseSweepReport {
             || !baseline.handle_cleanup
             || !baseline.child_cleanup
             || !baseline.directory_cleanup
+            || !matches!(
+                (scenario, baseline.observed),
+                (Scenario::InviterTransaction, OracleState::InviterNew)
+                    | (Scenario::JoinerTransaction, OracleState::JoinerNew)
+            )
         {
             return Err(stage("L2 I/O pause sweep baseline"));
         }
@@ -1476,15 +1514,15 @@ pub fn run_l2_io_baseline(
     let L2IoDriverObservation::Baseline(baseline) = driver_observation else {
         return Err(stage("L2 I/O baseline evidence"));
     };
-    let report = L2IoBaselineReport {
+    let report = L2IoBaselineReport::new(
         scenario,
         observed,
         baseline,
         fixture_cleanup,
         handle_cleanup,
         child_cleanup,
-        directory_cleanup: true,
-    };
+        true,
+    )?;
     if report.encode_v1().len() > MAX_EVIDENCE_BYTES {
         return Err(stage("L2 I/O evidence"));
     }
@@ -4043,5 +4081,60 @@ mod tests {
         );
         drop(connection);
         root.cleanup().expect("cleanup");
+    }
+
+    #[test]
+    fn clean_baseline_and_pause_aggregate_reject_old_state() {
+        let target = L2IoSweepTarget::new(L2IoFileRole::RollbackJournal, L2IoOperation::Write, 1)
+            .expect("baseline target");
+        let observation =
+            L2IoBaselineObservation::new(vec![target], 0, 1).expect("baseline observation");
+        assert!(
+            L2IoBaselineReport::new(
+                Scenario::InviterTransaction,
+                OracleState::InviterOld,
+                observation,
+                true,
+                true,
+                true,
+                true,
+            )
+            .is_err()
+        );
+
+        let old_baseline = L2IoBaselineReport {
+            scenario: Scenario::InviterTransaction,
+            observed: OracleState::InviterOld,
+            baseline: L2IoBaselineObservation::new(vec![target], 0, 1)
+                .expect("old baseline observation"),
+            fixture_cleanup: true,
+            handle_cleanup: true,
+            child_cleanup: true,
+            directory_cleanup: true,
+        };
+        let old_pause_case = L2IoPauseKillReport {
+            scenario: Scenario::InviterTransaction,
+            observed: OracleState::InviterOld,
+            pause: L2IoPauseObservation::new(
+                L2IoFileRole::RollbackJournal,
+                L2IoOperation::Write,
+                0,
+                0,
+                1,
+            )
+            .expect("pause observation"),
+            fixture_cleanup: true,
+            handle_cleanup: true,
+            child_cleanup: true,
+            directory_cleanup: true,
+        };
+        assert!(
+            L2IoPauseSweepReport::new(
+                Scenario::InviterTransaction,
+                &old_baseline,
+                &[old_pause_case],
+            )
+            .is_err()
+        );
     }
 }
