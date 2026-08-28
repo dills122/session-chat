@@ -52,7 +52,8 @@ The policy makes these distinctions explicit:
   LLVM region and function ratchets, while the ordinary Rust job separately
   enforces doctests.
 - There is no generated Rust source in the workspace.
-- `apps/sessionctl/src/l2_process.rs` and
+- `apps/sessionctl/src/l2_process.rs`, its
+  `apps/sessionctl/src/l2_process/evidence.rs` child module, and
   `crates/storage-sqlcipher/src/fault_testing.rs` are explicit
   non-instrumented allowances because they exist only under the registered
   checked fault-testing cfg and are absent from the ordinary production
