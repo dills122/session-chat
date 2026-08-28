@@ -291,8 +291,9 @@ kills at observed engine commit-window pauses and every baseline-observed
 inviter/joiner application checkpoint before fresh reopen. That narrow local
 storage evidence does not establish delivery recovery, power-loss safety,
 rollback resistance, platform key custody, or production transport behavior.
-Its raw observations remain non-public; the retained L2-8 gate promotes only
-complete aggregates with exact provenance/artifact binding and canary scans,
+Its raw observations remain non-public; the retained L2-8 gate lets only sealed
+complete aggregates emit canonical per-case bundles with actual compiler,
+GitHub run/workflow, runner-tuple, and artifact binding plus secret/canary scans,
 and portable passage remains conditional on the exact revision's required
 three-OS CI result.
 

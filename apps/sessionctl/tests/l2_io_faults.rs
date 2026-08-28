@@ -576,11 +576,15 @@ mod checked {
                     b"",
                 )
                 .expect("bounded return-code evidence surfaces");
-                let manifest = complete
+                let bundle = complete
                     .promote_v1(&executable(), &runner_image, &channels)
-                    .expect("promote complete return-code evidence")
-                    .encode_v1();
-                println!("L2_PUBLIC_EVIDENCE_BEGIN\n{manifest}L2_PUBLIC_EVIDENCE_END");
+                    .expect("promote complete return-code evidence");
+                for manifest in bundle.manifests() {
+                    println!(
+                        "L2_PUBLIC_EVIDENCE_BEGIN\n{}L2_PUBLIC_EVIDENCE_END",
+                        manifest.encode_v1(),
+                    );
+                }
             }
 
             cases.pop().expect("at least one completed case");
@@ -734,11 +738,15 @@ mod checked {
                     b"",
                 )
                 .expect("bounded pause evidence surfaces");
-                let manifest = complete
+                let bundle = complete
                     .promote_v1(&executable(), &runner_image, &channels)
-                    .expect("promote complete pause evidence")
-                    .encode_v1();
-                println!("L2_PUBLIC_EVIDENCE_BEGIN\n{manifest}L2_PUBLIC_EVIDENCE_END");
+                    .expect("promote complete pause evidence");
+                for manifest in bundle.manifests() {
+                    println!(
+                        "L2_PUBLIC_EVIDENCE_BEGIN\n{}L2_PUBLIC_EVIDENCE_END",
+                        manifest.encode_v1(),
+                    );
+                }
             }
 
             cases.pop().expect("at least one pause case");

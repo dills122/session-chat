@@ -88,11 +88,15 @@ mod checked {
             let channels =
                 L2EvidenceChannels::new(evidence.as_bytes(), b"", b"", evidence.as_bytes(), b"")
                     .expect("bounded joiner evidence surfaces");
-            let manifest = sweep
+            let bundle = sweep
                 .promote_v1(&executable(), &runner_image, &channels)
-                .expect("promote complete joiner evidence")
-                .encode_v1();
-            println!("L2_PUBLIC_EVIDENCE_BEGIN\n{manifest}L2_PUBLIC_EVIDENCE_END");
+                .expect("promote complete joiner evidence");
+            for manifest in bundle.manifests() {
+                println!(
+                    "L2_PUBLIC_EVIDENCE_BEGIN\n{}L2_PUBLIC_EVIDENCE_END",
+                    manifest.encode_v1(),
+                );
+            }
         }
 
         reports.pop().expect("at least one observed checkpoint");

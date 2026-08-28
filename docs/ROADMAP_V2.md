@@ -184,10 +184,11 @@ results at every observed supported inviter/joiner ordinal, and kills a
 separately supervised child at every observed journal/main commit-window pause
 before fresh-process verification. Incomplete return-code or pause matrices
 cannot emit complete matrix coverage. Raw case observations remain non-public.
-The retained L2-8 gate binds complete aggregates to exact clean Git,
-toolchain, runner, engine, test-binary, and encrypted-artifact provenance,
-scans every bounded evidence surface for the synthetic canary catalog, and
-promotes them to `l2-evidence-v1` only in the required CI environment. Portable
+The retained L2-8 gate lets sealed complete aggregates emit canonical per-case
+`l2-evidence-v1` bundles only after binding clean Git, actual compiler, GitHub
+run/workflow, the closed runner tuple, engine, test-binary, and encrypted-artifact
+provenance and scanning every bounded surface for synthetic canaries and actual
+case secrets. Portable
 passage remains per-revision three-OS evidence, so this adds no power-loss,
 filesystem, rollback-resistance, or production-durability claim.
 

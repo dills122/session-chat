@@ -125,11 +125,15 @@ mod checked {
                 b"",
             )
             .expect("bounded inviter evidence surfaces");
-            let manifest = sweep
+            let bundle = sweep
                 .promote_v1(&executable, &runner_image, &channels)
-                .expect("promote complete inviter evidence")
-                .encode_v1();
-            println!("L2_PUBLIC_EVIDENCE_BEGIN\n{manifest}L2_PUBLIC_EVIDENCE_END");
+                .expect("promote complete inviter evidence");
+            for manifest in bundle.manifests() {
+                println!(
+                    "L2_PUBLIC_EVIDENCE_BEGIN\n{}L2_PUBLIC_EVIDENCE_END",
+                    manifest.encode_v1(),
+                );
+            }
         }
 
         reports.pop().expect("nonempty baseline");

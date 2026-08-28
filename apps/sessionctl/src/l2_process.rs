@@ -40,7 +40,7 @@ use self::fault_testing::{
 use super::{SessionCtlError, random_nonzero, resolve_l1_process_git_commit, stage};
 
 mod evidence;
-pub use evidence::{L2EvidenceChannels, L2EvidenceManifest};
+pub use evidence::{L2EvidenceBundle, L2EvidenceChannels, L2EvidenceManifest};
 
 const ROOT_MARKER_NAME: &str = ".sessionctl-l2-root";
 const ROOT_MARKER: &[u8] = b"sessionctl-l2-v1\n";
@@ -309,6 +309,121 @@ struct L2EvidenceBinding {
     redaction: bool,
 }
 
+#[derive(Clone, Eq, PartialEq)]
+enum L2EvidenceCaseTarget {
+    ApplicationCheckpoint {
+        checkpoint: &'static str,
+        ordinal: u16,
+        expected: &'static str,
+        observed: &'static str,
+    },
+    SqliteReturnCode {
+        file_role: &'static str,
+        operation: &'static str,
+        mode: &'static str,
+        ordinal: u16,
+        last_fully_explored_ordinal: u16,
+        expected: &'static str,
+        observed: &'static str,
+        primary_code: i32,
+        extended_code: i32,
+        transaction_result: &'static str,
+    },
+    CommitWindowProcessKill {
+        file_role: &'static str,
+        operation: &'static str,
+        ordinal: u16,
+        last_fully_explored_ordinal: u16,
+        expected: &'static str,
+        observed: &'static str,
+    },
+}
+
+#[derive(Clone, Eq, PartialEq)]
+struct L2EvidenceCase {
+    key: String,
+    target: L2EvidenceCaseTarget,
+    binding: L2EvidenceBinding,
+}
+
+impl L2EvidenceCase {
+    fn application(report: &L2ProcessReport) -> Self {
+        let checkpoint = checkpoint_label(report.case.checkpoint);
+        Self {
+            key: format!(
+                "checkpoint-{}-{}",
+                checkpoint.to_ascii_lowercase().replace('_', "-"),
+                report.case.occurrence,
+            ),
+            target: L2EvidenceCaseTarget::ApplicationCheckpoint {
+                checkpoint,
+                ordinal: u16::from(report.case.occurrence),
+                expected: oracle_label(report.case.expected()),
+                observed: oracle_label(report.observed),
+            },
+            binding: report.evidence_binding.clone(),
+        }
+    }
+
+    fn sqlite_return_code(report: &L2IoFaultReport, last_fully_explored_ordinal: u16) -> Self {
+        let file_role = report.fault.file_role.label();
+        let operation = report.fault.operation.label();
+        let mode = report.fault.mode.label();
+        Self {
+            key: format!(
+                "sqlite-{file_role}-{operation}-{mode}-{:010}-{:04}",
+                report.fault.sqlite_code, report.fault.target_ordinal,
+            ),
+            target: L2EvidenceCaseTarget::SqliteReturnCode {
+                file_role,
+                operation,
+                mode,
+                ordinal: report.fault.target_ordinal,
+                last_fully_explored_ordinal,
+                expected: match report.scenario {
+                    Scenario::InviterTransaction => "I0|I1",
+                    Scenario::JoinerTransaction => "J0|J1",
+                },
+                observed: oracle_label(report.observed),
+                primary_code: report.fault.sqlite_code & 0xff,
+                extended_code: report.fault.sqlite_code,
+                transaction_result: if report.fault.transaction_succeeded {
+                    "success"
+                } else {
+                    "rejected"
+                },
+            },
+            binding: report.evidence_binding.clone(),
+        }
+    }
+
+    fn commit_window_process_kill(
+        report: &L2IoPauseKillReport,
+        last_fully_explored_ordinal: u16,
+    ) -> Self {
+        let file_role = report.pause.file_role.label();
+        let operation = report.pause.operation.label();
+        Self {
+            key: format!(
+                "pause-{file_role}-{operation}-{:04}",
+                report.pause.target_ordinal,
+            ),
+            target: L2EvidenceCaseTarget::CommitWindowProcessKill {
+                file_role,
+                operation,
+                ordinal: report.pause.target_ordinal,
+                last_fully_explored_ordinal,
+                expected: match report.scenario {
+                    Scenario::InviterTransaction => "I0|I1",
+                    Scenario::JoinerTransaction => "J0|J1",
+                },
+                observed: oracle_label(report.observed),
+            },
+            binding: report.evidence_binding.clone(),
+        }
+    }
+}
+
 /// Baseline-observed application checkpoints for one real storage transaction.
 pub struct L2ProcessBaseline {
     scenario: Scenario,
@@ -328,7 +443,7 @@ pub struct L2ProcessSweepReport {
     cases: Vec<L2ProcessCase>,
     old_states: usize,
     new_states: usize,
-    evidence_binding: L2EvidenceBinding,
+    evidence_cases: Vec<L2EvidenceCase>,
 }
 
 impl L2ProcessSweepReport {
@@ -385,14 +500,14 @@ impl L2ProcessSweepReport {
         if old_states == 0 || new_states == 0 {
             return Err(stage("L2 process sweep oracle coverage"));
         }
-        let evidence_binding =
-            aggregate_evidence_bindings(reports.iter().map(|report| &report.evidence_binding))?;
+        let evidence_cases =
+            canonical_evidence_cases(reports.iter().map(L2EvidenceCase::application).collect())?;
         Ok(Self {
             scenario,
             cases: baseline.cases.clone(),
             old_states,
             new_states,
-            evidence_binding,
+            evidence_cases,
         })
     }
 
@@ -843,7 +958,7 @@ pub struct L2IoBaselineReport {
     handle_cleanup: bool,
     child_cleanup: bool,
     directory_cleanup: bool,
-    evidence_binding: L2EvidenceBinding,
+    _evidence_binding: L2EvidenceBinding,
 }
 
 impl L2IoBaselineReport {
@@ -879,7 +994,7 @@ impl L2IoBaselineReport {
             handle_cleanup,
             child_cleanup,
             directory_cleanup,
-            evidence_binding,
+            _evidence_binding: evidence_binding,
         })
     }
 
@@ -1117,7 +1232,7 @@ pub struct L2IoSweepReport {
     completed_cases: usize,
     empty_states: usize,
     committed_states: usize,
-    evidence_binding: L2EvidenceBinding,
+    evidence_cases: Vec<L2EvidenceCase>,
 }
 
 impl L2IoSweepReport {
@@ -1223,9 +1338,26 @@ impl L2IoSweepReport {
             }
         }
 
-        let evidence_binding = aggregate_evidence_bindings(
-            std::iter::once(&baseline.evidence_binding)
-                .chain(cases.iter().map(|case| &case.evidence_binding)),
+        let evidence_cases = canonical_evidence_cases(
+            cases
+                .iter()
+                .map(|case| {
+                    let last_fully_explored_ordinal = baseline
+                        .baseline
+                        .targets
+                        .iter()
+                        .find(|target| {
+                            target.file_role == case.fault.file_role
+                                && target.operation == case.fault.operation
+                        })
+                        .map(|target| target.observed_count.saturating_sub(1))
+                        .ok_or_else(|| stage("L2 I/O evidence case"))?;
+                    Ok(L2EvidenceCase::sqlite_return_code(
+                        case,
+                        last_fully_explored_ordinal,
+                    ))
+                })
+                .collect::<Result<Vec<_>, SessionCtlError>>()?,
         )?;
         Ok(Self {
             scenario,
@@ -1235,7 +1367,7 @@ impl L2IoSweepReport {
             completed_cases: cases.len(),
             empty_states,
             committed_states,
-            evidence_binding,
+            evidence_cases,
         })
     }
 
@@ -1357,7 +1489,7 @@ pub struct L2IoPauseSweepReport {
     completed_cases: usize,
     empty_states: usize,
     committed_states: usize,
-    evidence_binding: L2EvidenceBinding,
+    evidence_cases: Vec<L2EvidenceCase>,
 }
 
 impl L2IoPauseSweepReport {
@@ -1437,9 +1569,24 @@ impl L2IoPauseSweepReport {
             }
         }
 
-        let evidence_binding = aggregate_evidence_bindings(
-            std::iter::once(&baseline.evidence_binding)
-                .chain(cases.iter().map(|case| &case.evidence_binding)),
+        let evidence_cases = canonical_evidence_cases(
+            cases
+                .iter()
+                .map(|case| {
+                    let last_fully_explored_ordinal = targets
+                        .iter()
+                        .find(|target| {
+                            target.file_role == case.pause.file_role
+                                && target.operation == case.pause.operation
+                        })
+                        .map(|target| target.observed_count.saturating_sub(1))
+                        .ok_or_else(|| stage("L2 I/O pause evidence case"))?;
+                    Ok(L2EvidenceCase::commit_window_process_kill(
+                        case,
+                        last_fully_explored_ordinal,
+                    ))
+                })
+                .collect::<Result<Vec<_>, SessionCtlError>>()?,
         )?;
         Ok(Self {
             scenario,
@@ -1447,7 +1594,7 @@ impl L2IoPauseSweepReport {
             completed_cases: cases.len(),
             empty_states,
             committed_states,
-            evidence_binding,
+            evidence_cases,
         })
     }
 
@@ -2100,40 +2247,32 @@ const fn pass_fail(value: bool) -> &'static str {
     if value { "pass" } else { "fail" }
 }
 
-fn aggregate_evidence_bindings<'a>(
-    bindings: impl IntoIterator<Item = &'a L2EvidenceBinding>,
-) -> Result<L2EvidenceBinding, SessionCtlError> {
-    let bindings = bindings.into_iter().collect::<Vec<_>>();
-    let first = bindings
+fn canonical_evidence_cases(
+    mut cases: Vec<L2EvidenceCase>,
+) -> Result<Vec<L2EvidenceCase>, SessionCtlError> {
+    if cases.is_empty() || cases.len() > 4_096 {
+        return Err(stage("L2 evidence case index"));
+    }
+    cases.sort_by(|left, right| left.key.cmp(&right.key));
+    let first = cases
         .first()
-        .copied()
-        .ok_or_else(|| stage("L2 evidence artifact index"))?;
-    if bindings.iter().any(|binding| {
-        binding.sqlcipher_version != first.sqlcipher_version
-            || binding.sqlite_version != first.sqlite_version
-            || !binding.redaction
-    }) {
-        return Err(stage("L2 evidence artifact index"));
+        .ok_or_else(|| stage("L2 evidence case index"))?;
+    if cases.windows(2).any(|pair| pair[0].key == pair[1].key)
+        || cases.iter().any(|case| {
+            case.key.is_empty()
+                || case.key.len() > 256
+                || !case
+                    .key
+                    .bytes()
+                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+                || case.binding.sqlcipher_version != first.binding.sqlcipher_version
+                || case.binding.sqlite_version != first.binding.sqlite_version
+                || !case.binding.redaction
+        })
+    {
+        return Err(stage("L2 evidence case index"));
     }
-    let mut baseline_index = Vec::with_capacity(bindings.len() * 32);
-    let mut post_recovery_index = Vec::with_capacity(bindings.len() * 32);
-    for binding in bindings {
-        baseline_index.extend_from_slice(&binding.baseline_artifact_digest);
-        post_recovery_index.extend_from_slice(&binding.post_recovery_artifact_digest);
-    }
-    Ok(L2EvidenceBinding {
-        sqlcipher_version: first.sqlcipher_version.clone(),
-        sqlite_version: first.sqlite_version.clone(),
-        baseline_artifact_digest: digest(&SHA256, &baseline_index)
-            .as_ref()
-            .try_into()
-            .map_err(|_| stage("L2 evidence artifact index"))?,
-        post_recovery_artifact_digest: digest(&SHA256, &post_recovery_index)
-            .as_ref()
-            .try_into()
-            .map_err(|_| stage("L2 evidence artifact index"))?,
-        redaction: true,
-    })
+    Ok(cases)
 }
 
 struct ControllerEvidence {
@@ -4469,6 +4608,32 @@ mod tests {
         }
     }
 
+    fn test_evidence_case(key: &str, ordinal: u16) -> L2EvidenceCase {
+        L2EvidenceCase {
+            key: key.to_owned(),
+            target: L2EvidenceCaseTarget::ApplicationCheckpoint {
+                checkpoint: "INVITER_BEFORE_BEGIN",
+                ordinal,
+                expected: "I0",
+                observed: "I0",
+            },
+            binding: test_evidence_binding(),
+        }
+    }
+
+    #[test]
+    fn evidence_case_index_is_canonical_across_input_permutations() {
+        let first = test_evidence_case("checkpoint-a-0", 0);
+        let second = test_evidence_case("checkpoint-b-1", 1);
+        let forward = canonical_evidence_cases(vec![first.clone(), second.clone()])
+            .expect("forward case index");
+        let reversed = canonical_evidence_cases(vec![second, first]).expect("reversed case index");
+        assert!(forward == reversed);
+
+        let duplicate = test_evidence_case("checkpoint-a-0", 2);
+        assert!(canonical_evidence_cases(vec![forward[0].clone(), duplicate]).is_err());
+    }
+
     #[test]
     fn canonical_checkpoint_traversal_accepts_the_maximum_depth_legal_trace() {
         let case_id = CaseId::new([0xA5; 16]).expect("case ID");
@@ -4650,7 +4815,7 @@ mod tests {
             handle_cleanup: true,
             child_cleanup: true,
             directory_cleanup: true,
-            evidence_binding: test_evidence_binding(),
+            _evidence_binding: test_evidence_binding(),
         };
         let old_pause_case = L2IoPauseKillReport {
             scenario: Scenario::InviterTransaction,

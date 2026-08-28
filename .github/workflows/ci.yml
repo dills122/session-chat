@@ -100,6 +100,11 @@ jobs:
           cache-workspace-crates: false
           shared-key: l2-evidence
 
+      - name: Verify the actual evidence compiler
+        run: |
+          rustc --version --verbose
+          node -e 'const { execFileSync } = require("node:child_process"); const version = execFileSync("rustc", ["--version"], { encoding: "utf8" }).trim().split(/\s+/)[1]; if (version !== "1.97.1") throw new Error("expected Rust 1.97.1, received " + version);'
+
       - name: Fetch the locked dependency graph
         run: cargo fetch --locked
 
@@ -107,6 +112,7 @@ jobs:
         if: github.event_name == 'pull_request'
         run: |
           cargo test -p sessionctl --test l2_public_evidence --locked --offline
+          cargo test -p sessionctl --lib l2_process::evidence::tests --locked --offline
           cargo test -p storage-sqlcipher-fault-vfs controller::tests::defective_persistent_gap_after_target_is_rejected --locked --offline -- --exact
           cargo test -p sessionctl --test l2_process checked::defective_frames_diagnostics_and_semantics_fail_closed --locked --offline -- --exact --test-threads=1
           cargo test -p sessionctl --test l2_io_faults checked::one_shot_full_reopens_as_one_complete_inviter_state --locked --offline -- --exact --test-threads=1
@@ -116,6 +122,7 @@ jobs:
         if: github.event_name != 'pull_request'
         run: |
           cargo test -p sessionctl --test l2_public_evidence --locked --offline
+          cargo test -p sessionctl --lib l2_process::evidence::tests --locked --offline
           cargo test -p sessionctl --test l2_crash_restart_inviter --locked --offline -- --nocapture --test-threads=1
           cargo test -p sessionctl --test l2_crash_restart_joiner --locked --offline -- --nocapture --test-threads=1
           cargo test -p sessionctl --test l2_io_faults --locked --offline -- --nocapture --test-threads=1

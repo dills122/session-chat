@@ -268,10 +268,11 @@ suite now exercises every baseline-derived supported inviter/joiner I/O ordinal,
 every observed journal/main commit-window pause, and every baseline-observed
 application checkpoint. Each direct writer is killed while blocked before a
 fresh reopen that accepts only exact I0/I1 or J0/J1 state and unchanged exact
-retry. Raw case records remain non-public. The retained L2-8 gate promotes only
-complete aggregates from a clean required CI runner after binding exact
-build/runner/engine/encrypted-artifact provenance and scanning every bounded
-evidence surface for the synthetic canary catalog. A portable passing claim is
+retry. Raw case records remain non-public. The retained L2-8 gate lets only
+sealed complete aggregates emit canonical per-case bundles after binding the
+actual compiler, GitHub run/workflow, closed runner tuple, engine, binary, and
+encrypted-artifact provenance and scanning every bounded evidence surface for
+synthetic canaries and actual case secrets. A portable passing claim is
 per-revision CI evidence; power-loss, filesystem-durability,
 rollback-resistance, and production evidence remain open.
 The `session-storage` crate now retains a deterministic in-memory conformance
