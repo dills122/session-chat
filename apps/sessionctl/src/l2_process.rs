@@ -1767,7 +1767,14 @@ impl L2IoPauseKillCase {
         mut self,
         executable: &Path,
         pause: L2IoPauseObservation,
+        pause_stdout: &[u8],
+        pause_stderr: &[u8],
     ) -> Result<L2IoPauseKillReport, SessionCtlError> {
+        if pause_stdout.len() > MAX_CHILD_OUTPUT_BYTES
+            || pause_stderr.len() > MAX_CHILD_OUTPUT_BYTES
+        {
+            return Err(stage("L2 I/O pause output bound"));
+        }
         if !executable.is_absolute() || !executable.is_file() {
             return Err(stage("L2 executable"));
         }
@@ -1788,6 +1795,7 @@ impl L2IoPauseKillCase {
             &self.key,
             self.scenario,
             self.baseline_artifact,
+            &[pause_stdout, pause_stderr],
         );
         let cleanup = self.root.cleanup();
         let (observed, fixture_cleanup, handle_cleanup, child_cleanup, evidence_binding) = result?;
@@ -1955,6 +1963,7 @@ fn run_l2_io_fault_controller(
             &key,
             config.target.scenario(),
             baseline_artifact,
+            &[],
         )?;
     Ok((
         observed,
@@ -1972,6 +1981,7 @@ fn verify_l2_io_root(
     key: &Zeroizing<[u8; KEY_BYTES]>,
     scenario: Scenario,
     baseline_artifact: L2ArtifactSnapshot,
+    additional_surfaces: &[&[u8]],
 ) -> Result<(OracleState, bool, bool, bool, L2EvidenceBinding), SessionCtlError> {
     write_owned_file(&root.join(VERIFIER_KEY_NAME), key.as_slice(), true)?;
     let mut verifier = ManagedChild::spawn(executable, "verifier", root, false)?;
@@ -1997,12 +2007,11 @@ fn verify_l2_io_root(
         return Err(stage("L2 I/O fixture cleanup"));
     }
     let handle_cleanup = prove_database_handle_cleanup(root)?;
-    let evidence_binding = collect_evidence_binding(
-        root,
-        key,
-        baseline_artifact,
-        &[stdout.as_slice(), stderr.as_slice()],
-    )?;
+    let mut surfaces = Vec::with_capacity(additional_surfaces.len() + 2);
+    surfaces.extend_from_slice(additional_surfaces);
+    surfaces.push(stdout.as_slice());
+    surfaces.push(stderr.as_slice());
+    let evidence_binding = collect_evidence_binding(root, key, baseline_artifact, &surfaces)?;
     Ok((
         evidence.observed,
         fixture_cleanup,
