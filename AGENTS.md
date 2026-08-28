@@ -71,6 +71,8 @@ Current areas:
   protection and not connected to SQLCipher
 - `crates/storage-sqlcipher`: file-backed encrypted durability-laboratory
   adapter for the real inviter and joiner MLS transactions; not production storage
+- `crates/storage-sqlcipher-fault-vfs`: publish-disabled, named SQLite VFS
+  delegator for bounded L2 fault evidence; never selected by ordinary connections
 - `apps/sessionctl`: headless two-client Phase 1 composition plus a bounded
   independent-process conformance runner over local test channels; not a
   networked, production, or platform-vault-backed client

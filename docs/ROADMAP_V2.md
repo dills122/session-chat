@@ -136,13 +136,14 @@ separate gates.
 
 The Rust source-coverage gate now measures production code through integration
 targets without counting inline test helpers. The clean-master baseline was
-90.78% workspace lines; retained behavior and negative-path tests raise the
-measured result to 92.99%, with every security- and correctness-vital component
-at or above 90%. Stable region and function ratchets are also enforced. `sessionctl` now
-uses named, secret-free orchestration fault seams to cover cross-crate failure
-mapping, cleanup, post-commit Welcome failure, dropped delivery, and exact
-Alice identity/group reload. Exact scope, commands, counts, and exclusions are in
-[`CODE_COVERAGE.md`](CODE_COVERAGE.md).
+90.78% workspace lines; retained behavior and negative-path tests keep the
+measured result above the 92.23% ratchet, with every security- and
+correctness-vital component at or above 90%. Stable region and function
+ratchets are also enforced. `sessionctl` now uses named, secret-free
+orchestration fault seams to cover cross-crate failure mapping, cleanup,
+post-commit Welcome failure, dropped delivery, and exact Alice identity/group
+reload. The dated observed snapshot, commands, variability note, and exclusions
+are in [`CODE_COVERAGE.md`](CODE_COVERAGE.md).
 
 The first `session-storage` increments now make the selected sealed-vault
 lifecycle and locked-mode capability matrix executable. The deterministic
@@ -169,6 +170,13 @@ client identity, and version 4 adds the exact group binding and proves exact mem
 reload plus cross-group rejection after close/reopen. Graceful
 independent-process reload now exists; abrupt kill, platform-vault, disk/power
 fault, production packaging, and rollback-anchor gates remain.
+The checked L2 storage fault protocol and reusable `sessionctl` process
+controller/verifier are now retained. A publish-disabled named SQLite VFS also
+delegates ordinary behavior to the captured process default, remains non-default
+after registration, records bounded path-free operation evidence, and returns
+actual `SQLITE_FULL`/extended `SQLITE_IOERR_*` codes only to explicitly named
+connections. The exhaustive inviter/joiner crash and I/O sweeps remain open, so
+this adds no power-loss, filesystem, or production-durability claim.
 
 ADR 0019 and `key-protector-passphrase` now retain the bounded portable
 key-wrapper conformance experiment: exact Argon2id 0.5.3 and AWS-LC 1.16.3
