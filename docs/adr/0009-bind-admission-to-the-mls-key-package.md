@@ -112,6 +112,8 @@ invitation signature, reserves matching local v2 state, and permits only an
 explicitly approved one-shot value to enter MLS preparation. Rejected, expired,
 failed, or abandoned work releases invitation and replay state without changing
 membership; successful in-memory Add consumes the invitation. The approval is a
-simulated API input, not human UI evidence, and atomic invitation/replay/MLS/
-Welcome-outbox persistence remains unimplemented, so the complete durable
-product transaction is not yet satisfied.
+simulated API input, not human UI evidence. The SQLCipher laboratory atomically
+retains the approved inviter MLS transition, invitation/replay/approval shadows,
+and Welcome outbox, but it cannot reload them as one complete durable product
+authorization owner and has no rollback anchor. The complete durable product
+transaction is therefore not yet satisfied.

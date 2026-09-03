@@ -1,9 +1,10 @@
 # Implementation plan: profile-bound transport abstraction
 
-Status: active staged implementation plan; ADR 0015 is accepted, Task 3 is
-partial, Task 9's durable owner-store plus capability-admission/MLS composition
-checkpoints are complete, and the durable client-reload and independent-process
-L1 checkpoints are complete before network work
+Status: active staged implementation plan; ADR 0015 is accepted, the generalized
+dispatch slice is complete, Task 6 conformance remains partial, Task 9's durable
+owner-store plus capability-admission/MLS composition checkpoints are complete,
+and the durable client-reload and independent-process L1 checkpoints are
+complete before network work
 
 Date: 2026-08-20
 
@@ -25,6 +26,9 @@ The cross-system execution cadence, stable scenario IDs, retained evidence
 bundle, and progression from offline two-client tests to process, storage,
 network, packet-capture, and release gates are defined in
 [`REAL_WORLD_E2E_TESTING.md`](REAL_WORLD_E2E_TESTING.md).
+The remaining Phase 1 subset is sequenced by
+[`PHASE1_PROTOCOL_CLOSEOUT.md`](PHASE1_PROTOCOL_CLOSEOUT.md); later real-network
+experiments in this plan do not block the protocol laboratory.
 
 ## Existing baseline on `master`
 
@@ -121,8 +125,11 @@ process while Bob and an untrusted forwarding service remain separate. Its
 bounded filesystem IPC v1 carries only canonical protected-join,
 LocalV1-deposit, and opaque-envelope objects; the bearer invitation and
 disposable raw owner key stay on separate client-only test channels. ADR 0021
-records the boundary. Abrupt kill, power loss, rollback, network transport, and
-platform key custody remain later gates.
+records the boundary. L1 itself provides no abrupt-kill, power-loss, rollback,
+network-transport, or platform-key-custody evidence. The retained L2 suites now
+cover bounded inviter/joiner application-kill recovery; Welcome-delivery kills,
+power loss, rollback resistance, network transport, and platform key custody
+remain open.
 
 ## Active execution slice: generalized dispatch boundary
 
@@ -634,8 +641,9 @@ root. Do not connect SQLCipher or claim durable restart in this slice.
 
 **Description:** First connect the coordinator to the existing
 `session-inviter-transaction` conformance model and local Welcome adapter. Then
-apply the same owner-store port to the future durable transaction required by
-ADRs 0008, 0014, and 0015. Membership commit and exact encrypted Welcome work
+apply the same owner-store port to the retained SQLCipher laboratory
+transaction required by ADRs 0008, 0014, and 0015. Membership commit and exact
+encrypted Welcome work
 remain atomic in that owner-local store, while delivery retry remains
 idempotent and cannot repeat MLS Add or Commit.
 
@@ -649,7 +657,7 @@ idempotent and cannot repeat MLS Add or Commit.
 - [x] Coordinator state can be discarded and reconstructed without losing or
   contradicting authoritative outbox state.
 
-**In-memory checkpoint (2026-08-25):**
+**Retained implementation checkpoints (2026-08-25 through 2026-08-28):**
 
 - [x] The inviter transaction model implements the same sole-owner port used by
   the coordinator; no coordinator ledger is introduced.
@@ -660,8 +668,9 @@ idempotent and cannot repeat MLS Add or Commit.
   envelope/endpoint identity, yields the same mailbox delivery, and does not
   repeat the atomic commit.
 - [x] The SQLCipher adapter proves the owner-port properties across close/reopen
-  and its retained pre/post-commit storage faults. Process-kill and disk/power
-  evidence remain separate L2 gates.
+  and its retained pre/post-commit storage faults. Bounded join-writer
+  application-kill and SQLite-visible fault evidence now exist; Welcome-delivery
+  process-kill and real disk/power evidence remain separate gates.
 - [x] The real capability-admission and MLS path defers in-memory invitation
   consumption while SQL durability is unresolved, recovers an ambiguous commit
   by transaction ID, finalizes once, reopens the owner store, and delivers the
@@ -669,13 +678,14 @@ idempotent and cannot repeat MLS Add or Commit.
 
 **Verification:**
 
-- [ ] Process-crash tests cover every write boundary before and after commit.
+- [x] Process-kill tests cover every baseline-observed inviter/joiner application
+  checkpoint and SQLite commit-window pause; this is not power-loss evidence.
 - [ ] Duplicate, lost, reordered, and delayed Welcome delivery remains safe.
 - [x] The in-memory conformance model passes before a durable adapter is wired.
 - [x] The exact targeted SQLCipher storage command is retained in test evidence.
 
 **Dependencies:** Task 8, the existing inviter-transaction conformance model,
-and the future durable MLS/storage increment governed by ADRs 0008 and 0015
+and the retained SQLCipher MLS/storage increment governed by ADRs 0008 and 0015
 
 **Files likely touched:**
 

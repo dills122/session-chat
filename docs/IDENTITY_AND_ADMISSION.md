@@ -286,7 +286,7 @@ simulated approval decision in memory. The future durable implementation must
 still make approval/result, replay, MLS, invitation consumption, and Welcome
 outbox state one recoverable transaction.
 
-ADR 0015's shared `ApprovalContext` is display-only metadata for that decision.
+ADR 0022's shared `ApprovalContext` is display-only metadata for that decision.
 It does not replace `VerifiedAdmission`, erase evidence provenance, or grant
 membership authority; each concrete provider retains its original exact proof,
 KeyPackage, and reservations through the one-shot membership operation.

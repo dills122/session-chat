@@ -79,16 +79,18 @@ evidence against the real local mailbox. The real capability-admission/MLS path
 now crosses the SQLCipher transaction through an explicit durability-pending
 one-shot value, recovers an ambiguous commit, finalizes invitation state once,
 reopens the owner store, and delivers the exact Welcome to the original joiner.
-Human approval UX, the remaining hostile process-fault coverage, and network
-transport work listed below remain outstanding. One independent-process exact
-replay case now rejects the duplicate before approval, MLS Add, or durable
-membership mutation. The separate SQLCipher laboratory now
+Human approval UX and network transport remain later-phase work. The remaining
+Phase 1 hostile process-fault coverage is sequenced by the closeout plan. One
+independent-process exact replay case now rejects the duplicate before
+approval, MLS Add, or durable membership mutation. The separate SQLCipher
+laboratory now
 implements the same sole-owner coordinator port with version-2 migration,
 close/reopen leases, terminal states, and ambiguous exact-retry evidence; it is
 now exercised by the independent-process L1 path. Schema version 3 adds the exact
 client-identity owner required to reload the same Alice member and stored group;
-version 4 binds it to that one group. Graceful process-exit evidence now exists;
-abrupt kill, power loss, and rollback evidence remain open.
+version 4 binds it to that one group. Graceful process-exit and bounded
+join-writer application-kill evidence now exist; power loss and stale-snapshot
+rollback evidence remain open.
 
 The provider-neutral right-specific transport trait and its separate
 `transport-memory` adapter now retain deterministic drop, duplicate,
@@ -116,7 +118,7 @@ cross-platform blocking wake/cancel/deadline supervisor; neither is a network
 or production-runtime claim.
 
 The implementation-free `session-admission` crate now supplies the
-provider-neutral, non-authorizing approval context and decision from ADR 0015.
+provider-neutral, non-authorizing approval context and decision from ADR 0022.
 It deliberately does not generalize provider proof verification or the exact
 one-shot membership authority.
 
@@ -131,8 +133,9 @@ The ADR 0021 `sessionctl-l1` runner additionally places Alice, Bob, and an
 untrusted forwarding service behind bounded local IPC, exits Alice after the
 durable commit, reloads her exact identity/group in a fresh process, completes
 the lifecycle, reaps every child, and emits a bounded redacted manifest.
-Abrupt kill/power-loss recovery, human approval, and a network profile remain
-separate gates.
+The checked L2 suites add bounded inviter/joiner application-kill recovery.
+Welcome-delivery kill recovery remains a Phase 1 closeout gate; power-loss
+evidence, human approval UX, and a network profile remain later gates.
 
 The Rust source-coverage gate now measures production code through integration
 targets without counting inline test helpers. The clean-master baseline was
@@ -220,19 +223,20 @@ for the remaining headless and durable composition:
   verifier binding, closed response endpoint, and before-mutation ordering from
   ADR 0014.
 
-The current MLS increment uses only isolated in-memory providers for
-deterministic protocol tests, as ADR 0012 specifies. It does not establish
-cross-implementation interoperability, durable recovery, or a product security
-property. Before any networked or user-facing join path is enabled, one durable
-transaction must own reservation
-recovery, request replay state, the MLS membership transition, invitation
-consumption, approval/result state, and the encrypted Welcome outbox job with
-an idempotency key. Dropped or abandoned
-reservation tokens must return safely to `Available` without permitting a
-second concurrent admission. Until that gate passes, the laboratory makes no
-networked, user-facing, durability, rollback-resistance, or product-security claim.
+The isolated MLS crate still uses only in-memory providers for deterministic
+protocol tests, as ADR 0012 specifies. The separate SQLCipher composition now
+proves the real inviter and joiner MLS writes plus the committed Welcome owner,
+but the headless path cannot yet durably resolve pre-commit replay,
+invitation-reservation, and approval state after process loss. Before any
+networked or user-facing join path is enabled, one restartable durable owner
+must resolve reservation recovery, request replay state, the MLS membership
+transition, invitation consumption, approval/result state, and the encrypted
+Welcome outbox job with an idempotency key. Dropped or abandoned reservation
+tokens must return safely to `Available` without permitting a second concurrent
+admission. Until that gate passes, the laboratory makes no networked,
+user-facing, durability, rollback-resistance, or product-security claim.
 
-Create a Rust workspace containing:
+The retained Phase 1 workspace includes the original foundation:
 
 - `session-protocol`
 - `session-core`
@@ -246,6 +250,10 @@ Create a Rust workspace containing:
 - `key-protector-passphrase`
 - Deterministic in-memory transport
 - `sessionctl` headless client
+
+The remaining work and the exact boundary between laboratory completion,
+pre-network safety, and later production evidence are defined in the
+[Phase 1 protocol laboratory closeout plan](plans/PHASE1_PROTOCOL_CLOSEOUT.md).
 
 The transport slice follows the profile-bound contract proposed in
 [`TRANSPORT_ABSTRACTION_V1.md`](specs/TRANSPORT_ABSTRACTION_V1.md). Stabilize
@@ -278,6 +286,8 @@ Exit criteria:
 - Duplicate, reordered, expired, and malformed objects fail safely.
 - Key and state-machine invariants are covered by property or model-based tests
   where practical.
+- The durable-authorization, common-transport, hostile-process, and
+  exact-revision gates in the Phase 1 closeout plan pass.
 
 ## Early product-validation track
 

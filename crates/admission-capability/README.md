@@ -3,7 +3,7 @@
 `admission-capability` implements the in-memory admission and explicit simulated
 approval boundary for ADR 0014's local secret-capability profile.
 
-Pending requests implement ADR 0015's provider-neutral `PendingAdmission`
+Pending requests implement ADR 0022's provider-neutral `PendingAdmission`
 observation seam. The returned approval context contains only redacted,
 non-authorizing metadata; the capability adapter retains its original exact
 proof, KeyPackage, and reservation authorities. The shared approval decision

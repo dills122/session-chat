@@ -1,13 +1,14 @@
 # Welcome delivery coordinator research
 
-Status: implementation map; inviter-model corrections complete, coordinator pending
+Status: retained implementation map; in-memory coordinator and SQLCipher owner
+integration complete
 
 Date: 2026-08-25
 
 ## Recommendation
 
-Implement a future LocalV1 deposit-only `WelcomeDeliveryCoordinator` in
-`session-transport`. It must not poll, acknowledge, own persistence, or create a
+The retained LocalV1 deposit-only `WelcomeDeliveryCoordinator` in
+`session-transport` does not poll, acknowledge, own persistence, or create a
 second retry/lease ledger.
 
 Two seams are sufficient:
@@ -43,8 +44,9 @@ processing.
    supervisor waits on legal future wakeups, cancellation, or a monotonic
    deadline and drops unfinished work. This is not active preemption and does
    not select the future UI runtime.
-6. The plan must reference governing ADR 0008 and the actual SQLCipher inviter
-   schema rather than nonexistent transaction files or a duplicate ADR.
+6. **Corrected in the retained plans.** They reference governing ADR 0008 and
+   the actual SQLCipher inviter schema rather than nonexistent transaction
+   files or a duplicate ADR.
 
 ## Owner transitions
 
@@ -59,7 +61,9 @@ processing.
 - Expired or exhausted work remains retained terminal state and is never leased.
 - Stale, foreign, reused, or expired lease results cannot mutate current work.
 
-No new ADR is required if this preserves ADRs 0008 and 0015. A new decision is
-required only for coordinator persistence, dynamic adapters, a second endpoint
-schema, or non-Local authenticated profile selection. SQLCipher integration and
-durable restart claims remain later work.
+No new ADR was required because the retained implementation preserves ADRs
+0008 and 0015. A new decision is required for coordinator-owned persistence,
+dynamic adapters, a second endpoint schema, or non-Local authenticated profile
+selection. SQLCipher sole-owner integration and graceful restart evidence now
+exist; Welcome-delivery process-kill, power-loss, rollback-resistance, and
+production claims remain later work.

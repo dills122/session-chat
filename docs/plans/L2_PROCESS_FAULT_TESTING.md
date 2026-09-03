@@ -30,15 +30,15 @@ storage failure. It must never see partial membership, a Welcome without the
 matching membership commit, a consumed invitation without that commit, or a
 joined group while its one-time KeyPackage remains usable.
 
-This plan freezes the implementation contract before runtime work begins. It
-does not claim that the existing graceful L1 runner already supplies L2
-evidence, and it does not authorize production, power-loss, rollback-resistance,
-secure-deletion, or platform-key-custody claims.
+This plan froze the implementation contract before runtime work began. The
+retained L2 implementation does not relabel graceful L1 evidence, and it does
+not authorize production, power-loss, rollback-resistance, secure-deletion, or
+platform-key-custody claims.
 
 The canonical scenario and layer definitions remain in
 [`REAL_WORLD_E2E_TESTING.md`](REAL_WORLD_E2E_TESTING.md). ADR 0017 retains the
 SQLCipher laboratory decision, and ADR 0021 retains the existing graceful L1
-process topology. This document defines only the next fault-testing increment.
+process topology. This document defines the retained fault-testing increment.
 
 The plan was reconciled against the current implementations in
 [`storage-sqlcipher/src/lib.rs`](../../crates/storage-sqlcipher/src/lib.rs) and

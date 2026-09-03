@@ -1,8 +1,11 @@
-# ADR 0015: Use a provider-neutral, non-authorizing approval context
+# ADR 0022: Use a provider-neutral, non-authorizing approval context
 
 Status: accepted; Phase 1 approval seam implemented
 
 Date: 2026-08-20
+
+Numbering note: this record was originally introduced as a second ADR 0015 and
+was renumbered to ADR 0022 without changing the accepted decision.
 
 ## Context
 
@@ -52,8 +55,10 @@ ownership contract are independently specified and tested.
   equivalent and does not erase provenance.
 - The concrete admission provider still owns verification, replay handling,
   release, approval consumption, and membership preparation.
-- Human approval UX, policy evaluation, durable approval/result state, and the
-  recoverable MLS/invitation/outbox transaction remain unimplemented.
+- Human approval UX, policy evaluation, and a reloadable durable
+  approval/replay authorization owner remain unimplemented. The SQLCipher
+  laboratory retains only the approved transaction's bounded shadows together
+  with MLS/invitation/outbox state.
 - The current enum contains only the implemented secret-capability method. New
   variants require a reviewed provider and updated evidence, not speculative
   placeholders.

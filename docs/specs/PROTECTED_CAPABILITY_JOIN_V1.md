@@ -1,14 +1,14 @@
 # Spec: Protected capability join v1
 
 Status: accepted contract under ADR 0014; canonical protocol values, one-shot
-HPKE, and bounded in-memory automated admission implemented; integrated
-stateful behavior unimplemented
+HPKE, bounded automated admission, local Welcome delivery, and SQLCipher
+laboratory composition implemented
 
 ## Objective
 
 Define the first encrypted capability-authorized join request and its local
-one-Welcome response mailbox. The contract lets a future headless Phase 1
-client prove possession of one high-entropy invitation capability, bind that
+one-Welcome response mailbox. The contract lets the headless Phase 1 client
+prove possession of one high-entropy invitation capability, bind that
 proof to the exact ADR 0009 KeyPackage tuple, and give the inviter only the
 authority required to deposit the resulting Welcome.
 
@@ -23,9 +23,11 @@ approval, and ownership-preserving MLS prepare/apply. Rejected, expired, failed,
 or abandoned work releases invitation and replay state without changing
 membership; successful in-memory Add consumes invitation state. The committed
 result carries the authenticated deposit endpoint beside the MLS outputs, and a
-retained local integration test delivers the encrypted Welcome. Human approval
-UX, atomic durable membership/outbox state, hosted realm trust, a network
-transport, and a deployable client remain unimplemented.
+retained local integration test delivers the encrypted Welcome. The SQLCipher
+laboratory retains the approved inviter MLS/outbox transaction and recovery.
+Human approval UX, a durable product authorization/replay owner, rollback
+resistance, hosted realm trust, a network transport, and a deployable client
+remain unimplemented.
 
 ## Assumptions
 

@@ -165,7 +165,8 @@ the chosen transport, but should not possess message keys or plaintext.
 
 ### Current Phase 1 evidence
 
-The active Rust laboratory now contains fourteen narrow pieces of this architecture:
+The active Rust laboratory now contains sixteen narrow pieces of this
+architecture:
 
 - `session-protocol` encodes and strictly verifies deterministic signed
   secret-capability invitation v1/v2 layouts and owns ADR 0014's bounded
@@ -266,6 +267,10 @@ The active Rust laboratory now contains fourteen narrow pieces of this architect
   secret/canary scans; portable passage remains conditional on the
   exact revision's required three-OS result. None of this is a power-loss,
   filesystem, rollback, or production claim.
+- `storage-sqlcipher-fault-vfs` is a publish-disabled, explicitly selected
+  named SQLite VFS delegator for the checked L2 suite. It records bounded,
+  path-free operation evidence and injects only the retained SQLite result
+  codes; ordinary connections never select it.
 - `sessionctl` composes the current local pieces into one headless Alice/Bob
   flow: capability join, simulated approval, atomic SQLCipher inviter commit,
   ambiguous-result recovery, exact Alice identity/group reload, reconstructed coordinator Welcome delivery,
