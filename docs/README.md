@@ -55,7 +55,11 @@ all.
 - [Welcome delivery coordinator research](research/WELCOME_DELIVERY_COORDINATOR_2026-08-25.md)
   maps the implemented deposit-only coordinator and standard-library
   supervision baseline to the inviter-owned outbox while preserving the
-  remaining durable-storage and UI-runtime gaps.
+  remaining product-storage, delivery-fault, and UI-runtime gaps.
+- [Phase 1 protocol laboratory closeout plan](plans/PHASE1_PROTOCOL_CLOSEOUT.md)
+  defines the remaining durable-authorization, transport-conformance,
+  independent-process, and exact-revision evidence required before Phase 1 can
+  be marked complete.
 - [Transport abstraction implementation plan](plans/TRANSPORT_ABSTRACTION_IMPLEMENTATION.md)
   sequences stabilization of the existing local adapter and outbox model, the
   generalized contract, conformance harness, coordinator, and later
@@ -63,6 +67,11 @@ all.
 - [Real-world end-to-end security test strategy](plans/REAL_WORLD_E2E_TESTING.md)
   defines permanent scenario IDs, layered environments, evidence bundles, CI
   cadence, and release gates without claiming unavailable integrations.
+- [L2 process and storage fault-testing plan](plans/L2_PROCESS_FAULT_TESTING.md)
+  records the retained application-kill, SQLite-visible fault, complete-state
+  oracle, and portable evidence gates without making power-loss claims.
+- [Hostile L1/L2 wave-1 execution index](plans/HOSTILE_L1_L2_EXECUTION.md)
+  preserves the completed historical handoff into the retained L2 plan.
 - [Local transport baseline evidence](evidence/transport-local-baseline.md)
   maps the implemented one-Welcome adapter and inviter outbox model to the
   generalized contract without overstating missing behavior.
@@ -73,7 +82,7 @@ all.
   fixtures, and a first normalized double-replay runner over the real memory
   adapter. Composed lifecycle and queue-saturation verdicts plus deliberately
   defective bridges cover the retained adverse slices; arbitrary delay and the
-  exhaustive authority/resource verdict remain future work.
+  exhaustive authority/resource verdict remain Phase 1 closeout work.
 - [Threat model](THREAT_MODEL.md) defines assets, trust boundaries, attackers,
   invariants, and severity calibration.
 - [Rust code-coverage policy](CODE_COVERAGE.md) defines the source-based
@@ -100,9 +109,9 @@ all.
   backend while prohibiting arbitrary plugins and silent active-session swaps.
 - [Protected capability join decision](adr/0014-use-hpke-psk-and-a-local-welcome-deposit-for-phase-1.md)
   selects the exact local Phase 1 HPKE PSK profile, capability verifier, closed
-  join schemas, and one-Welcome response authority without claiming an
-  implementation or hosted transport.
-- [Provider-neutral approval-context decision](adr/0015-use-a-provider-neutral-approval-context.md)
+  join schemas, and one-Welcome response authority, and records the retained
+  local implementation without claiming a hosted transport.
+- [Provider-neutral approval-context decision](adr/0022-use-a-provider-neutral-approval-context.md)
   gives headless and later UI composition one display-only decision seam while
   concrete providers retain exact proof, reservation, and KeyPackage authority.
 - [Session-scoped sealed-vault decision](adr/0016-use-a-session-scoped-sealed-vault-contract.md)
@@ -120,6 +129,9 @@ all.
 - [Vault unlock orchestration decision](adr/0020-separate-vault-unlock-work-from-lifecycle-acceptance.md)
   separates bounded credential/protector work from generation-bound lifecycle
   acceptance without claiming preemptive KDF cancellation or durable key use.
+- [Independent-process L1 decision](adr/0021-use-bounded-filesystem-ipc-for-the-l1-process-runner.md)
+  fixes the bounded local IPC and redacted-manifest contract for graceful
+  Alice/Bob/untrusted-service process evidence.
 - [Protected capability join specification](specs/PROTECTED_CAPABILITY_JOIN_V1.md)
   assigns the fixed-array layouts, code points, cryptographic contexts, parsing
   order, mailbox lifecycle, and retained-evidence gates for ADR 0014.

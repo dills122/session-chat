@@ -47,15 +47,17 @@ foundational changes, an ADR.
   Commit, abandoned pending Commits, and explicit-only group-state writes. The
   SQLCipher laboratory adds close/reopen recovery, joining-KeyPackage deletion,
   owner-local transaction evidence, durable Welcome-outbox delivery, and an
-  exact versioned client-identity/group reload boundary. Independent-process
-  recovery, rollback protection, and process/disk fault evidence remain open.
+  exact versioned client-identity/group reload boundary. Graceful
+  independent-process recovery plus bounded inviter/joiner application-kill
+  and SQLite-visible fault evidence now exist; Welcome-delivery process-kill,
+  real disk/power fault, and rollback protection remain open.
 
 Immediate gate: retain the isolated ADR 0012 laboratory with exact KeyPackage
-ownership, two-party lifecycle, removal, reordered/lost message, and
-interoperability fixtures. The lifecycle portion is implemented; independent
-cross-implementation fixtures remain open. Before a durable or networked path,
-add the transactional storage, crash, rollback, deletion, and pending-Commit
-evidence required by ADR 0012.
+ownership, two-party lifecycle, removal, and reordered/lost-message evidence.
+That lifecycle and the bounded durable storage/crash laboratory are
+implemented; independent cross-implementation fixtures, complete restartable
+authorization ownership, physical power-loss, and rollback evidence remain
+open. Phase 1 retains no interoperability or production-durability claim.
 
 ### P0: invitation protocol
 
@@ -72,7 +74,8 @@ evidence required by ADR 0012.
   lifetime and future skew, and follows ADR 0008. Descriptor parsing is
   read-only. The retained SQLCipher laboratory now implements bounded
   inviter-local and joiner-local cross-layer transactions; durable replay
-  loading, rollback resistance, revocation, and multi-use state remain open.
+  loading remains a Phase 1 closeout gap, while rollback resistance,
+  revocation, and multi-use state remain separately scoped later work.
 - **Protected-join decision recorded:** the
   [HPKE join-request packet](research/HPKE_JOIN_REQUEST_PROFILE.md) recommends
   RFC 9180 PSK mode with X25519/HKDF-SHA256/AES-128-GCM through the already
@@ -87,17 +90,21 @@ evidence required by ADR 0012.
   local v2 reservation, explicit simulated approval, and in-memory MLS/Add
   coordination. A right-specific one-Welcome memory mailbox now has bounded
   local evidence, and the committed approved-join result carries only its exact
-  deposit endpoint beside the MLS outputs. Human approval UX, durable replay
-  loading, process recovery, and rollback resistance remain gates; the current
-  SQLCipher laboratory owns atomic MLS/invitation/outbox state. The provider owns one complete
-  CSPRNG-backed invitation-v2 creation API.
-- Implement durable transactional replay state, rollback protection,
-  revocation, reservation recovery, and bounded-multi-use state machines.
-- Replace the retained in-memory approval/MLS/invitation sequencing with the
-  durable ADR 0008 transaction without reconstructing or substituting its owned
-  ADR 0009 KeyPackage. Successful HPKE PSK opening proves capability possession
-  without a second raw capability or custom HMAC; the explicit simulated
-  approval input is not human UI evidence or a durable membership transaction.
+  deposit endpoint beside the MLS outputs. Graceful process recovery and
+  bounded inviter/joiner application-kill evidence now exist. Durable
+  replay/approval resolution and Welcome-delivery process-kill remain Phase 1
+  gates; human approval UX and rollback resistance remain later gates. The
+  current SQLCipher laboratory owns atomic MLS/invitation/outbox state. The
+  provider owns one complete CSPRNG-backed invitation-v2 creation API.
+- For Phase 1, implement durable single-use replay and reservation recovery with
+  safe pre-commit abandonment and replay retention through expiry. Keep
+  rollback resistance, explicit revocation, and bounded multi-use invitations
+  outside the laboratory closeout.
+- Connect the retained linear approval/MLS authority to the durable ADR 0008
+  owner without serializing, reconstructing, or substituting its ADR 0009
+  KeyPackage. Successful HPKE PSK opening proves capability possession without
+  a second raw capability or custom HMAC; the explicit simulated approval input
+  is not human UI evidence or a durable membership authority.
 - Decide public, encrypted, and local-only fields for targeted GitHub and
   credential invitations. The current capability descriptor is a secret bearer
   object and is not publicly postable.
@@ -215,11 +222,11 @@ Expected output: wire-format draft plus test vectors.
 - Retain the exact adverse-network trace and redacted evidence format used by
   every later adapter.
 
-Remaining expected output: the completed version 1 contract, a reusable
-conformance harness, and the Phase 1 headless flow through the complete common
-boundary. The retained trace parser and `transport-memory` fault controls are
-implementation evidence, not completion of the runner, lifecycle, durable
-coordination, or network work.
+Remaining Phase 1 output: complete provider-wide lifecycle/issuance semantics,
+the arbitrary-delay and exhaustive authority/resource verdicts, and route the
+headless flow through the complete common boundary. The exact sequence is in
+the [Phase 1 closeout plan](plans/PHASE1_PROTOCOL_CLOSEOUT.md). Real network
+adapters and packet-captured evidence remain later work.
 
 ### Spike completed: sealed invitation post office
 

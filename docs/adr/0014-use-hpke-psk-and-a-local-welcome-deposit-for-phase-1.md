@@ -2,7 +2,7 @@
 
 Status: accepted; canonical protocol values, one-shot HPKE, bounded in-memory
 approval-gated MLS coordination, and local Welcome delivery implemented;
-durable integrated flow unimplemented
+SQLCipher laboratory composition retained
 
 Date: 2026-08-20
 
@@ -18,11 +18,14 @@ v2 state, consumes an explicit simulated approval decision, and permits only
 the approved one-shot value to enter MLS preparation. The committed in-memory
 result now carries the authenticated deposit-only endpoint beside its MLS
 outputs and can deliver the exact Welcome through the local mailbox. The
-laboratory does not commit durable cross-layer state or a Welcome outbox.
+SQLCipher laboratory also commits the approved inviter MLS transition,
+invitation/replay/approval shadows, and Welcome outbox atomically, then recovers
+an ambiguous result and resumes delivery. It does not provide a durable product
+authorization owner, rollback resistance, or a network path.
 
 ADR 0010 requires deposit, receive, acknowledgement, and rotation authority to
-remain separate. ADR 0008 requires the inviter's future durable membership
-transaction to commit the exact encrypted Welcome and an idempotent outbox job,
+remain separate. ADR 0008 requires the inviter's durable membership transaction
+to commit the exact encrypted Welcome and an idempotent outbox job,
 then deliver after commit without reopening the invitation. A Phase 1 response
 descriptor must fit those contracts without prematurely defining hosted realm
 identity, arbitrary network routes, or production rendezvous.
@@ -160,9 +163,9 @@ anonymity, or production evidence.
 
 ## Consequences and limits
 
-- The next slice can replace sequential in-memory coordination with ADR 0008's
-  durable membership and Welcome-outbox transaction without changing the
-  right-specific transport contract.
+- The retained SQLCipher slice replaces sequential in-memory coordination for
+  the headless laboratory with ADR 0008's durable membership and Welcome-outbox
+  transaction without changing the right-specific transport contract.
 - Hosted realm, public rendezvous, direct, relay, mixnet, and private-network
   endpoints require new transport-specific schemas. Version 1 has no generic
   route escape hatch.

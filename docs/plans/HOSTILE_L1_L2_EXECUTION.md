@@ -1,6 +1,7 @@
 # Hostile L1 and L2 execution index
 
-Status: wave 1 complete; review remediation ready for instance 2 of 2
+Status: completed historical wave-1 index; active L2 status moved to
+`L2_PROCESS_FAULT_TESTING.md`
 
 ## Objective
 
@@ -12,8 +13,9 @@ layer requirements remain in
 [`REAL_WORLD_E2E_TESTING.md`](REAL_WORLD_E2E_TESTING.md); this file records only
 execution ownership and integration state.
 
-Integration destination: `codex/l1-hostile-l2-wave1`, based on merged `master`
-at `21e1d74`.
+Historical integration destination: `codex/l1-hostile-l2-wave1`, based on
+merged `master` at `21e1d74`. The retained results subsequently landed on
+`master`; this file no longer describes an active branch or review gate.
 
 ## Work items
 
@@ -33,7 +35,7 @@ at `21e1d74`.
 ## Independent-review disposition
 
 Review instance 1 of 1 returned `Not ready` with two P1 plan findings and no
-executable finding. Both findings are accepted. The remediated contract now:
+executable finding. Both findings were accepted. The remediated contract:
 
 - colocates the reusable controller/oracle and every process-fault integration
   suite under `sessionctl`, preserving the existing dependency direction; and
@@ -41,9 +43,10 @@ executable finding. Both findings are accepted. The remediated contract now:
   ordinary-build exclusion tests, while L2-4 remains the isolated unsafe VFS
   owner.
 
-The user authorized one additional fresh-context pass, so the revised review
-limit is instance 2 of 2. No L2 runtime implementation begins before that pass
-reconciles these ownership seams.
+The user authorized one additional fresh-context pass, making the revised
+review limit instance 2 of 2. L2 runtime work did not begin until those
+ownership seams were reconciled. The resulting retained implementation and
+remaining gates are tracked in `L2_PROCESS_FAULT_TESTING.md`.
 
 ## Verification
 

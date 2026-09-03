@@ -19,6 +19,8 @@ The Rust workspace currently contains:
   v1/v2 availability, reservation, release, and post-membership consumption lifecycle
 - `session-admission`, with an object-safe, provider-neutral approval context
   that exposes no proof, bearer capability, parsed KeyPackage, or membership authority
+- `session-crypto`, with the provider-neutral established-session message seam
+  implemented by the current MLS adapter
 - `session-crypto-hpke`, with provider-neutral one-shot RFC 9180 PSK join
   protection, an AWS-LC implementation, an RFC known-answer vector, and an
   independent-provider interoperability test, plus provider-owned creation of
@@ -34,6 +36,8 @@ The Rust workspace currently contains:
   provider-neutral right-specific opaque-envelope transport contract
 - `transport-memory`, with bounded deterministic drop, hold, duplicate,
   reordering, retry, and acknowledgement controls for headless protocol tests
+- `transport-conformance`, with publish-disabled, offline adverse-trace parsing
+  and reusable LocalV1 memory-adapter verdicts
 - `session-inviter-transaction`, with a bounded fault-injectable conformance
   model for atomic invitation/replay/approval/MLS-snapshot/Welcome-outbox state
 - `session-storage`, with a deterministic session-scoped sealed-vault lifecycle,
@@ -47,10 +51,13 @@ The Rust workspace currently contains:
   real inviter MLS/join/outbox transaction and the separate joiner MLS plus
   one-time-KeyPackage deletion transaction on required Linux, macOS, and
   Windows CI runners
+- `storage-sqlcipher-fault-vfs`, with a publish-disabled, explicitly selected
+  named SQLite VFS for bounded L2 fault evidence
 - `sessionctl`, with headless in-process and bounded independent-process
   Alice/Bob conformance flows covering protected join, explicit approval,
-  SQLCipher close/reopen, Welcome delivery, bidirectional MLS messages, path
-  update, removal, and post-removal rejection over local test adapters
+  SQLCipher close/reopen and application-kill recovery, Welcome delivery,
+  bidirectional MLS messages, path update, removal, and post-removal rejection
+  over local test adapters
 
 The signing key authenticates the invitation bytes, not a GitHub identity or
 person. The capability invitation is a secret bearer object and must not be
@@ -91,9 +98,9 @@ accepts only a result bound to the current vault instance, session, and
 generation. The portable passphrase adapter exercises that boundary with a
 one-shot credential, but `storage-sqlcipher` remains disconnected and no
 production platform protector exists.
-The required cross-platform build matrix is now configured; rollback
-resistance, broader crash/fault testing, packaging, and production key
-protection remain unimplemented.
+The required cross-platform build and bounded L2 fault matrices are now
+configured; rollback resistance, power-loss/filesystem evidence, packaging,
+and production key protection remain unimplemented.
 
 ADR 0018 makes macOS, Windows, and Linux a single local-app delivery gate. The
 required Rust CI matrix now builds, lints, and tests the workspace on all three;
@@ -104,9 +111,11 @@ ADR 0014 defines the exact local-only invitation-v2, HPKE capability-join, and
 one-Welcome response contract. Its canonical protocol value types are now
 implemented and tested, its one-shot HPKE operation has RFC and cross-provider
 evidence, and its capability-admission boundary now retains explicit simulated
-approval plus in-memory invitation/MLS/Welcome-delivery coordination. Human
-approval UX, durable atomic replay/membership/outbox state, and network behavior
-remain accepted design boundaries rather than runtime or production claims.
+approval plus in-memory invitation/MLS/Welcome-delivery coordination. The
+SQLCipher laboratory retains one atomic inviter MLS/outbox transaction, while
+human approval UX, a durable product authorization owner, rollback resistance,
+and network behavior remain accepted design boundaries rather than production
+claims.
 
 ```sh
 cargo fetch --locked
