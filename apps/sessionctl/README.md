@@ -38,6 +38,34 @@ directory after both commands report `status=complete`. This is a scripted
 two-process protocol demonstration over local filesystem IPC, not yet an
 interactive chat UI or network transport.
 
+For the scripted proof across two computers, both machines must run this same
+revision and have internet access to Iroh's public N0 address-lookup/relay
+services. On the first computer, choose a new local state directory and run:
+
+```sh
+cargo run -p sessionctl --bin sessionctl-net --locked -- host /tmp/session-chat-network-host
+```
+
+The host prints a public `endpoint=` value. On the second computer, copy only
+that endpoint ID and choose a different new local state directory:
+
+```sh
+cargo run -p sessionctl --bin sessionctl-net --locked -- join HOST_ENDPOINT_ID /tmp/session-chat-network-join
+```
+
+Both commands report `status=complete` after the protected invitation, join,
+Welcome, two MLS application messages, path update, removal, and post-removal
+rejection cross the authenticated Iroh link. Each computer keeps its own
+temporary SQLCipher/local capability state and removes only its marked state
+directory on success.
+
+This command explicitly selects the FastV1 experiment. A direct peer can learn
+the other peer's address; N0 relay, address-lookup, and DNS infrastructure can
+observe endpoint, address, timing, size, and lookup metadata. The command is
+online-only, accepts one connection, uses ephemeral Iroh endpoint keys, and
+provides no offline mailbox, reconnection, anonymity, production deployment,
+or interactive free-form chat claim.
+
 Output contains only coarse public milestones. Capability material,
 invitation identifiers, KeyPackages, credentials, ciphertext, and plaintext
 are not printed.

@@ -89,6 +89,10 @@ all.
   rejection, operation deadlines, and graceful receipt-before-close behavior.
   It is an online FastV1 link, not an offline mailbox or complete reusable
   delivery adapter.
+- `sessionctl-net` carries the complete scripted protected-join, Welcome,
+  bidirectional-message, update, removal, and post-removal scenario over that
+  bounded link. Its ordinary retained test is direct-only loopback; an ignored
+  public N0 reachability smoke test is available for explicitly networked runs.
 - `session-transport` now also fixes the reusable mailbox lifecycle boundary:
   bounded four-right issuance, exact generation/cursor binding,
   compare-and-swap rotation, explicit resynchronization, and a separate atomic

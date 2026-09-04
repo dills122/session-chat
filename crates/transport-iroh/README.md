@@ -23,4 +23,4 @@ Official API sources:
 - <https://docs.rs/iroh/1.1.0/iroh/#examples>
 - <https://docs.rs/iroh/1.1.0/iroh/#encryption>
 - <https://docs.rs/iroh/1.1.0/iroh/#relay-servers>
-- <https://docs.rs/iroh/1.1.0/iroh/endpoint/struct.RecvStream.html#method.read_to_end>
+- <https://docs.rs/iroh/1.1.0/iroh/endpoint/struct.RecvStream.html#method.read_exact>

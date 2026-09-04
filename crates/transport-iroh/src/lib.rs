@@ -16,7 +16,7 @@ use iroh::{
     endpoint::{Connection, RecvStream, SendStream, presets},
 };
 use thiserror::Error;
-use tokio::time::timeout;
+use tokio::time::{Instant, timeout, timeout_at};
 
 /// ALPN dedicated to the first version of Session Chat's Fast online link.
 pub const SESSION_CHAT_FAST_ALPN_V1: &[u8] = b"session-chat/fast-link/1";
@@ -53,6 +53,9 @@ pub struct FastEndpointId(PublicKey);
 impl FastEndpointId {
     /// Parses the public endpoint identifier printed by a Fast host.
     pub fn parse(value: &str) -> Result<Self, IrohFastError> {
+        if value.is_empty() || value.len() > 128 || !value.is_ascii() {
+            return Err(IrohFastError::PeerRejected);
+        }
         PublicKey::from_str(value)
             .map(Self)
             .map_err(|_| IrohFastError::PeerRejected)
@@ -121,6 +124,11 @@ impl IrohFastEndpoint {
         Ok(())
     }
 
+    /// Closes an unconnected endpoint and waits for its background work to stop.
+    pub async fn close(self) {
+        self.endpoint.close().await;
+    }
+
     /// Accepts one connection and optionally requires one authenticated peer ID.
     pub async fn accept(
         self,
@@ -129,11 +137,12 @@ impl IrohFastEndpoint {
         maximum_frame_bytes: usize,
     ) -> Result<IrohFastLink, IrohFastError> {
         validate_link_bounds(deadline, maximum_frame_bytes)?;
-        let incoming = timeout(deadline, self.endpoint.accept())
+        let deadline = Instant::now() + deadline;
+        let incoming = timeout_at(deadline, self.endpoint.accept())
             .await
             .map_err(|_| IrohFastError::DeadlineExceeded)?
             .ok_or(IrohFastError::ConnectionUnavailable)?;
-        let connection = timeout(deadline, incoming)
+        let connection = timeout_at(deadline, incoming)
             .await
             .map_err(|_| IrohFastError::DeadlineExceeded)?
             .map_err(|_| IrohFastError::ConnectionUnavailable)?;
@@ -142,7 +151,7 @@ impl IrohFastEndpoint {
             self.endpoint.close().await;
             return Err(IrohFastError::PeerRejected);
         }
-        let (send, receive) = timeout(deadline, connection.accept_bi())
+        let (send, receive) = timeout_at(deadline, connection.accept_bi())
             .await
             .map_err(|_| IrohFastError::DeadlineExceeded)?
             .map_err(|_| IrohFastError::ConnectionUnavailable)?;
@@ -178,7 +187,8 @@ impl IrohFastEndpoint {
         maximum_frame_bytes: usize,
     ) -> Result<IrohFastLink, IrohFastError> {
         validate_link_bounds(deadline, maximum_frame_bytes)?;
-        let connection = timeout(
+        let deadline = Instant::now() + deadline;
+        let connection = timeout_at(
             deadline,
             self.endpoint
                 .connect(remote.0.clone(), SESSION_CHAT_FAST_ALPN_V1),
@@ -191,7 +201,7 @@ impl IrohFastEndpoint {
             self.endpoint.close().await;
             return Err(IrohFastError::PeerRejected);
         }
-        let (send, receive) = timeout(deadline, connection.open_bi())
+        let (send, receive) = timeout_at(deadline, connection.open_bi())
             .await
             .map_err(|_| IrohFastError::DeadlineExceeded)?
             .map_err(|_| IrohFastError::ConnectionUnavailable)?;

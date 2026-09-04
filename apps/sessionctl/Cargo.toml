@@ -20,6 +20,8 @@ session-transport = { version = "=0.1.0", path = "../../crates/session-transport
 rusqlite.workspace = true
 storage-sqlcipher = { version = "=0.1.0", path = "../../crates/storage-sqlcipher" }
 thiserror.workspace = true
+tokio.workspace = true
+transport-iroh = { version = "=0.1.0", path = "../../crates/transport-iroh" }
 transport-memory = { version = "=0.1.0", path = "../../crates/transport-memory" }
 zeroize.workspace = true
 

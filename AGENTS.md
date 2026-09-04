@@ -77,8 +77,9 @@ Current areas:
 - `crates/storage-sqlcipher-fault-vfs`: publish-disabled, named SQLite VFS
   delegator for bounded L2 fault evidence; never selected by ordinary connections
 - `apps/sessionctl`: headless two-client Phase 1 composition plus a bounded
-  independent-process conformance runner over local test channels; not a
-  networked, production, or platform-vault-backed client
+  independent-process conformance runner over local test channels and an
+  explicit scripted Iroh FastV1 cross-computer proof; not an offline,
+  production, private-profile, or platform-vault-backed client
 - `spikes/`: disposable feasibility code; production packages must not depend on it
 - `docs/`: canonical v2 product, architecture, threat-model, protocol, ADR, and legacy-evidence baseline
 - `scripts/`: tested repository and AI Central setup tooling

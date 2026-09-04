@@ -1,6 +1,6 @@
 # ADR 0024: Use Iroh for the Fast online link
 
-Status: accepted; bounded link implemented, headless network composition pending
+Status: accepted; bounded link and headless network composition implemented
 
 Date: 2026-09-04
 
@@ -23,7 +23,7 @@ Sources:
 - <https://docs.rs/iroh/1.1.0/iroh/#connection-establishment>
 - <https://docs.rs/iroh/1.1.0/iroh/#encryption>
 - <https://docs.rs/iroh/1.1.0/iroh/#relay-servers>
-- <https://docs.rs/iroh/1.1.0/iroh/endpoint/struct.RecvStream.html#method.read_to_end>
+- <https://docs.rs/iroh/1.1.0/iroh/endpoint/struct.RecvStream.html#method.read_exact>
 - <https://docs.rs/iroh/1.1.0/iroh/endpoint/struct.Builder.html#method.alpns>
 
 ## Decision

@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use transport_iroh::{IrohFastEndpoint, IrohFastError};
+use transport_iroh::{FastEndpointId, IrohFastEndpoint, IrohFastError};
 
 const DEADLINE: Duration = Duration::from_secs(5);
 const MAXIMUM_FRAME_BYTES: usize = 4_096;
@@ -79,4 +79,33 @@ async fn local_frame_bounds_fail_before_network_write() {
         tokio::join!(join_link.close(DEADLINE), host_link.close(DEADLINE),);
     join_close.expect("close join");
     host_close.expect("close host");
+}
+
+#[tokio::test]
+#[ignore = "requires public N0 address-lookup and relay connectivity"]
+async fn public_endpoint_reaches_an_online_n0_path() {
+    let endpoint = IrohFastEndpoint::bind_public()
+        .await
+        .expect("bind public endpoint");
+    endpoint
+        .wait_online(Duration::from_secs(30))
+        .await
+        .expect("public endpoint online");
+    endpoint.close().await;
+}
+
+#[test]
+fn endpoint_id_parser_rejects_unbounded_or_noncanonical_input() {
+    assert!(matches!(
+        FastEndpointId::parse(""),
+        Err(IrohFastError::PeerRejected)
+    ));
+    assert!(matches!(
+        FastEndpointId::parse(&"a".repeat(129)),
+        Err(IrohFastError::PeerRejected)
+    ));
+    assert!(matches!(
+        FastEndpointId::parse("not-an-endpoint-id"),
+        Err(IrohFastError::PeerRejected)
+    ));
 }

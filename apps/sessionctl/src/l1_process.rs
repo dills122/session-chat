@@ -45,6 +45,7 @@ use storage_sqlcipher::{
     AuthorizationShadowInput, AuthorizationState, InvitationOpeningState, InviterJoinTransaction,
     PersistenceFault, SqlCipherStorage, StoreError, VaultKey, WelcomeOutboxState,
 };
+use transport_iroh::{FastEndpointAddress, FastEndpointId, IrohFastEndpoint, IrohFastLink};
 use zeroize::{Zeroize, Zeroizing};
 
 use super::{
@@ -74,6 +75,8 @@ const MAX_GIT_PATH_BYTES: usize = 4_096;
 const MAX_GIT_REF_BYTES: usize = 512;
 const METADATA_COMMAND_WAIT: Duration = Duration::from_secs(5);
 const TWO_TERMINAL_DONE: &[u8] = b"sessionctl-two-terminal-complete-v1\n";
+const NETWORK_HELLO: &[u8] = b"session-chat-network-proof-v1";
+const NETWORK_OPERATION_WAIT: Duration = Duration::from_secs(30);
 
 /// Secret-free outcome of the bounded independent-process scenario.
 #[derive(Clone, Eq, PartialEq)]
@@ -224,6 +227,248 @@ pub fn run_two_terminal_join(root: PathBuf) -> Result<(), SessionCtlError> {
     )?;
     println!("mode=join\nstatus=complete");
     Ok(())
+}
+
+/// Hosts the full Phase 1 proof over the explicit public Iroh Fast link.
+pub async fn run_network_host(root: PathBuf) -> Result<(), SessionCtlError> {
+    let endpoint = IrohFastEndpoint::bind_public()
+        .await
+        .at_stage("network host endpoint")?;
+    endpoint
+        .wait_online(NETWORK_OPERATION_WAIT)
+        .await
+        .at_stage("network host online")?;
+    println!(
+        "mode=network-host\nprofile=fast-v1\nmetadata=peer-or-relay-addresses-timing-volume\nendpoint={}",
+        endpoint.id().as_text()
+    );
+    run_network_host_with_endpoint(root, endpoint).await
+}
+
+/// Joins a public Iroh Fast host by its authenticated endpoint identifier.
+pub async fn run_network_join(host: &str, root: PathBuf) -> Result<(), SessionCtlError> {
+    let host = FastEndpointId::parse(host).at_stage("network host identity")?;
+    let endpoint = IrohFastEndpoint::bind_public()
+        .await
+        .at_stage("network join endpoint")?;
+    endpoint
+        .wait_online(NETWORK_OPERATION_WAIT)
+        .await
+        .at_stage("network join online")?;
+    let link = endpoint
+        .connect_public(host, NETWORK_OPERATION_WAIT, MAX_IPC_FRAME_BYTES)
+        .await
+        .at_stage("network connect")?;
+    println!(
+        "mode=network-join\nprofile=fast-v1\nmetadata=peer-or-relay-addresses-timing-volume\nstatus=connected"
+    );
+    run_network_join_with_link(root, link).await
+}
+
+/// Runs the full network composition over relay-free Iroh loopback endpoints.
+pub async fn run_network_loopback_demo() -> Result<(), SessionCtlError> {
+    let host_root = fresh_process_root_path("network-host")?;
+    let join_root = fresh_process_root_path("network-join")?;
+    let host = IrohFastEndpoint::bind_loopback()
+        .await
+        .at_stage("network loopback host")?;
+    let host_address = host.address();
+    let join = IrohFastEndpoint::bind_loopback()
+        .await
+        .at_stage("network loopback join")?;
+
+    let (host_result, join_result) = tokio::join!(
+        run_network_host_with_endpoint(host_root, host),
+        connect_network_loopback_join(join_root, join, host_address),
+    );
+    host_result?;
+    join_result
+}
+
+async fn connect_network_loopback_join(
+    root: PathBuf,
+    endpoint: IrohFastEndpoint,
+    host: FastEndpointAddress,
+) -> Result<(), SessionCtlError> {
+    let link = endpoint
+        .connect_address(host, NETWORK_OPERATION_WAIT, MAX_IPC_FRAME_BYTES)
+        .await
+        .at_stage("network loopback connect")?;
+    run_network_join_with_link(root, link).await
+}
+
+async fn run_network_host_with_endpoint(
+    root: PathBuf,
+    endpoint: IrohFastEndpoint,
+) -> Result<(), SessionCtlError> {
+    let mut root = ProcessRoot::create_at(root)?;
+    let mut link = endpoint
+        .accept(None, NETWORK_OPERATION_WAIT, MAX_IPC_FRAME_BYTES)
+        .await
+        .at_stage("network accept")?;
+    let hello = link
+        .receive_frame(NETWORK_OPERATION_WAIT)
+        .await
+        .at_stage("network hello")?;
+    if hello != NETWORK_HELLO {
+        return Err(stage("network hello"));
+    }
+    let alice_root = root.path().to_path_buf();
+    let alice = tokio::task::spawn_blocking(move || {
+        run_alice_init(&alice_root)?;
+        run_alice_resume(&alice_root)
+    });
+    let scenario_result = network_host_bridge(root.path(), link).await;
+    let alice_result = alice.await.map_err(|_| stage("network Alice task"))?;
+    let cleanup_result = root.cleanup();
+    scenario_result?;
+    alice_result?;
+    cleanup_result?;
+    println!("mode=network-host\nstatus=complete");
+    Ok(())
+}
+
+async fn run_network_join_with_link(
+    root: PathBuf,
+    mut link: IrohFastLink,
+) -> Result<(), SessionCtlError> {
+    let mut root = ProcessRoot::create_at(root)?;
+    link.send_frame(NETWORK_HELLO, NETWORK_OPERATION_WAIT)
+        .await
+        .at_stage("network hello")?;
+    let invitation = link
+        .receive_frame(NETWORK_OPERATION_WAIT)
+        .await
+        .at_stage("network invitation")?;
+    SignedCapabilityInvitationV2::decode_and_verify(&invitation).at_stage("network invitation")?;
+    atomic_write_async(
+        direct_invitation_path(root.path()),
+        invitation,
+        MAX_WIRE_OBJECT_BYTES,
+    )
+    .await?;
+
+    let bob_root = root.path().to_path_buf();
+    let bob = tokio::task::spawn_blocking(move || run_bob(&bob_root));
+    let scenario_result = network_join_bridge(root.path(), &mut link).await;
+    let bob_result = bob.await.map_err(|_| stage("network Bob task"))?;
+    let close_result = link
+        .close(NETWORK_OPERATION_WAIT)
+        .await
+        .at_stage("network join close");
+    let cleanup_result = root.cleanup();
+    scenario_result?;
+    bob_result?;
+    close_result?;
+    cleanup_result?;
+    println!("mode=network-join\nstatus=complete");
+    Ok(())
+}
+
+async fn network_host_bridge(root: &Path, mut link: IrohFastLink) -> Result<(), SessionCtlError> {
+    let invitation = read_bounded_wait_async(
+        direct_invitation_path(root),
+        MAX_WIRE_OBJECT_BYTES,
+        FRAME_WAIT,
+    )
+    .await?;
+    SignedCapabilityInvitationV2::decode_and_verify(&invitation).at_stage("network invitation")?;
+    link.send_frame(&invitation, NETWORK_OPERATION_WAIT)
+        .await
+        .at_stage("network invitation")?;
+
+    receive_network_frame(root, &mut link, 1, FrameKind::ProtectedJoin).await?;
+    for sequence in [2_u8, 3] {
+        send_network_frame(root, &mut link, sequence).await?;
+    }
+    receive_network_frame(root, &mut link, 4, FrameKind::OpaqueEnvelope).await?;
+    for sequence in 5_u8..=7 {
+        send_network_frame(root, &mut link, sequence).await?;
+    }
+    link.close(NETWORK_OPERATION_WAIT)
+        .await
+        .at_stage("network host close")
+}
+
+async fn network_join_bridge(root: &Path, link: &mut IrohFastLink) -> Result<(), SessionCtlError> {
+    send_network_frame(root, link, 1).await?;
+    for sequence in [2_u8, 3] {
+        receive_network_frame(
+            root,
+            link,
+            sequence,
+            if sequence == 2 {
+                FrameKind::WelcomeDeposit
+            } else {
+                FrameKind::OpaqueEnvelope
+            },
+        )
+        .await?;
+    }
+    send_network_frame(root, link, 4).await?;
+    for sequence in 5_u8..=7 {
+        receive_network_frame(root, link, sequence, FrameKind::OpaqueEnvelope).await?;
+    }
+    Ok(())
+}
+
+async fn send_network_frame(
+    root: &Path,
+    link: &mut IrohFastLink,
+    sequence: u8,
+) -> Result<(), SessionCtlError> {
+    let encoded =
+        read_bounded_wait_async(relay_in(root, sequence), MAX_IPC_FRAME_BYTES, FRAME_WAIT).await?;
+    let frame = IpcFrame::decode(&encoded)?;
+    let expected = expected_frame_kind(sequence)?;
+    frame.require(expected, sequence)?;
+    link.send_frame(&encoded, NETWORK_OPERATION_WAIT)
+        .await
+        .at_stage("network frame send")
+}
+
+async fn receive_network_frame(
+    root: &Path,
+    link: &mut IrohFastLink,
+    sequence: u8,
+    expected: FrameKind,
+) -> Result<(), SessionCtlError> {
+    let encoded = link
+        .receive_frame(NETWORK_OPERATION_WAIT)
+        .await
+        .at_stage("network frame receive")?;
+    let frame = IpcFrame::decode(&encoded)?;
+    frame.require(expected, sequence)?;
+    atomic_write_async(relay_out(root, sequence), encoded, MAX_IPC_FRAME_BYTES).await
+}
+
+fn expected_frame_kind(sequence: u8) -> Result<FrameKind, SessionCtlError> {
+    match sequence {
+        1 => Ok(FrameKind::ProtectedJoin),
+        2 => Ok(FrameKind::WelcomeDeposit),
+        3..=7 => Ok(FrameKind::OpaqueEnvelope),
+        _ => Err(stage("network frame schedule")),
+    }
+}
+
+async fn read_bounded_wait_async(
+    path: PathBuf,
+    maximum: usize,
+    timeout: Duration,
+) -> Result<Vec<u8>, SessionCtlError> {
+    tokio::task::spawn_blocking(move || read_bounded_wait(&path, maximum, timeout))
+        .await
+        .map_err(|_| stage("network file read task"))?
+}
+
+async fn atomic_write_async(
+    path: PathBuf,
+    bytes: Vec<u8>,
+    maximum: usize,
+) -> Result<(), SessionCtlError> {
+    tokio::task::spawn_blocking(move || atomic_write(&path, &bytes, maximum))
+        .await
+        .map_err(|_| stage("network file write task"))?
 }
 
 fn run_l1_process_children(root: &Path, children: &mut ChildSet) -> Result<(), SessionCtlError> {
@@ -1349,15 +1594,7 @@ struct ProcessRoot(Option<PathBuf>);
 
 impl ProcessRoot {
     fn new() -> Result<Self, SessionCtlError> {
-        let identifier: [u8; 16] = random_nonzero()?;
-        let name = format!(
-            "session-chat-l1-{}",
-            identifier
-                .iter()
-                .map(|byte| format!("{byte:02x}"))
-                .collect::<String>()
-        );
-        Self::create_at(std::env::temp_dir().join(name))
+        Self::create_at(fresh_process_root_path("l1")?)
     }
 
     fn create_at(root: PathBuf) -> Result<Self, SessionCtlError> {
@@ -1411,6 +1648,18 @@ impl Drop for ProcessRoot {
     fn drop(&mut self) {
         let _ = self.cleanup();
     }
+}
+
+fn fresh_process_root_path(label: &str) -> Result<PathBuf, SessionCtlError> {
+    let identifier: [u8; 16] = random_nonzero()?;
+    let name = format!(
+        "session-chat-{label}-{}",
+        identifier
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
+    );
+    Ok(std::env::temp_dir().join(name))
 }
 
 fn validate_root(root: &Path) -> Result<(), SessionCtlError> {

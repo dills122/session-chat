@@ -10,7 +10,8 @@ pub mod l2_process;
 
 pub use l1_process::{
     L1ProcessReport, resolve_l1_process_git_commit, run_l1_process_demo,
-    run_l1_process_internal_role, run_two_terminal_host, run_two_terminal_join,
+    run_l1_process_internal_role, run_network_host, run_network_join, run_network_loopback_demo,
+    run_two_terminal_host, run_two_terminal_join,
 };
 
 use std::{
