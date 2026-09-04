@@ -11,9 +11,10 @@ rollback release and recover an ambiguous commit by authorization-attempt and
 transaction IDs. The normal flow
 closes Alice's initial MLS client, reloads her exact credential, signer, and
 group from the database, reconstructs the coordinator owner, and delivers the Welcome through the
-right-specific local mailbox, exchanges two MLS application messages over the
-deterministic memory transport, applies a path update, removes Bob, and confirms
-Bob rejects a later message.
+right-specific local mailbox. Application messages, the path update, removal,
+and the post-removal rejection check cross the provider-neutral
+`EnvelopeDelivery` boundary using bounded operations and distinct deposit,
+receive, and acknowledgement rights over the deterministic memory adapter.
 
 ```sh
 cargo run -p sessionctl --locked --offline
@@ -34,6 +35,12 @@ The library also exposes a narrow `PhaseOneFaultPlan` conformance seam. It can
 stop the same flow only at named operation-result boundaries and observes only
 coarse cleanup states; it receives no protocol bytes, identifiers, authority,
 plaintext, or provider error values. The default binary injects no faults.
+
+The in-process LocalV1 message path deliberately uses immediate cursorless
+polls and does not claim durable receive-checkpoint persistence. Cursor-bound
+restart and persist-before-acknowledgement behavior remains isolated in the
+transport conformance models until a selected network adapter supplies those
+semantics.
 
 The independent-process runner uses the same durable authorization owner and
 recovers a lost pre-approval provider value as abandoned while retaining replay

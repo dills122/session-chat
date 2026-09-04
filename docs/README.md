@@ -97,6 +97,11 @@ all.
   and explicit resynchronization. The provider now also drives bounded canonical
   deposit, cursor-bearing poll, and acknowledgement through the shared dispatch
   boundary. LocalV1 stays cursorless and has no rotation operation.
+- `sessionctl` now routes application messages, epoch updates, removal, and the
+  post-removal rejection check through that common bounded dispatch interface.
+  Its LocalV1 memory composition remains explicitly cursorless, and a
+  deliberately mismatched adapter proves that the composition rejects broken
+  delivery identity without changing MLS or admission code.
 - [Threat model](THREAT_MODEL.md) defines assets, trust boundaries, attackers,
   invariants, and severity calibration.
 - [Rust code-coverage policy](CODE_COVERAGE.md) defines the source-based

@@ -1,6 +1,6 @@
 # Implementation plan: Phase 1 protocol laboratory closeout
 
-Status: reviewed closeout plan; P1-0 through P1-5 complete, P1-6 next
+Status: reviewed closeout plan; P1-0 through P1-6 complete, P1-7 next
 
 Date: 2026-09-02
 
@@ -431,23 +431,23 @@ accepted profile requires it.
 
 **Acceptance criteria:**
 
-- [ ] `E2E-MSG-001`, `E2E-MSG-002`, `E2E-REMOVE-001`, and the Phase 1 portion
+- [x] `E2E-MSG-001`, `E2E-MSG-002`, `E2E-REMOVE-001`, and the Phase 1 portion
       of `E2E-AUTH-001` cross the common dispatch interface with explicit
       clocks, deadlines, cancellation, bounds, and right-specific authority.
-- [ ] The LocalV1 composition remains explicitly cursorless and makes no
+- [x] The LocalV1 composition remains explicitly cursorless and makes no
       durable receive-checkpoint claim; cursor persistence and
       persist-before-acknowledge remain conformance-model evidence in Phase 1.
-- [ ] Replacing the conforming memory adapter with a deliberately defective
+- [x] Replacing the conforming memory adapter with a deliberately defective
       adapter makes the appropriate scenario fail without changing MLS or
       admission code.
-- [ ] The existing versioned `sessionctl` output and redaction contract remain
+- [x] The existing versioned `sessionctl` output and redaction contract remain
       stable unless a separately reviewed evidence-version change is required.
 
 **Verification:**
 
-- [ ] `cargo test -p sessionctl --test phase_one --locked --offline`
-- [ ] Targeted adverse-delivery and orchestration-fault tests pass.
-- [ ] `cargo test -p transport-conformance --all-features --locked --offline`
+- [x] `cargo test -p sessionctl --test phase_one --locked --offline`
+- [x] Targeted adverse-delivery and orchestration-fault tests pass.
+- [x] `cargo test -p transport-conformance --all-features --locked --offline`
 
 **Dependencies:** P1-5
 
@@ -464,8 +464,8 @@ accepted profile requires it.
 ## Checkpoint B: Common transport boundary
 
 - [ ] P1-4 through P1-6 are complete and independently reviewed.
-- [ ] The memory adapter remains the deterministic control path.
-- [ ] No real adapter, runtime, or product profile is selected implicitly.
+- [x] The memory adapter remains the deterministic control path.
+- [x] No real adapter, runtime, or product profile is selected implicitly.
 
 ## Task P1-7: Complete hostile independent-process first contact
 

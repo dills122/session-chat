@@ -40,8 +40,10 @@ use session_protocol::{
     OpaqueEnvelope,
 };
 use session_transport::{
-    BlockingFutureSupervisor, CoordinatorOutcome, CoordinatorPolicy, EnvelopeTransport,
-    LocalMailboxPolicy, LocalMemoryWelcomeTransport, LocalV1DepositEndpointResolver,
+    AcknowledgementRequest, AcknowledgementRight, BlockingFutureSupervisor, BoundedDeliveryIds,
+    CanonicalEnvelope, CoordinatorOutcome, CoordinatorPolicy, DepositRequest, DepositRight,
+    DispatchControl, EnvelopeDelivery, LocalMailboxPolicy, LocalMemoryWelcomeTransport,
+    LocalV1DepositEndpointResolver, OperationBudget, PollRequest, PollWait, ReceiveRight,
     ThreadDispatchControl, WelcomeDeliveryCoordinator,
 };
 use storage_sqlcipher::{
@@ -49,16 +51,15 @@ use storage_sqlcipher::{
     PersistenceFault, SqlCipherStorage, VaultKey, WelcomeOutboxState,
 };
 use thiserror::Error;
-use transport_memory::{
-    DeliveryAction, DeterministicMemoryTransport, MemoryAcknowledgementCapability,
-    MemoryDepositEndpoint, MemoryMailboxPolicy, MemoryReceiveCapability,
-};
+use transport_memory::{DeliveryAction, DeterministicMemoryTransport, MemoryMailboxPolicy};
 use zeroize::Zeroizing;
 
 const NOW: u64 = 1_900_000_000;
 const MAILBOX_EXPIRES_AT: u64 = NOW + 240;
 const REQUEST_EXPIRES_AT: u64 = NOW + 120;
 const INVITATION_EXPIRES_AT: u64 = NOW + 300;
+const MESSAGE_OPERATION_TIMEOUT: Duration = Duration::from_secs(1);
+const MESSAGE_OPERATION_MAX_BYTES: u64 = 1024 * 1024;
 
 /// Coarse failure from the headless protocol-conformance flow.
 #[derive(Clone, Copy, Debug, Eq, Error, PartialEq)]
@@ -858,14 +859,14 @@ fn run_phase_one_flow(
         message_transport.create_mailbox(MAILBOX_EXPIRES_AT, NOW),
         "Alice message mailbox",
     )?;
-    let (to_alice, alice_receive, alice_acknowledgement) = alice_mailbox.into_parts();
+    let (to_alice, alice_receive, alice_acknowledgement) = alice_mailbox.into_dispatch_parts();
     let bob_mailbox = operation_result(
         faults,
         PhaseOneFaultPoint::BobMessageMailbox,
         message_transport.create_mailbox(MAILBOX_EXPIRES_AT, NOW),
         "Bob message mailbox",
     )?;
-    let (to_bob, bob_receive, bob_acknowledgement) = bob_mailbox.into_parts();
+    let (to_bob, bob_receive, bob_acknowledgement) = bob_mailbox.into_dispatch_parts();
 
     let alice_plaintext = b"hello from Alice";
     let protected = operation_result(
@@ -1048,31 +1049,111 @@ fn run_phase_one_flow(
     })
 }
 
-fn deliver_message(
-    transport: &mut DeterministicMemoryTransport,
-    endpoint: &MemoryDepositEndpoint,
-    receive: &MemoryReceiveCapability,
-    acknowledgement: &MemoryAcknowledgementCapability,
+fn deliver_message<D: EnvelopeDelivery>(
+    transport: &mut D,
+    endpoint: &DepositRight<D::DepositEndpoint>,
+    receive: &ReceiveRight<D::ReceiveCapability>,
+    acknowledgement: &AcknowledgementRight<D::AcknowledgementCapability>,
     message: ProtectedMessage,
 ) -> Result<ProtectedMessage, SessionCtlError> {
     let envelope = OpaqueEnvelope::new(random_nonzero()?, REQUEST_EXPIRES_AT, message.into_bytes())
         .at_stage("message envelope")?;
-    let delivery_id = transport
-        .deposit(endpoint, envelope, NOW)
-        .at_stage("message deposit")?;
-    let received = transport
-        .receive(receive, NOW)
-        .at_stage("message receive")?
-        .ok_or_else(|| stage("message receive"))?;
-    if received.delivery_id() != &delivery_id {
+    let envelope =
+        deliver_opaque_envelope(transport, endpoint, receive, acknowledgement, envelope)?;
+    ProtectedMessage::from_bytes(envelope.ciphertext()).at_stage("message framing")
+}
+
+fn deliver_opaque_envelope<D: EnvelopeDelivery>(
+    transport: &mut D,
+    endpoint: &DepositRight<D::DepositEndpoint>,
+    receive: &ReceiveRight<D::ReceiveCapability>,
+    acknowledgement: &AcknowledgementRight<D::AcknowledgementCapability>,
+    envelope: OpaqueEnvelope,
+) -> Result<OpaqueEnvelope, SessionCtlError> {
+    let canonical = CanonicalEnvelope::from_opaque(envelope).at_stage("message envelope")?;
+    let operation_deadline = Instant::now() + MESSAGE_OPERATION_TIMEOUT;
+    let budget = OperationBudget::new(operation_deadline, MESSAGE_OPERATION_MAX_BYTES, 1)
+        .at_stage("message operation budget")?;
+    let deposit_request =
+        DepositRequest::new(canonical, budget).at_stage("message deposit request")?;
+    let (supervisor_control, _cancellation) = ThreadDispatchControl::new();
+    let dispatch_control = PhaseOneDispatchControl(&supervisor_control);
+    let receipt = run_delivery_operation(
+        EnvelopeDelivery::deposit(transport, endpoint, deposit_request, &dispatch_control),
+        &supervisor_control,
+        operation_deadline,
+        "message deposit",
+    )?;
+
+    let poll_request = PollRequest::new(
+        None,
+        1,
+        u32::try_from(MESSAGE_OPERATION_MAX_BYTES).map_err(|_| stage("message poll request"))?,
+        PollWait::immediate(),
+        budget,
+    )
+    .at_stage("message poll request")?;
+    let batch = run_delivery_operation(
+        EnvelopeDelivery::poll(transport, receive, poll_request, &dispatch_control),
+        &supervisor_control,
+        operation_deadline,
+        "message receive",
+    )?;
+    let [received] = batch.items() else {
+        return Err(stage("message receive"));
+    };
+    if received.delivery_id() != receipt.delivery_id() {
         return Err(stage("message delivery identity"));
     }
-    let protected = ProtectedMessage::from_bytes(received.envelope().ciphertext())
+    let delivered = OpaqueEnvelope::decode_canonical(received.envelope().as_bytes())
         .at_stage("message framing")?;
-    transport
-        .acknowledge(acknowledgement, delivery_id, NOW)
-        .at_stage("message acknowledgement")?;
-    Ok(protected)
+    let acknowledgement_request = AcknowledgementRequest::new(
+        BoundedDeliveryIds::new(vec![*received.delivery_id()])
+            .at_stage("message acknowledgement request")?,
+        budget,
+    );
+    run_delivery_operation(
+        EnvelopeDelivery::acknowledge(
+            transport,
+            acknowledgement,
+            acknowledgement_request,
+            &dispatch_control,
+        ),
+        &supervisor_control,
+        operation_deadline,
+        "message acknowledgement",
+    )?;
+    Ok(delivered)
+}
+
+struct PhaseOneDispatchControl<'a>(&'a ThreadDispatchControl);
+
+impl DispatchControl for PhaseOneDispatchControl<'_> {
+    fn monotonic_now(&self) -> Instant {
+        self.0.monotonic_now()
+    }
+
+    fn wall_now_unix_seconds(&self) -> Option<u64> {
+        Some(NOW)
+    }
+
+    fn is_cancelled(&self) -> bool {
+        self.0.is_cancelled()
+    }
+}
+
+fn run_delivery_operation<F, T, E>(
+    future: F,
+    control: &ThreadDispatchControl,
+    deadline: Instant,
+    operation: &'static str,
+) -> Result<T, SessionCtlError>
+where
+    F: std::future::Future<Output = Result<T, E>>,
+{
+    BlockingFutureSupervisor::run(future, control, deadline)
+        .at_stage(operation)?
+        .at_stage(operation)
 }
 
 struct TempDatabase(PathBuf);
@@ -1165,5 +1246,89 @@ trait StageResult<T> {
 impl<T, E> StageResult<T> for Result<T, E> {
     fn at_stage(self, name: &'static str) -> Result<T, SessionCtlError> {
         self.map_err(|_| stage(name))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::future::ready;
+
+    use session_transport::{
+        AcknowledgementReceipt, DeliveryId, DepositReceipt, ReceiveBatch,
+        ReceivedCanonicalEnvelope, TransportFailure,
+    };
+
+    use super::*;
+
+    struct MismatchedDeliveryAdapter {
+        pending: Option<CanonicalEnvelope>,
+    }
+
+    impl EnvelopeDelivery for MismatchedDeliveryAdapter {
+        type DepositEndpoint = ();
+        type ReceiveCapability = ();
+        type AcknowledgementCapability = ();
+
+        fn deposit<'a>(
+            &'a mut self,
+            _endpoint: &'a DepositRight<Self::DepositEndpoint>,
+            request: DepositRequest,
+            _control: &'a dyn session_transport::DispatchControl,
+        ) -> impl std::future::Future<Output = Result<DepositReceipt, TransportFailure>> + Send + 'a
+        {
+            let (envelope, _) = request.into_parts();
+            self.pending = Some(envelope);
+            ready(Ok(DepositReceipt::accepted(delivery_id(0x11))))
+        }
+
+        fn poll<'a>(
+            &'a mut self,
+            _authority: &'a ReceiveRight<Self::ReceiveCapability>,
+            request: PollRequest,
+            _control: &'a dyn session_transport::DispatchControl,
+        ) -> impl std::future::Future<Output = Result<ReceiveBatch, TransportFailure>> + Send + 'a
+        {
+            let batch = ReceiveBatch::new(
+                vec![ReceivedCanonicalEnvelope::new(
+                    delivery_id(0x22),
+                    self.pending.take().expect("deposited envelope"),
+                )],
+                None,
+                &request,
+                NOW,
+            )
+            .expect("bounded defective batch");
+            ready(Ok(batch))
+        }
+
+        fn acknowledge<'a>(
+            &'a mut self,
+            _authority: &'a AcknowledgementRight<Self::AcknowledgementCapability>,
+            _request: AcknowledgementRequest,
+            _control: &'a dyn session_transport::DispatchControl,
+        ) -> impl std::future::Future<Output = Result<AcknowledgementReceipt, TransportFailure>>
+        + Send
+        + 'a {
+            ready(Ok(AcknowledgementReceipt::accepted()))
+        }
+    }
+
+    #[test]
+    fn common_delivery_boundary_rejects_a_defective_adapter_without_mls_changes() {
+        let mut adapter = MismatchedDeliveryAdapter { pending: None };
+        let deposit = DepositRight::from_provider(());
+        let receive = ReceiveRight::from_provider(());
+        let acknowledgement = AcknowledgementRight::from_provider(());
+        let envelope = OpaqueEnvelope::new([0x31; 16], REQUEST_EXPIRES_AT, vec![0x41; 32])
+            .expect("bounded opaque envelope");
+
+        let result =
+            deliver_opaque_envelope(&mut adapter, &deposit, &receive, &acknowledgement, envelope);
+
+        assert_eq!(result, Err(stage("message delivery identity")));
+    }
+
+    fn delivery_id(byte: u8) -> DeliveryId {
+        DeliveryId::from_provider_bytes([byte; 16]).expect("nonzero delivery ID")
     }
 }
