@@ -1,7 +1,7 @@
 # Implementation plan: profile-bound transport abstraction
 
 Status: active staged implementation plan; ADR 0015 is accepted, the generalized
-dispatch slice is complete, Task 6 conformance remains partial, Task 9's durable
+dispatch and Task 6 conformance slices are complete, Task 9's durable
 owner-store plus capability-admission/MLS composition checkpoints are complete,
 and the durable client-reload and independent-process L1 checkpoints are
 complete before network work
@@ -164,7 +164,7 @@ remains in `transport-memory`.
 | `R5-TRACE` | Read-only research | Task 4 | Complete | Versioned trace ownership, vocabulary, bounds, redaction, determinism, and test seams are recorded from the accepted contracts and official Rust runtime sources. |
 | `T5-TRACE` | Lead implementation | `R5-TRACE` | Complete | A strict canonical v1 trace parser rejects unknown/noncanonical/oversized input and round-trips one secret-free golden fixture byte-for-byte. |
 | `T5-MEMORY-FAULTS` | Lead implementation | `T5-TRACE` | Complete | The memory provider supplies bounded outage, corruption, exact-byte stale-replay, acknowledgement-loss, release, and secret-free probe controls without weakening existing semantics. |
-| `T6-HARNESS` | Lead implementation | `T5-MEMORY-FAULTS` | In progress | The bounded wake-aware runner replays retained traces twice against fresh memory adapters; common lifecycle, queue-saturation, and bounded virtual arbitrary-delay verdicts, exact retry identity, drop/quiescence, redaction, and deliberately defective bridges are covered. A publish-disabled deterministic FastV1 provider covers issuance, distinct rights, rotation, exact retry, declaration mismatch, foreign authority, and competing stale predecessors. Its bounded owner model covers atomic page/cursor persistence, overlap deduplication, restart-safe acknowledgement recovery, cursorless successors, resynchronization, stale checkpoints, foreign bindings, and expiry. The exhaustive normalized authority/resource matrix remains open. |
+| `T6-HARNESS` | Lead implementation | `T5-MEMORY-FAULTS` | Complete | The bounded wake-aware runner replays retained traces twice against fresh memory adapters; common lifecycle, queue-saturation, and bounded virtual arbitrary-delay verdicts, exact retry identity, drop/quiescence, redaction, and deliberately defective bridges are covered. A publish-disabled deterministic FastV1 provider drives issuance, distinct rights, canonical deposit, cursor poll/resume, acknowledgement, rotation, exact retry, declaration mismatch, foreign authority, and stale predecessors through the shared boundaries. Its bounded owner model covers atomic page/cursor persistence, overlap deduplication, restart-safe acknowledgement recovery, cursorless successors, resynchronization, stale checkpoints, foreign bindings, and expiry. A closed matrix maps all 38 required lifecycle cases to retained evidence. |
 | `T8-OWNER-PREREQS` | Lead implementation | `R7-COORD` | Complete | The inviter model issues scoped leases, terminalizes exhausted work, validates canonical LocalV1 delivery material and expiry scope, and rejects stale or foreign lease results. |
 | `T8-COORDINATOR` | Lead implementation | `T8-OWNER-PREREQS` | Complete | The deposit-only port, one-attempt policy executor, LocalV1 resolver/adapter bridge, inviter-store integration, and cross-platform wake/cancel/deadline/drop supervisor are retained. |
 | `T9-INMEMORY-INTEGRATION` | Lead implementation | `T8-COORDINATOR` | Complete | The atomic inviter outbox drives the real LocalV1 mailbox; acceptance, adapter failure, and ambiguous exact retry preserve one membership commit and one authoritative ledger. |
@@ -302,9 +302,10 @@ authority sets, exact generation/cursor binding, compare-and-swap rotation,
 explicit resynchronization, and the separate atomic receive-state owner port.
 Task 3 implementation is complete; findings from all three independent-review
 instances are remediated. Instance 3 was the configured maximum and returned
-`Not ready` against its frozen pre-remediation target, so human acceptance is
-pending and no fourth review starts automatically. The provider
-implementation and exhaustive matrix remain Task 6/P1-5 work.
+`Not ready` against its frozen pre-remediation target; human acceptance later
+authorized proceeding and no fourth review started automatically. The
+provider implementation and closed evidence matrix are now complete under Task
+6/P1-5.
 
 The local capability-evidence sub-increment extracts receive and
 acknowledgement authority behind private fields and crate-only constructors,
@@ -413,9 +414,9 @@ cursorless and non-rotating; declarations do not enable profile binding.
 - [x] Existing local and deterministic-memory delivery state has retained test
   and review evidence.
 - [x] Generalized authority, lifecycle, and provider-wide redaction tests pass.
-- [ ] Human acceptance confirms the post-review remediation before P1-5 adds
-  cursor-bearing provider state. Independent review instance 3 of 3 returned
-  `Not ready` on its frozen target; no fourth review starts automatically.
+- [x] Human acceptance confirmed proceeding after post-review remediation.
+  Independent review instance 3 of 3 returned `Not ready` on its frozen target;
+  no fourth review started automatically.
 
 ## Phase C: deterministic memory control path
 
@@ -539,18 +540,18 @@ acknowledges the accepted set, reaches quiescence, double-replays identically,
 and catches an over-accepting bridge. A retained hold/advance/poll/release trace
 now covers bounded arbitrary delay without wall-clock sleeps. The exhaustive
 authority/resource matrix remains before Task 6 is complete. A deterministic
-FastV1 lifecycle-only provider now retains issuance, rotation, exact-retry,
-foreign-authority, stale-predecessor, and declaration-substitution evidence;
-its companion owner model now retains atomic cursor-page, deduplication,
+FastV1 provider now retains issuance, canonical deposit, cursor poll/resume,
+acknowledgement, rotation, exact-retry, foreign-authority, stale-predecessor, and
+declaration-substitution evidence; its companion owner model retains atomic cursor-page, deduplication,
 acknowledgement-recovery, cursorless-successor, resynchronization, stale-state,
-foreign-binding, and expiry evidence. The exhaustive normalized matrix remains
-open; the retained LocalV1 cross-resource row proves a foreign delivery ID is a
-no-op under another mailbox's valid acknowledgement right and cannot consume
-the original mailbox's delivery.
+foreign-binding, and expiry evidence. The closed 38-row evidence matrix covers
+the required lifecycle vocabulary. The retained LocalV1 cross-resource row
+proves a foreign delivery ID is a no-op under another mailbox's valid
+acknowledgement right and cannot consume the original mailbox's delivery.
 
 **Acceptance criteria:**
 
-- [ ] The harness covers every common test in the transport specification.
+- [x] The harness covers every common test in the transport specification.
 - [x] Adapter-specific tests can add evidence without weakening common tests.
 - [x] Failure output identifies normalized codes without printing secret data.
 

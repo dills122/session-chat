@@ -49,12 +49,14 @@ profile-specific evidence remain open.
 Passing the parser or this first memory trace does not establish complete
 adapter conformance, network privacy, durability, or production readiness.
 
-The crate also contains a deterministic FastV1 lifecycle-only provider for
-contract testing. It issues four distinct opaque rights for a fresh generation,
-performs compare-and-swap routine or compromise rotation, reproduces an exact
-rotation retry, and rejects foreign rights, competing stale predecessors, and
-declaration substitution. Its predictable authority bytes and lack of network
-I/O make it conformance support only, never a selectable product adapter.
+The crate also contains a deterministic FastV1 provider for contract testing.
+It issues four distinct opaque rights for a fresh generation, performs
+compare-and-swap routine or compromise rotation, reproduces an exact rotation
+retry, and rejects foreign rights, competing stale predecessors, and declaration
+substitution. Through the shared dispatch boundary it performs bounded canonical
+deposit, cursor-bearing poll, exact acknowledgement, cursor rejection, and
+idempotency-conflict handling. Its predictable authority bytes and lack of
+network I/O make it conformance support only, never a selectable product adapter.
 
 Its companion in-memory receive-state owner atomically retains exact canonical
 pages, cursor progress, duplicate outcomes, and acknowledgement intent. Restart
@@ -66,6 +68,8 @@ The LocalV1 resource matrix also proves that a delivery ID presented under a
 different mailbox's valid acknowledgement right is an identifier-free no-op:
 it cannot consume the original mailbox's retained delivery, which remains
 available to its own right.
+The closed evidence matrix maps all required lifecycle cases to the retained
+provider, owner, common-contract, or compile-fail test that exercises them.
 
 ## Verification
 

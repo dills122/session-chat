@@ -82,8 +82,8 @@ all.
   fixtures, and a first normalized double-replay runner over the real memory
   adapter. Composed lifecycle, queue-saturation, and bounded arbitrary-delay
   verdicts plus deliberately defective bridges cover the retained adverse
-  slices; the exhaustive authority/resource verdict remains Phase 1 closeout
-  work.
+  slices. The cursor-bearing provider/owner composition and closed lifecycle
+  evidence matrix complete the P1-5 common verdict work.
 - `session-transport` now also fixes the reusable mailbox lifecycle boundary:
   bounded four-right issuance, exact generation/cursor binding,
   compare-and-swap rotation, explicit resynchronization, and a separate atomic
@@ -94,8 +94,9 @@ all.
   LocalV1 lifecycle state. A publish-disabled deterministic FastV1 provider now
   exercises issuance and rotation, and a companion bounded owner model covers
   cursor progress, overlap deduplication, restart-safe acknowledgement intent,
-  and explicit resynchronization. The exhaustive normalized authority/resource
-  suite remains P1-5 work. LocalV1 stays cursorless and has no rotation operation.
+  and explicit resynchronization. The provider now also drives bounded canonical
+  deposit, cursor-bearing poll, and acknowledgement through the shared dispatch
+  boundary. LocalV1 stays cursorless and has no rotation operation.
 - [Threat model](THREAT_MODEL.md) defines assets, trust boundaries, attackers,
   invariants, and severity calibration.
 - [Rust code-coverage policy](CODE_COVERAGE.md) defines the source-based

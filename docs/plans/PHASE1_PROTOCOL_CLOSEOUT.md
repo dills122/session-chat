@@ -1,6 +1,6 @@
 # Implementation plan: Phase 1 protocol laboratory closeout
 
-Status: reviewed closeout plan; P1-0 through P1-3 complete, P1-4 maximum-review findings remediated and human acceptance pending
+Status: reviewed closeout plan; P1-0 through P1-5 complete, P1-6 next
 
 Date: 2026-09-02
 
@@ -76,7 +76,7 @@ but its findings are product evidence and cannot mark a protocol task complete.
 | Wire and crypto | Canonical invitation/envelope encodings, strict Ed25519, fixed HPKE PSK contexts, exact KeyPackage binding, and hostile parsing tests | Preserve compatibility fixtures and claim limits while later tasks change composition |
 | Admission and MLS | Capability verification, in-memory replay and invitation reservations, explicit approval, exact two-party Add/Welcome, messaging, update, and removal | Restartable durable replay/reservation/approval ownership before membership mutation |
 | Durable storage | Atomic SQLCipher inviter/joiner commits, schema migration, identity/group reload, ambiguous-result recovery, and durable Welcome leases | The current database retains approved transaction shadows but cannot durably resolve the complete pre-commit replay/reservation/approval lifecycle |
-| Transport | Right-specific types, bounded common dispatch, cursorless memory adapter, adverse trace parser, lifecycle/queue verdicts, and defective bridges | Provider-wide issuance/lifecycle conformance, arbitrary delay, exhaustive authority/resource verdicts, and common-boundary composition |
+| Transport | Right-specific types, bounded common dispatch, cursorless memory adapter, adverse trace parser, deterministic cursor-bearing provider/owner, lifecycle/queue/delay verdicts, closed authority/resource evidence, and defective bridges | Common-boundary headless composition |
 | Process evidence | Positive independent-process join, one exact-replay rejection, inviter/joiner kill sweeps, and SQLite-visible fault injection | Remaining `E2E-JOIN-002` cases and Welcome delivery lease/result process-kill recovery |
 | Closeout | Canonical scenario catalog, redacted manifests, CI matrix, and coverage ratchets | One Phase 1 evidence matrix and exact-revision completion review |
 
@@ -366,9 +366,9 @@ behavior and fail-closed unsupported operations through the stable boundary.
 - [x] `cargo test -p session-transport --all-features --locked --offline`
 - [x] The transport specification, ADR, and contract tests agree on supported
       and deliberately unsupported Phase 1 operations.
-- [ ] Human acceptance confirms the post-review remediation. Independent review
-      instance 3 of 3 returned `Not ready` on its frozen pre-remediation target;
-      no fourth review starts automatically.
+- [x] Human acceptance confirmed proceeding after the maximum-review findings
+      were remediated. Independent review instance 3 of 3 returned `Not ready`
+      on its frozen pre-remediation target; no fourth review started automatically.
 
 **Dependencies:** P1-0
 
@@ -396,7 +396,7 @@ bridges so every common verdict is known to detect the violation it names.
 
 - [x] The canonical trace vocabulary and runner cover bounded arbitrary delay
       without wall-clock sleeps or unbounded queues.
-- [ ] The publish-disabled deterministic provider plus bounded receive-state
+- [x] The publish-disabled deterministic provider plus bounded receive-state
       owner model pass positive cursor, persist-before-acknowledge, rotation,
       restart, and resynchronization cases, while every right/resource
       substitution and stale generation has a normalized rejection verdict.
@@ -405,8 +405,8 @@ bridges so every common verdict is known to detect the violation it names.
 
 **Verification:**
 
-- [ ] `cargo test -p transport-memory --all-features --locked --offline`
-- [ ] `cargo test -p transport-conformance --all-features --locked --offline`
+- [x] `cargo test -p transport-memory --all-features --locked --offline`
+- [x] `cargo test -p transport-conformance --all-features --locked --offline`
 
 **Dependencies:** P1-4
 
