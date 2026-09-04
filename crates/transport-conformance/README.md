@@ -49,6 +49,13 @@ profile-specific evidence remain open.
 Passing the parser or this first memory trace does not establish complete
 adapter conformance, network privacy, durability, or production readiness.
 
+The crate also contains a deterministic FastV1 lifecycle-only provider for
+contract testing. It issues four distinct opaque rights for a fresh generation,
+performs compare-and-swap routine or compromise rotation, reproduces an exact
+rotation retry, and rejects foreign rights, competing stale predecessors, and
+declaration substitution. Its predictable authority bytes and lack of network
+I/O make it conformance support only, never a selectable product adapter.
+
 ## Verification
 
 ```sh
