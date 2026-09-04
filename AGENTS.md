@@ -56,6 +56,9 @@ Current areas:
   port, and cross-platform blocking supervision baseline
 - `crates/transport-memory`: bounded deterministic delivery-fault adapter for
   opaque-envelope headless and conformance tests; not a network transport
+- `crates/transport-iroh`: bounded authenticated Iroh frame link for explicit
+  FastV1 online experiments; not an offline mailbox or complete reusable
+  `EnvelopeDelivery` provider
 - `crates/transport-conformance`: publish-disabled offline trace-schema and
   shared adapter-evidence support; its strict adverse-trace parser and first
   normalized lifecycle and queue-saturation double-replay verdicts exist,

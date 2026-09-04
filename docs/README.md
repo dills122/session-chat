@@ -84,6 +84,11 @@ all.
   verdicts plus deliberately defective bridges cover the retained adverse
   slices. The cursor-bearing provider/owner composition and closed lifecycle
   evidence matrix complete the P1-5 common verdict work.
+- `transport-iroh` pins Iroh 1.1.0 and retains a direct-only loopback proof of
+  authenticated endpoint identity, bounded frame exchange, local oversize
+  rejection, operation deadlines, and graceful receipt-before-close behavior.
+  It is an online FastV1 link, not an offline mailbox or complete reusable
+  delivery adapter.
 - `session-transport` now also fixes the reusable mailbox lifecycle boundary:
   bounded four-right issuance, exact generation/cursor binding,
   compare-and-swap rotation, explicit resynchronization, and a separate atomic

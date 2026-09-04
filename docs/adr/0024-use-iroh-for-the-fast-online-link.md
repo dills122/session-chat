@@ -1,6 +1,6 @@
 # ADR 0024: Use Iroh for the Fast online link
 
-Status: accepted; implementation pending
+Status: accepted; bounded link implemented, headless network composition pending
 
 Date: 2026-09-04
 
@@ -36,8 +36,9 @@ The first increment is a bounded, ordered online link for the existing
 versioned Session Chat IPC frames:
 
 - use one Session Chat-specific ALPN;
-- authenticate the expected remote Iroh endpoint ID before accepting protocol
-  data;
+- authenticate the expected host endpoint ID on connect; the accepting side
+  obtains the authenticated remote endpoint ID but still relies on the normal
+  Session Chat admission proof before membership;
 - prefix every frame with a fixed-width length and reject zero or oversized
   frames before allocation;
 - bound connection establishment, frame reads, and frame writes with caller
