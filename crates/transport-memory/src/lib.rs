@@ -968,7 +968,8 @@ impl EnvelopeDelivery for DeterministicMemoryTransport {
             ));
         }
 
-        let mut items = Vec::with_capacity(usize::from(request.max_envelopes()));
+        let mut items: Vec<ReceivedCanonicalEnvelope> =
+            Vec::with_capacity(usize::from(request.max_envelopes()));
         let mut consumed_prefix = 0_usize;
         let mut consumed_stale_indices = Vec::new();
         let mut expired_ids = Vec::new();
@@ -989,6 +990,9 @@ impl EnvelopeDelivery for DeterministicMemoryTransport {
             let Some(envelope) = accepted.envelope.as_ref() else {
                 continue;
             };
+            if items.iter().any(|item| item.delivery_id() == delivery_id) {
+                continue;
+            }
             if envelope.expires_at_unix_seconds() <= now_unix_seconds {
                 expired_ids.push(*delivery_id);
                 continue;
@@ -1026,6 +1030,18 @@ impl EnvelopeDelivery for DeterministicMemoryTransport {
                 }
                 let canonical = CanonicalEnvelope::from_opaque(replay.envelope.clone())
                     .map_err(|_| transport_failure(TransportFailureCode::CorruptRemoteResponse))?;
+                if let Some(existing) = items
+                    .iter()
+                    .find(|item| item.delivery_id() == &replay.delivery_id)
+                {
+                    if existing.envelope().as_bytes() != canonical.as_bytes() {
+                        return Err(transport_failure(
+                            TransportFailureCode::CorruptRemoteResponse,
+                        ));
+                    }
+                    consumed_stale_indices.push(index);
+                    continue;
+                }
                 let next_encoded_bytes = encoded_bytes
                     .checked_add(canonical.as_bytes().len())
                     .ok_or_else(|| transport_failure(TransportFailureCode::EnvelopeTooLarge))?;

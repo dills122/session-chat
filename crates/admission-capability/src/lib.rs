@@ -614,7 +614,7 @@ pub struct AppliedCapabilityJoinAwaitingDurability<'verifier, 'registry> {
     applied_at_unix_seconds: u64,
 }
 
-impl AppliedCapabilityJoinAwaitingDurability<'_, '_> {
+impl<'verifier, 'registry> AppliedCapabilityJoinAwaitingDurability<'verifier, 'registry> {
     /// Returns the exact admitted KeyPackage reference targeted by the Welcome.
     #[must_use]
     pub fn key_package_reference(&self) -> &KeyPackageReference {
@@ -637,6 +637,42 @@ impl AppliedCapabilityJoinAwaitingDurability<'_, '_> {
     #[must_use]
     pub fn response_endpoint(&self) -> &LocalWelcomeDepositEndpoint {
         &self.response_endpoint
+    }
+
+    /// Transfers the provider-applied Add to a durable authorization owner.
+    ///
+    /// The returned settlement value keeps the in-memory invitation and replay
+    /// shadows reserved until the durable owner proves the exact transaction
+    /// committed or uncommitted. This process therefore cannot reuse either
+    /// value while the storage result is unresolved.
+    #[must_use = "persist the exact provider-applied Add through the durable authorization owner"]
+    pub fn into_durable_owner_parts(
+        self,
+    ) -> (
+        CommittedAddition,
+        LocalWelcomeDepositEndpoint,
+        DurableCapabilityShadowSettlement<'verifier, 'registry>,
+    ) {
+        let Self {
+            verifier,
+            registry,
+            committed,
+            response_endpoint,
+            replay_reservation,
+            invitation_reservation,
+            applied_at_unix_seconds,
+        } = self;
+        (
+            committed,
+            response_endpoint,
+            DurableCapabilityShadowSettlement {
+                verifier,
+                registry,
+                replay_reservation,
+                invitation_reservation,
+                applied_at_unix_seconds,
+            },
+        )
     }
 
     /// Returns the current in-memory invitation shadow without mutation.
@@ -663,6 +699,40 @@ impl AppliedCapabilityJoinAwaitingDurability<'_, '_> {
     ///
     /// The caller must discard the transiently advanced group and reload it
     /// from the authoritative owner store before another membership attempt.
+    pub fn release_proven_uncommitted(self) -> Result<(), CapabilityAdmissionError> {
+        let invitation_result = self
+            .registry
+            .release(self.invitation_reservation, self.applied_at_unix_seconds);
+        let replay_result = self.verifier.remove_reservation(&self.replay_reservation);
+        if invitation_result.is_err() || replay_result.is_err() {
+            return Err(CapabilityAdmissionError::ReservationMismatch);
+        }
+        Ok(())
+    }
+}
+
+/// Provider-owned in-memory shadows awaiting an exact durable-owner outcome.
+///
+/// This value carries no MLS Add or Welcome authority. It can only mirror a
+/// proven durable result into the provider's bounded in-memory state.
+#[must_use = "settle provider shadows after resolving the durable owner outcome"]
+pub struct DurableCapabilityShadowSettlement<'verifier, 'registry> {
+    verifier: &'verifier mut CapabilityAdmissionVerifier,
+    registry: &'registry mut InvitationRegistry,
+    replay_reservation: ReplayReservation,
+    invitation_reservation: InvitationReservation,
+    applied_at_unix_seconds: u64,
+}
+
+impl DurableCapabilityShadowSettlement<'_, '_> {
+    /// Reflects a proven durable commit in the inviter's in-memory invitation shadow.
+    pub fn finalize_committed(self) -> Result<(), CapabilityAdmissionError> {
+        self.registry
+            .consume_after_membership(self.invitation_reservation, self.applied_at_unix_seconds)
+            .map_err(|_| CapabilityAdmissionError::ReservationMismatch)
+    }
+
+    /// Releases both provider shadows after durable recovery proves no commit.
     pub fn release_proven_uncommitted(self) -> Result<(), CapabilityAdmissionError> {
         let invitation_result = self
             .registry

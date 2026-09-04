@@ -1024,6 +1024,7 @@ version = "0.1.0"
 name = "session-crypto-hpke"
 version = "0.1.0"
 dependencies = [
+ "aws-lc-rs",
  "ed25519-dalek",
  "hpke",
  "mls-rs-core",
@@ -1037,6 +1038,7 @@ dependencies = [
 name = "session-crypto-mls"
 version = "0.1.0"
 dependencies = [
+ "aws-lc-rs",
  "mls-rs",
  "mls-rs-core",
  "mls-rs-crypto-awslc",

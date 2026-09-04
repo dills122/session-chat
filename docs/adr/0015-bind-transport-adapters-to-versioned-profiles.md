@@ -1,6 +1,6 @@
 # ADR 0015: Bind transport adapters to versioned profiles
 
-Status: accepted; generalized dispatch, memory conformance, and first LocalV1 binding slice implemented
+Status: accepted; generalized dispatch/lifecycle, memory conformance, and first LocalV1 binding slice implemented
 
 Date: 2026-08-20
 
@@ -33,8 +33,10 @@ Separate these concepts:
 - the owner-local transaction store remains the authoritative owner of durable
   outbox records, idempotency keys, leases, and commit recovery;
 - the delivery coordinator executes leased work and owns adapter-independent
-  expiry checks, deduplication, polling, acknowledgement scheduling, and total
-  retry policy through that store's transition contract;
+  expiry checks, polling, acknowledgement scheduling, and total retry policy;
+- a separate receive-state owner atomically owns canonical-envelope retention or
+  deduplication outcomes, bound cursor progress, and exact acknowledgement
+  intents without granting that commit authority to the adapter;
 - a profile binder validates and records the adapter/configuration selected for
   one locally authorized profile before I/O; and
 - an adapter performs bounded delivery operations using only the network and
@@ -75,9 +77,30 @@ did not commit. Exact retry identity and owner-store recovery remain mandatory.
 Acknowledgement remains an exact bounded identifier set under separate
 provider authority. A cursor or delivery identifier never authorizes deletion
 or rotation. Provider-private receipt handles stay inside acknowledgement
-authority or protected adapter state. Reusable mailbox generations and
-rotation remain a later lifecycle increment, but stale generation state cannot
-cross into a successor.
+authority or protected adapter state. Reusable mailbox issuance now returns
+four right-specific values bound to one exact generation. Rotation uses a
+separate authority plus an exact predecessor and idempotent rotation ID; stale
+or competing generation state cannot cross into a successor.
+
+Persisted cursor continuation is valid only with an exact profile,
+configuration fingerprint, continuity ID, generation, receive-scope
+fingerprint, cursor schema, provider-state epoch, owner revision, checkpoint
+position, exact cursor bytes, and expiry match. A fresh
+generation begins without a cursor. Later loss or invalidation of continuation
+state requires an owner-committed compare-and-swap resynchronization transition
+before polling from none; silently polling from the beginning is forbidden.
+
+A reusable provider exposes a non-secret lifecycle declaration before use. It
+names one nonlocal semantic profile, fixes cursor persistence/schema, non-reused generations, compare-and-swap
+rotation and maximum routine drain, exact-set acknowledgement scope, and
+external atomic receive-state ownership. Issuance validation binds the request
+and returned cursor schema to that declaration; rotation validates its
+predecessor profile/schema and bounded drain against the same expected
+declaration and explicit wall time. Issuance result validation also rejects an
+expired request at explicit observed wall time. LocalV1 lifecycle declarations, issue
+requests, and cursor bindings fail closed because it has no cursor or rotation
+operation; constructing a declaration does not enable a nonlocal profile in the
+binder.
 
 ## Alternatives considered
 
@@ -135,7 +158,17 @@ The accepted decision permits incremental internal generalization of the
 existing local-only `session-transport` API. The retained additive increments
 now include bounded profile, adapter, canonical-envelope, operation, cursor,
 poll, deposit-request, acknowledgement-batch, and identifier-minimal receipt
-values plus request-bound receive-batch validation beside the local API. Version
+values plus request-bound receive-batch validation beside the local API. They
+also include bounded four-right issuance, compare-and-swap rotation, complete
+cursor binding, and a separate receive-state owner port whose atomic transition
+precedes acknowledgement scheduling and whose checkpoint loader supports the
+next page and restart, including a successor revision without a continuation
+cursor. Poll requests and receive batches carry the exact mailbox binding,
+owner revision, position kind, and cursor bytes into that transition, and
+duplicate delivery IDs fail at batch validation. Owner-defined opaque commit evidence
+prevents caller construction or token splicing, while explicit wall time gates
+issuance, commit, load, immediate lease, and recovery. Owner-recorded
+resynchronization advances by compare-and-swap before a cursorless poll. Version
 1 fixes hard ceilings of 256 cursor bytes,
 64 envelopes and 4 MiB of canonical bytes per poll, 60 seconds of requested
 poll wait, and 64 delivery identifiers per acknowledgement operation. A deposit
@@ -155,9 +188,11 @@ serialization policy per right. Controlled deposit transfer is allowed;
 receive and acknowledgement authority should be non-cloneable by default. The
 deterministic memory adapter does so with three separate private provider types
 and now implements this boundary while preserving its narrow compatibility tests. It
-adds no generalized capability issuance or mailbox lifecycle, and it rejects
-all supplied cursors until persisted cursor state exists. Network adapters
-remain gated on the complete adverse control path and conformance harness.
+rejects all supplied cursors and deliberately does not implement the new
+reusable lifecycle contract. The closed lifecycle fixture vocabulary now fixes
+the positive, restart, resynchronization, binding-mismatch, rotation, and stale
+state cases required of the P1-5 deterministic provider. Network adapters
+remain gated on that provider-wide adverse control path and conformance harness.
 
 `RetryAdvice::Never` stops further adapter attempts under the current budget;
 it is not proof that an operation failed before commit. Ambiguous deposit
@@ -167,9 +202,12 @@ remains eligible. A different identity or competing logical operation is never
 an allowed retry.
 
 The owner-local transaction store remains authoritative for Welcome-outbox
-truth and leases. Acknowledgement issuance stays provider-specific while its
-right remains statically distinct. Initial profile IDs use the closed reserved
-version 1 set; authenticated wire negotiation requires a later protocol schema.
+truth and leases. A distinct receive-state owner holds cursor and
+acknowledgement-intent truth; it can recover only previously committed matching
+intents and reload only the latest matching checkpoint after restart.
+Acknowledgement issuance stays provider-specific while
+its right remains statically distinct. Initial profile IDs use the closed
+reserved version 1 set; authenticated wire negotiation requires a later protocol schema.
 Network-broker and process-isolation choices remain deferred until a network
 adapter spike can produce direct evidence.
 

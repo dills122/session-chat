@@ -286,6 +286,7 @@ impl PollWait {
 /// ```
 pub struct PollRequest {
     cursor: Option<Cursor>,
+    receive_binding: Option<crate::receive_state::ReceivePollBindingV1>,
     max_envelopes: u16,
     max_encoded_bytes: u32,
     wait: PollWait,
@@ -311,11 +312,26 @@ impl PollRequest {
         }
         Ok(Self {
             cursor,
+            receive_binding: None,
             max_envelopes,
             max_encoded_bytes,
             wait,
             budget,
         })
+    }
+
+    pub(crate) fn bind_receive_checkpoint(
+        mut self,
+        receive_binding: crate::receive_state::ReceivePollBindingV1,
+    ) -> Self {
+        self.receive_binding = Some(receive_binding);
+        self
+    }
+
+    pub(crate) const fn receive_binding(
+        &self,
+    ) -> Option<&crate::receive_state::ReceivePollBindingV1> {
+        self.receive_binding.as_ref()
     }
 
     #[must_use]
@@ -543,10 +559,12 @@ impl ReceivedCanonicalEnvelope {
 pub struct ReceiveBatch {
     items: Box<[ReceivedCanonicalEnvelope]>,
     next_cursor: Option<Cursor>,
+    receive_binding: Option<crate::receive_state::ReceivePollBindingV1>,
 }
 
 impl ReceiveBatch {
-    /// Applies count, aggregate canonical-byte, and post-receive expiry checks.
+    /// Applies count, distinct-ID, aggregate canonical-byte, and post-receive
+    /// expiry checks.
     pub fn new(
         items: Vec<ReceivedCanonicalEnvelope>,
         next_cursor: Option<Cursor>,
@@ -554,6 +572,13 @@ impl ReceiveBatch {
         now_unix_seconds: u64,
     ) -> Result<Self, TransportContractError> {
         if items.len() > usize::from(request.max_envelopes()) {
+            return Err(TransportContractError::InvalidReceiveBatch);
+        }
+        if items.iter().enumerate().any(|(index, item)| {
+            items[index + 1..]
+                .iter()
+                .any(|candidate| candidate.delivery_id() == item.delivery_id())
+        }) {
             return Err(TransportContractError::InvalidReceiveBatch);
         }
         let mut encoded_bytes = 0_usize;
@@ -574,6 +599,7 @@ impl ReceiveBatch {
         Ok(Self {
             items: items.into_boxed_slice(),
             next_cursor,
+            receive_binding: request.receive_binding().cloned(),
         })
     }
 
@@ -595,6 +621,12 @@ impl ReceiveBatch {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.items.is_empty()
+    }
+
+    pub(crate) const fn receive_binding(
+        &self,
+    ) -> Option<&crate::receive_state::ReceivePollBindingV1> {
+        self.receive_binding.as_ref()
     }
 
     #[must_use]

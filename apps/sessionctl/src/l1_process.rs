@@ -17,8 +17,8 @@ use std::{
 };
 
 use admission_capability::{
-    CapabilityAdmissionError, CapabilityAdmissionPolicy, CapabilityAdmissionVerifier,
-    CapabilityApprovalOutcome, ManualApprovalDecision,
+    CapabilityAdmissionPolicy, CapabilityAdmissionVerifier, CapabilityApprovalOutcome,
+    ManualApprovalDecision,
 };
 use aws_lc_rs::digest::{SHA256, digest};
 use session_admission::{AdmissionMethod, PendingAdmission};
@@ -42,8 +42,8 @@ use session_transport::{
     ThreadDispatchControl, TransportFailure, TransportFailureCode, WelcomeDeliveryCoordinator,
 };
 use storage_sqlcipher::{
-    InvitationState, InviterJoinTransaction, PersistenceFault, SqlCipherStorage, VaultKey,
-    WelcomeOutboxState,
+    AuthorizationShadowInput, AuthorizationState, InvitationOpeningState, InviterJoinTransaction,
+    PersistenceFault, SqlCipherStorage, StoreError, VaultKey, WelcomeOutboxState,
 };
 use zeroize::{Zeroize, Zeroizing};
 
@@ -462,16 +462,11 @@ fn run_hostile_replay_alice(root: &Path) -> Result<(), SessionCtlError> {
         .at_stage("hostile process Alice group")?;
 
     let protector = AwsLcInvitationJoinProtector::new();
-    let generated = protector
-        .generate_capability_invitation(NOW, INVITATION_EXPIRES_AT)
+    let issued = storage
+        .issue_capability_invitation(&protector, NOW, INVITATION_EXPIRES_AT, NOW)
         .at_stage("hostile process invitation generation")?;
-    let mut registry = InvitationRegistry::new(
-        InvitationPolicy::new(3_600, 5, 8).at_stage("hostile process invitation policy")?,
-    );
-    let issued = registry
-        .issue_v2(generated, NOW)
-        .at_stage("hostile process invitation issue")?;
     let encoded_invitation = issued
+        .invitation()
         .encode_canonical()
         .at_stage("hostile process invitation encoding")?;
     atomic_write(
@@ -495,15 +490,64 @@ fn run_hostile_replay_alice(root: &Path) -> Result<(), SessionCtlError> {
     let opened_second = protector
         .open_capability_request(issued.private_key(), issued.invitation(), &second)
         .at_stage("hostile process replayed join opening")?;
+    let first_fingerprint: [u8; 32] = digest(&SHA256, &first_bytes)
+        .as_ref()
+        .try_into()
+        .map_err(|_| stage("hostile process first fingerprint"))?;
+    let first_shadow = AuthorizationShadowInput::new(
+        *opened_first.request().invitation_id(),
+        *issued.invitation().signature(),
+        *opened_first.request().join_challenge(),
+        *opened_first.request().join_request_id(),
+        *opened_first.request().request_nonce(),
+        *opened_first.request().intended_verifier(),
+        *opened_first.request().key_package_reference(),
+        *opened_first.request().credential_identity(),
+        *opened_first.request().leaf_signature_key(),
+        first_fingerprint,
+        opened_first.request().issued_at_unix_seconds(),
+        opened_first.request().expires_at_unix_seconds(),
+        issued.invitation().expires_at_unix_seconds(),
+    )
+    .at_stage("hostile process first shadow")?;
+    let second_fingerprint: [u8; 32] = digest(&SHA256, &second_bytes)
+        .as_ref()
+        .try_into()
+        .map_err(|_| stage("hostile process replay fingerprint"))?;
+    let second_shadow = AuthorizationShadowInput::new(
+        *opened_second.request().invitation_id(),
+        *issued.invitation().signature(),
+        *opened_second.request().join_challenge(),
+        *opened_second.request().join_request_id(),
+        *opened_second.request().request_nonce(),
+        *opened_second.request().intended_verifier(),
+        *opened_second.request().key_package_reference(),
+        *opened_second.request().credential_identity(),
+        *opened_second.request().leaf_signature_key(),
+        second_fingerprint,
+        opened_second.request().issued_at_unix_seconds(),
+        opened_second.request().expires_at_unix_seconds(),
+        issued.invitation().expires_at_unix_seconds(),
+    )
+    .at_stage("hostile process replay shadow")?;
     let mut admission = CapabilityAdmissionVerifier::new(
         CapabilityAdmissionPolicy::new(3_600, 5, 8).at_stage("hostile process admission policy")?,
     );
     let _reserved = admission
         .verify_and_reserve(opened_first, NOW)
         .at_stage("hostile process first reservation")?;
+    let _durable_reserved = storage
+        .reserve_authorization(&protector, first_shadow, NOW)
+        .at_stage("hostile process first durable reservation")?;
+    let mut fresh_admission = CapabilityAdmissionVerifier::new(
+        CapabilityAdmissionPolicy::new(3_600, 5, 8).at_stage("hostile process replay policy")?,
+    );
+    let _replay_verified = fresh_admission
+        .verify_and_reserve(opened_second, NOW)
+        .at_stage("hostile process replay verification")?;
     if !matches!(
-        admission.verify_and_reserve(opened_second, NOW),
-        Err(CapabilityAdmissionError::Replay)
+        storage.reserve_authorization(&protector, second_shadow, NOW),
+        Err(StoreError::Replay)
     ) || admission.pending_count() != 1
         || group.epoch() != 0
         || group.member_count() != 1
@@ -590,6 +634,31 @@ fn run_hostile_replay_inspector(root: &Path) -> Result<(), SessionCtlError> {
         VaultKey::new(*database_key).at_stage("hostile process reopen key")?,
     )
     .at_stage("hostile process owner reopen")?;
+    if storage
+        .recover_pre_membership_authorizations(&AwsLcInvitationJoinProtector::new(), NOW + 1)
+        .at_stage("hostile process authorization recovery")?
+        != 1
+    {
+        return Err(stage("hostile process authorization recovery"));
+    }
+    let invitation_bytes = Zeroizing::new(read_bounded_wait(
+        &direct_invitation_path(root),
+        MAX_WIRE_OBJECT_BYTES,
+        FRAME_WAIT,
+    )?);
+    let invitation = SignedCapabilityInvitationV2::decode_and_verify(&invitation_bytes)
+        .at_stage("hostile process recovery invitation")?;
+    let reloaded = storage
+        .load_capability_invitation(
+            &AwsLcInvitationJoinProtector::new(),
+            invitation.invitation_id(),
+            NOW + 1,
+        )
+        .at_stage("hostile process opening recovery")?
+        .ok_or_else(|| stage("hostile process opening recovery"))?;
+    if reloaded.invitation().signature() != invitation.signature() {
+        return Err(stage("hostile process opening recovery"));
+    }
     let alice = load_durable_client_with_storage(
         group_id,
         storage.clone(),
@@ -624,8 +693,8 @@ fn run_alice_init(root: &Path) -> Result<(), SessionCtlError> {
     )
     .at_stage("process owner store")?;
     let protector = AwsLcInvitationJoinProtector::new();
-    let generated = protector
-        .generate_capability_invitation(NOW, INVITATION_EXPIRES_AT)
+    let generated = storage
+        .issue_capability_invitation(&protector, NOW, INVITATION_EXPIRES_AT, NOW)
         .at_stage("process invitation generation")?;
     let mut registry = InvitationRegistry::new(
         InvitationPolicy::new(3_600, 5, 8).at_stage("process invitation policy")?,
@@ -663,6 +732,22 @@ fn run_alice_init(root: &Path) -> Result<(), SessionCtlError> {
         .at_stage("process join opening")?;
     let join_request_id = *opened.request().join_request_id();
     let expected_key_package_reference = *opened.request().key_package_reference();
+    let authorization_shadow = AuthorizationShadowInput::new(
+        *opened.request().invitation_id(),
+        *issued.invitation().signature(),
+        *opened.request().join_challenge(),
+        join_request_id,
+        *opened.request().request_nonce(),
+        *opened.request().intended_verifier(),
+        expected_key_package_reference,
+        *opened.request().credential_identity(),
+        *opened.request().leaf_signature_key(),
+        request_fingerprint,
+        opened.request().issued_at_unix_seconds(),
+        opened.request().expires_at_unix_seconds(),
+        issued.invitation().expires_at_unix_seconds(),
+    )
+    .at_stage("process authorization shadow")?;
 
     let validated_key_package = create_key_package_validator()
         .validate_key_package(opened.request().key_package(), NOW)
@@ -685,15 +770,10 @@ fn run_alice_init(root: &Path) -> Result<(), SessionCtlError> {
     {
         return Err(stage("process approval context"));
     }
-    storage
-        .seed_reservation(
-            *issued.invitation().invitation_id(),
-            *issued.invitation().signature(),
-            join_request_id,
-            INVITATION_EXPIRES_AT,
-            NOW,
-        )
+    let durable_pending = storage
+        .reserve_authorization(&protector, authorization_shadow, NOW)
         .at_stage("process durable reservation")?;
+    let authorization_attempt_id = *durable_pending.attempt_id();
     let approval_record = encode_approval_record(approval_context);
     let CapabilityApprovalOutcome::Approved(approved) = admission
         .decide_v2(&mut registry, pending, ManualApprovalDecision::Approve, NOW)
@@ -701,6 +781,9 @@ fn run_alice_init(root: &Path) -> Result<(), SessionCtlError> {
     else {
         return Err(stage("process approval"));
     };
+    let durable_approved = storage
+        .approve_authorization(durable_pending, &protector, NOW)
+        .at_stage("process durable approval")?;
 
     let group_id = SessionGroupId::new(random_nonzero()?).at_stage("process group ID")?;
     let alice = create_durable_client_with_storage(
@@ -716,9 +799,15 @@ fn run_alice_init(root: &Path) -> Result<(), SessionCtlError> {
     let prepared = admission
         .prepare_approved_add(&mut registry, approved, &mut group, NOW)
         .at_stage("process MLS Add")?;
-    let pending_durability = prepared
-        .apply_awaiting_durability(NOW)
-        .at_stage("process MLS apply")?;
+    let pending_durability = match prepared.apply_awaiting_durability(NOW) {
+        Ok(pending) => pending,
+        Err(_) => {
+            storage
+                .abandon_approved_authorization(durable_approved, &protector, NOW)
+                .at_stage("process durable MLS apply cleanup")?;
+            return Err(stage("process MLS apply"));
+        }
+    };
     let welcome_envelope = OpaqueEnvelope::new(
         random_nonzero()?,
         REQUEST_EXPIRES_AT,
@@ -747,10 +836,22 @@ fn run_alice_init(root: &Path) -> Result<(), SessionCtlError> {
         REQUEST_EXPIRES_AT,
     )
     .at_stage("process inviter transaction")?;
-    storage
-        .stage_inviter(transaction, NOW, PersistenceFault::None)
-        .at_stage("process membership staging")?;
-    group.write_to_storage().at_stage("process group storage")?;
+    let membership = storage
+        .begin_membership_authorization(durable_approved, transaction_id, &protector, NOW)
+        .at_stage("process membership authorization")?;
+    let (committed_addition, _response_endpoint, shadow_settlement) =
+        pending_durability.into_durable_owner_parts();
+    committed_addition
+        .stage_and_write_to_storage(&mut group, |binding| {
+            storage.stage_authorized_inviter(
+                membership,
+                binding,
+                transaction,
+                NOW,
+                PersistenceFault::None,
+            )
+        })
+        .at_stage("process group storage")?;
     let recovered = storage
         .recover_inviter(&transaction_id)
         .at_stage("process membership recovery")?;
@@ -761,18 +862,20 @@ fn run_alice_init(root: &Path) -> Result<(), SessionCtlError> {
     }) {
         return Err(stage("process membership recovery"));
     }
-    let committed = pending_durability
-        .finalize_committed()
-        .at_stage("process membership finalization")?;
-    if committed.key_package_reference() != &expected_key_package_reference
+    if storage
+        .recover_authorization_outcome(&authorization_attempt_id, &transaction_id, &protector, NOW)
+        .at_stage("process authorization recovery")?
+        != AuthorizationState::Committed
         || storage
-            .invitation_state(issued.invitation().invitation_id())
+            .invitation_opening_state(issued.invitation().invitation_id())
             .at_stage("process invitation state")?
-            != Some(InvitationState::Consumed)
+            != Some(InvitationOpeningState::Consumed)
     {
         return Err(stage("process membership finalization"));
     }
-    drop(committed);
+    shadow_settlement
+        .finalize_committed()
+        .at_stage("process membership shadow finalization")?;
     drop(group);
     drop(alice);
     drop(storage);

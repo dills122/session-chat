@@ -45,8 +45,8 @@ use session_transport::{
     ThreadDispatchControl, WelcomeDeliveryCoordinator,
 };
 use storage_sqlcipher::{
-    InvitationState, InviterJoinTransaction, PersistenceFault, SqlCipherStorage, VaultKey,
-    WelcomeOutboxState,
+    AuthorizationShadowInput, AuthorizationState, InvitationOpeningState, InviterJoinTransaction,
+    PersistenceFault, SqlCipherStorage, VaultKey, WelcomeOutboxState,
 };
 use thiserror::Error;
 use transport_memory::{
@@ -352,7 +352,7 @@ fn run_phase_one_flow(
     let generated = operation_result(
         faults,
         PhaseOneFaultPoint::InvitationGeneration,
-        protector.generate_capability_invitation(NOW, INVITATION_EXPIRES_AT),
+        storage.issue_capability_invitation(&protector, NOW, INVITATION_EXPIRES_AT, NOW),
         "invitation generation",
     )?;
     let mut invitation_registry =
@@ -498,20 +498,33 @@ fn run_phase_one_flow(
     {
         return Err(stage("approval context"));
     }
-    operation_result(
+    let durable_pending = operation_result(
         faults,
         PhaseOneFaultPoint::DurableReservation,
-        storage.seed_reservation(
+        AuthorizationShadowInput::new(
             *issued.invitation().invitation_id(),
             *issued.invitation().signature(),
+            *request.join_challenge(),
             join_request_id,
-            INVITATION_EXPIRES_AT,
-            NOW,
-        ),
+            *request.request_nonce(),
+            *request.intended_verifier(),
+            *validated_key_package.key_package_reference(),
+            *validated_key_package.credential_identity(),
+            *validated_key_package.leaf_signature_key(),
+            request_fingerprint,
+            request.issued_at_unix_seconds(),
+            request.expires_at_unix_seconds(),
+            issued.invitation().expires_at_unix_seconds(),
+        )
+        .and_then(|shadow| storage.reserve_authorization(&protector, shadow, NOW)),
         "durable reservation",
     )?;
+    let authorization_attempt_id = *durable_pending.attempt_id();
     let approval_record = encode_approval_record(approval_context);
     if faults.fail_at(PhaseOneFaultPoint::ApprovalDecision) {
+        storage
+            .reject_authorization(durable_pending, &protector, NOW)
+            .at_stage("durable approval cleanup")?;
         let invitation_id = *issued.invitation().invitation_id();
         let outcome = admission
             .decide_v2(
@@ -524,6 +537,14 @@ fn run_phase_one_flow(
         if !matches!(outcome, CapabilityApprovalOutcome::Rejected)
             || admission.pending_count() != 0
             || invitation_registry.lifecycle(&invitation_id) != Some(InvitationLifecycle::Available)
+            || storage
+                .authorization_state(&authorization_attempt_id)
+                .at_stage("durable approval cleanup")?
+                != Some(AuthorizationState::Rejected)
+            || storage
+                .invitation_opening_state(&invitation_id)
+                .at_stage("durable approval cleanup")?
+                != Some(InvitationOpeningState::Available)
         {
             return Err(stage("approval cleanup"));
         }
@@ -541,6 +562,9 @@ fn run_phase_one_flow(
     else {
         return Err(stage("approval decision"));
     };
+    let durable_approved = storage
+        .approve_authorization(durable_pending, &protector, NOW)
+        .at_stage("durable approval decision")?;
 
     let mut alice_group = operation_result(
         faults,
@@ -548,17 +572,37 @@ fn run_phase_one_flow(
         alice.create_group(alice_group_id, NOW),
         "Alice group",
     )?;
-    let prepared_join = operation_result(
-        faults,
-        PhaseOneFaultPoint::MembershipPreparation,
-        admission.prepare_approved_add(&mut invitation_registry, approved, &mut alice_group, NOW),
-        "MLS Add preparation",
-    )?;
+    let prepared_join = match admission.prepare_approved_add(
+        &mut invitation_registry,
+        approved,
+        &mut alice_group,
+        NOW,
+    ) {
+        Ok(prepared) if !faults.fail_at(PhaseOneFaultPoint::MembershipPreparation) => prepared,
+        result => {
+            drop(result);
+            storage
+                .abandon_approved_authorization(durable_approved, &protector, NOW)
+                .at_stage("durable MLS Add preparation cleanup")?;
+            return Err(stage("MLS Add preparation"));
+        }
+    };
     if faults.fail_at(PhaseOneFaultPoint::MembershipApply) {
         let invitation_id = *issued.invitation().invitation_id();
         drop(prepared_join);
+        storage
+            .abandon_approved_authorization(durable_approved, &protector, NOW)
+            .at_stage("durable MLS Add cleanup")?;
         if admission.pending_count() != 0
             || invitation_registry.lifecycle(&invitation_id) != Some(InvitationLifecycle::Available)
+            || storage
+                .authorization_state(&authorization_attempt_id)
+                .at_stage("durable MLS Add cleanup")?
+                != Some(AuthorizationState::Abandoned)
+            || storage
+                .invitation_opening_state(&invitation_id)
+                .at_stage("durable MLS Add cleanup")?
+                != Some(InvitationOpeningState::Available)
             || alice_group.epoch() != 0
             || alice_group.member_count() != 1
         {
@@ -567,9 +611,15 @@ fn run_phase_one_flow(
         faults.observe(PhaseOneObservation::PreparedMembershipReleased);
         return Err(stage("MLS Add apply"));
     }
-    let durability_pending = prepared_join
-        .apply_awaiting_durability(NOW)
-        .at_stage("MLS Add apply")?;
+    let durability_pending = match prepared_join.apply_awaiting_durability(NOW) {
+        Ok(pending) => pending,
+        Err(_) => {
+            storage
+                .abandon_approved_authorization(durable_approved, &protector, NOW)
+                .at_stage("durable MLS Add apply cleanup")?;
+            return Err(stage("MLS Add apply"));
+        }
+    };
     if durability_pending.key_package_reference() != &expected_key_package_reference {
         return Err(stage("Welcome ownership"));
     }
@@ -601,10 +651,17 @@ fn run_phase_one_flow(
         REQUEST_EXPIRES_AT,
     )
     .at_stage("inviter transaction")?;
+    let membership = storage
+        .begin_membership_authorization(durable_approved, transaction_id, &protector, NOW)
+        .at_stage("membership authorization")?;
+    let (committed_addition, _response_endpoint, shadow_settlement) =
+        durability_pending.into_durable_owner_parts();
     let inject_rollback = faults.fail_at(PhaseOneFaultPoint::MembershipPersistence);
     let inject_ambiguous_response = faults.fail_at(PhaseOneFaultPoint::MembershipCommitResponse);
-    storage
-        .stage_inviter(
+    let write_result = committed_addition.stage_and_write_to_storage(&mut alice_group, |binding| {
+        storage.stage_authorized_inviter(
+            membership,
+            binding,
             inviter_transaction,
             NOW,
             if inject_rollback {
@@ -615,21 +672,24 @@ fn run_phase_one_flow(
                 PersistenceFault::None
             },
         )
-        .at_stage("membership persistence staging")?;
-    let write_result = alice_group.write_to_storage();
+    });
     let recovered = storage
         .recover_inviter(&transaction_id)
         .at_stage("membership recovery")?;
+    let authorization_outcome = storage
+        .recover_authorization_outcome(&authorization_attempt_id, &transaction_id, &protector, NOW)
+        .at_stage("authorization recovery")?;
     if inject_rollback {
-        durability_pending
+        shadow_settlement
             .release_proven_uncommitted()
-            .at_stage("membership rollback cleanup")?;
+            .at_stage("membership rollback shadow cleanup")?;
         if write_result.is_ok()
             || recovered.is_some()
+            || authorization_outcome != AuthorizationState::Abandoned
             || storage
-                .invitation_state(issued.invitation().invitation_id())
+                .invitation_opening_state(issued.invitation().invitation_id())
                 .at_stage("durable invitation cleanup")?
-                != Some(InvitationState::Reserved)
+                != Some(InvitationOpeningState::Available)
             || invitation_registry.lifecycle(issued.invitation().invitation_id())
                 != Some(InvitationLifecycle::Available)
             || alice_group.epoch() != 1
@@ -641,6 +701,7 @@ fn run_phase_one_flow(
         return Err(stage("membership persistence"));
     }
     if write_result.is_ok() == inject_ambiguous_response
+        || authorization_outcome != AuthorizationState::Committed
         || recovered.is_none_or(|recovery| {
             recovery.epoch_after != 1
                 || recovery.outbox_state != WelcomeOutboxState::Pending
@@ -649,14 +710,13 @@ fn run_phase_one_flow(
     {
         return Err(stage("membership recovery"));
     }
-    let committed_join = durability_pending
+    shadow_settlement
         .finalize_committed()
-        .at_stage("membership finalization")?;
-    if committed_join.key_package_reference() != &expected_key_package_reference
-        || storage
-            .invitation_state(issued.invitation().invitation_id())
-            .at_stage("durable invitation state")?
-            != Some(InvitationState::Consumed)
+        .at_stage("membership shadow finalization")?;
+    if storage
+        .invitation_opening_state(issued.invitation().invitation_id())
+        .at_stage("durable invitation state")?
+        != Some(InvitationOpeningState::Consumed)
     {
         return Err(stage("membership finalization"));
     }
@@ -675,6 +735,10 @@ fn run_phase_one_flow(
             .at_stage("Welcome cleanup")?
             .is_some_and(|recovery| recovery.outbox_state == WelcomeOutboxState::Pending);
         if invitation_registry.lifecycle(&invitation_id) != Some(InvitationLifecycle::Consumed)
+            || storage
+                .invitation_opening_state(&invitation_id)
+                .at_stage("Welcome cleanup")?
+                != Some(InvitationOpeningState::Consumed)
             || alice_group.epoch() != 1
             || alice_group.member_count() != 2
             || !mailbox_empty
@@ -685,7 +749,6 @@ fn run_phase_one_flow(
         faults.observe(PhaseOneObservation::CommittedMembershipRetained);
         return Err(stage("Welcome deposit"));
     }
-    drop(committed_join);
     if alice_group.group_id() != alice_group_id.as_bytes() {
         return Err(stage("Alice group ID"));
     }

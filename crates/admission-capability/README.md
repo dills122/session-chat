@@ -41,10 +41,12 @@ the exact invitation in memory, and keeps replay state through request expiry.
 Provider contradiction after MLS apply preserves the remaining authorities
 fail-closed.
 
-The state is single-process and in memory. `Approve` is a simulated headless
-decision, not evidence of a human UI action. The apply/consume sequence is not
-durable or crash-atomic. The committed result carries only the authenticated
-deposit endpoint beside its MLS outputs, and a retained integration test
-delivers the encrypted Welcome through the right-specific local mailbox. Durable
-replay protection, the ADR 0008 membership transaction and Welcome outbox, and
-network transport remain unimplemented.
+This crate's provider state is single-process and in memory. `Approve` is a
+simulated headless decision, not evidence of a human UI action. Durable
+composition transfers the exact provider-applied Add to the SQLCipher
+authorization owner while a separate one-shot settlement value keeps the
+provider's invitation and replay shadows fail-closed until storage proves the
+transaction committed or uncommitted. The storage owner retains replay and the
+ADR 0008 membership/Welcome transaction across restart without serializing the
+parsed KeyPackage. Rollback resistance, human approval UX, and network
+transport remain unimplemented.

@@ -7,6 +7,7 @@ publish = false
 readme = "README.md"
 
 [dependencies]
+aws-lc-rs.workspace = true
 mls-rs.workspace = true
 mls-rs-crypto-awslc.workspace = true
 mls-rs-core.workspace = true

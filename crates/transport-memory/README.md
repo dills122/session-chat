@@ -17,7 +17,10 @@ deposit retries retain one logical `DeliveryId`, changed bytes under the same
 envelope ID are rejected, and per-mailbox accepted-envelope and per-envelope
 attempt limits bound retained commitments and fault work. Fixed hard ceilings
 also bound mailbox lifetime, live mailbox count, envelopes, attempts, scheduled
-copies, and live canonical bytes independently of caller configuration. Acknowledgement
+copies, and live canonical bytes independently of caller configuration. Polling
+coalesces scheduled copies of the same logical delivery so a validated batch
+contains distinct delivery IDs; stale exact-byte copies are consumed without
+creating an unacknowledgeable batch. Acknowledgement
 deletes the retained envelope and every scheduled copy while preserving the
 bounded digest needed for exact-retry recognition until mailbox expiry.
 

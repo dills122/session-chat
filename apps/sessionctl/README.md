@@ -1,12 +1,14 @@
 # sessionctl
 
 `sessionctl` is the headless Phase 1 composition and conformance client. One
-run creates fresh Alice and Bob clients, issues a secret-capability
-invitation, protects and verifies the exact join request, records an explicit
-simulated approval, applies the MLS Add, and persists Alice's exact post-Add
-snapshot, invitation consumption, approval/replay result, and encrypted Welcome
-outbox atomically in a disposable SQLCipher database. A retained fault case
-recovers an ambiguous commit result by transaction ID. The normal flow
+run creates fresh Alice and Bob clients, durably retains a secret-capability
+invitation before publication, protects and verifies the exact join request,
+records an explicit simulated approval through the restartable authorization
+owner, applies the MLS Add, and persists Alice's exact post-Add snapshot,
+invitation consumption, approval/replay result, and encrypted Welcome outbox
+atomically in a disposable SQLCipher database. Retained fault cases prove exact
+rollback release and recover an ambiguous commit by authorization-attempt and
+transaction IDs. The normal flow
 closes Alice's initial MLS client, reloads her exact credential, signer, and
 group from the database, reconstructs the coordinator owner, and delivers the Welcome through the
 right-specific local mailbox, exchanges two MLS application messages over the
@@ -32,6 +34,10 @@ The library also exposes a narrow `PhaseOneFaultPlan` conformance seam. It can
 stop the same flow only at named operation-result boundaries and observes only
 coarse cleanup states; it receives no protocol bytes, identifiers, authority,
 plaintext, or provider error values. The default binary injects no faults.
+
+The independent-process runner uses the same durable authorization owner and
+recovers a lost pre-approval provider value as abandoned while retaining replay
+and reloading the exact invitation opening context.
 
 This executable still composes both logical clients and the LocalV1 adapter in
 one process. Alice's exact identity and group now cross a real SQLCipher

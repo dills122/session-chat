@@ -57,7 +57,7 @@ all.
   supervision baseline to the inviter-owned outbox while preserving the
   remaining product-storage, delivery-fault, and UI-runtime gaps.
 - [Phase 1 protocol laboratory closeout plan](plans/PHASE1_PROTOCOL_CLOSEOUT.md)
-  defines the remaining durable-authorization, transport-conformance,
+  defines the remaining durable-admission composition, transport-conformance,
   independent-process, and exact-revision evidence required before Phase 1 can
   be marked complete.
 - [Transport abstraction implementation plan](plans/TRANSPORT_ABSTRACTION_IMPLEMENTATION.md)
@@ -83,6 +83,15 @@ all.
   adapter. Composed lifecycle and queue-saturation verdicts plus deliberately
   defective bridges cover the retained adverse slices; arbitrary delay and the
   exhaustive authority/resource verdict remain Phase 1 closeout work.
+- `session-transport` now also fixes the reusable mailbox lifecycle boundary:
+  bounded four-right issuance, exact generation/cursor binding,
+  compare-and-swap rotation, explicit resynchronization, and a separate atomic
+  receive-state owner with committed-checkpoint reload, cursorless successor
+  revisions, exact cursor-position page/checkpoint binding, owner-recorded
+  resynchronization, restart-safe acknowledgement leases, opaque commit evidence,
+  duplicate-ID rejection, and explicit expiry checks. Lifecycle declarations bind issuance and rotation and reject
+  LocalV1 lifecycle state. The deterministic reusable provider
+  remains P1-5 work; LocalV1 stays cursorless and has no rotation operation.
 - [Threat model](THREAT_MODEL.md) defines assets, trust boundaries, attackers,
   invariants, and severity calibration.
 - [Rust code-coverage policy](CODE_COVERAGE.md) defines the source-based
@@ -114,6 +123,10 @@ all.
 - [Provider-neutral approval-context decision](adr/0022-use-a-provider-neutral-approval-context.md)
   gives headless and later UI composition one display-only decision seam while
   concrete providers retain exact proof, reservation, and KeyPackage authority.
+- [Restartable durable capability-authorization decision](adr/0023-use-restartable-durable-capability-authorization-shadows.md)
+  retains exact invitation opening state and non-authorizing replay/approval
+  shadows while abandoning unreconstructible pre-membership authority after a
+  restart.
 - [Session-scoped sealed-vault decision](adr/0016-use-a-session-scoped-sealed-vault-contract.md)
   defines the locked-mode capability matrix, linear lifecycle transitions, and
   bounded opaque receipt contract without selecting durable storage.
@@ -240,15 +253,22 @@ The invitation's self-contained key proves descriptor integrity only. The
 registry accepts provider-generated invitation v2 and models its bounded
 reservation lifecycle. The approval-gated in-memory path now connects it to
 automated admission and MLS sequencing.
+ADR 0023's SQLCipher boundary now commits the exact signed invitation and
+matching HPKE private key before publication, validates that context on reload,
+and owns bounded non-authorizing authorization/replay transitions through
+restart and exact membership-outcome recovery. Both headless admission paths
+compose through that owner while preserving live provider authority only in
+memory.
 ADR 0014 now defines the HPKE capability-proof and local response contracts.
 Their bounded canonical invitation-v2, protected outer/inner, exact AAD, and
 deposit-endpoint value types are implemented with retained fixtures. The
 one-shot HPKE operation has RFC and independent-provider evidence. Replay-safe
 automated capability admission, explicit simulated approval, exact v2
 reservation, failure release, and post-Add consumption now have retained
-in-memory evidence. Human approval UX, atomic durable membership/replay state,
-rollback protection, and durable or network transport remain unimplemented at
-product level. A bounded fault-injectable model now retains evidence for the
+in-memory evidence. The headless paths now add durable opening, replay,
+approval, membership, and Welcome ownership through SQLCipher. Human approval
+UX, rollback protection, and network transport remain unimplemented at product
+level. A bounded fault-injectable model now retains evidence for the
 required atomic visibility, retry, and Welcome-outbox state semantics without
 claiming disk durability. A right-specific local one-Welcome mailbox now has
 bounded in-memory evidence, and the committed approved-join result carries its

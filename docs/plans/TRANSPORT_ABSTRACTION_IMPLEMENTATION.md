@@ -291,15 +291,20 @@ traits alongside the existing local API. Add negative and compile-time tests
 showing that capabilities cannot be substituted and secret-bearing values
 cannot enter ordinary debug/error output. Do not add network dependencies.
 
-**Progress (updated 2026-08-24):** The bounded contract-values sub-increment is
+**Progress (updated 2026-09-03):** The bounded contract-values sub-increment is
 implemented with closed profile IDs, validated adapter IDs, exact canonical
 envelope ownership, operation budgets, bounded retry advice, context-free
 failures, and a compile-fail `CanonicalEnvelope: Debug` check. A later Phase 1
 increment added the narrow synchronous `EnvelopeTransport` trait with associated
 right-specific types, and the separate `transport-memory` crate implements it.
-Task 3 remains incomplete because generalized capability issuance, mailbox
-lifecycle, valid cursor state, and provider-wide diagnostic boundaries are not
-fixed.
+The generalized issuance/lifecycle increment now fixes bounded four-right
+authority sets, exact generation/cursor binding, compare-and-swap rotation,
+explicit resynchronization, and the separate atomic receive-state owner port.
+Task 3 implementation is complete; findings from all three independent-review
+instances are remediated. Instance 3 was the configured maximum and returned
+`Not ready` against its frozen pre-remediation target, so human acceptance is
+pending and no fourth review starts automatically. The provider
+implementation and exhaustive matrix remain Task 6/P1-5 work.
 
 The local capability-evidence sub-increment extracts receive and
 acknowledgement authority behind private fields and crate-only constructors,
@@ -326,8 +331,9 @@ fallible clock/cancellation checkpoint. Tests cover generic dispatch,
 pre-entry cancellation/deadline rejection, wall-clock failure, post-provider
 cancellation, pending-future drop cleanup, and generalized wrong-right
 compile failures, including aliased inner provider types. Capability
-lifecycle/issuance and provider-wide redaction remain open. The wrappers prove
-only positional separation; each adapter must independently prevent cross-right
+lifecycle/issuance and provider-wide redaction were subsequently closed by the
+P1-4 increment. The wrappers prove only positional separation; each adapter
+must independently prevent cross-right
 derivation, validate exact scope, and review duplication policy per right.
 Controlled deposit transfer remains allowed; receive and acknowledgement
 authority should be non-cloneable by default. The memory adapter supplies that
@@ -335,16 +341,41 @@ provider-specific evidence. `RetryAdvice::Never` stops
 the current operation budget but permits coordinator-owned exact-identity
 reconciliation under a fresh budget after ambiguous completion.
 
+The lifecycle sub-increment adds an issuance operation returning deposit,
+receive, acknowledgement, and rotation rights for one exact generation. Full
+cursor binding covers profile/configuration, continuity, generation, receive
+scope, schema, provider epoch, and expiry. Rotation is idempotent and
+compare-and-swap bound to an exact predecessor. The receive-state owner alone
+atomically commits canonical envelopes/deduplication outcomes, exact
+acknowledgement intents, and cursor advance; it reloads only the latest exact
+checkpoint, including a cursorless successor revision, and can recover only
+previously committed intents after restart; durable intent remains through
+recovered-lease crash or ambiguous release until acceptance. Reusable poll requests and batches
+carry exact binding, revision, position-kind, and cursor identity into commit,
+and reject duplicate delivery IDs. Explicit resynchronization is an owner-CAS
+transition persisted before polling from none. The owner-defined associated
+commit handle is opaque to callers and rejects forged or rebound leasing;
+explicit wall time gates commit, load, immediate lease, and recovery. Compile-fail and seeded-failure fixtures cover
+all four authority positions. A closed lifecycle-case vocabulary defines the
+provider evidence P1-5 must supply without selecting a network provider.
+The same increment adds the non-secret reusable-provider declaration required
+by the cursor-lifecycle research: cursor persistence/schema, generation policy,
+rotation plus maximum routine drain, acknowledgement scope, and external owner
+semantics are fixed before provider use. The declared nonlocal profile, cursor
+schema, drain policy, and observed expiry are bound to issuance and rotation. LocalV1
+declarations, issue requests, and cursor bindings fail closed because it is
+cursorless and non-rotating; declarations do not enable profile binding.
+
 **Acceptance criteria:**
 
 - [x] Deposit cannot accept receive or acknowledgement authority; rotation
   remains outside the delivery interface.
 - [x] A delivery ID or cursor cannot authorize acknowledgement.
-- [ ] Secret-bearing values have reviewed ownership, cloning, serialization,
+- [x] Secret-bearing values have reviewed ownership, cloning, serialization,
   zeroization, and redaction behavior.
 - [x] Deposit requests accept only canonical bounded envelope objects or validated
   views derived from `session-protocol` bytes.
-- [ ] Existing local callers remain covered while migration to the common trait
+- [x] Existing local callers remain covered while migration to the common trait
   is explicit and reviewable.
 
 **Verification:**
@@ -357,7 +388,7 @@ reconciliation under a fresh budget after ambiguous completion.
 - [x] Generalized value tests cover cursor, poll, deposit-byte, acknowledgement-
   batch, and receipt bounds before dispatch.
 - [x] Receive-batch tests cover request count/bytes and post-receive expiry.
-- [ ] Generalized adapter error/log fixtures cover every authority type.
+- [x] Generalized adapter error/log fixtures cover every authority type.
 - [x] `cargo test -p session-transport`
 
 **Dependencies:** Task 2
@@ -381,9 +412,10 @@ reconciliation under a fresh budget after ambiguous completion.
 - [x] Local authority-separation and seeded-redaction tests pass.
 - [x] Existing local and deterministic-memory delivery state has retained test
   and review evidence.
-- [ ] Generalized authority, lifecycle, and provider-wide redaction tests pass.
-- [ ] Review the completed generalized contract before adding coordinator or
-  network state.
+- [x] Generalized authority, lifecycle, and provider-wide redaction tests pass.
+- [ ] Human acceptance confirms the post-review remediation before P1-5 adds
+  cursor-bearing provider state. Independent review instance 3 of 3 returned
+  `Not ready` on its frozen target; no fourth review starts automatically.
 
 ## Phase C: deterministic memory control path
 

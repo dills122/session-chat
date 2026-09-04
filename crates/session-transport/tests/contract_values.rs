@@ -423,6 +423,19 @@ fn receive_batch_rejects_excess_items_bytes_and_expired_envelopes() {
         Some(TransportContractError::InvalidReceiveBatch)
     );
 
+    let two_items = PollRequest::new(None, 2, 512, PollWait::immediate(), budget)
+        .expect("bounded poll request");
+    assert_eq!(
+        ReceiveBatch::new(
+            vec![item(0x95, 1_700_000_060, 16), item(0x95, 1_700_000_060, 16)],
+            None,
+            &two_items,
+            1_700_000_000,
+        )
+        .err(),
+        Some(TransportContractError::InvalidReceiveBatch)
+    );
+
     assert_eq!(
         ReceiveBatch::new(
             vec![item(0x94, 1_700_000_000, 16)],

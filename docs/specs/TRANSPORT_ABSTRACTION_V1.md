@@ -274,8 +274,10 @@ A later Phase 1 increment added a narrow synchronous `EnvelopeTransport` trait
 with associated right-specific types and a separate deterministic
 `transport-memory` implementation. A subsequent additive increment implements
 the budget-aware `EnvelopeDelivery` trait below in that memory adapter while
-retaining the narrow compatibility surface. Lifecycle, binding, coordination,
-durability, and networking remain separate work.
+retaining the narrow compatibility surface. Later increments add LocalV1
+binding and coordination plus the provider-neutral lifecycle/receive-owner
+contract described below. Durable product receive state, a reusable lifecycle
+provider, and networking remain separate work.
 
 The first binding increment adds a LocalV1-only manifest and binder. It admits
 exactly one selected profile and no fallback list; requires schema version 1,
@@ -297,9 +299,9 @@ error diagnostics contain neither authority nor ciphertext bytes.
 
 This is evidence for the local compatibility boundary, not a provider-neutral
 capability representation. The local one-use profile still issues no rotation
-authority. Provider-specific issuance, revocation, serialization, and the full
-budget-aware request/receipt and mailbox-lifecycle boundaries remain gated on
-later Task 3 review.
+authority. The later provider-neutral lifecycle contract does not retrofit
+rotation onto LocalV1; provider implementation, revocation storage, and
+serialization remain gated on P1-5 or a separately reviewed profile.
 
 ### First bounded operation-request values
 
@@ -330,16 +332,20 @@ The additive receive-batch value then pairs each non-authorizing delivery ID
 with one `CanonicalEnvelope` and validates the result against the originating
 `PollRequest`. It rejects excess item count, aggregate canonical bytes above the
 request, and any envelope expired at the supplied local wall time. Empty results
-are valid, and a next cursor remains only an opaque continuation hint. The batch
-and each item omit ordinary diagnostics.
+are valid, duplicate delivery IDs are rejected, and a next cursor remains only an opaque continuation hint. The batch
+and each item omit ordinary diagnostics. A reusable checkpoint creates a poll
+request carrying its complete non-authorizing binding, owner CAS revision,
+checkpoint-position kind, and exact cursor bytes;
+`ReceiveBatch` preserves that marker so only the exact originating checkpoint
+can construct the page-commit transition. Ordinary LocalV1 polls remain
+unbound and cannot enter the reusable receive-state path.
 
 This batch validation does not replace an adapter's requirement to bound remote
-response bytes before allocation or decoding, define cursor state/retry
-semantics, or stop work at the monotonic deadline. Generalized authority
-issuance, rotation, mailbox lifecycle, and provider-wide conformance remain
-required before Task 3 is complete. The subsequent dispatch increment fixes
-asynchronous and clock mechanics as described below, and the deterministic
-memory adapter now adopts that boundary.
+response bytes before allocation or decoding, validate cursor state, or stop
+work at the monotonic deadline. The subsequent dispatch and lifecycle
+increments fix the shared async/clock and state-transition mechanics described
+below. A reusable provider and provider-wide conformance evidence remain P1-5
+work; the deterministic LocalV1 memory adapter remains cursorless.
 
 ## Delivery interfaces
 
@@ -371,13 +377,26 @@ trait EnvelopeDelivery: Send {
     ) -> impl Future<Output = Result<AcknowledgementReceipt, TransportFailure>> + Send + 'a;
 }
 
-trait MailboxLifecycle {
-    async fn rotate(
-        &self,
-        authority: RotationCapability,
-        request: RotationRequest,
-        budget: OperationBudget,
-    ) -> Result<RotationResult, TransportFailure>;
+trait MailboxLifecycle: Send {
+    type DepositEndpoint: Sync;
+    type ReceiveCapability: Sync;
+    type AcknowledgementCapability: Sync;
+    type RotationCapability: Sync;
+
+    fn issue<'a>(
+        &'a mut self,
+        expected_contract: LifecycleProviderContractV1,
+        request: MailboxIssueRequestV1,
+        control: &'a dyn DispatchControl,
+    ) -> impl Future<Output = MailboxIssueOutcomeV1</* associated types */>> + Send + 'a;
+
+    fn rotate<'a>(
+        &'a mut self,
+        expected_contract: LifecycleProviderContractV1,
+        authority: &'a RotationRight<Self::RotationCapability>,
+        request: RotationRequestV1,
+        control: &'a dyn DispatchControl,
+    ) -> impl Future<Output = MailboxRotationOutcomeV1</* associated types */>> + Send + 'a;
 }
 ```
 
@@ -402,11 +421,74 @@ delivery operations never receive it.
 
 Reusable mailboxes use monotonically non-reused continuity generations with
 fresh independent authority for every right. Rotation is compare-and-swap bound
-to the predecessor generation; an exact retry returns the same successor while
-a competing or stale request fails closed. Routine rotation may explicitly
-drain an old generation under bounded policy, but compromise revocation permits
-no overlap. These lifecycle semantics are fixed before their Rust types are
-implemented.
+to the predecessor generation and caller-supplied rotation ID; an exact retry
+returns the same successor while a competing or stale request fails closed.
+Routine rotation may explicitly drain an old generation under bounded policy,
+but compromise revocation permits no overlap. The implemented result wrapper
+rejects a changed profile/configuration/continuity, non-successor generation,
+reused receive scope, changed cursor schema/provider epoch, or unexpected
+expiry before the result crosses the contract.
+
+Every persisted cursor is paired with a `CursorBindingV1` containing the exact
+profile, non-secret configuration fingerprint, mailbox continuity ID,
+generation, receive-scope fingerprint, cursor-schema version, provider-state
+epoch, and expiry. A partial match is invalid. A fresh generation may poll with
+no cursor. A successfully committed page that supplies no continuation cursor
+advances to a distinct successor-revision cursorless checkpoint, so restart and
+later compare-and-swap still retain the latest owner revision. Returning to no
+cursor from a cursor-bearing checkpoint requires an explicit recorded
+resynchronization caused by invalid cursor or provider-state reset. That
+resynchronization is an owner compare-and-swap transition: it persists the
+reason and successor revision before returning a checkpoint that may poll from
+none, and restart reloads the recorded state.
+
+The adapter does not own durable receive progress. `ReceiveStateOwnerPort`
+accepts one `ReceivePageCommitV1` and must atomically compare-and-swap the
+expected checkpoint, retain each canonical envelope or its durable duplicate
+outcome, persist the exact acknowledgement intent, and advance the checkpoint.
+Construction rejects a receive batch whose carried binding or revision differs
+from the expected checkpoint.
+The owner port reloads the latest committed checkpoint for an exact live
+binding, enabling both the next page and restart resume without an
+implementation-specific state API. Only the resulting committed handle can
+lease immediate acknowledgement work. The owner chooses an opaque associated
+committed-page type: callers may inspect its binding, successor revision,
+outcomes, and intent but cannot construct or disassemble its commit token.
+Implementations reject a deduplication-outcome count different from the page
+item count before mutation. After restart,
+recovery can lease only a matching intent that was already committed under the
+complete binding. Acceptance removes that exact intent; ambiguous
+acknowledgement releases it for bounded retry. Implementations must reject a
+stale or cursor-colliding checkpoint, foreign binding, forged/rebound commit handle, or expired
+binding without partial mutation. Explicit wall time is supplied to checkpoint
+construction/load, commit, immediate lease, and restart recovery.
+
+`LifecycleConformanceCaseV1` is the closed P1-5 fixture vocabulary. It includes
+fresh issuance; persist-before-acknowledge; cursor advance, committed-checkpoint
+loading (including cursorless successor revisions), and overlap dedup; restart
+and owner-recorded explicit resynchronization; acknowledgement recovery,
+post-lease crash recovery, acceptance, and ambiguous release; routine,
+compromise, and exact-retry rotation; cross-right rejection; every
+cursor-binding mismatch; expiry; stale checkpoint CAS; outcome-cardinality and
+acknowledgement-intent integrity; mismatched page/checkpoint binding and cursor
+position; duplicate delivery IDs; forged commit evidence; expired owner and
+issuance operations; foreign owner binding; stale and competing
+rotation; and generation exhaustion. P1-5 adds the exhaustive right/resource
+matrix and provider implementation without changing these semantics.
+
+Before use, each reusable provider returns a non-secret
+`LifecycleProviderContractV1`. It names one nonlocal semantic profile, fixes the cursor schema, and declares
+owner-bound restartable cursor persistence with a provider epoch, monotonically
+non-reused generations, compare-and-swap rotation with a nonzero maximum routine
+drain, exact-set generation-scoped acknowledgement, and an external atomic
+receive-state owner. The provider validates each routine rotation against the
+declared drain bound at its observed wall time. Issuance and rotation operations
+receive the expected declaration; their result validation requires the request,
+predecessor, and returned binding to match its profile, cursor schema, and drain
+policy, and issuance results reject expiry at explicit observed wall time.
+Constructing a reusable declaration, issue request, or cursor binding
+for LocalV1 fails closed;
+the declaration does not itself enable any nonlocal profile in the binder.
 
 The implemented internal Phase 1 boundary uses static dispatch and explicit
 standard-library futures. This avoids selecting an async runtime and permits a
@@ -723,9 +805,13 @@ cannot enter its closed diagnostics. The complete shared verdict suite still
 needs executable cases for:
 
 - arbitrary delay;
-- queue saturation;
 - exhaustive authority and resource-bound combinations; and
 - profile-specific cases once bindings exist.
+
+Queue saturation is retained separately: the bounded eight-envelope fixture
+rejects the ninth deposit, drains and acknowledges the accepted set, reaches
+quiescence, double-replays byte-identically, and detects an over-accepting
+bridge.
 
 The same scripted trace format should drive later adapter integration tests
 where practical.
@@ -761,9 +847,10 @@ updating ADR 0010 or superseding ADR 0015.
 - Whether later evidence justifies replacing the static future-returning trait
   with an actor or boxed object-safe boundary. The current internal API does not
   require either cost or lifecycle model.
-- Exact storage ownership for cursors, receive-side deduplication, and
-  acknowledgement scheduling; owner-local transaction stores already own
-  durable outbox truth and leases.
+- The concrete durable storage implementation for owner-bound cursors,
+  receive-side deduplication, and acknowledgement scheduling. Their ownership
+  and provider-neutral load/commit/lease transitions are fixed; owner-local
+  transaction stores separately retain durable outbox truth and leases.
 - Whether acknowledgement authority is long-lived per mailbox or issued per
   delivery/batch by each provider protocol.
 - Future authenticated profile negotiation and its wire binding. The local

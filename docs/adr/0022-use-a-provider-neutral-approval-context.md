@@ -55,10 +55,9 @@ ownership contract are independently specified and tested.
   equivalent and does not erase provenance.
 - The concrete admission provider still owns verification, replay handling,
   release, approval consumption, and membership preparation.
-- Human approval UX, policy evaluation, and a reloadable durable
-  approval/replay authorization owner remain unimplemented. The SQLCipher
-  laboratory retains only the approved transaction's bounded shadows together
-  with MLS/invitation/outbox state.
+- Human approval UX and policy evaluation remain unimplemented. The headless
+  paths compose through the SQLCipher reloadable approval/replay owner without
+  retaining provider evidence or live membership authority in durable state.
 - The current enum contains only the implemented secret-capability method. New
   variants require a reviewed provider and updated evidence, not speculative
   placeholders.

@@ -2,7 +2,9 @@
 
 Status: accepted contract under ADR 0014; canonical protocol values, one-shot
 HPKE, bounded automated admission, local Welcome delivery, and SQLCipher
-laboratory composition implemented
+laboratory composition implemented; ADR 0023 opening-context persistence
+and restartable authorization-shadow transitions implemented and composed by
+the headless clients
 
 ## Objective
 
@@ -20,14 +22,19 @@ request-lifetime checks, exact provider KeyPackage ownership, tuple comparison,
 bounded in-memory request-ID/nonce reservation, exact signed-invitation
 provenance, provider-generated local v2 reservation, explicit simulated
 approval, and ownership-preserving MLS prepare/apply. Rejected, expired, failed,
-or abandoned work releases invitation and replay state without changing
-membership; successful in-memory Add consumes invitation state. The committed
+or abandoned work releases invitation and replay state in the current in-memory
+adapter without changing membership; successful in-memory Add consumes invitation state. The committed
 result carries the authenticated deposit endpoint beside the MLS outputs, and a
 retained local integration test delivers the encrypted Welcome. The SQLCipher
 laboratory retains the approved inviter MLS/outbox transaction and recovery.
-Human approval UX, a durable product authorization/replay owner, rollback
-resistance, hosted realm trust, a network transport, and a deployable client
-remain unimplemented.
+ADR 0023 now specifies durable invitation opening state and non-authorizing
+authorization/replay shadows. SQLCipher implements bounded issue-before-return
+opening-context persistence, key-bound reload, typed shadow transitions,
+restart abandonment, replay retention, and exact membership-outcome recovery.
+The single-process and independent-process headless paths now compose through
+that owner while retaining the provider's exact live KeyPackage value through
+MLS Add. Human approval UX, rollback resistance, hosted realm trust, a network
+transport, and a deployable client remain unimplemented.
 
 ## Assumptions
 
@@ -335,7 +342,9 @@ mailbox introduces rotation explicitly under a new schema.
 
 ## Processing order
 
-The inviter performs, without mutation through step 7:
+The inviter durably commits the exact bounded invitation opening context before
+sharing its descriptor. For each request it then performs, without mutation
+through step 7:
 
 1. pre-bound and canonically parse the protected outer object;
 2. locate the exact locally issued invitation generation;
@@ -344,16 +353,26 @@ The inviter performs, without mutation through step 7:
 5. pre-bound and canonically parse the zeroizing plaintext and nested endpoint;
 6. compare every outer, signed, HPKE, and inner binding exactly;
 7. enforce replay policy and validate the exact KeyPackage/ADR 0009 tuple;
-8. produce the one-shot admission value and only then reserve the invitation;
-9. consume an explicit approval decision, recheck request, invitation, and
+8. produce the one-shot admission value, then atomically reserve the invitation
+   and retain ADR 0023's non-authorizing replay/authorization shadow;
+9. consume an explicit approval decision, durably record its non-authorizing
+   result, recheck request, invitation, and
    response-endpoint expiry, prepare/apply that exact value in MLS, and consume
    the invitation after successful in-memory Add; and
-10. later commit and deliver under the separate ADR 0008/0012 transaction and
-    outbox contracts.
+10. record the exact transaction ID before membership storage may begin, then
+    commit and deliver under the separate ADR 0008/0012 transaction and outbox
+    contracts.
 
 Unknown, malformed, expired, replayed, stale-generation, wrong-suite,
 wrong-context, or authentication-failed input leaves invitation, replay,
 admission, MLS, mailbox, and outbox state unchanged.
+
+After step 8, rejection or restart abandonment releases only the exact
+invitation reservation and retains request ID, nonce, and request fingerprint
+through the invitation-generation expiry. A restart never reconstructs the
+provider-owned KeyPackage or resumes approval. Once step 10 may have begun, the
+reservation remains fail-closed until exact transaction-ID recovery proves
+commit or non-commit.
 
 ## Project structure for the first implementation increment
 
@@ -428,6 +447,23 @@ paths.
 - prove every rejection through KeyPackage validation leaves all state
   unchanged.
 
+### Restartable authorization
+
+- prove the SQLCipher durable-owner issuance API cannot return a publishable
+  invitation before retaining the exact canonical signed descriptor and its
+  matching invitation HPKE private key; P1-3 must route publication through
+  that API because the lower-level provider generator is intentionally
+  non-durable;
+- reject absent, malformed, expired, consumed, or public/private-key-mismatched
+  opening context without generating replacement material;
+- retain request ID, nonce, exact protected-request fingerprint, verifier, and
+  the complete ADR 0009 tuple as non-authorizing replay/conflict state;
+- abandon pending or approved pre-membership work after restart, release only a
+  matching usable invitation generation, and reject the abandoned request on
+  replay; and
+- keep ambiguous membership outcome fail-closed until exact transaction-ID
+  recovery, without a second MLS Add.
+
 ### Mailbox authority and state
 
 - prove each capability can exercise only its named right;
@@ -465,8 +501,8 @@ git diff --check
   secrets and plaintext out of diagnostics; use reviewed crypto providers;
   compare every binding before mutation; keep authority right-specific; retain
   compatibility and negative fixtures.
-- Ask first: add persistence, connect admission to MLS, add a network endpoint,
-  add another admission method, suite, provider, transport, or verifier
+- Ask first: change ADR 0023 persistence semantics, connect another admission
+  method to MLS, add a network endpoint, suite, provider, transport, or verifier
   context, or expose the schema through a UI/deep link.
 - Never: reinterpret invitation v1, downgrade or fall back, accept generic route
   data, derive one key from another, add custom cryptographic primitives, grant
@@ -495,6 +531,6 @@ git diff --check
 - Network authentication, discovery, proxy, redirect, and SSRF policy
 - Anonymous deposit abuse control and resource accounting
 - Sender-constrained network deposit authorization
-- Durable invitation/admission/MLS/outbox and joiner transactions
+- Product invitation/admission storage, rollback resistance, and platform key custody
 - Approval UX and headless orchestration
 - Credential, GitHub, manual, and targeted public invitation schemas

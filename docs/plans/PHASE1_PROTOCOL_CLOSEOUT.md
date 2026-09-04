@@ -1,7 +1,6 @@
 # Implementation plan: Phase 1 protocol laboratory closeout
 
-Status: proposed closeout plan; P1-0 documentation baseline complete,
-implementation has not started
+Status: reviewed closeout plan; P1-0 through P1-3 complete, P1-4 maximum-review findings remediated and human acceptance pending
 
 Date: 2026-09-02
 
@@ -106,6 +105,13 @@ contract and fixtures established by the preceding task.
 
 ## Phase 1 planning choices
 
+- Before an invitation descriptor is shared, the inviter-local durable owner
+  stores one bounded, storage-internal opening context containing the exact
+  canonical signed invitation and its exact invitation-scoped HPKE private key.
+  It does not retain the one-time signing seed and cannot derive or reconstruct
+  an admitted KeyPackage. A generation may return to `Available` after restart
+  only when that exact opening context remains present, valid, and unexpired;
+  missing or malformed context makes the generation terminally unusable.
 - A process loss before the inviter-local membership transaction begins
   terminally abandons that request. The durable owner retains its replay record
   through expiry and releases only the matching invitation generation. It does
@@ -115,11 +121,16 @@ contract and fixtures established by the preceding task.
 - Phase 1 adds a deterministic cursor-bearing lifecycle provider under the
   publish-disabled conformance crate. LocalV1 and the ordinary memory control
   profile remain cursorless and fail closed on supplied cursors.
+- Persist-before-acknowledge is proved by composing that provider with a
+  bounded test-only receive-state owner model. The provider does not own the
+  durable receive checkpoint, and Phase 1 does not claim product cursor
+  persistence or durable message receipt. P1-4 freezes the separate owner-port
+  transition contract before P1-5 implements the model.
 - Every canonical `E2E-JOIN-002` input class crosses the process boundary once.
   Table-driven cases may share setup, but each requires a fresh authoritative
   state inspection and its own bounded evidence result.
 
-These choices are proposed execution constraints. P1-1 and P1-4 record their
+These choices are reviewed execution constraints. P1-1 and P1-4 record their
 security consequences in the governing contracts before implementation.
 
 ## Task P1-0: Publish the closeout baseline
@@ -167,21 +178,27 @@ history, and release only the exact live invitation reservation.
 
 **Acceptance criteria:**
 
-- [ ] The contract binds every durable state to the exact invitation
+- [x] The contract binds every durable state to the exact invitation
       generation, request ID and nonce, verifier context, KeyPackage reference,
       proof/request fingerprint, expiry, and one-shot transition authority
       without persisting a reconstructible membership authority.
-- [ ] Restart, expiry, rejection, conflict, and ambiguous-result transitions
+- [x] Local issuance becomes externally shareable only after the exact bounded
+      signed invitation and invitation HPKE private key commit to the durable
+      owner; restart returns a generation to `Available` only when that opening
+      context is present, valid, and unexpired.
+- [x] Restart, expiry, rejection, conflict, and ambiguous-result transitions
       preserve replay protection; pre-commit restart abandons safely and never
       reconstructs an admitted KeyPackage from identifiers or display metadata.
-- [ ] The ADR and threat model record retention, bounds, rollback assumptions,
+- [x] The ADR and threat model record retention, bounds, rollback assumptions,
       and the boundary between durable authorization and simulated human input.
 
 **Verification:**
 
-- [ ] Repository documentation checks pass.
-- [ ] Contract fixtures or model tests fail first for every newly specified
-      transition before implementation begins.
+- [x] Repository documentation checks pass.
+- [ ] The contract includes a closed transition/fixture matrix. Failing-first
+      execution was observed during implementation, including DUR-AUTH-018 and
+      DUR-AUTH-019, but this combined uncommitted working tree does not retain
+      independently replayable red-before-green commit evidence.
 
 **Dependencies:** P1-0
 
@@ -202,32 +219,63 @@ typed API own the P1-1 states before MLS mutation. Keep the SQLCipher store as
 the sole owner rather than adding a second replay, approval, or invitation
 ledger.
 
+Completed on 2026-09-03: schema v5 owns issue-before-return invitation opening
+state and the complete bounded authorization-shadow lifecycle. Exact
+store/attempt/generation handles govern approve, reject, abandon, membership
+handoff, and recovery. Restart abandons unreconstructible pre-membership work;
+outcome-unknown recovery reconciles the exact committed membership transaction
+without repeating MLS Add. Replay retention, persisted owner limits,
+authenticated/key-bound close-reopen loading, invalid/expired terminalization,
+and bounded compaction have executable coverage.
+
 **Acceptance criteria:**
 
-- [ ] The next schema version migrates accepted frozen fixtures atomically and
+- [x] The next schema version migrates accepted frozen fixtures atomically and
       unknown, malformed, stale, conflicting, or over-capacity records fail
       closed.
-- [ ] Reserve, recover, reject/abandon, approve, consume, and replay-result
+- [x] Reserve, recover, reject/abandon, approve, consume, and replay-result
       operations enforce exact generation and one-shot ownership across
       close/reopen.
-- [ ] Secret-bearing records remain bounded, encrypted at rest by the selected
+- [x] The authorized inviter write revalidates under the database write lock,
+      with staging time advanced by fresh monotonic elapsed time; concurrent
+      non-commit recovery fences a staged writer, while known and ambiguous
+      committed outcomes finalize idempotently without restart.
+- [x] Authorized persistence consumes the exact provider-applied KeyPackage/
+      member/group/epoch/Welcome binding through an inseparable stage-and-write
+      operation tied to the same group instance, state revision, and active
+      provider callback thread, plus an MLS-owned digest captured before any
+      caller-supplied storage wrapper; unrelated Add output, an intervening MLS
+      operation, a substituted exact provider callback, and legacy attempts to
+      claim an opening-owned generation fail before durable membership commit.
+- [x] Live pending cancellation can explicitly abandon and release its exact
+      generation, and open rejects contradictory terminal cross-row state.
+- [x] The SQLCipher owner issuance API atomically retains one bounded opaque
+      opening context before returning its publishable invitation; load
+      validates its canonical invitation/key binding, and consumption, expiry,
+      or an unusable record makes the secret unavailable. P1-3 still must route
+      external publication through this owner rather than the lower-level
+      non-durable generator.
+- [x] Secret-bearing records remain bounded, encrypted at rest by the selected
       laboratory adapter, redacted from diagnostics, and zeroized where owned
       buffers make that possible.
 
 **Verification:**
 
-- [ ] `cargo test -p storage-sqlcipher --all-features --locked --offline`
-- [ ] Targeted migration, close/reopen, conflict, capacity, expiry, and
-      malformed-state tests pass.
+- [x] `cargo test -p storage-sqlcipher --all-features --locked --offline`
+- [x] Targeted migration, close/reopen, conflict, capacity, expiry, and
+      malformed-state tests pass, including corruption between load and
+      reserve, delegating-wrapper substitution, non-default v4-to-v5 policy,
+      and migration rollback fixtures.
 
 **Dependencies:** P1-1
 
 **Files likely touched:**
 
 - `crates/storage-sqlcipher/src/lib.rs`
-- `crates/storage-sqlcipher/tests/boundary_validation.rs`
-- a focused durable-authorization test under `crates/storage-sqlcipher/tests/`
-- the next frozen schema fixture under `crates/storage-sqlcipher/tests/fixtures/`
+- `crates/storage-sqlcipher/tests/durable_authorization.rs`
+- `crates/storage-sqlcipher/tests/invitation_opening_context.rs`
+- existing frozen-schema migration coverage under
+  `crates/storage-sqlcipher/tests/durable_outbox.rs`
 - `crates/storage-sqlcipher/README.md`
 
 **Estimated scope:** Medium; split schema/API from composition if it exceeds one
@@ -244,21 +292,24 @@ second MLS Add.
 
 **Acceptance criteria:**
 
-- [ ] Fresh-process recovery before or after approval but before transaction
+- [x] Fresh-process recovery before or after approval but before transaction
       staging abandons the request, retains its replay record, releases only the
       exact invitation reservation, and never authorizes a substituted
       KeyPackage.
-- [ ] Rollback releases only the matching live reservation; a committed or
+- [x] After that recovery, a different fresh request can reserve the same
+      generation only through its successfully reloaded exact opening context;
+      a missing, malformed, expired, or mismatched context fails closed.
+- [x] Rollback releases only the matching live reservation; a committed or
       outcome-unknown transaction remains consumed and exact retry is
       idempotent.
-- [ ] `sessionctl` still completes `E2E-JOIN-001` with one membership commit,
+- [x] `sessionctl` still completes `E2E-JOIN-001` with one membership commit,
       one Welcome job, and no provider proof or bearer material in evidence.
 
 **Verification:**
 
-- [ ] `cargo test -p admission-capability --all-features --locked --offline`
-- [ ] `cargo test -p storage-sqlcipher --test capability_composition --locked --offline`
-- [ ] `cargo test -p sessionctl --test phase_one --locked --offline`
+- [x] `cargo test -p admission-capability --all-features --locked --offline`
+- [x] `cargo test -p storage-sqlcipher --test capability_composition --locked --offline`
+- [x] `cargo test -p sessionctl --test phase_one --locked --offline`
 
 **Dependencies:** P1-2
 
@@ -291,21 +342,33 @@ behavior and fail-closed unsupported operations through the stable boundary.
 
 **Acceptance criteria:**
 
-- [ ] Deposit, receive, acknowledgement, and rotation authority issuance and
+- [x] Deposit, receive, acknowledgement, and rotation authority issuance and
       lifecycle transitions are bounded, right-specific, generation-bound, and
       incapable of being authorized by identifiers or cursors.
-- [ ] Cursor persistence/invalidity, acknowledgement ordering, rotation,
-      restart, and explicit resynchronization semantics match the accepted
-      transport research without selecting a network provider.
-- [ ] Compile-time misuse and redaction tests prove the contract catches
+- [x] Cursor persistence/invalidity, acknowledgement ordering, rotation,
+      restart, and explicit resynchronization semantics adopt the reviewed
+      transport research recommendation without selecting a network provider.
+- [x] A separate receive-state owner port requires one atomic transition for
+      canonical envelopes, deduplication outcomes, exact acknowledgement
+      intents, and compare-and-swap cursor advance before acknowledgement can
+      be scheduled; the adapter cannot commit that owner checkpoint itself.
+- [x] Reusable poll results carry the exact mailbox binding and checkpoint
+      revision, position, and cursor bytes; cursorless page commits retain a
+      reloadable successor revision; owner-recorded resynchronization,
+      restart-safe leases, owner-opaque commit evidence, and explicit wall time
+      gate acknowledgement.
+- [x] Compile-time misuse and redaction tests prove the contract catches
       authority collapse, and a closed conformance-provider fixture contract
       defines every positive and stale-state behavior required by P1-5.
 
 **Verification:**
 
-- [ ] `cargo test -p session-transport --all-features --locked --offline`
-- [ ] The transport specification, ADR, and contract tests agree on supported
+- [x] `cargo test -p session-transport --all-features --locked --offline`
+- [x] The transport specification, ADR, and contract tests agree on supported
       and deliberately unsupported Phase 1 operations.
+- [ ] Human acceptance confirms the post-review remediation. Independent review
+      instance 3 of 3 returned `Not ready` on its frozen pre-remediation target;
+      no fourth review starts automatically.
 
 **Dependencies:** P1-0
 
@@ -314,8 +377,11 @@ behavior and fail-closed unsupported operations through the stable boundary.
 - `crates/session-transport/src/capability.rs`
 - `crates/session-transport/src/contract.rs`
 - `crates/session-transport/src/dispatch.rs`
+- a focused receive-state owner port under `crates/session-transport/src/`
 - `crates/session-transport/tests/dispatch_contract.rs`
 - `docs/specs/TRANSPORT_ABSTRACTION_V1.md`
+- `docs/adr/0015-bind-transport-adapters-to-versioned-profiles.md`
+- `docs/THREAT_MODEL.md`
 
 **Estimated scope:** Medium; keep provider implementation out of this task
 
@@ -330,10 +396,10 @@ bridges so every common verdict is known to detect the violation it names.
 
 - [ ] The canonical trace vocabulary and runner cover bounded arbitrary delay
       without wall-clock sleeps or unbounded queues.
-- [ ] The publish-disabled deterministic provider passes positive cursor,
-      persist-before-acknowledge, rotation, restart, and resynchronization
-      cases, while every right/resource substitution and stale generation has
-      a normalized rejection verdict.
+- [ ] The publish-disabled deterministic provider plus bounded receive-state
+      owner model pass positive cursor, persist-before-acknowledge, rotation,
+      restart, and resynchronization cases, while every right/resource
+      substitution and stale generation has a normalized rejection verdict.
 - [ ] Fresh-adapter double replay, quiescence, redaction, and defective-bridge
       detection remain deterministic and byte-identical.
 
@@ -368,6 +434,9 @@ accepted profile requires it.
 - [ ] `E2E-MSG-001`, `E2E-MSG-002`, `E2E-REMOVE-001`, and the Phase 1 portion
       of `E2E-AUTH-001` cross the common dispatch interface with explicit
       clocks, deadlines, cancellation, bounds, and right-specific authority.
+- [ ] The LocalV1 composition remains explicitly cursorless and makes no
+      durable receive-checkpoint claim; cursor persistence and
+      persist-before-acknowledge remain conformance-model evidence in Phase 1.
 - [ ] Replacing the conforming memory adapter with a deliberately defective
       adapter makes the appropriate scenario fail without changing MLS or
       admission code.
@@ -513,6 +582,12 @@ evidence, and only then change Phase 1 from `in progress` to `complete`. A
 passing pull-request smoke is necessary but does not substitute for the full
 non-PR three-platform L2 evidence run.
 
+The completion evidence revision is the immutable merged code revision that
+runs every required gate. Because a document cannot embed its own commit hash,
+the follow-up documentation checkpoint cites that tested revision and is
+limited to evidence/status metadata; it runs the repository documentation
+gate, and must not imply that its own later hash received the full L2 matrix.
+
 **Acceptance criteria:**
 
 - [ ] The complete local gate passes, or any environment-only command is
@@ -522,6 +597,8 @@ non-PR three-platform L2 evidence run.
 - [ ] A follow-up documentation checkpoint records the exact revision, marks
       this plan historical, and preserves every remaining product/network/
       platform limitation.
+- [ ] The completion status names the immutable tested revision explicitly and
+      distinguishes it from the evidence-only documentation commit.
 
 **Verification:**
 
@@ -552,8 +629,8 @@ non-PR three-platform L2 evidence run.
 Keep each change reviewable and green:
 
 1. **Documentation baseline:** P1-0 only.
-2. **Durable recovery contract:** P1-1, with failing model/fixture tests where
-   applicable.
+2. **Durable recovery contract:** P1-1, with the closed transition/fixture
+   matrix that P1-2 first observes failing and then makes green.
 3. **Durable authorization owner:** P1-2.
 4. **Durable admission composition:** P1-3.
 5. **Transport lifecycle contract:** P1-4.
@@ -581,8 +658,9 @@ transport tracks into one implementation PR.
 
 ## Review gate
 
-No implementation task begins until reviewers accept this closeout scope, the
-P1-1 abandon-and-retain-replay recovery policy, and the P1-4 deterministic
-cursor-provider boundary. Any requested expansion into product UI, real
-networking, platform custody, or production durability returns to the roadmap
-rather than silently expanding Phase 1.
+Review accepted 2026-09-03 after making invitation-opening persistence,
+receive-state ownership, green-commit test sequencing, and exact-revision
+reporting explicit. Implementation may proceed within this reviewed boundary.
+Any requested expansion into product UI, real networking, platform custody, or
+production durability returns to the roadmap rather than silently expanding
+Phase 1.

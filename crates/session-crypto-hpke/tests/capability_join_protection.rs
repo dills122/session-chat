@@ -1,13 +1,15 @@
 use ed25519_dalek::SigningKey;
 use session_crypto_hpke::{
-    AwsLcInvitationJoinProtector, InvitationHpkePrivateKey, InvitationJoinProtector,
-    JoinProtectionError,
+    AwsLcInvitationJoinProtector, GeneratedCapabilityInvitationV2,
+    InvitationHpkePrivateKeyStorageRef, InvitationJoinProtector, InvitationOpeningContextSink,
+    JoinProtectionError, StoredInvitationHpkePrivateKey,
 };
 use session_protocol::{
     CapabilityInvitationClaims, CapabilityInvitationV2Claims, CapabilityJoinRequest,
     DepositCapability, InvitationJoinBinding, JoinRequestBinding, LocalWelcomeDepositEndpoint,
     MlsKeyPackageBinding, ProtectedJoinRequest, SecretCapability, SignedCapabilityInvitationV2,
 };
+use zeroize::Zeroizing;
 
 const INVITATION_ID: [u8; 16] = [0x11; 16];
 const JOIN_CHALLENGE: [u8; 32] = [0x22; 32];
@@ -15,6 +17,47 @@ const CAPABILITY: [u8; 32] = [0x33; 32];
 const INVITATION_KEY_ID: [u8; 16] = [0x44; 16];
 const ISSUED_AT: u64 = 1_700_000_000;
 const EXPIRES_AT: u64 = ISSUED_AT + 3_600;
+
+struct MemoryOpeningContextSink {
+    canonical_invitation: Option<Zeroizing<Vec<u8>>>,
+    private_key: Option<StoredInvitationHpkePrivateKey>,
+}
+
+impl InvitationOpeningContextSink for MemoryOpeningContextSink {
+    type Error = JoinProtectionError;
+
+    fn persist_opening_context(
+        &mut self,
+        _invitation: &SignedCapabilityInvitationV2,
+        canonical_invitation: &[u8],
+        private_key: InvitationHpkePrivateKeyStorageRef<'_>,
+    ) -> Result<(), Self::Error> {
+        private_key.persist_with(|private_key| {
+            self.canonical_invitation = Some(Zeroizing::new(canonical_invitation.to_vec()));
+            self.private_key = Some(StoredInvitationHpkePrivateKey::from_bytes(Zeroizing::new(
+                *private_key,
+            ))?);
+            Ok(())
+        })
+    }
+}
+
+fn persist_in_memory(
+    generated: &GeneratedCapabilityInvitationV2,
+) -> (Zeroizing<Vec<u8>>, StoredInvitationHpkePrivateKey) {
+    let mut sink = MemoryOpeningContextSink {
+        canonical_invitation: None,
+        private_key: None,
+    };
+    generated
+        .persist_opening_context(&mut sink)
+        .expect("generated context persists through the narrow sink");
+    (
+        sink.canonical_invitation
+            .expect("canonical invitation stored"),
+        sink.private_key.expect("private key stored"),
+    )
+}
 
 fn signing_key() -> SigningKey {
     SigningKey::from_bytes(&[0xa5; 32])
@@ -205,6 +248,66 @@ fn provider_generates_every_secret_and_identifier_for_invitation_v2() {
     protector
         .open_capability_request(first.private_key(), first_invitation, &protected)
         .expect("generated private key opens its context");
+}
+
+#[test]
+fn generated_invitation_round_trips_through_bounded_storage_parts() {
+    let protector = AwsLcInvitationJoinProtector::new();
+    let generated = protector
+        .generate_capability_invitation(ISSUED_AT, EXPIRES_AT)
+        .expect("complete invitation generation succeeds");
+    let (canonical_invitation, private_key) = persist_in_memory(&generated);
+    drop(generated);
+
+    let restored = protector
+        .restore_capability_invitation(canonical_invitation.as_slice(), private_key)
+        .expect("matching canonical invitation and private key restore");
+    let request = request_for(
+        *restored.invitation().invitation_id(),
+        *restored.invitation().join_challenge(),
+        *restored.invitation().invitation_key_id(),
+        *restored.invitation().inviter_verifying_key(),
+        ISSUED_AT + 1,
+        EXPIRES_AT,
+    );
+    let protected = protector
+        .seal_capability_request(restored.invitation(), &request)
+        .expect("restored invitation seals");
+    protector
+        .open_capability_request(restored.private_key(), restored.invitation(), &protected)
+        .expect("restored opening context opens");
+}
+
+#[test]
+fn invitation_restore_rejects_mismatched_or_malformed_storage_parts() {
+    let protector = AwsLcInvitationJoinProtector::new();
+    let generated = protector
+        .generate_capability_invitation(ISSUED_AT, EXPIRES_AT)
+        .expect("complete invitation generation succeeds");
+    let (canonical_invitation, private_key) = persist_in_memory(&generated);
+    let wrong_generated = protector
+        .generate_capability_invitation(ISSUED_AT, EXPIRES_AT)
+        .expect("second invitation generation succeeds");
+    let (_, wrong_private_key) = persist_in_memory(&wrong_generated);
+
+    assert_rejected(
+        protector.restore_capability_invitation(canonical_invitation.as_slice(), wrong_private_key),
+    );
+    let oversized_generated = protector
+        .generate_capability_invitation(ISSUED_AT, EXPIRES_AT)
+        .expect("oversized-input key generation succeeds");
+    let (_, oversized_private_key) = persist_in_memory(&oversized_generated);
+    assert!(matches!(
+        protector.restore_capability_invitation(&[0; 513], oversized_private_key),
+        Err(JoinProtectionError::InputTooLarge)
+    ));
+
+    let mut changed_signature = canonical_invitation.to_vec();
+    let last = changed_signature
+        .last_mut()
+        .expect("canonical invitation is nonempty");
+    *last ^= 1;
+    assert_rejected(protector.restore_capability_invitation(&changed_signature, private_key));
 }
 
 #[test]
@@ -411,7 +514,7 @@ fn public_failures_are_coarse_and_do_not_echo_capability_material() {
 #[test]
 fn restored_zero_private_key_and_low_order_encapsulation_fail_closed() {
     assert!(matches!(
-        InvitationHpkePrivateKey::from_bytes([0; 32]),
+        StoredInvitationHpkePrivateKey::from_bytes(Zeroizing::new([0; 32])),
         Err(JoinProtectionError::Rejected)
     ));
 

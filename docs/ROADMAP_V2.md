@@ -102,8 +102,17 @@ receipts before dispatch, while received batches enforce the originating poll's
 count/byte limits and local expiry. The runtime-neutral generalized dispatch
 trait and its deterministic memory adoption now add explicit clock/cancellation,
 exact-set acknowledgement, fail-closed cursor, idempotency-conflict, and
-provider-redaction evidence. Lifecycle, valid cursor persistence, and
-provider-wide capability issuance remain open.
+provider-redaction evidence. The provider-neutral lifecycle contract now adds
+bounded four-right issuance, generation-bound cursor validity,
+compare-and-swap rotation, explicit resynchronization, and a separate atomic
+receive-state owner port with exact committed-checkpoint reload, cursorless
+successor revisions, page/checkpoint binding, owner-opaque commit evidence, and
+explicit expiry checks. Exact checkpoint provenance includes cursor position
+and bytes; owner-CAS resynchronization is restartable, recovered acknowledgement
+leases survive crashes, and duplicate IDs fail at the batch boundary. Lifecycle declarations bind a nonlocal semantic
+profile, cursor schema, drain policy, and wall-time validity to issuance and rotation; LocalV1
+lifecycle declarations, issue requests, and cursor bindings fail closed. A conforming reusable provider and
+durable product cursor persistence remain open.
 A new publish-disabled `transport-conformance` crate now retains the strict
 bounded adverse-trace v1 parser, hostile fixtures, and a first normalized
 double-replay memory runner, while `transport-memory` adds
@@ -224,17 +233,24 @@ for the remaining headless and durable composition:
   ADR 0014.
 
 The isolated MLS crate still uses only in-memory providers for deterministic
-protocol tests, as ADR 0012 specifies. The separate SQLCipher composition now
-proves the real inviter and joiner MLS writes plus the committed Welcome owner,
-but the headless path cannot yet durably resolve pre-commit replay,
-invitation-reservation, and approval state after process loss. Before any
-networked or user-facing join path is enabled, one restartable durable owner
-must resolve reservation recovery, request replay state, the MLS membership
-transition, invitation consumption, approval/result state, and the encrypted
-Welcome outbox job with an idempotency key. Dropped or abandoned reservation
-tokens must return safely to `Available` without permitting a second concurrent
-admission. Until that gate passes, the laboratory makes no networked,
-user-facing, durability, rollback-resistance, or product-security claim.
+protocol tests, as ADR 0012 specifies. The SQLCipher-backed headless paths now
+use one restartable durable owner for opening-context recovery, request replay,
+invitation reservation, approval/result shadows, the exact MLS membership
+transition, invitation consumption, and the encrypted Welcome outbox job.
+Dropped or restarted pre-membership work returns the exact usable generation to
+`Available` while retaining replay, and outcome-unknown recovery never repeats
+MLS Add. This passes the laboratory composition gate without establishing a
+networked, user-facing, rollback-resistant, or production-secure client.
+
+ADR 0023 now freezes that recovery contract: invitation publication follows
+durable retention of its exact signed descriptor and matching HPKE private key;
+pending authorization persists only as a non-authorizing replay/conflict
+shadow; and restart abandons rather than reconstructs a lost live KeyPackage.
+The SQLCipher opening-context and authorization-shadow schema/API slices are
+retained and used by both headless compositions. They enforce bounded replay
+retention, restart abandonment, exact generation ownership, and
+membership-transaction outcome reconciliation while the provider keeps its
+exact parsed KeyPackage only for the live attempt.
 
 The retained Phase 1 workspace includes the original foundation:
 

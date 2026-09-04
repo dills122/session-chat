@@ -286,18 +286,38 @@ approval-gated one-shot API: rejection and pre-commit failure release both
 reservations, abandonment also clears the MLS pending Commit, and the legacy
 in-memory apply consumes the invitation before returning its outputs. Durable
 composition instead retains an applied, durability-pending value until SQL
-recovery proves commit or rollback. This is retained component integration, not
-a persistent cross-process or rollback-resistant client. Human approval UX and
-durable replay loading do not exist in the headless product path. The separate
-memory conformance model and SQLCipher laboratory exercise atomic visibility,
-durable Welcome-owner recovery, and ambiguous-result retry, and the real
-capability integration now crosses that store boundary. The in-memory committed join result
-now carries the
+recovery proves commit or rollback, then settles the provider's in-memory
+shadows from that exact result. The SQLCipher-backed headless paths issue the
+opening context before publication, retain replay and approval shadows across
+restart, and abandon rather than reconstruct lost provider authority. This is
+retained laboratory integration, not a rollback-resistant product client.
+Human approval UX does not exist. The separate memory conformance model and
+SQLCipher laboratory exercise atomic visibility, durable Welcome-owner
+recovery, and ambiguous-result retry. The in-memory committed join result now carries the
 exact authenticated deposit-only endpoint beside its MLS Welcome, and retained
 integration evidence delivers that Welcome through the local mailbox. No
 network transport exists. The headless composition retains an executable
 happy-path acceptance test across these boundaries, but does not make their
 sequential in-memory mutations atomic or persistent.
+
+ADR 0023 now specifies the restartable pre-membership boundary. SQLCipher
+commits the exact signed invitation and matching HPKE private key before
+publication, validates that context on reload, and owns bounded,
+non-authorizing authorization/replay shadows. Restart abandons a lost live
+KeyPackage instead of reconstructing it, retains replay state through the
+generation expiry, and returns the generation to `Available` only when its
+exact opening context reloads successfully. The authorized membership write
+consumes a provider-created binding for the exact applied KeyPackage, member
+identity/key, group, epoch transition, and Welcome, revalidates it with the
+one-shot authorization under the database write lock. An MLS-owned
+provider-facing wrapper fingerprints the exact serialized group state and
+ordered epoch records before delegating, so the durable owner rejects state
+substitution by a caller-supplied wrapper. The transaction atomically commits
+MLS, outbox, authorization, and invitation state. Exact
+non-commit recovery fences a staged writer, while terminal outcomes are
+idempotent in the same open scope; recovery never repeats MLS Add. Both headless
+composition paths now use this owner while retaining the exact parsed
+KeyPackage only in the live provider value.
 
 ADR 0014 accepts the local-only contract: a signed capability invitation v2,
 RFC 9180 PSK-protected join request, the invitation-scoped Ed25519 key as

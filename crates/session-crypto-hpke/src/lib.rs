@@ -4,6 +4,7 @@
 
 use std::{error::Error, fmt};
 
+use aws_lc_rs::agreement;
 use ed25519_dalek::SigningKey;
 use mls_rs_core::crypto::{
     CipherSuite, CipherSuiteProvider, CryptoProvider, HpkeContextR, HpkeContextS, HpkePsk,
@@ -13,7 +14,8 @@ use mls_rs_crypto_awslc::{AwsLcAead, AwsLcCryptoProvider, AwsLcHkdf, EcdhKem, dh
 use mls_rs_crypto_hpke::hpke::Hpke;
 use session_protocol::{
     CapabilityInvitationClaims, CapabilityInvitationV2Claims, CapabilityJoinRequest,
-    ProtectedJoinRequest, SecretCapability, SignedCapabilityInvitationV2,
+    MAX_SIGNED_INVITATION_BYTES, ProtectedJoinRequest, SecretCapability,
+    SignedCapabilityInvitationV2,
 };
 use zeroize::{Zeroize, Zeroizing};
 
@@ -47,8 +49,7 @@ impl Error for JoinProtectionError {}
 pub struct InvitationHpkePrivateKey([u8; HPKE_KEY_BYTES]);
 
 impl InvitationHpkePrivateKey {
-    /// Restores an exact private key from a protected local vault.
-    pub fn from_bytes(bytes: [u8; HPKE_KEY_BYTES]) -> Result<Self, JoinProtectionError> {
+    fn from_bytes(bytes: [u8; HPKE_KEY_BYTES]) -> Result<Self, JoinProtectionError> {
         if bytes.iter().all(|byte| *byte == 0) {
             return Err(JoinProtectionError::Rejected);
         }
@@ -58,6 +59,57 @@ impl InvitationHpkePrivateKey {
     fn provider_key(&self) -> HpkeSecretKey {
         HpkeSecretKey::from(self.0.to_vec())
     }
+}
+
+/// Owned, zeroizing transfer object for one private key loaded from protected storage.
+///
+/// This value is intentionally neither cloneable nor formattable and is consumed by restore.
+pub struct StoredInvitationHpkePrivateKey(InvitationHpkePrivateKey);
+
+impl StoredInvitationHpkePrivateKey {
+    /// Moves an exact fixed-width value from a protected storage implementation.
+    pub fn from_bytes(
+        mut bytes: Zeroizing<[u8; HPKE_KEY_BYTES]>,
+    ) -> Result<Self, JoinProtectionError> {
+        let bytes = std::mem::take(&mut *bytes);
+        InvitationHpkePrivateKey::from_bytes(bytes).map(Self)
+    }
+}
+
+/// Ephemeral, non-cloneable view provided only to an opening-context persistence sink.
+pub struct InvitationHpkePrivateKeyStorageRef<'a>(&'a InvitationHpkePrivateKey);
+
+impl InvitationHpkePrivateKeyStorageRef<'_> {
+    /// Writes the key through one unit-returning protected-storage operation.
+    pub fn persist_with<E>(
+        self,
+        persist: impl FnOnce(&[u8; HPKE_KEY_BYTES]) -> Result<(), E>,
+    ) -> Result<(), E> {
+        persist(&self.0.0)
+    }
+}
+
+/// Protected-storage consumer for one exact signed invitation and private key.
+pub trait InvitationOpeningContextSink {
+    /// Storage-specific failure returned without exposing private material.
+    type Error;
+
+    /// Persists the canonical invitation and matching key as one storage operation.
+    fn persist_opening_context(
+        &mut self,
+        invitation: &SignedCapabilityInvitationV2,
+        canonical_invitation: &[u8],
+        private_key: InvitationHpkePrivateKeyStorageRef<'_>,
+    ) -> Result<(), Self::Error>;
+}
+
+/// Failure while projecting a generated opening context into protected storage.
+#[derive(Debug)]
+pub enum InvitationOpeningContextPersistenceError<E> {
+    /// Canonical encoding or a protocol bound failed.
+    Protection(JoinProtectionError),
+    /// The protected-storage sink rejected or failed the write.
+    Storage(E),
 }
 
 impl Drop for InvitationHpkePrivateKey {
@@ -89,6 +141,27 @@ impl GeneratedCapabilityInvitationV2 {
     #[must_use]
     pub const fn private_key(&self) -> &InvitationHpkePrivateKey {
         &self.private_key
+    }
+
+    /// Projects the exact bounded fields into one protected-storage sink.
+    pub fn persist_opening_context<S: InvitationOpeningContextSink>(
+        &self,
+        sink: &mut S,
+    ) -> Result<(), InvitationOpeningContextPersistenceError<S::Error>> {
+        let invitation = Zeroizing::new(self.invitation.encode_canonical().map_err(|error| {
+            InvitationOpeningContextPersistenceError::Protection(protocol_error(error))
+        })?);
+        if invitation.len() > MAX_SIGNED_INVITATION_BYTES {
+            return Err(InvitationOpeningContextPersistenceError::Protection(
+                JoinProtectionError::InputTooLarge,
+            ));
+        }
+        sink.persist_opening_context(
+            &self.invitation,
+            invitation.as_slice(),
+            InvitationHpkePrivateKeyStorageRef(&self.private_key),
+        )
+        .map_err(InvitationOpeningContextPersistenceError::Storage)
     }
 }
 
@@ -144,6 +217,13 @@ pub trait InvitationJoinProtector {
         &self,
         issued_at_unix_seconds: u64,
         expires_at_unix_seconds: u64,
+    ) -> Result<GeneratedCapabilityInvitationV2, JoinProtectionError>;
+
+    /// Restores and revalidates one exact invitation opening context from protected storage.
+    fn restore_capability_invitation(
+        &self,
+        canonical_invitation: &[u8],
+        private_key: StoredInvitationHpkePrivateKey,
     ) -> Result<GeneratedCapabilityInvitationV2, JoinProtectionError>;
 
     /// Generates a fresh invitation-scoped X25519 key pair.
@@ -225,6 +305,31 @@ impl InvitationJoinProtector for AwsLcInvitationJoinProtector {
         Ok(GeneratedCapabilityInvitationV2 {
             invitation,
             private_key: generated_hpke.into_private_key(),
+        })
+    }
+
+    fn restore_capability_invitation(
+        &self,
+        canonical_invitation: &[u8],
+        private_key: StoredInvitationHpkePrivateKey,
+    ) -> Result<GeneratedCapabilityInvitationV2, JoinProtectionError> {
+        if canonical_invitation.len() > MAX_SIGNED_INVITATION_BYTES {
+            return Err(JoinProtectionError::InputTooLarge);
+        }
+        let invitation = SignedCapabilityInvitationV2::decode_and_verify(canonical_invitation)
+            .map_err(protocol_error)?;
+        let reencoded = Zeroizing::new(invitation.encode_canonical().map_err(protocol_error)?);
+        if reencoded.as_slice() != canonical_invitation {
+            return Err(JoinProtectionError::Rejected);
+        }
+        let private_key = private_key.0;
+        if x25519_public_key(&private_key)? != *invitation.hpke_recipient_public_key() {
+            return Err(JoinProtectionError::Rejected);
+        }
+
+        Ok(GeneratedCapabilityInvitationV2 {
+            invitation,
+            private_key,
         })
     }
 
@@ -324,6 +429,17 @@ impl InvitationJoinProtector for AwsLcInvitationJoinProtector {
             invitation_signature: *invitation.signature(),
         })
     }
+}
+
+fn x25519_public_key(
+    private_key: &InvitationHpkePrivateKey,
+) -> Result<[u8; HPKE_KEY_BYTES], JoinProtectionError> {
+    let private_key = agreement::PrivateKey::from_private_key(&agreement::X25519, &private_key.0)
+        .map_err(coarse_provider_error)?;
+    let public_key = private_key
+        .compute_public_key()
+        .map_err(coarse_provider_error)?;
+    fixed_key(public_key.as_ref())
 }
 
 fn hpke() -> Result<AwsLcHpke, JoinProtectionError> {

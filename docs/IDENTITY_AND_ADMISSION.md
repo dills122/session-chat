@@ -86,6 +86,16 @@ releases invitation and replay reservations; success applies MLS then consumes
 the invitation. This is not human UI evidence and does not persist replay, MLS,
 approval, or invitation state atomically.
 
+ADR 0023 specifies the replacement durable boundary. Before publication, the
+owner retains the exact canonical signed invitation and its matching HPKE
+private key. After automated verification it retains only a non-authorizing
+shadow of the exact generation, request ID/nonce/fingerprint, verifier, complete
+ADR 0009 tuple, expirations, decision state, and any membership transaction ID.
+It never serializes the parsed KeyPackage or live membership authority. Restart
+abandons pending or approved pre-membership work, retains replay state through
+the invitation-generation expiry, and returns the invitation to `Available`
+only when the exact opening context reloads validly.
+
 For the local secret-capability profile accepted by ADR 0014, the intended
 verifier is the exact invitation-scoped Ed25519 verifying key authenticated by
 the signed invitation. Successful RFC 9180 PSK opening proves possession of the
@@ -282,9 +292,13 @@ KeyPackage or invitation/request context beside this value.
 The inviter-owned registry supports provider-generated invitation v2 issue,
 read-only descriptor validation, reservation, release, and consumption. The
 capability adapter connects those transitions to its exact admission value and
-simulated approval decision in memory. The future durable implementation must
-still make approval/result, replay, MLS, invitation consumption, and Welcome
-outbox state one recoverable transaction.
+simulated approval decision in memory. The SQLCipher-backed headless paths now
+keep one durable owner across invitation opening state, authorization shadows,
+replay, MLS, invitation consumption, and Welcome outbox state while the live
+provider value remains linear through Add. The
+membership transition remains one atomic transaction; earlier authorization
+states use the exact restart transitions from ADR 0023 rather than pretending a
+lost provider-owned value can be resumed.
 
 ADR 0022's shared `ApprovalContext` is display-only metadata for that decision.
 It does not replace `VerifiedAdmission`, erase evidence provenance, or grant

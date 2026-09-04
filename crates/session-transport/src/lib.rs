@@ -6,8 +6,10 @@ mod capability;
 mod contract;
 mod coordinator;
 mod dispatch;
+mod lifecycle;
 mod outbox_port;
 mod profile;
+mod receive_state;
 mod supervisor;
 
 pub use capability::{
@@ -30,11 +32,27 @@ pub use dispatch::{
     AcknowledgementRight, DepositRight, DispatchControl, DispatchObservation, EnvelopeDelivery,
     EnvelopeDeposit, ReceiveRight,
 };
+pub use lifecycle::{
+    AcknowledgementScopeV1, BindingFingerprint, BoundCursorV1, CursorBindingV1,
+    CursorPersistenceV1, CursorSchemaVersion, LifecycleConformanceCaseV1,
+    LifecycleConformanceContractError, LifecycleProviderContractV1, MAILBOX_CONTINUITY_ID_BYTES,
+    MAILBOX_SCOPE_FINGERPRINT_BYTES, MailboxAuthoritySetV1, MailboxContinuityId, MailboxGeneration,
+    MailboxGenerationPolicyV1, MailboxIssueOutcomeV1, MailboxIssueRequestV1, MailboxIssueResultV1,
+    MailboxLifecycle, MailboxLifecycleContractError, MailboxRotationOutcomeV1,
+    MailboxRotationPolicyV1, MailboxRotationResultV1, ProviderStateEpoch, ROTATION_ID_BYTES,
+    ReceiveScopeFingerprint, ReceiveStateOwnershipV1, RotationId, RotationModeV1,
+    RotationRequestV1, RotationRight,
+};
 pub use outbox_port::{LeasedWelcome, OutboxPortError, WelcomeOutboxPort};
 pub use profile::{
     AdapterExecutionV1, AdapterLimitsV1, AdapterManifestV1, AdapterOperationsV1, AdapterVersionV1,
     BackgroundWorkV1, BindingErrorV1, EgressDeclarationV1, EnforcementModeV1, InternalRetryV1,
     TransportBindingRecordV1, bind_transport_v1,
+};
+pub use receive_state::{
+    AcknowledgementLeaseV1, CommittedReceivePageV1, DeduplicationOutcomeV1,
+    ReceiveCheckpointRevision, ReceiveCheckpointV1, ReceivePageCommitV1, ReceiveStateContractError,
+    ReceiveStateOwnerPort, ResynchronizationReasonV1, ResynchronizationRequestV1,
 };
 pub use supervisor::{
     BlockingFutureSupervisor, CancellationHandle, SupervisionError, ThreadDispatchControl,

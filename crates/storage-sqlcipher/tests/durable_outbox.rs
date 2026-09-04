@@ -171,7 +171,7 @@ fn committed_store(name: &str) -> (TestDatabase, SqlCipherStorage) {
 }
 
 #[test]
-fn schema_v1_fixture_migrates_atomically_to_pending_v4_work() {
+fn schema_v1_fixture_migrates_atomically_to_pending_v5_work() {
     let database = TestDatabase::new("migration-v1");
     let welcome = OpaqueEnvelope::new([21; 16], NOW + 180, vec![22; 32])
         .expect("Welcome")
@@ -181,7 +181,7 @@ fn schema_v1_fixture_migrates_atomically_to_pending_v4_work() {
     create_schema_v1_fixture(&database.0, &welcome, &endpoint);
 
     let mut migrated = SqlCipherStorage::open(&database.0, vault_key()).expect("v1 migrates");
-    assert_eq!(migrated.schema_version().expect("schema version"), 4);
+    assert_eq!(migrated.schema_version().expect("schema version"), 5);
     assert!(
         migrated
             .load_client_identity(&SessionGroupId::new([0x31; 32]).expect("group id"))
@@ -208,7 +208,7 @@ fn schema_v1_fixture_migrates_atomically_to_pending_v4_work() {
         connection
             .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
             .expect("application schema version"),
-        4
+        5
     );
     assert_eq!(
         connection
@@ -223,12 +223,12 @@ fn schema_v1_fixture_migrates_atomically_to_pending_v4_work() {
     );
     drop(connection);
 
-    let reopened = SqlCipherStorage::open(&database.0, vault_key()).expect("v4 reopens");
-    assert_eq!(reopened.schema_version().expect("schema version"), 4);
+    let reopened = SqlCipherStorage::open(&database.0, vault_key()).expect("v5 reopens");
+    assert_eq!(reopened.schema_version().expect("schema version"), 5);
 }
 
 #[test]
-fn frozen_schema_v2_fixture_preserves_nondefault_outbox_states_in_v4() {
+fn frozen_schema_v2_fixture_preserves_nondefault_outbox_states_in_v5() {
     let database = TestDatabase::new("migration-v2");
     let welcome = OpaqueEnvelope::new([55; 16], NOW + 180, vec![56; 32])
         .expect("Welcome")
@@ -237,7 +237,7 @@ fn frozen_schema_v2_fixture_preserves_nondefault_outbox_states_in_v4() {
     create_schema_v2_fixture(&database.0, &welcome, &canonical_endpoint(NOW + 240));
 
     let migrated = SqlCipherStorage::open(&database.0, vault_key()).expect("v2 migrates");
-    assert_eq!(migrated.schema_version().expect("schema version"), 4);
+    assert_eq!(migrated.schema_version().expect("schema version"), 5);
     assert!(
         migrated
             .load_client_identity(&SessionGroupId::new([0x32; 32]).expect("group id"))
@@ -268,7 +268,7 @@ fn frozen_schema_v2_fixture_preserves_nondefault_outbox_states_in_v4() {
     drop(migrated);
 
     let connection = open_fixture_connection(&database.0);
-    assert_eq!(fixture_versions(&connection), (4, 4));
+    assert_eq!(fixture_versions(&connection), (5, 5));
     assert_eq!(fixture_store_id(&connection), V2_STORE_ID);
     assert_eq!(
         connection
@@ -290,12 +290,12 @@ fn frozen_schema_v2_fixture_preserves_nondefault_outbox_states_in_v4() {
 }
 
 #[test]
-fn frozen_schema_v3_identity_is_bound_to_its_sole_group_in_v4() {
+fn frozen_schema_v3_identity_is_bound_to_its_sole_group_in_v5() {
     let database = TestDatabase::new("migration-v3-identity");
     create_schema_v3_fixture(&database.0, true);
 
     let migrated = SqlCipherStorage::open(&database.0, vault_key()).expect("v3 migrates");
-    assert_eq!(migrated.schema_version().expect("schema version"), 4);
+    assert_eq!(migrated.schema_version().expect("schema version"), 5);
     let group_id = SessionGroupId::new(V3_IDENTITY_GROUP_ID).expect("group id");
     let record = migrated
         .load_client_identity(&group_id)
@@ -321,7 +321,7 @@ fn frozen_schema_v3_identity_is_bound_to_its_sole_group_in_v4() {
     drop(migrated);
 
     let connection = open_fixture_connection(&database.0);
-    assert_eq!(fixture_versions(&connection), (4, 4));
+    assert_eq!(fixture_versions(&connection), (5, 5));
     assert_eq!(
         connection
             .query_row(
@@ -905,7 +905,7 @@ fn create_schema_v2_fixture(path: &Path, welcome: &[u8], endpoint: &[u8]) {
 }
 
 fn create_schema_v3_fixture(path: &Path, include_group: bool) {
-    let source_database = TestDatabase(path.with_extension("semantic-v4-source.sqlite3"));
+    let source_database = TestDatabase(path.with_extension("semantic-v5-source.sqlite3"));
     let source_storage =
         SqlCipherStorage::create(&source_database.0, vault_key()).expect("semantic source created");
     let group_id = SessionGroupId::new(V3_IDENTITY_GROUP_ID).expect("v3 group id");
