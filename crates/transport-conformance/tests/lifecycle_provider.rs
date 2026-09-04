@@ -175,4 +175,31 @@ fn deterministic_provider_rejects_foreign_stale_and_mismatched_lifecycle_inputs(
         panic!("a competing stale predecessor must fail");
     };
     assert_eq!(stale.code(), TransportFailureCode::AuthorityScopeMismatch);
+
+    let conflicting_retry = RotationRequestV1::new(
+        RotationId::from_provider_bytes([0x52; 16]).expect("rotation ID"),
+        first_binding,
+        RotationModeV1::Compromise,
+        NOW + 1_400,
+        budget,
+    )
+    .expect("conflicting retry shape");
+    let Err(conflict) =
+        ready(provider.rotate(contract, &first_rotation, conflicting_retry, &control))
+    else {
+        panic!("changed request under one rotation ID must fail");
+    };
+    assert_eq!(conflict.code(), TransportFailureCode::IdempotencyConflict);
+
+    let expired_request = MailboxIssueRequestV1::new(
+        TransportProfileId::FastV1,
+        BindingFingerprint::from_bytes([0x24; 32]).expect("binding fingerprint"),
+        NOW,
+        budget,
+    )
+    .expect("expired request shape");
+    let Err(expired) = ready(provider.issue(contract, expired_request, &control)) else {
+        panic!("expired issuance must fail");
+    };
+    assert_eq!(expired.code(), TransportFailureCode::PolicyViolation);
 }

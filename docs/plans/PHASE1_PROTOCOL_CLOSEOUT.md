@@ -400,7 +400,7 @@ bridges so every common verdict is known to detect the violation it names.
       owner model pass positive cursor, persist-before-acknowledge, rotation,
       restart, and resynchronization cases, while every right/resource
       substitution and stale generation has a normalized rejection verdict.
-- [ ] Fresh-adapter double replay, quiescence, redaction, and defective-bridge
+- [x] Fresh-adapter double replay, quiescence, redaction, and defective-bridge
       detection remain deterministic and byte-identical.
 
 **Verification:**

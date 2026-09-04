@@ -578,6 +578,21 @@ fn exact_retry_reuses_the_same_normalized_delivery_alias() {
 }
 
 #[test]
+fn foreign_delivery_id_is_a_noop_under_another_mailbox_acknowledgement_right() {
+    let trace = AdverseTraceV1::parse(
+        b"session-chat.transport.adverse-trace/v1\nprofile|local\nwall-start|1700000000\nenvelope|1|1|1|32|120\nstep|1|open-mailbox|1|180|expect|mailbox-opened|1\nstep|2|open-mailbox|2|180|expect|mailbox-opened|2\nstep|3|deposit|1|1|5000|4096|1|live:0:0;live:0:0|ready|expect|deposit-accepted|1\nstep|4|poll|1|none|4|4096|0|5000|4096|1|live:0:0;live:0:0|ready|expect|poll-accepted|1:1|none\nstep|5|replay-stale|1|expect|fault-applied\nstep|6|ack|2|1|5000|4096|1|live:0:0;live:0:0|ready|expect|ack-accepted\nstep|7|poll|1|none|4|4096|0|5000|4096|1|live:0:0;live:0:0|ready|expect|poll-accepted|1:1|none\nstep|8|ack|1|1|5000|4096|1|live:0:0;live:0:0|ready|expect|ack-accepted\n",
+    )
+    .expect("canonical cross-mailbox acknowledgement trace");
+
+    let report = run_adverse_trace_twice_v1(&trace, MemoryTraceAdapter::new)
+        .expect("foreign delivery ID must remain a deterministic no-op");
+    let report = std::str::from_utf8(report.as_bytes()).expect("ASCII normalized report");
+    assert!(report.contains("step|6|ack-accepted\n"));
+    assert!(report.contains("step|7|poll-accepted|1:1|none\n"));
+    assert!(report.ends_with("end|quiescent\n"));
+}
+
+#[test]
 fn delayed_wake_drop_releases_bridge_owned_work_before_quiescence() {
     let trace = AdverseTraceV1::parse(
         b"session-chat.transport.adverse-trace/v1\nprofile|local\nwall-start|1700000000\nenvelope|1|1|1|32|120\nstep|1|open-mailbox|1|180|expect|mailbox-opened|1\nstep|2|deposit|1|1|5000|4096|1|live:0:0|poll-once-drop|expect|future-dropped\n",

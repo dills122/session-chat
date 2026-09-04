@@ -62,6 +62,10 @@ tests recover cursor and acknowledgement work, preserve ambiguous release,
 terminalize acceptance, persist cursorless successors and explicit
 resynchronization, and reject stale checkpoints, foreign bindings, and expired
 operations. This is a bounded conformance model, not durable product storage.
+The LocalV1 resource matrix also proves that a delivery ID presented under a
+different mailbox's valid acknowledgement right is an identifier-free no-op:
+it cannot consume the original mailbox's retained delivery, which remains
+available to its own right.
 
 ## Verification
 

@@ -544,7 +544,9 @@ foreign-authority, stale-predecessor, and declaration-substitution evidence;
 its companion owner model now retains atomic cursor-page, deduplication,
 acknowledgement-recovery, cursorless-successor, resynchronization, stale-state,
 foreign-binding, and expiry evidence. The exhaustive normalized matrix remains
-open.
+open; the retained LocalV1 cross-resource row proves a foreign delivery ID is a
+no-op under another mailbox's valid acknowledgement right and cannot consume
+the original mailbox's delivery.
 
 **Acceptance criteria:**
 
