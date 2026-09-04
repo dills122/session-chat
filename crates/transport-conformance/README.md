@@ -56,6 +56,13 @@ rotation retry, and rejects foreign rights, competing stale predecessors, and
 declaration substitution. Its predictable authority bytes and lack of network
 I/O make it conformance support only, never a selectable product adapter.
 
+Its companion in-memory receive-state owner atomically retains exact canonical
+pages, cursor progress, duplicate outcomes, and acknowledgement intent. Restart
+tests recover cursor and acknowledgement work, preserve ambiguous release,
+terminalize acceptance, persist cursorless successors and explicit
+resynchronization, and reject stale checkpoints, foreign bindings, and expired
+operations. This is a bounded conformance model, not durable product storage.
+
 ## Verification
 
 ```sh

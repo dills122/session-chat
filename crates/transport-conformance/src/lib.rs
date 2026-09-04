@@ -3,12 +3,17 @@
 //! Shared, test-only transport conformance traces and runners.
 
 mod lifecycle_provider;
+mod receive_owner;
 mod trace;
 
 pub use lifecycle_provider::{
     DeterministicAcknowledgementCapabilityV1, DeterministicDepositEndpointV1,
     DeterministicLifecycleProviderV1, DeterministicReceiveCapabilityV1,
     DeterministicRotationCapabilityV1,
+};
+pub use receive_owner::{
+    DeterministicAcknowledgementLeaseV1, DeterministicCommittedReceivePageV1,
+    DeterministicReceiveStateErrorV1, DeterministicReceiveStateOwnerV1,
 };
 
 pub use trace::{

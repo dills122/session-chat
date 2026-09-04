@@ -92,9 +92,10 @@ all.
   resynchronization, restart-safe acknowledgement leases, opaque commit evidence,
   duplicate-ID rejection, and explicit expiry checks. Lifecycle declarations bind issuance and rotation and reject
   LocalV1 lifecycle state. A publish-disabled deterministic FastV1 provider now
-  exercises issuance and rotation; cursor-bearing page delivery and the
-  receive-state-owner suite remain P1-5 work. LocalV1 stays cursorless and has
-  no rotation operation.
+  exercises issuance and rotation, and a companion bounded owner model covers
+  cursor progress, overlap deduplication, restart-safe acknowledgement intent,
+  and explicit resynchronization. The exhaustive normalized authority/resource
+  suite remains P1-5 work. LocalV1 stays cursorless and has no rotation operation.
 - [Threat model](THREAT_MODEL.md) defines assets, trust boundaries, attackers,
   invariants, and severity calibration.
 - [Rust code-coverage policy](CODE_COVERAGE.md) defines the source-based
