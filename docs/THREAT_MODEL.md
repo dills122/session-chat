@@ -250,6 +250,12 @@ Assumptions:
 - Content encryption does not imply anonymity.
 - NAT traversal and discovery services may add further metadata observers.
 - A relay may drop, replay, or delay traffic.
+- The explicitly selected Iroh Fast experiment authenticates endpoint public
+  keys at QUIC setup, but that identity does not authorize Session Chat
+  admission or MLS membership. Direct paths expose peer addresses; the N0
+  relay, address-lookup, and DNS services can observe endpoint, timing, size,
+  and lookup metadata. Its first bounded online link is not an offline mailbox
+  and uses ephemeral endpoint keys.
 
 ### Trust boundary: client to mixnet
 

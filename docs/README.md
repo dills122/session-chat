@@ -133,6 +133,10 @@ all.
 - [Provider-neutral approval-context decision](adr/0022-use-a-provider-neutral-approval-context.md)
   gives headless and later UI composition one display-only decision seam while
   concrete providers retain exact proof, reservation, and KeyPackage authority.
+- [Iroh Fast online-link decision](adr/0024-use-iroh-for-the-fast-online-link.md)
+  selects a pinned authenticated direct/relay substrate for the explicit
+  cross-computer experiment while keeping offline mailbox semantics and
+  admission authority out of scope.
 - [Restartable durable capability-authorization decision](adr/0023-use-restartable-durable-capability-authorization-shadows.md)
   retains exact invitation opening state and non-authorizing replay/approval
   shadows while abandoning unreconstructible pre-membership authority after a

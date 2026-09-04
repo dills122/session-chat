@@ -95,6 +95,13 @@ Expected privacy properties:
 The UI must disclose these properties. "End-to-end encrypted" must not be
 presented as "anonymous."
 
+ADR 0024 selects pinned Iroh 1.1.0 for the first explicit FastV1 online-link
+experiment. The headless cross-computer path uses authenticated Iroh endpoint
+IDs and bounded Session Chat frames. The public N0 preset may use direct paths,
+relay forwarding, address lookup, DNS, NAT discovery, and port mapping. This
+selection does not turn the relay into an offline mailbox or make Iroh endpoint
+identity an admission credential.
+
 ## Mixnet transport
 
 Katzenpost is the initial research target because it provides a Sphinx-based
