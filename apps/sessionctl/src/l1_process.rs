@@ -73,6 +73,7 @@ const MAX_TOOLCHAIN_BYTES: usize = 4_096;
 const MAX_GIT_PATH_BYTES: usize = 4_096;
 const MAX_GIT_REF_BYTES: usize = 512;
 const METADATA_COMMAND_WAIT: Duration = Duration::from_secs(5);
+const TWO_TERMINAL_DONE: &[u8] = b"sessionctl-two-terminal-complete-v1\n";
 
 /// Secret-free outcome of the bounded independent-process scenario.
 #[derive(Clone, Eq, PartialEq)]
@@ -175,6 +176,54 @@ pub fn run_l1_process_demo() -> Result<L1ProcessReport, SessionCtlError> {
         return Err(stage("evidence bound"));
     }
     Ok(report)
+}
+
+/// Runs Alice and the bounded local forwarder for a user-driven two-terminal proof.
+///
+/// `root` must be an absolute path that does not exist. The host creates and
+/// removes the marked run directory; it never reuses or deletes an unmarked
+/// path.
+pub fn run_two_terminal_host(root: PathBuf) -> Result<(), SessionCtlError> {
+    let mut root = ProcessRoot::create_at(root)?;
+    let service_root = root.path().to_path_buf();
+    println!("mode=host\nstatus=ready\nroot={}", root.path().display());
+
+    let service = thread::spawn(move || run_service(&service_root));
+    let scenario_result = (|| {
+        run_alice_init(root.path())?;
+        run_alice_resume(root.path())?;
+        let completion = read_bounded_wait(
+            &two_terminal_done_path(root.path()),
+            TWO_TERMINAL_DONE.len(),
+            FRAME_WAIT,
+        )?;
+        if completion != TWO_TERMINAL_DONE {
+            return Err(stage("two-terminal completion"));
+        }
+        Ok(())
+    })();
+    let service_result = service
+        .join()
+        .map_err(|_| stage("two-terminal service join"))?;
+    scenario_result?;
+    service_result?;
+    root.cleanup()?;
+    println!("mode=host\nstatus=complete");
+    Ok(())
+}
+
+/// Runs Bob against a ready host-owned directory for a two-terminal proof.
+pub fn run_two_terminal_join(root: PathBuf) -> Result<(), SessionCtlError> {
+    validate_root(&root)?;
+    println!("mode=join\nstatus=connected");
+    run_bob(&root)?;
+    atomic_write(
+        &two_terminal_done_path(&root),
+        TWO_TERMINAL_DONE,
+        TWO_TERMINAL_DONE.len(),
+    )?;
+    println!("mode=join\nstatus=complete");
+    Ok(())
 }
 
 fn run_l1_process_children(root: &Path, children: &mut ChildSet) -> Result<(), SessionCtlError> {
@@ -1308,7 +1357,13 @@ impl ProcessRoot {
                 .map(|byte| format!("{byte:02x}"))
                 .collect::<String>()
         );
-        let root = std::env::temp_dir().join(name);
+        Self::create_at(std::env::temp_dir().join(name))
+    }
+
+    fn create_at(root: PathBuf) -> Result<Self, SessionCtlError> {
+        if !root.is_absolute() || root.as_os_str().len() > 4_096 || root.exists() {
+            return Err(stage("process root"));
+        }
         fs::create_dir(&root).at_stage("process root")?;
         let process_root = Self(Some(root));
         atomic_write(
@@ -1367,6 +1422,10 @@ fn validate_root(root: &Path) -> Result<(), SessionCtlError> {
         return Err(stage("process root validation"));
     }
     Ok(())
+}
+
+fn two_terminal_done_path(root: &Path) -> PathBuf {
+    root.join("join-complete")
 }
 
 struct ManagedChild {

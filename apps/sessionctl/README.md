@@ -20,6 +20,24 @@ receive, and acknowledgement rights over the deterministic memory adapter.
 cargo run -p sessionctl --locked --offline
 ```
 
+To run the same scripted protocol proof from two terminals on one computer,
+choose a new absolute run-directory path. Start the host first:
+
+```sh
+cargo run -p sessionctl --bin sessionctl-pair --locked --offline -- host /tmp/session-chat-pair
+```
+
+Then run the joining client in a second terminal:
+
+```sh
+cargo run -p sessionctl --bin sessionctl-pair --locked --offline -- join /tmp/session-chat-pair
+```
+
+The host owns a bounded local forwarder and removes only its marked fresh run
+directory after both commands report `status=complete`. This is a scripted
+two-process protocol demonstration over local filesystem IPC, not yet an
+interactive chat UI or network transport.
+
 Output contains only coarse public milestones. Capability material,
 invitation identifiers, KeyPackages, credentials, ciphertext, and plaintext
 are not printed.
