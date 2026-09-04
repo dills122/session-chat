@@ -31,6 +31,7 @@ use transport_memory::{
 const RUNNER_TRACE: &[u8] = include_bytes!("fixtures/memory-runner-v1.txt");
 const COMMON_VERDICTS_TRACE: &[u8] = include_bytes!("fixtures/memory-common-verdicts-v1.txt");
 const QUEUE_SATURATION_TRACE: &[u8] = include_bytes!("fixtures/memory-queue-saturation-v1.txt");
+const ARBITRARY_DELAY_TRACE: &[u8] = include_bytes!("fixtures/memory-arbitrary-delay-v1.txt");
 
 struct MailboxRights {
     deposit: DepositRight<MemoryDepositEndpoint>,
@@ -495,6 +496,23 @@ fn queue_saturation_is_deterministic_and_detects_an_over_accepting_bridge() {
             .expect_err("accepting the over-capacity deposit must fail the common verdict");
     assert_eq!(failure.category(), RunErrorCategoryV1::UnexpectedEvent);
     assert_eq!(failure.step(), Some(10));
+}
+
+#[test]
+fn held_delivery_survives_bounded_arbitrary_virtual_delay_without_sleeping() {
+    assert!(
+        !ARBITRARY_DELAY_TRACE.contains(&b'\r'),
+        "canonical trace fixtures must retain LF line endings"
+    );
+    let trace = AdverseTraceV1::parse(ARBITRARY_DELAY_TRACE)
+        .expect("canonical bounded arbitrary-delay verdict trace");
+    let report = run_adverse_trace_twice_v1(&trace, MemoryTraceAdapter::new)
+        .expect("held delivery must remain deterministic across virtual delay");
+    let report = std::str::from_utf8(report.as_bytes()).expect("ASCII normalized report");
+
+    assert!(report.contains("step|5|poll-accepted|none|none\n"));
+    assert!(report.contains("step|8|poll-accepted|1:1|none\n"));
+    assert!(report.ends_with("end|quiescent\n"));
 }
 
 #[test]

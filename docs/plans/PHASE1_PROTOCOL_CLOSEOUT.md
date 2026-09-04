@@ -394,7 +394,7 @@ bridges so every common verdict is known to detect the violation it names.
 
 **Acceptance criteria:**
 
-- [ ] The canonical trace vocabulary and runner cover bounded arbitrary delay
+- [x] The canonical trace vocabulary and runner cover bounded arbitrary delay
       without wall-clock sleeps or unbounded queues.
 - [ ] The publish-disabled deterministic provider plus bounded receive-state
       owner model pass positive cursor, persist-before-acknowledge, rotation,

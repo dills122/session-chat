@@ -164,7 +164,7 @@ remains in `transport-memory`.
 | `R5-TRACE` | Read-only research | Task 4 | Complete | Versioned trace ownership, vocabulary, bounds, redaction, determinism, and test seams are recorded from the accepted contracts and official Rust runtime sources. |
 | `T5-TRACE` | Lead implementation | `R5-TRACE` | Complete | A strict canonical v1 trace parser rejects unknown/noncanonical/oversized input and round-trips one secret-free golden fixture byte-for-byte. |
 | `T5-MEMORY-FAULTS` | Lead implementation | `T5-TRACE` | Complete | The memory provider supplies bounded outage, corruption, exact-byte stale-replay, acknowledgement-loss, release, and secret-free probe controls without weakening existing semantics. |
-| `T6-HARNESS` | Lead implementation | `T5-MEMORY-FAULTS` | In progress | The bounded wake-aware runner replays retained traces twice against fresh memory adapters; common lifecycle and queue-saturation verdicts, exact retry identity, drop/quiescence, redaction, and deliberately defective bridges are covered. Arbitrary delay and the exhaustive authority/resource matrix remain open. |
+| `T6-HARNESS` | Lead implementation | `T5-MEMORY-FAULTS` | In progress | The bounded wake-aware runner replays retained traces twice against fresh memory adapters; common lifecycle, queue-saturation, and bounded virtual arbitrary-delay verdicts, exact retry identity, drop/quiescence, redaction, and deliberately defective bridges are covered. The exhaustive authority/resource matrix remains open. |
 | `T8-OWNER-PREREQS` | Lead implementation | `R7-COORD` | Complete | The inviter model issues scoped leases, terminalizes exhausted work, validates canonical LocalV1 delivery material and expiry scope, and rejects stale or foreign lease results. |
 | `T8-COORDINATOR` | Lead implementation | `T8-OWNER-PREREQS` | Complete | The deposit-only port, one-attempt policy executor, LocalV1 resolver/adapter bridge, inviter-store integration, and cross-platform wake/cancel/deadline/drop supervisor are retained. |
 | `T9-INMEMORY-INTEGRATION` | Lead implementation | `T8-COORDINATOR` | Complete | The atomic inviter outbox drives the real LocalV1 mailbox; acceptance, adapter failure, and ambiguous exact retry preserve one membership commit and one authoritative ledger. |
@@ -536,8 +536,9 @@ drop work, and seeded provider failures fail closed. Factory freshness and
 snapshot truth remain adapter obligations. A canonical queue-saturation fixture
 now fills the eight-envelope mailbox, rejects the ninth deposit, drains and
 acknowledges the accepted set, reaches quiescence, double-replays identically,
-and catches an over-accepting bridge. Arbitrary delay and the exhaustive
-authority/resource matrix remain before Task 6 is complete.
+and catches an over-accepting bridge. A retained hold/advance/poll/release trace
+now covers bounded arbitrary delay without wall-clock sleeps. The exhaustive
+authority/resource matrix remains before Task 6 is complete.
 
 **Acceptance criteria:**
 

@@ -80,9 +80,10 @@ all.
   right-separation evidence without claiming a generalized provider contract.
 - `transport-conformance` retains the canonical adverse-trace parser, hostile
   fixtures, and a first normalized double-replay runner over the real memory
-  adapter. Composed lifecycle and queue-saturation verdicts plus deliberately
-  defective bridges cover the retained adverse slices; arbitrary delay and the
-  exhaustive authority/resource verdict remain Phase 1 closeout work.
+  adapter. Composed lifecycle, queue-saturation, and bounded arbitrary-delay
+  verdicts plus deliberately defective bridges cover the retained adverse
+  slices; the exhaustive authority/resource verdict remains Phase 1 closeout
+  work.
 - `session-transport` now also fixes the reusable mailbox lifecycle boundary:
   bounded four-right issuance, exact generation/cursor binding,
   compare-and-swap rotation, explicit resynchronization, and a separate atomic

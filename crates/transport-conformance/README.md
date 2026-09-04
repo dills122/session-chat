@@ -41,9 +41,11 @@ ignored deadline checkpoints, leaked drop work, and seeded provider failures.
 One bounded queue-saturation fixture fills the memory profile's eight-envelope
 mailbox, normalizes the rejected ninth envelope as `queue-full`, drains and
 acknowledges the accepted set, replays identically on two fresh adapters, and
-rejects a deliberately over-accepting bridge. Arbitrary delay, the exhaustive
-authority/resource matrix, remaining common cases, and profile-specific
-evidence remain open.
+rejects a deliberately over-accepting bridge. A separate retained trace holds
+delivery across multiple bounded virtual-clock advances, proves it remains
+invisible before release, and completes without wall-clock sleeps. The
+exhaustive authority/resource matrix, remaining lifecycle cases, and
+profile-specific evidence remain open.
 Passing the parser or this first memory trace does not establish complete
 adapter conformance, network privacy, durability, or production readiness.
 
