@@ -84,7 +84,7 @@ The first required L2 gate covers:
 3. exact retry and recovery after the result of either commit is lost; and
 4. SQLite-visible full/I/O failures during those transactions and their reopen.
 
-Welcome lease/result crash cases are the next slice under `E2E-MSG-002`,
+Welcome lease/result crash cases are retained by P1-8 under `E2E-MSG-002`,
 `E2E-AUTH-001`, and `E2E-RETENTION-001`. Schema-migration crash cases remain
 `E2E-UPGRADE-001`. They share this scheduler and evidence format but cannot be
 used to mark `E2E-TXN-001` complete unless both inviter and joiner gates pass.
@@ -641,8 +641,15 @@ coverage. These `l2-io-observation-v1` records are not the public
 acceptance ambiguity, accepted/failed result transitions, stale generations,
 and terminal attempt/expiry behavior.
 
-**Ownership:** new `apps/sessionctl/tests/l2_outbox_crash_restart.rs` only; do
-not edit the inviter/joiner crash files. It reuses the L2-1 controller/oracle.
+**Retained implementation:** `apps/sessionctl/tests/l2_outbox_crash_restart.rs`,
+`apps/sessionctl/src/l2_process/welcome.rs`, and `welcome_io.rs` reuse the bounded
+controller, private roots, named-VFS driver, keyed fresh reopen and public
+promotion infrastructure. Checked-only `WelcomeBarrier` hooks instrument the
+real owner methods; ordinary builds cannot activate them. The application
+sweep has seven workloads and 40 exact checkpoints. A separate clean named-VFS
+trace enumerates all supported engine-window ordinals per workload. Both reject
+partial coverage and promote only through the shared provenance/redaction gate.
+See [ADR 0025](../adr/0025-close-phase-one-recovery-and-conformance-evidence.md).
 
 **Acceptance:**
 

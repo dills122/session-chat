@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, error::Error, fmt};
+use std::{collections::BTreeMap, error::Error, fmt, sync::Arc};
 
 use session_transport::{
     AcknowledgementLeaseV1, BoundCursorV1, BoundedDeliveryIds, CommittedReceivePageV1, Cursor,
@@ -21,6 +21,7 @@ impl Error for DeterministicReceiveStateErrorV1 {}
 
 /// Opaque commit evidence issued by [`DeterministicReceiveStateOwnerV1`].
 pub struct DeterministicCommittedReceivePageV1 {
+    owner: Arc<()>,
     nonce: u64,
     revision: ReceiveCheckpointRevision,
     binding: CursorBindingV1,
@@ -48,6 +49,7 @@ impl CommittedReceivePageV1 for DeterministicCommittedReceivePageV1 {
 
 /// Exact acknowledgement lease issued by the deterministic owner.
 pub struct DeterministicAcknowledgementLeaseV1 {
+    identity: Arc<()>,
     binding: CursorBindingV1,
     delivery_ids: BoundedDeliveryIds,
 }
@@ -82,6 +84,7 @@ struct CommitEvidence {
 }
 
 struct LeaseEvidence {
+    identity: Arc<()>,
     binding: CursorBindingV1,
     delivery_ids: Box<[DeliveryId]>,
 }
@@ -93,6 +96,7 @@ struct LeaseEvidence {
 /// exact duplicate overlap; it intentionally implements no storage durability
 /// or product transport.
 pub struct DeterministicReceiveStateOwnerV1 {
+    owner: Arc<()>,
     next_commit_nonce: u64,
     stored: BTreeMap<DeliveryId, Box<[u8]>>,
     checkpoint: Option<PersistedCheckpoint>,
@@ -105,6 +109,7 @@ impl DeterministicReceiveStateOwnerV1 {
     #[must_use]
     pub fn new() -> Self {
         Self {
+            owner: Arc::new(()),
             next_commit_nonce: 1,
             stored: BTreeMap::new(),
             checkpoint: None,
@@ -117,6 +122,7 @@ impl DeterministicReceiveStateOwnerV1 {
     /// Simulates a process restart while preserving modeled durable state.
     #[must_use]
     pub fn restart(mut self) -> Self {
+        self.owner = Arc::new(());
         self.valid_commit = None;
         self.leased = None;
         self
@@ -150,7 +156,8 @@ impl DeterministicReceiveStateOwnerV1 {
         self.leased
             .as_ref()
             .filter(|expected| {
-                expected.binding == lease.binding
+                Arc::ptr_eq(&expected.identity, &lease.identity)
+                    && expected.binding == lease.binding
                     && expected.delivery_ids.as_ref() == lease.delivery_ids.as_slice()
             })
             .map(|_| ())
@@ -284,6 +291,17 @@ impl ReceiveStateOwnerPort for DeterministicReceiveStateOwnerV1 {
                 }
             })
             .collect::<Result<Vec<_>, _>>()?;
+        if self.stored.len().saturating_add(additions.len()) > 64
+            || self
+                .stored
+                .values()
+                .map(|v| v.len())
+                .sum::<usize>()
+                .saturating_add(additions.iter().map(|(_, v)| v.len()).sum::<usize>())
+                > 4 * 1024 * 1024
+        {
+            return Err(DeterministicReceiveStateErrorV1);
+        }
         let delivery_ids = transition
             .items()
             .iter()
@@ -325,6 +343,7 @@ impl ReceiveStateOwnerPort for DeterministicReceiveStateOwnerV1 {
             delivery_ids: delivery_ids.clone(),
         });
         Ok(DeterministicCommittedReceivePageV1 {
+            owner: Arc::clone(&self.owner),
             nonce,
             revision: next_revision,
             binding,
@@ -338,7 +357,9 @@ impl ReceiveStateOwnerPort for DeterministicReceiveStateOwnerV1 {
         committed: Self::CommittedPage,
         now_unix_seconds: u64,
     ) -> Result<Option<Self::AcknowledgementLease>, Self::Error> {
-        if committed.binding.expires_at_unix_seconds() <= now_unix_seconds {
+        if !Arc::ptr_eq(&self.owner, &committed.owner)
+            || committed.binding.expires_at_unix_seconds() <= now_unix_seconds
+        {
             return Err(DeterministicReceiveStateErrorV1);
         }
         let delivery_ids = committed
@@ -359,12 +380,20 @@ impl ReceiveStateOwnerPort for DeterministicReceiveStateOwnerV1 {
         let Some(delivery_ids) = committed.acknowledgement_intent else {
             return Ok(None);
         };
+        if !self.recoverable.as_ref().is_some_and(|(binding, ids)| {
+            *binding == committed.binding && ids.as_slice() == delivery_ids.as_slice()
+        }) {
+            return Err(DeterministicReceiveStateErrorV1);
+        }
         let lease_copy = copy_ids(&delivery_ids)?;
+        let identity = Arc::new(());
         self.leased = Some(LeaseEvidence {
+            identity: Arc::clone(&identity),
             binding: committed.binding,
             delivery_ids: delivery_ids.as_slice().to_vec().into_boxed_slice(),
         });
         Ok(Some(DeterministicAcknowledgementLeaseV1 {
+            identity,
             binding: committed.binding,
             delivery_ids: lease_copy,
         }))
@@ -386,11 +415,15 @@ impl ReceiveStateOwnerPort for DeterministicReceiveStateOwnerV1 {
             return Ok(None);
         };
         let lease_ids = copy_ids(delivery_ids)?;
+        let identity = Arc::new(());
+        self.valid_commit = None;
         self.leased = Some(LeaseEvidence {
+            identity: Arc::clone(&identity),
             binding: *persisted_binding,
             delivery_ids: delivery_ids.as_slice().to_vec().into_boxed_slice(),
         });
         Ok(Some(DeterministicAcknowledgementLeaseV1 {
+            identity,
             binding: *persisted_binding,
             delivery_ids: lease_ids,
         }))
@@ -406,6 +439,7 @@ impl ReceiveStateOwnerPort for DeterministicReceiveStateOwnerV1 {
         }) {
             return Err(DeterministicReceiveStateErrorV1);
         }
+        self.valid_commit = None;
         self.recoverable = None;
         self.leased = None;
         Ok(())

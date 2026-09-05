@@ -1,8 +1,8 @@
 # Real-world end-to-end security test strategy
 
-Status: accepted test strategy; deterministic independent-process L1, one
-hostile exact-replay slice, and bounded L2 application-kill/SQLite-visible
-fault evidence exist today
+Status: accepted test strategy; bounded Phase 1 hostile first-contact,
+transaction and Welcome process-kill suites retained; exact-revision closeout
+gate pending
 
 Date: 2026-08-20
 
@@ -18,13 +18,14 @@ format, CI cadence, and release gates. A headless in-process client, a real
 capability-admission/MLS composition test over the SQLCipher durability
 laboratory, a sealed-vault model, deterministic memory transport, a durable
 in-process `sessionctl` composition, and a bounded independent-process L1
-runner exist. The L1 runner also retains one exact protected-request replay
-case, the transport harness retains one bounded queue-saturation verdict, and
-the checked L2 suites retain bounded inviter/joiner application-kill and
-SQLite-visible fault matrices with per-revision portable evidence gates. This
-does not complete either hostile matrix or claim Welcome-delivery crash
-recovery, power-loss recovery, a fully durable approval/replay owner, a hosted
-realm, desktop client vault, or real-network adapter.
+runner exist. The L1 runner retains the canonical hostile first-contact classes. The checked
+L2 suites include inviter/joiner transactions and Welcome application and
+SQLite commit-window process-kill recovery, with per-revision portable evidence
+gates. The [Phase 1 evidence matrix](../evidence/phase1-closeout.md) maps exact
+coverage and limitations. This does not establish power-loss recovery, stale
+snapshot rollback resistance, a hosted realm, desktop vault or reusable network
+adapter. The later layers and full scenario aspirations below remain distinct
+from the bounded Phase 1 subsets.
 
 ## Principles
 

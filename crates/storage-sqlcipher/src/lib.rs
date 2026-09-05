@@ -530,6 +530,8 @@ struct StorageInner {
     live_membership_attempts: Vec<[u8; 16]>,
     #[cfg(session_chat_storage_fault_testing)]
     fault_observer: Option<fault_testing::FaultObserver>,
+    #[cfg(session_chat_storage_fault_testing)]
+    welcome_observer: Option<Arc<dyn fault_testing::WelcomeBarrier>>,
 }
 
 enum OpenMode {
@@ -1801,6 +1803,8 @@ impl SqlCipherStorage {
                 live_membership_attempts: Vec::new(),
                 #[cfg(session_chat_storage_fault_testing)]
                 fault_observer,
+                #[cfg(session_chat_storage_fault_testing)]
+                welcome_observer: None,
             })),
             lease_scope: Arc::new(()),
             authorization_policy,
@@ -1871,6 +1875,8 @@ impl WelcomeOutboxPort for SqlCipherStorage {
             .filter(|value| *value <= i64::MAX as u64)
             .ok_or(OutboxPortError::Conflict)?;
         let mut inner = self.lock().map_err(map_outbox_store_error)?;
+        #[cfg(session_chat_storage_fault_testing)]
+        let observer = inner.welcome_observer.clone();
         let transaction = inner
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -1907,6 +1913,11 @@ impl WelcomeOutboxPort for SqlCipherStorage {
             )
             .map_err(|_| OutboxPortError::Internal)?;
 
+        #[cfg(session_chat_storage_fault_testing)]
+        fault_testing::welcome_checkpoint(
+            &observer,
+            fault_testing::WelcomeCheckpoint::Housekeeping,
+        )?;
         let candidate = transaction
             .query_row(
                 "SELECT transaction_id, welcome, endpoint, outbox_expires_at, lease_generation
@@ -1939,11 +1950,23 @@ impl WelcomeOutboxPort for SqlCipherStorage {
             .map_err(|_| OutboxPortError::Internal)?;
         let Some((transaction_id, welcome, endpoint, outbox_expires_at, generation)) = candidate
         else {
+            #[cfg(session_chat_storage_fault_testing)]
+            fault_testing::welcome_checkpoint(
+                &observer,
+                fault_testing::WelcomeCheckpoint::LeaseBeforeCommit,
+            )?;
             transaction
                 .commit()
                 .map_err(|_| OutboxPortError::Internal)?;
+            #[cfg(session_chat_storage_fault_testing)]
+            fault_testing::welcome_checkpoint(
+                &observer,
+                fault_testing::WelcomeCheckpoint::LeaseAfterCommit,
+            )?;
             return Ok(None);
         };
+        #[cfg(session_chat_storage_fault_testing)]
+        fault_testing::welcome_checkpoint(&observer, fault_testing::WelcomeCheckpoint::Selected)?;
         let transaction_id: [u8; 16] = transaction_id
             .try_into()
             .map_err(|_| OutboxPortError::Internal)?;
@@ -1989,9 +2012,24 @@ impl WelcomeOutboxPort for SqlCipherStorage {
         if changed != 1 {
             return Err(OutboxPortError::Conflict);
         }
+        #[cfg(session_chat_storage_fault_testing)]
+        fault_testing::welcome_checkpoint(
+            &observer,
+            fault_testing::WelcomeCheckpoint::LeaseUpdated,
+        )?;
+        #[cfg(session_chat_storage_fault_testing)]
+        fault_testing::welcome_checkpoint(
+            &observer,
+            fault_testing::WelcomeCheckpoint::LeaseBeforeCommit,
+        )?;
         transaction
             .commit()
             .map_err(|_| OutboxPortError::Internal)?;
+        #[cfg(session_chat_storage_fault_testing)]
+        fault_testing::welcome_checkpoint(
+            &observer,
+            fault_testing::WelcomeCheckpoint::LeaseAfterCommit,
+        )?;
         Ok(Some(LeasedWelcome::from_owner(
             SqlCipherWelcomeLease {
                 open_scope: Arc::clone(&self.lease_scope),
@@ -2018,6 +2056,8 @@ impl WelcomeOutboxPort for SqlCipherStorage {
             return Err(OutboxPortError::Conflict);
         }
         let mut inner = self.lock().map_err(map_outbox_store_error)?;
+        #[cfg(session_chat_storage_fault_testing)]
+        let observer = inner.welcome_observer.clone();
         let transaction = inner
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -2043,9 +2083,19 @@ impl WelcomeOutboxPort for SqlCipherStorage {
             )
             .map_err(|_| OutboxPortError::Internal)?;
         if changed == 1 {
+            #[cfg(session_chat_storage_fault_testing)]
+            fault_testing::welcome_checkpoint(
+                &observer,
+                fault_testing::WelcomeCheckpoint::AcceptedUpdated,
+            )?;
             transaction
                 .commit()
                 .map_err(|_| OutboxPortError::Internal)?;
+            #[cfg(session_chat_storage_fault_testing)]
+            fault_testing::welcome_checkpoint(
+                &observer,
+                fault_testing::WelcomeCheckpoint::AcceptedAfterCommit,
+            )?;
             return Ok(());
         }
         transaction
@@ -2076,6 +2126,8 @@ impl WelcomeOutboxPort for SqlCipherStorage {
             return Err(OutboxPortError::Conflict);
         }
         let mut inner = self.lock().map_err(map_outbox_store_error)?;
+        #[cfg(session_chat_storage_fault_testing)]
+        let observer = inner.welcome_observer.clone();
         let transaction = inner
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -2107,7 +2159,20 @@ impl WelcomeOutboxPort for SqlCipherStorage {
         if changed != 1 {
             return Err(OutboxPortError::Conflict);
         }
-        transaction.commit().map_err(|_| OutboxPortError::Internal)
+        #[cfg(session_chat_storage_fault_testing)]
+        fault_testing::welcome_checkpoint(
+            &observer,
+            fault_testing::WelcomeCheckpoint::FailedUpdated,
+        )?;
+        transaction
+            .commit()
+            .map_err(|_| OutboxPortError::Internal)?;
+        #[cfg(session_chat_storage_fault_testing)]
+        fault_testing::welcome_checkpoint(
+            &observer,
+            fault_testing::WelcomeCheckpoint::FailedAfterCommit,
+        )?;
+        Ok(())
     }
 }
 

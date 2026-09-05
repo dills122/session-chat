@@ -116,6 +116,7 @@ jobs:
       - name: Prove the pull-request smoke catches defective evidence
         if: github.event_name == 'pull_request'
         run: |
+          cargo test -p sessionctl --test l2_outbox_crash_restart --locked --offline -- --nocapture --test-threads=1
           cargo test -p sessionctl --test l2_public_evidence --locked --offline
           cargo test -p sessionctl --lib l2_process::evidence::tests --locked --offline
           cargo test -p storage-sqlcipher-fault-vfs controller::tests::defective_persistent_gap_after_target_is_rejected --locked --offline -- --exact
@@ -126,6 +127,7 @@ jobs:
       - name: Run complete portable L2 evidence suites
         if: github.event_name != 'pull_request'
         run: |
+          cargo test -p sessionctl --test l2_outbox_crash_restart --locked --offline -- --nocapture --test-threads=1
           cargo test -p sessionctl --test l2_public_evidence --locked --offline
           cargo test -p sessionctl --lib l2_process::evidence::tests --locked --offline
           cargo test -p sessionctl --test l2_crash_restart_inviter --locked --offline -- --nocapture --test-threads=1

@@ -44,6 +44,11 @@ pub struct ReceivePollBindingV1 {
 }
 
 impl ReceivePollBindingV1 {
+    /// Exact mailbox generation that an external provider must match to receive authority.
+    pub const fn binding(&self) -> &CursorBindingV1 {
+        &self.binding
+    }
+
     fn from_checkpoint(checkpoint: &ReceiveCheckpointV1) -> Self {
         let position = match &checkpoint.position {
             ReceiveCheckpointPositionV1::NewGeneration => {

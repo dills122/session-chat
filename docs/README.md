@@ -27,6 +27,10 @@ privacy are independent choices: a GitHub-verified conversation can travel
 over a mixnet, while an anonymous conversation can use no external identity at
 all.
 
+The [Phase 1 closeout evidence matrix](evidence/phase1-closeout.md) maps the
+retained requirements to exact tests and distinguishes implementation from the
+pending merged-revision three-platform completion gate.
+
 ## Document map
 
 - [Product definition](PRODUCT_V2.md) defines the product promise, primary
@@ -56,6 +60,7 @@ all.
   maps the implemented deposit-only coordinator and standard-library
   supervision baseline to the inviter-owned outbox while preserving the
   remaining product-storage, delivery-fault, and UI-runtime gaps.
+- [Recovery and conformance closeout decision](adr/0025-close-phase-one-recovery-and-conformance-evidence.md) records checked Welcome kills and exact deterministic owner authority.
 - [Phase 1 protocol laboratory closeout plan](plans/PHASE1_PROTOCOL_CLOSEOUT.md)
   defines the remaining durable-admission composition, transport-conformance,
   independent-process, and exact-revision evidence required before Phase 1 can
