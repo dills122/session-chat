@@ -1,6 +1,6 @@
 # Implementation plan: Phase 1 protocol laboratory closeout
 
-Status: reviewed closeout plan; P1-0 through P1-6 complete, P1-7 next
+Status: reviewed closeout plan; P1-0 through P1-7 complete, P1-8 next
 
 Date: 2026-09-02
 
@@ -477,19 +477,19 @@ unsafe duplication/reordering at the untrusted forwarder.
 
 **Acceptance criteria:**
 
-- [ ] Every canonical `E2E-JOIN-002` class fails before approval, MLS Add, or
+- [x] Every canonical `E2E-JOIN-002` class fails before approval, MLS Add, or
       durable membership mutation and a fresh inspector proves the authoritative
       state is unchanged.
-- [ ] The untrusted service receives only canonical public objects and cannot
+- [x] The untrusted service receives only canonical public objects and cannot
       obtain bearer invitation, raw vault key, provider proof, or client-only
       authority.
-- [ ] Each case has bounded process time, child cleanup, directory cleanup, and
+- [x] Each case has bounded process time, child cleanup, directory cleanup, and
       a fixed secret-free evidence record.
 
 **Verification:**
 
-- [ ] `cargo test -p sessionctl --test l1_process --locked --offline`
-- [ ] The retained manifests pass forbidden-term and maximum-size checks.
+- [x] `cargo test -p sessionctl --test l1_process --locked --offline`
+- [x] The retained manifests pass forbidden-term and maximum-size checks.
 
 **Dependencies:** P1-3 and P1-6
 

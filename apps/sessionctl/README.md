@@ -104,7 +104,12 @@ semantics.
 
 The independent-process runner uses the same durable authorization owner and
 recovers a lost pre-approval provider value as abandoned while retaining replay
-and reloading the exact invitation opening context.
+and reloading the exact invitation opening context. Its retained
+`E2E-JOIN-002` matrix rejects malformed, expired, copied, wrong-invitation,
+wrong-KeyPackage, wrong-verifier, reordered, and exact-replay inputs before
+approval or MLS mutation, then reopens the authoritative store in a fresh
+inspector process. The service sees only canonical public inputs, and the fixed
+aggregate evidence is bounded and checked for secret-bearing terms.
 
 This executable still composes both logical clients and the LocalV1 adapter in
 one process. Alice's exact identity and group now cross a real SQLCipher

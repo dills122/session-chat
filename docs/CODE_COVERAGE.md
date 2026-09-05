@@ -73,43 +73,46 @@ The policy makes these distinctions explicit:
 
 ## Clean-master baseline and enforced result
 
-Both columns below were produced on 2026-08-26 from the same integration-target
-measurement method. The retained current result was regenerated from a clean
-detached checkout so it does not depend on symbolic-versus-direct `HEAD` layout.
-The baseline used a clean archive of
+Both columns below use the same integration-target measurement method. The
+baseline was produced on 2026-08-26 from a clean archive of
 `origin/master` at `0bce3a38c62356feef2a806f4eb9e7fd2c55073e`; the current result includes
-the coverage workstream, durable Welcome-delivery composition, exact
-client-identity/group reload, the ADR 0021 independent-process L1 runner after
-its cleanup and bounded-metadata hardening tests, the first hostile exact-replay
-process case, the bounded transport queue-saturation verdict, the checked L2
-storage protocol/controller, and the publish-disabled named fault VFS.
+the durable authorization owner, exact client-identity/group reload, common
+transport lifecycle and receive ownership, the bounded Iroh Fast link, the
+complete hostile first-contact process matrix, the app-level durable owner
+smoke, the checked L2 storage controller, and the publish-disabled named fault
+VFS.
 
 | Production component | Clean master | Enforced result | Line gate |
 | --- | ---: | ---: | ---: |
-| `admission-capability` | 347/367 (94.55%) | 419/428 (97.90%) | 90% |
+| `admission-capability` | 347/367 (94.55%) | 461/471 (97.88%) | 90% |
 | `key-protector-passphrase` | 177/181 (97.79%) | 177/181 (97.79%) | 90% |
 | `session-admission` | 43/46 (93.48%) | 43/46 (93.48%) | 90% |
 | `session-core` | 334/376 (88.83%) | 343/376 (91.22%) | 90% |
 | `session-crypto` | 50/63 (79.37%) | 63/63 (100.00%) | 90% |
-| `session-crypto-hpke` | 229/232 (98.71%) | 229/232 (98.71%) | 90% |
-| `session-crypto-mls` | 611/687 (88.94%) | 860/921 (93.38%) | 90% |
+| `session-crypto-hpke` | 229/232 (98.71%) | 286/297 (96.30%) | 90% |
+| `session-crypto-mls` | 611/687 (88.94%) | 1105/1183 (93.41%) | 90% |
 | `session-inviter-transaction` | 459/486 (94.44%) | 463/486 (95.27%) | 90% |
 | `session-protocol` | 1176/1245 (94.46%) | 1176/1245 (94.46%) | 90% |
 | `session-storage` | 501/521 (96.16%) | 501/521 (96.16%) | 90% |
-| `session-transport` | 1032/1097 (94.07%) | 1035/1100 (94.09%) | 90% |
-| `sessionctl` | 292/373 (78.28%) | 1866/2048 (91.11%) | 90% |
-| `storage-sqlcipher` | 650/742 (87.60%) | 1311/1414 (92.72%) | 90% |
-| `storage-sqlcipher-fault-vfs` | Not present | 1061/1167 (90.92%) | 90% |
-| `transport-conformance` | 1325/1514 (87.52%) | 1367/1514 (90.29%) | 90% |
-| `transport-memory` | 808/920 (87.83%) | 836/920 (90.87%) | 90% |
-| **Workspace** | **8034/8850 (90.78%)** | **11750/12662 (92.80%)** | **92.23% ratchet** |
+| `session-transport` | 1032/1097 (94.07%) | 1726/1810 (95.36%) | 90% |
+| `sessionctl` | 292/373 (78.28%) | 2750/3025 (90.91%) | 90% |
+| `storage-sqlcipher` | 650/742 (87.60%) | 2744/2952 (92.95%) | 90% |
+| `storage-sqlcipher-fault-vfs` | Not present | 1076/1184 (90.88%) | 90% |
+| `transport-conformance` | 1325/1514 (87.52%) | 2112/2330 (90.64%) | 90% |
+| `transport-iroh` | Not present | 257/272 (94.49%) | 90% |
+| `transport-memory` | 808/920 (87.83%) | 845/937 (90.18%) | 90% |
+| **Workspace** | **8034/8850 (90.78%)** | **16128/17379 (92.80%)** | **92.23% ratchet** |
 
-The workspace also moved from 86.88% to 88.72% region coverage and from
-83.47% to 90.49% function coverage. CI retains its existing stable floors at
-92.23% lines, 88.53% regions, and 85.64% functions. The slight fractional
-margin avoids making display rounding part of the contract.
+The workspace also moved from 86.88% to 88.02% region coverage and from
+83.47% to 90.06% function coverage. CI retains stable floors at
+92.23% lines, 88.00% regions, and 85.64% functions. The region floor was
+recalibrated after the durable authorization and Iroh graph added production
+generic instantiations under multiple integration binaries; the retained
+hostile-process and app-owner composition tests keep the expanded graph above
+that new floor. The slight fractional margin avoids making display rounding
+part of the contract.
 
-The current column is the 2026-08-27 author-worktree snapshot produced by the
+The current column is the 2026-09-04 author-worktree snapshot produced by the
 canonical command above. Separate clean-worktree runs have produced small
 fractional differences in aggregate instrumented totals even with the pinned
 toolchain; exact observed numerators are therefore informational snapshots, not

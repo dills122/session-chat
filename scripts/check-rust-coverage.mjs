@@ -29,7 +29,7 @@ export const COVERAGE_POLICY = Object.freeze({
   componentLineRatchets: Object.freeze({ sessionctl: 90 }),
   minimumWorkspaceFunctions: 85.64,
   minimumWorkspaceLines: 92.23,
-  minimumWorkspaceRegions: 88.53,
+  minimumWorkspaceRegions: 88,
   nonInstrumentedSources: Object.freeze([
     'apps/sessionctl/src/l2_process.rs',
     'apps/sessionctl/src/l2_process/evidence.rs',

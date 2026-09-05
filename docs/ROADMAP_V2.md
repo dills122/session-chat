@@ -84,10 +84,12 @@ reopens the owner store, and delivers the exact Welcome to the original joiner.
 Human approval UX and reusable/product network transport remain later-phase
 work. The bounded authenticated Iroh frame-link experiment is not an
 `EnvelopeDelivery` provider, offline mailbox, or completed network profile.
-The remaining Phase 1 hostile process-fault coverage is sequenced by the
-closeout plan. One
-independent-process exact replay case now rejects the duplicate before
-approval, MLS Add, or durable membership mutation. The separate SQLCipher
+The complete Phase 1 hostile first-contact matrix is now retained by the
+independent-process runner: malformed, expired, copied, wrong-invitation,
+wrong-KeyPackage, wrong-verifier, reordered, and exact-replay inputs reject
+before approval, MLS Add, or durable membership mutation, and fresh inspection
+proves the owner state unchanged. Welcome-delivery lease/result process-kill
+recovery remains sequenced by the closeout plan. The separate SQLCipher
 laboratory now
 implements the same sole-owner coordinator port with version-2 migration,
 close/reopen leases, terminal states, and ambiguous exact-retry evidence; it is

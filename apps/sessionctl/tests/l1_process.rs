@@ -6,7 +6,24 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use sessionctl::{resolve_l1_process_git_commit, run_l1_process_internal_role};
+use mls_rs_core::{
+    crypto::HpkeSecretKey,
+    group::{EpochRecord, GroupState, GroupStateStorage},
+    key_package::{KeyPackageData, KeyPackageStorage},
+};
+use session_crypto_hpke::AwsLcInvitationJoinProtector;
+use session_protocol::{DepositCapability, LocalWelcomeDepositEndpoint, OpaqueEnvelope};
+use session_transport::WelcomeOutboxPort;
+use sessionctl::{
+    resolve_l1_process_git_commit, run_l1_process_internal_role, run_network_host,
+    run_network_join, run_two_terminal_host,
+};
+use storage_sqlcipher::{
+    AuthorizationShadowInput, AuthorizationState, InvitationOpeningState, InvitationState,
+    InviterJoinTransaction, JoinerTransaction, PersistenceFault, SqlCipherStorage, VaultKey,
+    WelcomeOutboxState,
+};
+use zeroize::Zeroizing;
 
 const MAX_EVIDENCE_BYTES: usize = 2_048;
 
@@ -115,6 +132,121 @@ fn git_commit_resolution_is_independent_of_checkout_head_layout() {
         Some("0123456789abcdef0123456789abcdef01234567")
     );
     fs::remove_dir_all(&symbolic_root).expect("remove symbolic-HEAD root");
+}
+
+#[test]
+fn git_commit_resolution_rejects_malformed_bounded_metadata() {
+    let missing = marked_root("git-missing");
+    assert_eq!(resolve_l1_process_git_commit(&missing), None);
+    fs::remove_dir_all(missing).expect("remove missing-Git root");
+
+    for (label, marker) in [
+        ("git-marker-utf8", vec![0xff]),
+        ("git-marker-prefix", b"worktree-git\n".to_vec()),
+    ] {
+        let root = marked_root(label);
+        fs::write(root.join(".git"), marker).expect("write malformed Git marker");
+        assert_eq!(resolve_l1_process_git_commit(&root), None);
+        fs::remove_dir_all(root).expect("remove malformed-marker root");
+    }
+
+    let oversized = marked_root("git-marker-oversized");
+    let marker = fs::File::create(oversized.join(".git")).expect("create oversized Git marker");
+    marker.set_len(4_097).expect("size oversized Git marker");
+    assert_eq!(resolve_l1_process_git_commit(&oversized), None);
+    fs::remove_dir_all(oversized).expect("remove oversized-marker root");
+
+    for (label, head) in [
+        ("git-head-utf8", vec![0xff]),
+        ("git-head-short", b"01234567\n".to_vec()),
+        (
+            "git-head-nonhex",
+            b"zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz\n".to_vec(),
+        ),
+        ("git-ref-prefix", b"ref: heads/fixture\n".to_vec()),
+        ("git-ref-absolute", b"ref: /refs/heads/fixture\n".to_vec()),
+        ("git-ref-parent", b"ref: refs/heads/../fixture\n".to_vec()),
+    ] {
+        let root = marked_root(label);
+        fs::create_dir(root.join(".git")).expect("create Git directory");
+        fs::write(root.join(".git/HEAD"), head).expect("write malformed HEAD");
+        assert_eq!(resolve_l1_process_git_commit(&root), None);
+        fs::remove_dir_all(root).expect("remove malformed-HEAD root");
+    }
+
+    let oversized_head = marked_root("git-head-oversized");
+    fs::create_dir(oversized_head.join(".git")).expect("create oversized-HEAD Git directory");
+    let head = fs::File::create(oversized_head.join(".git/HEAD")).expect("create oversized HEAD");
+    head.set_len(513).expect("size oversized HEAD");
+    assert_eq!(resolve_l1_process_git_commit(&oversized_head), None);
+    fs::remove_dir_all(oversized_head).expect("remove oversized-HEAD root");
+
+    let loose = marked_root("git-loose-worktree");
+    fs::create_dir_all(loose.join(".git/refs/heads")).expect("create loose ref directory");
+    fs::write(loose.join(".git/HEAD"), b"ref: refs/heads/fixture\n").expect("write loose-ref HEAD");
+    fs::write(
+        loose.join(".git/refs/heads/fixture"),
+        b"abcdef0123456789abcdef0123456789abcdef01\n",
+    )
+    .expect("write loose ref");
+    assert_eq!(
+        resolve_l1_process_git_commit(&loose).as_deref(),
+        Some("abcdef0123456789abcdef0123456789abcdef01")
+    );
+    fs::remove_dir_all(loose).expect("remove loose-ref root");
+
+    let absolute = marked_root("git-absolute-marker");
+    let git_directory = absolute.join("absolute-git");
+    fs::create_dir(&git_directory).expect("create absolute Git directory");
+    fs::write(
+        absolute.join(".git"),
+        format!("gitdir: {}\n", git_directory.display()),
+    )
+    .expect("write absolute Git marker");
+    fs::write(
+        git_directory.join("HEAD"),
+        b"0123456789abcdef0123456789abcdef01234567\n",
+    )
+    .expect("write absolute-marker HEAD");
+    assert_eq!(
+        resolve_l1_process_git_commit(&absolute).as_deref(),
+        Some("0123456789abcdef0123456789abcdef01234567")
+    );
+    fs::remove_dir_all(absolute).expect("remove absolute-marker root");
+}
+
+#[tokio::test]
+async fn public_wrappers_reject_invalid_local_inputs_before_external_work() {
+    assert!(
+        run_network_host("relative-network-root".into())
+            .await
+            .is_err()
+    );
+    assert!(
+        run_network_join(
+            "not-an-endpoint",
+            "relative-invitation".into(),
+            std::env::temp_dir().join("unused-network-join-root"),
+        )
+        .await
+        .is_err()
+    );
+
+    let invitation_directory = marked_root("network-invitation-directory");
+    assert!(
+        run_network_join(
+            "not-an-endpoint",
+            invitation_directory.clone(),
+            std::env::temp_dir().join("unused-network-join-root-2"),
+        )
+        .await
+        .is_err()
+    );
+    fs::remove_dir_all(invitation_directory).expect("remove invitation-directory root");
+
+    let host = marked_root("two-terminal-host");
+    assert!(run_two_terminal_host(host.clone()).is_err());
+    fs::remove_dir_all(host).expect("remove two-terminal host root");
 }
 
 #[test]
@@ -291,6 +423,296 @@ fn internal_roles_fail_closed_on_missing_or_malformed_scoped_inputs() {
         assert!(run_l1_process_internal_role(role, root.clone()).is_err());
         fs::remove_dir_all(root).expect("remove hostile matrix role root");
     }
+}
+
+#[test]
+fn service_rejects_each_malformed_ipc_header_and_part_boundary() {
+    const HEADER_BYTES: usize = 12;
+    const MAGIC: &[u8; 8] = b"SCL1IPC1";
+
+    let mut header = vec![0; HEADER_BYTES];
+    header[..8].copy_from_slice(MAGIC);
+    header[8] = 1;
+    header[9] = 1;
+    header[10] = 1;
+    header[11] = 1;
+
+    let mut cases = Vec::new();
+    let mut wrong_magic = header.clone();
+    wrong_magic[0] = 0;
+    cases.push(("wrong-magic", wrong_magic));
+    let mut wrong_version = header.clone();
+    wrong_version[8] = 2;
+    cases.push(("wrong-version", wrong_version));
+    let mut wrong_kind = header.clone();
+    wrong_kind[9] = 255;
+    cases.push(("wrong-kind", wrong_kind));
+    let mut no_parts = header.clone();
+    no_parts[11] = 0;
+    cases.push(("no-parts", no_parts));
+    let mut too_many_parts = header.clone();
+    too_many_parts[11] = 3;
+    cases.push(("too-many-parts", too_many_parts));
+    cases.push(("missing-length", header.clone()));
+
+    let mut missing_payload = header.clone();
+    missing_payload.extend_from_slice(&1_u32.to_be_bytes());
+    cases.push(("missing-payload", missing_payload));
+    let mut empty_part = header.clone();
+    empty_part.extend_from_slice(&0_u32.to_be_bytes());
+    cases.push(("empty-part", empty_part));
+    let mut invalid_wire = header.clone();
+    invalid_wire.extend_from_slice(&1_u32.to_be_bytes());
+    invalid_wire.push(0);
+    cases.push(("invalid-wire", invalid_wire.clone()));
+    let mut invalid_sequence = invalid_wire.clone();
+    invalid_sequence[10] = 0;
+    cases.push(("invalid-sequence", invalid_sequence));
+    let mut wrong_part_count = invalid_wire;
+    wrong_part_count[11] = 2;
+    wrong_part_count.extend_from_slice(&1_u32.to_be_bytes());
+    wrong_part_count.push(0);
+    cases.push(("wrong-part-count", wrong_part_count));
+
+    let envelope = OpaqueEnvelope::new([0x31; 16], 1_900_000_300, vec![0x32])
+        .expect("bounded envelope")
+        .encode_canonical()
+        .expect("canonical envelope");
+    let opaque = encode_ipc_frame(3, 1, std::slice::from_ref(&envelope));
+    cases.push(("valid-opaque-wrong-schedule", opaque.clone()));
+    let mut trailing = opaque;
+    trailing.push(0);
+    cases.push(("trailing-byte", trailing));
+    cases.push((
+        "valid-opaque-invalid-sequence",
+        encode_ipc_frame(3, 0, std::slice::from_ref(&envelope)),
+    ));
+    cases.push((
+        "valid-opaque-wrong-count",
+        encode_ipc_frame(3, 1, &[envelope.clone(), envelope.clone()]),
+    ));
+
+    let endpoint = LocalWelcomeDepositEndpoint::new(
+        [0x33; 16],
+        [0x34; 16],
+        DepositCapability::new([0x35; 32]).expect("deposit capability"),
+        1_900_000_400,
+    )
+    .expect("bounded endpoint")
+    .encode_canonical()
+    .expect("canonical endpoint");
+    cases.push((
+        "valid-welcome-wrong-schedule",
+        encode_ipc_frame(2, 1, &[endpoint, envelope]),
+    ));
+
+    for (label, frame) in cases {
+        assert_service_rejects_frame(label, &frame);
+    }
+}
+
+#[test]
+fn app_storage_owner_recovers_abandonment_joiner_consumption_and_welcome_retry() {
+    const NOW: u64 = 1_900_000_000;
+    let root = marked_root("app-storage-owner");
+    let database = root.join("owner.sqlite3");
+    let protector = AwsLcInvitationJoinProtector::new();
+    let mut storage = SqlCipherStorage::create(
+        &database,
+        VaultKey::new([0x41; 32]).expect("nonzero storage key"),
+    )
+    .expect("create app owner store");
+    assert_eq!(storage.schema_version().expect("schema version"), 5);
+    assert!(!storage.cipher_version().expect("cipher version").is_empty());
+    assert!(storage.integrity_check().expect("integrity check"));
+
+    let invitation = storage
+        .issue_capability_invitation(&protector, NOW, NOW + 300, NOW)
+        .expect("issue durable invitation");
+    let invitation_id = *invitation.invitation().invitation_id();
+    let pending = storage
+        .reserve_authorization(
+            &protector,
+            AuthorizationShadowInput::new(
+                invitation_id,
+                *invitation.invitation().signature(),
+                *invitation.invitation().join_challenge(),
+                [0x42; 16],
+                [0x43; 32],
+                *invitation.invitation().inviter_verifying_key(),
+                [0x44; 32],
+                [0x45; 32],
+                [0x46; 32],
+                [0x47; 32],
+                NOW,
+                NOW + 120,
+                NOW + 300,
+            )
+            .expect("bounded authorization shadow"),
+            NOW,
+        )
+        .expect("reserve durable authorization");
+    let attempt_id = *pending.attempt_id();
+    storage
+        .abandon_pending_authorization(pending, &protector, NOW + 1)
+        .expect("abandon pending authorization");
+    assert_eq!(
+        storage
+            .authorization_state(&attempt_id)
+            .expect("authorization state"),
+        Some(AuthorizationState::Abandoned)
+    );
+    assert_eq!(
+        storage
+            .invitation_opening_state(&invitation_id)
+            .expect("opening state"),
+        Some(InvitationOpeningState::Available)
+    );
+
+    let key_package_reference = [0x51; 32];
+    KeyPackageStorage::insert(
+        &mut storage,
+        key_package_reference.to_vec(),
+        KeyPackageData::new(
+            vec![0x52],
+            HpkeSecretKey::from(vec![0x53]),
+            HpkeSecretKey::from(vec![0x54]),
+            NOW + 60,
+        ),
+    )
+    .expect("insert one-time KeyPackage");
+    storage
+        .stage_joiner(
+            JoinerTransaction::new([0x55; 16], [0x56; 32], key_package_reference)
+                .expect("bounded joiner transaction"),
+            PersistenceFault::None,
+        )
+        .expect("stage joiner transaction");
+    GroupStateStorage::write(
+        &mut storage,
+        GroupState {
+            id: vec![0x56; 32],
+            data: Zeroizing::new(vec![0x57]),
+        },
+        vec![EpochRecord::new(0, Zeroizing::new(vec![0x58]))],
+        vec![EpochRecord::new(0, Zeroizing::new(vec![0x59]))],
+    )
+    .expect("write joiner MLS state");
+    KeyPackageStorage::delete(&mut storage, &key_package_reference)
+        .expect("consume exact KeyPackage");
+    assert!(
+        !storage
+            .key_package_exists(&key_package_reference)
+            .expect("KeyPackage lookup")
+    );
+    assert!(
+        storage
+            .recover_joiner(&[0x55; 16])
+            .expect("joiner recovery")
+            .is_some()
+    );
+
+    let reservation_id = [0x61; 16];
+    let generation = [0x62; 64];
+    let join_request_id = [0x63; 16];
+    storage
+        .seed_reservation(reservation_id, generation, join_request_id, NOW + 120, NOW)
+        .expect("seed exact invitation reservation");
+    let welcome = OpaqueEnvelope::new([0x64; 16], NOW + 180, vec![0x65])
+        .expect("bounded Welcome")
+        .encode_canonical()
+        .expect("canonical Welcome");
+    let endpoint = LocalWelcomeDepositEndpoint::new(
+        [0x66; 16],
+        [0x67; 16],
+        DepositCapability::new([0x68; 32]).expect("deposit capability"),
+        NOW + 240,
+    )
+    .expect("bounded endpoint")
+    .encode_canonical()
+    .expect("canonical endpoint");
+    storage
+        .stage_inviter(
+            InviterJoinTransaction::new(
+                [0x69; 16],
+                reservation_id,
+                generation,
+                join_request_id,
+                [0x6A; 32],
+                [0x6B; 32],
+                0,
+                1,
+                vec![0x6C],
+                welcome,
+                endpoint,
+                NOW + 120,
+            )
+            .expect("bounded inviter transaction"),
+            NOW,
+            PersistenceFault::None,
+        )
+        .expect("stage inviter transaction");
+    GroupStateStorage::write(
+        &mut storage,
+        GroupState {
+            id: vec![0x6B; 32],
+            data: Zeroizing::new(vec![0x6D]),
+        },
+        vec![EpochRecord::new(0, Zeroizing::new(vec![0x6E]))],
+        vec![EpochRecord::new(0, Zeroizing::new(vec![0x6F]))],
+    )
+    .expect("commit inviter and Welcome outbox");
+    assert_eq!(
+        storage
+            .invitation_state(&reservation_id)
+            .expect("invitation state"),
+        Some(InvitationState::Consumed)
+    );
+    let lease = storage
+        .lease_next(NOW + 1, 10)
+        .expect("lease pending Welcome")
+        .expect("Welcome work exists");
+    storage
+        .report_failed(lease.discard_payload())
+        .expect("release failed Welcome lease");
+    let recovery = storage
+        .recover_inviter(&[0x69; 16])
+        .expect("inviter recovery")
+        .expect("inviter transaction exists");
+    assert_eq!(recovery.outbox_state, WelcomeOutboxState::Pending);
+    assert_eq!(recovery.delivery_attempts, 1);
+
+    drop(storage);
+    fs::remove_dir_all(root).expect("remove app owner store");
+}
+
+fn encode_ipc_frame(kind: u8, sequence: u8, parts: &[Vec<u8>]) -> Vec<u8> {
+    let mut encoded = Vec::new();
+    encoded.extend_from_slice(b"SCL1IPC1");
+    encoded.extend_from_slice(&[
+        1,
+        kind,
+        sequence,
+        u8::try_from(parts.len()).expect("part count"),
+    ]);
+    for part in parts {
+        encoded.extend_from_slice(
+            &u32::try_from(part.len())
+                .expect("bounded part")
+                .to_be_bytes(),
+        );
+        encoded.extend_from_slice(part);
+    }
+    encoded
+}
+
+fn assert_service_rejects_frame(label: &str, frame: &[u8]) {
+    let root = marked_root(label);
+    fs::create_dir_all(root.join("relay/in")).expect("create relay input directory");
+    fs::create_dir_all(root.join("relay/out")).expect("create relay output directory");
+    fs::write(root.join("relay/in/001.frame"), frame).expect("write malformed IPC frame");
+    assert!(run_l1_process_internal_role("service", root.clone()).is_err());
+    fs::remove_dir_all(root).expect("remove malformed IPC root");
 }
 
 fn marked_root(label: &str) -> std::path::PathBuf {
