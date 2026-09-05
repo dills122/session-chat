@@ -6,9 +6,17 @@ license.workspace = true
 publish = false
 
 [dependencies]
+aws-lc-rs.workspace = true
 iroh.workspace = true
+minicbor.workspace = true
+session-protocol = { version = "=0.1.0", path = "../session-protocol" }
+session-transport = { version = "=0.1.0", path = "../session-transport" }
 thiserror.workspace = true
 tokio.workspace = true
+zeroize.workspace = true
+
+[dev-dependencies]
+transport-conformance = { version = "=0.1.0", path = "../transport-conformance" }
 
 [lints]
 workspace = true

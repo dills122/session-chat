@@ -272,6 +272,23 @@ Assumptions:
   ordered link. Graceful close requires both acknowledged outbound bytes and a
   clean inbound finish; a reset or connection error cannot be reported as
   receipt.
+- The first connected `EnvelopeDelivery` slice authenticates one exact server
+  endpoint and uses independent random deposit, receive, and acknowledgement
+  capabilities. The volatile service stores domain-separated digests rather
+  than raw capabilities; a capability cannot be substituted for another
+  operation. Its versioned CBOR request/response frames reject malformed,
+  trailing, noncanonical, wrong-version, and oversized input before use.
+- The service bounds live mailboxes, mailbox lifetime, logical envelope count,
+  retained canonical bytes, poll size, requests per connection, and one
+  absolute deadline per request/response exchange. Its 40-byte continuation
+  cursor authenticates the position with a per-mailbox HMAC key and grants no
+  receive authority by itself. Exact deposit and acknowledgement retries are
+  idempotent; a same-ID deposit with different canonical bytes fails.
+- All connected mailbox state is in memory. Process loss discards envelopes,
+  cursors, acknowledgements, and authorities, so this evidence establishes no
+  offline delivery, durability, rollback protection, or recovery guarantee.
+  Relay, NAT, route-change, peer-offline, outage, and packet-capture evidence
+  remains open.
 - The bearer capability invitation must cross an authenticated confidential
   out-of-band channel. It is never sent to an unauthenticated first Iroh
   connector; the first network frame is the joiner's HPKE-protected request.
@@ -323,6 +340,12 @@ Assumptions:
   cross-platform wake/cancel/deadline supervision with pending-work drop for the
   standard-library blocking baseline. They do not prove durable restart
   recovery, receipt, recipient processing, or future UI-runtime wiring.
+- The FastV1 binder accepts only the exact Iroh adapter declaration: canonical
+  64 KiB envelopes, 192 KiB poll batches, 64 envelopes, 40-byte cursors,
+  deposit/poll/acknowledgement operations, coordinator-owned retry, declared
+  background work, in-process execution, and ambient network egress. The
+  resulting enforcement record explicitly says the network is ambient; it
+  does not turn a manifest into OS-enforced isolation or a Private profile.
 
 ### Trust boundary: local persistent storage and operating system
 
