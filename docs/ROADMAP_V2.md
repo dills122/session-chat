@@ -196,9 +196,11 @@ client identity, and version 4 adds the exact group binding and proves exact mem
 reload plus cross-group rejection after close/reopen. Graceful
 independent-process reload now exists. Checked local sweeps now kill every
 baseline-observed inviter and joiner application checkpoint and require exact
-I0/I1 or J0/J1 recovery plus unchanged exact retry. The portable three-OS,
-public-evidence, platform-vault, disk/power fault, production packaging, and
-rollback-anchor gates remain.
+I0/I1 or J0/J1 recovery plus unchanged exact retry. The exact revision recorded
+in the Phase 1 closeout matrix passed the portable three-OS public-evidence gate;
+each later behavior or evidence revision must repeat that gate before the
+completion record advances. Platform-vault, disk/power fault, production
+packaging, and rollback-anchor gates remain.
 The checked L2 storage fault protocol and reusable `sessionctl` process
 controller/verifier are now retained. A publish-disabled named SQLite VFS also
 delegates ordinary behavior to the captured process default, remains non-default
