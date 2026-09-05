@@ -36,6 +36,15 @@ and checked binaries replacing each other in the shared build directory.
 
 ## Limits and completion decision
 
+PR #303's first Linux and macOS runs exposed a pause-marker publication race
+after the reviewed revision: the controller could observe the filename before
+the writer finished its contents. The CI follow-up writes and closes a temporary
+marker before renaming it to the readiness filename, and gives malformed marker
+reads a distinct coarse stage. This narrowly scoped test synchronization change
+was author-reviewed and requires corrected sweeps and subsequent CI; it
+is not represented as part of the earlier independent verdict. No fourth review
+instance was started.
+
 This review establishes implementation/plan readiness, not Phase 1 completion.
 Hosted positive evidence promotion and the full non-PR Linux, macOS and Windows
 run must pass on the immutable merged code revision. The separate completion

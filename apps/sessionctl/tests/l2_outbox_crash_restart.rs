@@ -162,7 +162,12 @@ mod checked {
                 {
                     return;
                 }
-                let _ = std::fs::write(root.join("welcome.pause"), marker);
+                // The controller treats existence as readiness. Publish only
+                // after the complete marker is closed, so it cannot read an
+                // empty/partial file between create and write on faster hosts.
+                let temporary = root.join("welcome.pause.tmp");
+                let _ = std::fs::write(&temporary, marker)
+                    .and_then(|()| std::fs::rename(temporary, root.join("welcome.pause")));
             });
             FaultPlan::pause(self.target, Arc::clone(&self.gate))
                 .and_then(|plan| controller().arm(plan))

@@ -183,7 +183,10 @@ fn kill_case(
         target.operation.label(),
         ordinal
     );
-    if read_owned_file(&marker, expected.len())? != expected.as_bytes() {
+    if read_owned_file(&marker, expected.len())
+        .map_err(|_| stage("L2 Welcome engine pause file"))?
+        != expected.as_bytes()
+    {
         return Err(stage("L2 Welcome engine pause target"));
     }
     child.terminate_and_reap()?;
