@@ -8,7 +8,7 @@ targets = [
 
 [advisories]
 ignore = [
-  { id = "RUSTSEC-2024-0436", reason = "paste 1.0.15 is an unmaintained transitive Linux-only macro dependency through pinned iroh 1.1.0/netwatch; no safe upgrade exists. Owner: @dills122. Remove before Task 10 or review by 2026-12-04." },
+  { id = "RUSTSEC-2024-0436", reason = "Re-reviewed at Task 10 start on 2026-09-05: paste 1.0.15 remains an unmaintained transitive Linux-only macro dependency through pinned iroh 1.1.0/netwatch, with no safe upgrade. It has no protocol or cryptographic authority. Owner: @dills122. Remove or review again by 2026-12-04." },
 ]
 
 [licenses]
@@ -24,8 +24,9 @@ allow = [
 ]
 confidence-threshold = 0.8
 exceptions = [
-  # Exact transitive dependencies of pinned iroh 1.1.0. These exceptions do
-  # not permit the license for unrelated crates or later versions.
+  # Re-reviewed at Task 10 start on 2026-09-05. These are exact transitive
+  # dependencies of pinned iroh 1.1.0 and do not permit the license for
+  # unrelated crates or later versions.
   { allow = ["MPL-2.0"], crate = "attohttpc@0.30.1" },
   { allow = ["Zlib"], crate = "foldhash@0.2.0" },
   { allow = ["BSD-2-Clause"], crate = "spez@0.1.2" },
