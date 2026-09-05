@@ -39,10 +39,15 @@ versioned Session Chat IPC frames:
 - authenticate the expected host endpoint ID on connect; the accepting side
   obtains the authenticated remote endpoint ID but still relies on the normal
   Session Chat admission proof before membership;
+- accept only the lowercase hexadecimal endpoint-ID text emitted by the host;
 - prefix every frame with a fixed-width length and reject zero or oversized
   frames before allocation;
-- bound connection establishment, frame reads, and frame writes with caller
-  deadlines;
+- reject zero or greater-than-five-minute operation bounds, derive one checked
+  absolute deadline per operation, and share it across connection setup, frame
+  reads/writes, and graceful shutdown;
+- report graceful shutdown only after the peer acknowledges all outbound bytes
+  and cleanly finishes its inbound stream; peer reset and connection failure
+  are not receipts;
 - retain the existing canonical protocol decoders after network receipt;
 - keep the endpoint key ephemeral for the headless proof; and
 - expose the N0 preset only through an explicit Fast network command.
@@ -71,6 +76,8 @@ automatic profile fallback.
 - A malicious peer, relay, or network can still drop, delay, duplicate, replay,
   reorder across reconnections, or refuse traffic. Existing protocol checks
   remain authoritative.
+- Deadlines, peer mismatch, noncanonical endpoint text, oversized remote frame
+  declarations, and reset-before-receipt fail closed with payload-free errors.
 - Ephemeral endpoint keys make this a demonstration path, not durable peer
   identity, recovery, or rollback-resistant endpoint state.
 

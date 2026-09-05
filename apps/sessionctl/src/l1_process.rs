@@ -231,6 +231,7 @@ pub fn run_two_terminal_join(root: PathBuf) -> Result<(), SessionCtlError> {
 
 /// Hosts the full Phase 1 proof over the explicit public Iroh Fast link.
 pub async fn run_network_host(root: PathBuf) -> Result<(), SessionCtlError> {
+    let root = ProcessRoot::create_at(root)?;
     let endpoint = IrohFastEndpoint::bind_public()
         .await
         .at_stage("network host endpoint")?;
@@ -247,6 +248,7 @@ pub async fn run_network_host(root: PathBuf) -> Result<(), SessionCtlError> {
 
 /// Joins a public Iroh Fast host by its authenticated endpoint identifier.
 pub async fn run_network_join(host: &str, root: PathBuf) -> Result<(), SessionCtlError> {
+    let root = ProcessRoot::create_at(root)?;
     let host = FastEndpointId::parse(host).at_stage("network host identity")?;
     let endpoint = IrohFastEndpoint::bind_public()
         .await
@@ -267,8 +269,8 @@ pub async fn run_network_join(host: &str, root: PathBuf) -> Result<(), SessionCt
 
 /// Runs the full network composition over relay-free Iroh loopback endpoints.
 pub async fn run_network_loopback_demo() -> Result<(), SessionCtlError> {
-    let host_root = fresh_process_root_path("network-host")?;
-    let join_root = fresh_process_root_path("network-join")?;
+    let host_root = ProcessRoot::create_at(fresh_process_root_path("network-host")?)?;
+    let join_root = ProcessRoot::create_at(fresh_process_root_path("network-join")?)?;
     let host = IrohFastEndpoint::bind_loopback()
         .await
         .at_stage("network loopback host")?;
@@ -286,7 +288,7 @@ pub async fn run_network_loopback_demo() -> Result<(), SessionCtlError> {
 }
 
 async fn connect_network_loopback_join(
-    root: PathBuf,
+    root: ProcessRoot,
     endpoint: IrohFastEndpoint,
     host: FastEndpointAddress,
 ) -> Result<(), SessionCtlError> {
@@ -298,10 +300,9 @@ async fn connect_network_loopback_join(
 }
 
 async fn run_network_host_with_endpoint(
-    root: PathBuf,
+    mut root: ProcessRoot,
     endpoint: IrohFastEndpoint,
 ) -> Result<(), SessionCtlError> {
-    let mut root = ProcessRoot::create_at(root)?;
     let mut link = endpoint
         .accept(None, NETWORK_OPERATION_WAIT, MAX_IPC_FRAME_BYTES)
         .await
@@ -329,10 +330,9 @@ async fn run_network_host_with_endpoint(
 }
 
 async fn run_network_join_with_link(
-    root: PathBuf,
+    mut root: ProcessRoot,
     mut link: IrohFastLink,
 ) -> Result<(), SessionCtlError> {
-    let mut root = ProcessRoot::create_at(root)?;
     link.send_frame(NETWORK_HELLO, NETWORK_OPERATION_WAIT)
         .await
         .at_stage("network hello")?;

@@ -17,7 +17,9 @@ for its security properties.
 **Decision:** Phase 0 is sufficient to begin implementation. Continue Phase 1
 as a capability-only Rust protocol laboratory. V1 is retired under ADR 0006;
 do not turn that cleanup into GitHub integration, SSI, a production mailbox, a
-GUI, or a real network transport.
+GUI, or a reusable/product network transport. A separately invoked bounded
+Iroh frame-link feasibility experiment exists, but it does not satisfy a Phase
+1 exit criterion or the later Fast adapter milestone.
 
 The complete scope, acceptance evidence, bounded research questions, and later
 integration order are recorded in
@@ -79,8 +81,11 @@ evidence against the real local mailbox. The real capability-admission/MLS path
 now crosses the SQLCipher transaction through an explicit durability-pending
 one-shot value, recovers an ambiguous commit, finalizes invitation state once,
 reopens the owner store, and delivers the exact Welcome to the original joiner.
-Human approval UX and network transport remain later-phase work. The remaining
-Phase 1 hostile process-fault coverage is sequenced by the closeout plan. One
+Human approval UX and reusable/product network transport remain later-phase
+work. The bounded authenticated Iroh frame-link experiment is not an
+`EnvelopeDelivery` provider, offline mailbox, or completed network profile.
+The remaining Phase 1 hostile process-fault coverage is sequenced by the
+closeout plan. One
 independent-process exact replay case now rejects the duplicate before
 approval, MLS Add, or durable membership mutation. The separate SQLCipher
 laboratory now

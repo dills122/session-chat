@@ -256,6 +256,11 @@ Assumptions:
   relay, address-lookup, and DNS services can observe endpoint, timing, size,
   and lookup metadata. Its first bounded online link is not an offline mailbox
   and uses ephemeral endpoint keys.
+- The experiment accepts only the host's canonical lowercase hexadecimal
+  endpoint text. Each timed operation rejects zero or greater-than-five-minute
+  bounds and uses one checked absolute deadline. Graceful close requires both
+  acknowledged outbound bytes and a clean inbound finish; a reset or
+  connection error cannot be reported as receipt.
 
 ### Trust boundary: client to mixnet
 

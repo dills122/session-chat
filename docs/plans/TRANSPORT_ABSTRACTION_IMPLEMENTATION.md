@@ -755,15 +755,22 @@ and the retained SQLCipher MLS/storage increment governed by ADRs 0008 and 0015
 - [x] `cargo test --workspace`
 - [x] Review retained evidence before any real network adapter.
 
+The unchecked crash-recovery criterion keeps this checkpoint open. The bounded
+Iroh frame-link feasibility slice below was retained early as a pre-adapter
+experiment; it neither satisfies this checkpoint nor waives Task 10's
+dependency on it.
+
 ## Phase E: real-network experiments
 
 ### Task 10: Implement the Iroh Fast adapter
 
-Current increment: the pinned authenticated online frame link and complete
-scripted `sessionctl-net` composition pass over direct-only loopback. Public N0
-endpoint reachability is retained as an explicit ignored smoke test. The full
-mailbox adapter, shared conformance verdicts, relay-path two-peer evidence,
-route-change/outage cases, and packet captures remain open.
+Current pre-adapter feasibility increment: the pinned authenticated online
+frame link and complete scripted `sessionctl-net` composition pass over
+direct-only loopback. Public N0 endpoint reachability is retained as an
+explicit ignored smoke test. This does not complete Task 10 or implement its
+common transport contract. The full mailbox adapter, shared conformance
+verdicts, relay-path two-peer evidence, route-change/outage cases, and packet
+captures remain open.
 
 **Description:** Implement the first real adapter for the Fast profile, keeping
 offline mailbox behavior separate where Iroh relays are stateless. Document

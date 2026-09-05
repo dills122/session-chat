@@ -16,10 +16,13 @@ use iroh::{
     endpoint::{Connection, RecvStream, SendStream, presets},
 };
 use thiserror::Error;
-use tokio::time::{Instant, timeout, timeout_at};
+use tokio::time::{Instant, timeout_at};
 
 /// ALPN dedicated to the first version of Session Chat's Fast online link.
 pub const SESSION_CHAT_FAST_ALPN_V1: &[u8] = b"session-chat/fast-link/1";
+
+/// Largest caller-owned duration accepted by one Fast link operation.
+pub const MAX_FAST_OPERATION_DURATION: Duration = Duration::from_secs(5 * 60);
 
 const FRAME_LENGTH_BYTES: usize = 4;
 
@@ -32,7 +35,7 @@ pub enum IrohFastError {
     /// The local Iroh endpoint could not be created.
     #[error("Fast link endpoint unavailable")]
     EndpointUnavailable,
-    /// Connection setup or acceptance failed or exceeded its deadline.
+    /// Connection setup, acceptance, or shutdown failed.
     #[error("Fast link connection unavailable")]
     ConnectionUnavailable,
     /// The authenticated remote endpoint did not match the required peer.
@@ -41,7 +44,7 @@ pub enum IrohFastError {
     /// A frame was empty, malformed, truncated, or exceeded its bound.
     #[error("Fast link frame rejected")]
     FrameRejected,
-    /// A bounded frame operation exceeded its caller-owned deadline.
+    /// A bounded endpoint, connection, frame, or shutdown operation timed out.
     #[error("Fast link operation deadline exceeded")]
     DeadlineExceeded,
 }
@@ -56,9 +59,11 @@ impl FastEndpointId {
         if value.is_empty() || value.len() > 128 || !value.is_ascii() {
             return Err(IrohFastError::PeerRejected);
         }
-        PublicKey::from_str(value)
-            .map(Self)
-            .map_err(|_| IrohFastError::PeerRejected)
+        let public_key = PublicKey::from_str(value).map_err(|_| IrohFastError::PeerRejected)?;
+        if public_key.to_string() != value {
+            return Err(IrohFastError::PeerRejected);
+        }
+        Ok(Self(public_key))
     }
 
     /// Returns the public text form suitable for an explicit host/join command.
@@ -117,16 +122,19 @@ impl IrohFastEndpoint {
 
     /// Waits for the public preset to establish an online path within a bound.
     pub async fn wait_online(&self, deadline: Duration) -> Result<(), IrohFastError> {
-        require_duration(deadline)?;
-        timeout(deadline, self.endpoint.online())
+        let deadline = checked_deadline(deadline)?;
+        timeout_at(deadline, self.endpoint.online())
             .await
             .map_err(|_| IrohFastError::DeadlineExceeded)?;
         Ok(())
     }
 
-    /// Closes an unconnected endpoint and waits for its background work to stop.
-    pub async fn close(self) {
-        self.endpoint.close().await;
+    /// Closes an unconnected endpoint within the supplied deadline.
+    pub async fn close(self, deadline: Duration) -> Result<(), IrohFastError> {
+        let deadline = checked_deadline(deadline)?;
+        timeout_at(deadline, self.endpoint.close())
+            .await
+            .map_err(|_| IrohFastError::DeadlineExceeded)
     }
 
     /// Accepts one connection and optionally requires one authenticated peer ID.
@@ -136,8 +144,7 @@ impl IrohFastEndpoint {
         deadline: Duration,
         maximum_frame_bytes: usize,
     ) -> Result<IrohFastLink, IrohFastError> {
-        validate_link_bounds(deadline, maximum_frame_bytes)?;
-        let deadline = Instant::now() + deadline;
+        let deadline = validate_link_bounds(deadline, maximum_frame_bytes)?;
         let incoming = timeout_at(deadline, self.endpoint.accept())
             .await
             .map_err(|_| IrohFastError::DeadlineExceeded)?
@@ -148,7 +155,6 @@ impl IrohFastEndpoint {
             .map_err(|_| IrohFastError::ConnectionUnavailable)?;
         if expected_peer.is_some_and(|expected| connection.remote_id() != expected.0) {
             connection.close(1_u8.into(), b"peer rejected");
-            self.endpoint.close().await;
             return Err(IrohFastError::PeerRejected);
         }
         let (send, receive) = timeout_at(deadline, connection.accept_bi())
@@ -186,8 +192,7 @@ impl IrohFastEndpoint {
         deadline: Duration,
         maximum_frame_bytes: usize,
     ) -> Result<IrohFastLink, IrohFastError> {
-        validate_link_bounds(deadline, maximum_frame_bytes)?;
-        let deadline = Instant::now() + deadline;
+        let deadline = validate_link_bounds(deadline, maximum_frame_bytes)?;
         let connection = timeout_at(
             deadline,
             self.endpoint
@@ -198,7 +203,6 @@ impl IrohFastEndpoint {
         .map_err(|_| IrohFastError::ConnectionUnavailable)?;
         if connection.remote_id() != remote.0.id {
             connection.close(1_u8.into(), b"peer rejected");
-            self.endpoint.close().await;
             return Err(IrohFastError::PeerRejected);
         }
         let (send, receive) = timeout_at(deadline, connection.open_bi())
@@ -253,12 +257,12 @@ impl IrohFastLink {
         bytes: &[u8],
         deadline: Duration,
     ) -> Result<(), IrohFastError> {
-        require_duration(deadline)?;
+        let deadline = checked_deadline(deadline)?;
         if bytes.is_empty() || bytes.len() > self.maximum_frame_bytes {
             return Err(IrohFastError::FrameRejected);
         }
         let length = u32::try_from(bytes.len()).map_err(|_| IrohFastError::FrameRejected)?;
-        timeout(deadline, async {
+        timeout_at(deadline, async {
             self.send
                 .write_all(&length.to_be_bytes())
                 .await
@@ -274,8 +278,8 @@ impl IrohFastLink {
 
     /// Reads one length-prefixed frame and rejects its length before allocation.
     pub async fn receive_frame(&mut self, deadline: Duration) -> Result<Vec<u8>, IrohFastError> {
-        require_duration(deadline)?;
-        timeout(deadline, async {
+        let deadline = checked_deadline(deadline)?;
+        timeout_at(deadline, async {
             let mut length = [0_u8; FRAME_LENGTH_BYTES];
             self.receive
                 .read_exact(&mut length)
@@ -297,17 +301,30 @@ impl IrohFastLink {
         .map_err(|_| IrohFastError::DeadlineExceeded)?
     }
 
-    /// Gracefully finishes the stream, waits for peer receipt, and closes the endpoint.
+    /// Confirms outbound receipt and clean inbound finish before bounded shutdown.
     pub async fn close(mut self, deadline: Duration) -> Result<(), IrohFastError> {
-        require_duration(deadline)?;
+        let deadline = checked_deadline(deadline)?;
         self.send
             .finish()
             .map_err(|_| IrohFastError::ConnectionUnavailable)?;
-        let _peer_receipt = timeout(deadline, self.send.stopped())
+        let peer_stop = timeout_at(deadline, self.send.stopped())
+            .await
+            .map_err(|_| IrohFastError::DeadlineExceeded)?
+            .map_err(|_| IrohFastError::ConnectionUnavailable)?;
+        if peer_stop.is_some() {
+            return Err(IrohFastError::ConnectionUnavailable);
+        }
+        let trailing = timeout_at(deadline, self.receive.read_to_end(0))
+            .await
+            .map_err(|_| IrohFastError::DeadlineExceeded)?
+            .map_err(|_| IrohFastError::ConnectionUnavailable)?;
+        if !trailing.is_empty() {
+            return Err(IrohFastError::FrameRejected);
+        }
+        self.connection.close(0_u8.into(), b"complete");
+        timeout_at(deadline, self.endpoint.close())
             .await
             .map_err(|_| IrohFastError::DeadlineExceeded)?;
-        self.connection.close(0_u8.into(), b"complete");
-        self.endpoint.close().await;
         Ok(())
     }
 }
@@ -315,17 +332,80 @@ impl IrohFastLink {
 fn validate_link_bounds(
     deadline: Duration,
     maximum_frame_bytes: usize,
-) -> Result<(), IrohFastError> {
-    require_duration(deadline)?;
+) -> Result<Instant, IrohFastError> {
+    let deadline = checked_deadline(deadline)?;
     if maximum_frame_bytes == 0 || maximum_frame_bytes > u32::MAX as usize {
         return Err(IrohFastError::InvalidBound);
     }
-    Ok(())
+    Ok(deadline)
 }
 
-fn require_duration(deadline: Duration) -> Result<(), IrohFastError> {
-    if deadline.is_zero() {
+fn checked_deadline(duration: Duration) -> Result<Instant, IrohFastError> {
+    if duration.is_zero() || duration > MAX_FAST_OPERATION_DURATION {
         return Err(IrohFastError::InvalidBound);
     }
-    Ok(())
+    Instant::now()
+        .checked_add(duration)
+        .ok_or(IrohFastError::InvalidBound)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const TEST_DEADLINE: Duration = Duration::from_secs(5);
+
+    async fn connecting_links(
+        maximum_frame_bytes: usize,
+    ) -> (tokio::task::JoinHandle<IrohFastLink>, IrohFastLink) {
+        let host = IrohFastEndpoint::bind_loopback().await.expect("bind host");
+        let host_address = host.address();
+        let join = IrohFastEndpoint::bind_loopback().await.expect("bind join");
+        let host_task = tokio::spawn(async move {
+            host.accept(None, TEST_DEADLINE, maximum_frame_bytes)
+                .await
+                .expect("accept joiner")
+        });
+        let join_link = join
+            .connect_address(host_address, TEST_DEADLINE, maximum_frame_bytes)
+            .await
+            .expect("connect joiner");
+        (host_task, join_link)
+    }
+
+    #[tokio::test]
+    async fn peer_reset_is_not_reported_as_graceful_receipt() {
+        let (host_task, mut join_link) = connecting_links(16).await;
+        join_link
+            .send
+            .write_all(b"trigger")
+            .await
+            .expect("trigger lazy stream acceptance");
+        let mut host_link = host_task.await.expect("host task");
+        host_link
+            .receive
+            .stop(7_u8.into())
+            .expect("stop peer receive stream");
+
+        assert_eq!(
+            join_link.close(TEST_DEADLINE).await,
+            Err(IrohFastError::ConnectionUnavailable)
+        );
+    }
+
+    #[tokio::test]
+    async fn remote_oversized_length_is_rejected_before_payload_allocation() {
+        let (host_task, mut join_link) = connecting_links(4).await;
+        join_link
+            .send
+            .write_all(&5_u32.to_be_bytes())
+            .await
+            .expect("write hostile length");
+        let mut host_link = host_task.await.expect("host task");
+
+        assert_eq!(
+            host_link.receive_frame(TEST_DEADLINE).await,
+            Err(IrohFastError::FrameRejected)
+        );
+    }
 }
