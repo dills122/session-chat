@@ -69,10 +69,6 @@ jobs:
 
   l2-evidence:
     name: L2 evidence (${{ matrix.name }})
-    defaults:
-      run:
-        # Bash -e/pipefail makes every Cargo failure fatal on Windows too.
-        shell: bash
     strategy:
       fail-fast: false
       matrix:
@@ -117,29 +113,51 @@ jobs:
       - name: Fetch the locked dependency graph
         run: cargo fetch --locked
 
-      - name: Prove the pull-request smoke catches defective evidence
+      # Keep one Cargo command per step: Windows' default shell propagates
+      # the final native exit code, so a later command must not overwrite it.
+      - name: Prove repeated joiner retry conflicts in pull-request smoke
         if: github.event_name == 'pull_request'
-        run: |
-          cargo test -p sessionctl --test l2_crash_restart_joiner checked::changed_committed_joiner_retry_is_rejected_without_mutation --locked --offline -- --exact --test-threads=1
-          cargo test -p sessionctl --test l2_outbox_crash_restart --locked --offline -- --nocapture --test-threads=1
-          cargo test -p sessionctl --test l2_public_evidence --locked --offline
-          cargo test -p sessionctl --lib l2_process::evidence::tests --locked --offline
-          cargo test -p sessionctl --lib l2_process::welcome::tests --locked --offline -- --test-threads=1
-          cargo test -p storage-sqlcipher-fault-vfs controller::tests::defective_persistent_gap_after_target_is_rejected --locked --offline -- --exact
-          cargo test -p sessionctl --test l2_process checked::defective_frames_diagnostics_and_semantics_fail_closed --locked --offline -- --exact --test-threads=1
-          cargo test -p sessionctl --test l2_io_faults checked::one_shot_full_reopens_as_one_complete_inviter_state --locked --offline -- --exact --test-threads=1
-          cargo test -p sessionctl --test l2_io_faults checked::pause_child_canary_is_captured_and_rejected_before_public_evidence --locked --offline -- --exact --test-threads=1
+        run: cargo test -p sessionctl --test l2_crash_restart_joiner checked::changed_committed_joiner_retry_is_rejected_without_mutation --locked --offline -- --exact --test-threads=1
 
-      - name: Run complete portable L2 evidence suites
+      - name: Verify complete Welcome process and engine recovery
+        run: cargo test -p sessionctl --test l2_outbox_crash_restart --locked --offline -- --nocapture --test-threads=1
+
+      - name: Reject public evidence forgery
+        run: cargo test -p sessionctl --test l2_public_evidence --locked --offline
+
+      - name: Verify evidence provenance and redaction
+        run: cargo test -p sessionctl --lib l2_process::evidence::tests --locked --offline
+
+      - name: Reject defective Welcome coverage and expiry oracles
+        run: cargo test -p sessionctl --lib l2_process::welcome::tests --locked --offline -- --test-threads=1
+
+      - name: Reject defective persistent fault coverage in pull-request smoke
+        if: github.event_name == 'pull_request'
+        run: cargo test -p storage-sqlcipher-fault-vfs controller::tests::defective_persistent_gap_after_target_is_rejected --locked --offline -- --exact
+
+      - name: Reject defective frames and diagnostics in pull-request smoke
+        if: github.event_name == 'pull_request'
+        run: cargo test -p sessionctl --test l2_process checked::defective_frames_diagnostics_and_semantics_fail_closed --locked --offline -- --exact --test-threads=1
+
+      - name: Verify one-shot FULL recovery in pull-request smoke
+        if: github.event_name == 'pull_request'
+        run: cargo test -p sessionctl --test l2_io_faults checked::one_shot_full_reopens_as_one_complete_inviter_state --locked --offline -- --exact --test-threads=1
+
+      - name: Reject pause-child canaries in pull-request smoke
+        if: github.event_name == 'pull_request'
+        run: cargo test -p sessionctl --test l2_io_faults checked::pause_child_canary_is_captured_and_rejected_before_public_evidence --locked --offline -- --exact --test-threads=1
+
+      - name: Verify complete inviter process recovery
         if: github.event_name != 'pull_request'
-        run: |
-          cargo test -p sessionctl --test l2_outbox_crash_restart --locked --offline -- --nocapture --test-threads=1
-          cargo test -p sessionctl --test l2_public_evidence --locked --offline
-          cargo test -p sessionctl --lib l2_process::evidence::tests --locked --offline
-          cargo test -p sessionctl --lib l2_process::welcome::tests --locked --offline -- --test-threads=1
-          cargo test -p sessionctl --test l2_crash_restart_inviter --locked --offline -- --nocapture --test-threads=1
-          cargo test -p sessionctl --test l2_crash_restart_joiner --locked --offline -- --nocapture --test-threads=1
-          cargo test -p sessionctl --test l2_io_faults --locked --offline -- --nocapture --test-threads=1
+        run: cargo test -p sessionctl --test l2_crash_restart_inviter --locked --offline -- --nocapture --test-threads=1
+
+      - name: Verify complete joiner process recovery
+        if: github.event_name != 'pull_request'
+        run: cargo test -p sessionctl --test l2_crash_restart_joiner --locked --offline -- --nocapture --test-threads=1
+
+      - name: Verify complete SQLite fault and engine recovery
+        if: github.event_name != 'pull_request'
+        run: cargo test -p sessionctl --test l2_io_faults --locked --offline -- --nocapture --test-threads=1
 
   node:
     name: Retained Node tools

@@ -16,8 +16,8 @@ The first merged candidate `36d99f5bc5c45aded88558a73189c2578d76c288`
 ([run 33972775578](https://github.com/dills122/session-chat/actions/runs/33972775578))
 does not qualify: its Windows log contains a failing joiner retry-conflict probe.
 The default Windows shell continued to later Cargo commands, so an aggregate
-job result alone cannot establish passage. The follow-up makes checked steps
-fail immediately under Bash on every platform and runs that exact probe in PR
+job result alone cannot establish passage. The follow-up gives every checked
+Cargo command its own CI step and runs that exact probe in PR
 smoke with coarse failure diagnostics. Completion remains pending a corrected
 merged revision and a full passing run.
 
