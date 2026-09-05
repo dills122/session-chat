@@ -8,7 +8,7 @@
 use std::{
     ffi::OsStr,
     fs::{self, File, OpenOptions},
-    future::ready,
+    future::{Future, ready},
     io::{Read, Write},
     path::{Path, PathBuf},
     process::{Child, Command, ExitStatus, Stdio},
@@ -45,7 +45,10 @@ use storage_sqlcipher::{
     AuthorizationShadowInput, AuthorizationState, InvitationOpeningState, InviterJoinTransaction,
     PersistenceFault, SqlCipherStorage, StoreError, VaultKey, WelcomeOutboxState,
 };
-use transport_iroh::{FastEndpointAddress, FastEndpointId, IrohFastEndpoint, IrohFastLink};
+use transport_iroh::{
+    FastEndpointAddress, FastEndpointId, IrohFastEndpoint, IrohFastError, IrohFastLink,
+    MAX_FAST_FRAME_BYTES,
+};
 use zeroize::{Zeroize, Zeroizing};
 
 use super::{
@@ -75,8 +78,9 @@ const MAX_GIT_PATH_BYTES: usize = 4_096;
 const MAX_GIT_REF_BYTES: usize = 512;
 const METADATA_COMMAND_WAIT: Duration = Duration::from_secs(5);
 const TWO_TERMINAL_DONE: &[u8] = b"sessionctl-two-terminal-complete-v1\n";
-const NETWORK_HELLO: &[u8] = b"session-chat-network-proof-v1";
 const NETWORK_OPERATION_WAIT: Duration = Duration::from_secs(30);
+
+const _: () = assert!(MAX_IPC_FRAME_BYTES <= MAX_FAST_FRAME_BYTES);
 
 /// Secret-free outcome of the bounded independent-process scenario.
 #[derive(Clone, Eq, PartialEq)]
@@ -231,10 +235,13 @@ pub fn run_two_terminal_join(root: PathBuf) -> Result<(), SessionCtlError> {
 
 /// Hosts the full Phase 1 proof over the explicit public Iroh Fast link.
 pub async fn run_network_host(root: PathBuf) -> Result<(), SessionCtlError> {
-    let root = ProcessRoot::create_at(root)?;
-    let endpoint = IrohFastEndpoint::bind_public()
-        .await
-        .at_stage("network host endpoint")?;
+    let (root, endpoint) = prepare_public_endpoint(
+        root,
+        "network host endpoint",
+        |_| Ok(()),
+        IrohFastEndpoint::bind_public,
+    )
+    .await?;
     endpoint
         .wait_online(NETWORK_OPERATION_WAIT)
         .await
@@ -246,13 +253,27 @@ pub async fn run_network_host(root: PathBuf) -> Result<(), SessionCtlError> {
     run_network_host_with_endpoint(root, endpoint).await
 }
 
-/// Joins a public Iroh Fast host by its authenticated endpoint identifier.
-pub async fn run_network_join(host: &str, root: PathBuf) -> Result<(), SessionCtlError> {
-    let root = ProcessRoot::create_at(root)?;
+/// Joins a public Iroh Fast host with a separately transferred bearer invitation.
+pub async fn run_network_join(
+    host: &str,
+    invitation_path: PathBuf,
+    root: PathBuf,
+) -> Result<(), SessionCtlError> {
+    let invitation = read_network_invitation(&invitation_path)?;
     let host = FastEndpointId::parse(host).at_stage("network host identity")?;
-    let endpoint = IrohFastEndpoint::bind_public()
-        .await
-        .at_stage("network join endpoint")?;
+    let (root, endpoint) = prepare_public_endpoint(
+        root,
+        "network join endpoint",
+        |root| {
+            atomic_write(
+                &direct_invitation_path(root.path()),
+                &invitation,
+                MAX_WIRE_OBJECT_BYTES,
+            )
+        },
+        IrohFastEndpoint::bind_public,
+    )
+    .await?;
     endpoint
         .wait_online(NETWORK_OPERATION_WAIT)
         .await
@@ -275,13 +296,14 @@ pub async fn run_network_loopback_demo() -> Result<(), SessionCtlError> {
         .await
         .at_stage("network loopback host")?;
     let host_address = host.address();
+    let host_invitation = direct_invitation_path(host_root.path());
     let join = IrohFastEndpoint::bind_loopback()
         .await
         .at_stage("network loopback join")?;
 
     let (host_result, join_result) = tokio::join!(
         run_network_host_with_endpoint(host_root, host),
-        connect_network_loopback_join(join_root, join, host_address),
+        connect_network_loopback_join(join_root, join, host_address, host_invitation),
     );
     host_result?;
     join_result
@@ -291,7 +313,20 @@ async fn connect_network_loopback_join(
     root: ProcessRoot,
     endpoint: IrohFastEndpoint,
     host: FastEndpointAddress,
+    invitation_path: PathBuf,
 ) -> Result<(), SessionCtlError> {
+    let invitation = read_bounded_wait_async(
+        invitation_path,
+        MAX_WIRE_OBJECT_BYTES,
+        NETWORK_OPERATION_WAIT,
+    )
+    .await?;
+    SignedCapabilityInvitationV2::decode_and_verify(&invitation).at_stage("network invitation")?;
+    atomic_write(
+        &direct_invitation_path(root.path()),
+        &invitation,
+        MAX_WIRE_OBJECT_BYTES,
+    )?;
     let link = endpoint
         .connect_address(host, NETWORK_OPERATION_WAIT, MAX_IPC_FRAME_BYTES)
         .await
@@ -303,23 +338,33 @@ async fn run_network_host_with_endpoint(
     mut root: ProcessRoot,
     endpoint: IrohFastEndpoint,
 ) -> Result<(), SessionCtlError> {
-    let mut link = endpoint
-        .accept(None, NETWORK_OPERATION_WAIT, MAX_IPC_FRAME_BYTES)
-        .await
-        .at_stage("network accept")?;
-    let hello = link
-        .receive_frame(NETWORK_OPERATION_WAIT)
-        .await
-        .at_stage("network hello")?;
-    if hello != NETWORK_HELLO {
-        return Err(stage("network hello"));
-    }
     let alice_root = root.path().to_path_buf();
     let alice = tokio::task::spawn_blocking(move || {
         run_alice_init(&alice_root)?;
         run_alice_resume(&alice_root)
     });
-    let scenario_result = network_host_bridge(root.path(), link).await;
+    let scenario_result = async {
+        let invitation = Zeroizing::new(
+            read_bounded_wait_async(
+                direct_invitation_path(root.path()),
+                MAX_WIRE_OBJECT_BYTES,
+                FRAME_WAIT,
+            )
+            .await?,
+        );
+        SignedCapabilityInvitationV2::decode_and_verify(&invitation)
+            .at_stage("network invitation")?;
+        println!(
+            "mode=network-host\ninvitation=ready\ninvitation_file={}",
+            direct_invitation_path(root.path()).display()
+        );
+        let link = endpoint
+            .accept(None, NETWORK_OPERATION_WAIT, MAX_IPC_FRAME_BYTES)
+            .await
+            .at_stage("network accept")?;
+        network_host_bridge(root.path(), link).await
+    }
+    .await;
     let alice_result = alice.await.map_err(|_| stage("network Alice task"))?;
     let cleanup_result = root.cleanup();
     scenario_result?;
@@ -333,21 +378,6 @@ async fn run_network_join_with_link(
     mut root: ProcessRoot,
     mut link: IrohFastLink,
 ) -> Result<(), SessionCtlError> {
-    link.send_frame(NETWORK_HELLO, NETWORK_OPERATION_WAIT)
-        .await
-        .at_stage("network hello")?;
-    let invitation = link
-        .receive_frame(NETWORK_OPERATION_WAIT)
-        .await
-        .at_stage("network invitation")?;
-    SignedCapabilityInvitationV2::decode_and_verify(&invitation).at_stage("network invitation")?;
-    atomic_write_async(
-        direct_invitation_path(root.path()),
-        invitation,
-        MAX_WIRE_OBJECT_BYTES,
-    )
-    .await?;
-
     let bob_root = root.path().to_path_buf();
     let bob = tokio::task::spawn_blocking(move || run_bob(&bob_root));
     let scenario_result = network_join_bridge(root.path(), &mut link).await;
@@ -366,17 +396,6 @@ async fn run_network_join_with_link(
 }
 
 async fn network_host_bridge(root: &Path, mut link: IrohFastLink) -> Result<(), SessionCtlError> {
-    let invitation = read_bounded_wait_async(
-        direct_invitation_path(root),
-        MAX_WIRE_OBJECT_BYTES,
-        FRAME_WAIT,
-    )
-    .await?;
-    SignedCapabilityInvitationV2::decode_and_verify(&invitation).at_stage("network invitation")?;
-    link.send_frame(&invitation, NETWORK_OPERATION_WAIT)
-        .await
-        .at_stage("network invitation")?;
-
     receive_network_frame(root, &mut link, 1, FrameKind::ProtectedJoin).await?;
     for sequence in [2_u8, 3] {
         send_network_frame(root, &mut link, sequence).await?;
@@ -388,6 +407,36 @@ async fn network_host_bridge(root: &Path, mut link: IrohFastLink) -> Result<(), 
     link.close(NETWORK_OPERATION_WAIT)
         .await
         .at_stage("network host close")
+}
+
+fn read_network_invitation(path: &Path) -> Result<Zeroizing<Vec<u8>>, SessionCtlError> {
+    if !path.is_absolute() || path.as_os_str().len() > 4_096 {
+        return Err(stage("network invitation path"));
+    }
+    let invitation = Zeroizing::new(
+        File::open(path)
+            .at_stage("network invitation read")
+            .and_then(|file| read_bounded(file, MAX_WIRE_OBJECT_BYTES))?,
+    );
+    SignedCapabilityInvitationV2::decode_and_verify(&invitation).at_stage("network invitation")?;
+    Ok(invitation)
+}
+
+async fn prepare_public_endpoint<Prepare, Bind, BindFuture>(
+    root: PathBuf,
+    endpoint_stage: &'static str,
+    prepare: Prepare,
+    bind: Bind,
+) -> Result<(ProcessRoot, IrohFastEndpoint), SessionCtlError>
+where
+    Prepare: FnOnce(&ProcessRoot) -> Result<(), SessionCtlError>,
+    Bind: FnOnce() -> BindFuture,
+    BindFuture: Future<Output = Result<IrohFastEndpoint, IrohFastError>>,
+{
+    let root = ProcessRoot::create_at(root)?;
+    prepare(&root)?;
+    let endpoint = bind().await.at_stage(endpoint_stage)?;
+    Ok((root, endpoint))
 }
 
 async fn network_join_bridge(root: &Path, link: &mut IrohFastLink) -> Result<(), SessionCtlError> {
@@ -2083,6 +2132,68 @@ fn hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
+
+    #[tokio::test]
+    async fn invalid_process_root_fails_before_public_endpoint_binding() {
+        let binder_called = Arc::new(AtomicBool::new(false));
+        let called_by_binder = Arc::clone(&binder_called);
+
+        let result = prepare_public_endpoint(
+            PathBuf::from("relative-network-root"),
+            "test endpoint",
+            |_| Ok(()),
+            move || {
+                called_by_binder.store(true, Ordering::SeqCst);
+                ready(Err(IrohFastError::EndpointUnavailable))
+            },
+        )
+        .await;
+
+        assert!(result.is_err());
+        assert!(!binder_called.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn network_bridge_sends_no_invitation_after_a_public_probe() {
+        let root = ProcessRoot::new().unwrap();
+        let root_path = root.path().to_path_buf();
+        let host = IrohFastEndpoint::bind_loopback().await.unwrap();
+        let host_address = host.address();
+        let join = IrohFastEndpoint::bind_loopback().await.unwrap();
+        let host_task = tokio::spawn(async move {
+            let link = host
+                .accept(None, NETWORK_OPERATION_WAIT, MAX_IPC_FRAME_BYTES)
+                .await
+                .unwrap();
+            network_host_bridge(&root_path, link).await
+        });
+        let mut connector = join
+            .connect_address(host_address, NETWORK_OPERATION_WAIT, MAX_IPC_FRAME_BYTES)
+            .await
+            .unwrap();
+
+        connector
+            .send_frame(b"public-probe", NETWORK_OPERATION_WAIT)
+            .await
+            .unwrap();
+        assert!(
+            connector
+                .receive_frame(Duration::from_secs(2))
+                .await
+                .is_err()
+        );
+        assert!(
+            tokio::time::timeout(Duration::from_secs(2), host_task)
+                .await
+                .expect("host bridge stopped")
+                .expect("host task")
+                .is_err()
+        );
+    }
 
     #[test]
     fn process_root_cleanup_failure_is_reported_and_drop_retries() {

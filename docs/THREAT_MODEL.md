@@ -258,9 +258,16 @@ Assumptions:
   and uses ephemeral endpoint keys.
 - The experiment accepts only the host's canonical lowercase hexadecimal
   endpoint text. Each timed operation rejects zero or greater-than-five-minute
-  bounds and uses one checked absolute deadline. Graceful close requires both
-  acknowledged outbound bytes and a clean inbound finish; a reset or
-  connection error cannot be reported as receipt.
+  bounds and uses one checked absolute deadline. Caller frame bounds cannot
+  exceed 256 KiB; failed, timed-out, or cancelled partial frame I/O poisons the
+  ordered link. Graceful close requires both acknowledged outbound bytes and a
+  clean inbound finish; a reset or connection error cannot be reported as
+  receipt.
+- The bearer capability invitation must cross an authenticated confidential
+  out-of-band channel. It is never sent to an unauthenticated first Iroh
+  connector; the first network frame is the joiner's HPKE-protected request.
+  A first connector can still deny service by occupying or closing the sole
+  experimental connection, but cannot obtain admission authority from it.
 
 ### Trust boundary: client to mixnet
 

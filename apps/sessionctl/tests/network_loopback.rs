@@ -19,7 +19,8 @@ fn network_command_rejects_incomplete_or_unknown_invocations() {
             String::from_utf8(output.stderr).expect("UTF-8 stderr"),
             concat!(
                 "usage: sessionctl-net host <absolute-new-state-dir> | ",
-                "join <host-endpoint-id> <absolute-new-state-dir>\n"
+                "join <host-endpoint-id> <absolute-invitation-file> ",
+                "<absolute-new-state-dir>\n"
             )
         );
     }
@@ -29,7 +30,12 @@ fn network_command_rejects_incomplete_or_unknown_invocations() {
 fn network_commands_reject_invalid_state_paths_before_public_endpoint_setup() {
     for arguments in [
         vec!["host", "relative-state-dir"],
-        vec!["join", "not-an-endpoint-id", "relative-state-dir"],
+        vec![
+            "join",
+            "not-an-endpoint-id",
+            "/tmp/nonexistent-session-chat-invitation",
+            "relative-state-dir",
+        ],
     ] {
         let output = std::process::Command::new(env!("CARGO_BIN_EXE_sessionctl-net"))
             .args(arguments)

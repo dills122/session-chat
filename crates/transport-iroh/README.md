@@ -3,11 +3,14 @@
 `transport-iroh` is the bounded authenticated online link for Session Chat's
 explicit FastV1 experiment. It pins Iroh 1.1.0, uses the AWS-LC TLS provider,
 and carries nonempty length-prefixed frames under caller-owned size and time
-bounds. Timed operations reject zero or durations above five minutes, derive
-one checked absolute deadline, and share its remaining budget across every
-step. Endpoint IDs accept only the lowercase hexadecimal form emitted by the
-host. Graceful link close succeeds only after the peer acknowledges all stream
-bytes; a peer reset or connection failure is not a receipt.
+bounds. Caller frame bounds cannot exceed the crate-wide 256 KiB ceiling.
+Timed operations reject zero or durations above five minutes, derive one
+checked absolute deadline, and share its remaining budget across every step.
+Endpoint IDs accept only the lowercase hexadecimal form emitted by the host.
+Any failed, timed-out, or cancelled frame operation poisons the ordered link so
+it cannot be reused after a partial prefix or payload. Graceful link close
+succeeds only after the peer acknowledges all stream bytes; a peer reset or
+connection failure is not a receipt.
 
 Two modes are intentionally separate:
 

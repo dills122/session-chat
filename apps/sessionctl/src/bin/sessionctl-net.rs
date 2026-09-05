@@ -7,11 +7,11 @@ async fn main() {
     let arguments: Vec<OsString> = std::env::args_os().skip(1).collect();
     let result = match arguments.as_slice() {
         [mode, root] if mode == "host" => sessionctl::run_network_host(PathBuf::from(root)).await,
-        [mode, host, root] if mode == "join" => {
+        [mode, host, invitation, root] if mode == "join" => {
             let Some(host) = host.to_str() else {
                 unsupported();
             };
-            sessionctl::run_network_join(host, PathBuf::from(root)).await
+            sessionctl::run_network_join(host, PathBuf::from(invitation), PathBuf::from(root)).await
         }
         _ => unsupported(),
     };
@@ -23,7 +23,7 @@ async fn main() {
 
 fn unsupported() -> ! {
     eprintln!(
-        "usage: sessionctl-net host <absolute-new-state-dir> | join <host-endpoint-id> <absolute-new-state-dir>"
+        "usage: sessionctl-net host <absolute-new-state-dir> | join <host-endpoint-id> <absolute-invitation-file> <absolute-new-state-dir>"
     );
     std::process::exit(2);
 }

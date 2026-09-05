@@ -24,6 +24,9 @@ pub const SESSION_CHAT_FAST_ALPN_V1: &[u8] = b"session-chat/fast-link/1";
 /// Largest caller-owned duration accepted by one Fast link operation.
 pub const MAX_FAST_OPERATION_DURATION: Duration = Duration::from_secs(5 * 60);
 
+/// Largest frame the experimental Fast link will accept from any caller.
+pub const MAX_FAST_FRAME_BYTES: usize = 256 * 1024;
+
 const FRAME_LENGTH_BYTES: usize = 4;
 
 /// Coarse, payload-free failure from the experimental Fast link.
@@ -226,6 +229,7 @@ pub struct IrohFastLink {
     send: SendStream,
     receive: RecvStream,
     maximum_frame_bytes: usize,
+    usable: bool,
 }
 
 impl IrohFastLink {
@@ -242,6 +246,7 @@ impl IrohFastLink {
             send,
             receive,
             maximum_frame_bytes,
+            usable: true,
         }
     }
 
@@ -257,12 +262,14 @@ impl IrohFastLink {
         bytes: &[u8],
         deadline: Duration,
     ) -> Result<(), IrohFastError> {
+        self.require_usable()?;
         let deadline = checked_deadline(deadline)?;
         if bytes.is_empty() || bytes.len() > self.maximum_frame_bytes {
             return Err(IrohFastError::FrameRejected);
         }
         let length = u32::try_from(bytes.len()).map_err(|_| IrohFastError::FrameRejected)?;
-        timeout_at(deadline, async {
+        self.usable = false;
+        let result = timeout_at(deadline, async {
             self.send
                 .write_all(&length.to_be_bytes())
                 .await
@@ -273,13 +280,19 @@ impl IrohFastLink {
                 .map_err(|_| IrohFastError::ConnectionUnavailable)
         })
         .await
-        .map_err(|_| IrohFastError::DeadlineExceeded)?
+        .map_err(|_| IrohFastError::DeadlineExceeded)?;
+        if result.is_ok() {
+            self.usable = true;
+        }
+        result
     }
 
     /// Reads one length-prefixed frame and rejects its length before allocation.
     pub async fn receive_frame(&mut self, deadline: Duration) -> Result<Vec<u8>, IrohFastError> {
+        self.require_usable()?;
         let deadline = checked_deadline(deadline)?;
-        timeout_at(deadline, async {
+        self.usable = false;
+        let result = timeout_at(deadline, async {
             let mut length = [0_u8; FRAME_LENGTH_BYTES];
             self.receive
                 .read_exact(&mut length)
@@ -290,7 +303,11 @@ impl IrohFastLink {
             if length == 0 || length > self.maximum_frame_bytes {
                 return Err(IrohFastError::FrameRejected);
             }
-            let mut bytes = vec![0_u8; length];
+            let mut bytes = Vec::new();
+            bytes
+                .try_reserve_exact(length)
+                .map_err(|_| IrohFastError::FrameRejected)?;
+            bytes.resize(length, 0);
             self.receive
                 .read_exact(&mut bytes)
                 .await
@@ -298,12 +315,21 @@ impl IrohFastLink {
             Ok(bytes)
         })
         .await
-        .map_err(|_| IrohFastError::DeadlineExceeded)?
+        .map_err(|_| IrohFastError::DeadlineExceeded)?;
+        if result.is_ok() {
+            self.usable = true;
+        }
+        result
     }
 
     /// Confirms outbound receipt and clean inbound finish before bounded shutdown.
     pub async fn close(mut self, deadline: Duration) -> Result<(), IrohFastError> {
         let deadline = checked_deadline(deadline)?;
+        if !self.usable {
+            self.connection.close(1_u8.into(), b"link unusable");
+            let _ = timeout_at(deadline, self.endpoint.close()).await;
+            return Err(IrohFastError::ConnectionUnavailable);
+        }
         self.send
             .finish()
             .map_err(|_| IrohFastError::ConnectionUnavailable)?;
@@ -327,6 +353,14 @@ impl IrohFastLink {
             .map_err(|_| IrohFastError::DeadlineExceeded)?;
         Ok(())
     }
+
+    fn require_usable(&self) -> Result<(), IrohFastError> {
+        if self.usable {
+            Ok(())
+        } else {
+            Err(IrohFastError::ConnectionUnavailable)
+        }
+    }
 }
 
 fn validate_link_bounds(
@@ -334,7 +368,7 @@ fn validate_link_bounds(
     maximum_frame_bytes: usize,
 ) -> Result<Instant, IrohFastError> {
     let deadline = checked_deadline(deadline)?;
-    if maximum_frame_bytes == 0 || maximum_frame_bytes > u32::MAX as usize {
+    if maximum_frame_bytes == 0 || maximum_frame_bytes > MAX_FAST_FRAME_BYTES {
         return Err(IrohFastError::InvalidBound);
     }
     Ok(deadline)
@@ -406,6 +440,76 @@ mod tests {
         assert_eq!(
             host_link.receive_frame(TEST_DEADLINE).await,
             Err(IrohFastError::FrameRejected)
+        );
+        assert_eq!(
+            host_link.receive_frame(TEST_DEADLINE).await,
+            Err(IrohFastError::ConnectionUnavailable)
+        );
+    }
+
+    #[test]
+    fn configured_frame_bound_has_a_crate_wide_ceiling() {
+        assert!(matches!(
+            validate_link_bounds(TEST_DEADLINE, 0),
+            Err(IrohFastError::InvalidBound)
+        ));
+        assert!(validate_link_bounds(TEST_DEADLINE, MAX_FAST_FRAME_BYTES).is_ok());
+        assert!(matches!(
+            validate_link_bounds(TEST_DEADLINE, MAX_FAST_FRAME_BYTES + 1),
+            Err(IrohFastError::InvalidBound)
+        ));
+    }
+
+    #[tokio::test]
+    async fn partial_length_prefix_poisons_the_link_after_timeout() {
+        let (host_task, mut join_link) = connecting_links(16).await;
+        join_link
+            .send
+            .write_all(&4_u32.to_be_bytes()[..2])
+            .await
+            .expect("write partial length");
+        let mut host_link = host_task.await.expect("host task");
+
+        assert_eq!(
+            host_link.receive_frame(Duration::from_millis(20)).await,
+            Err(IrohFastError::DeadlineExceeded)
+        );
+        assert_eq!(
+            host_link.receive_frame(TEST_DEADLINE).await,
+            Err(IrohFastError::ConnectionUnavailable)
+        );
+        assert_eq!(
+            host_link.close(TEST_DEADLINE).await,
+            Err(IrohFastError::ConnectionUnavailable)
+        );
+    }
+
+    #[tokio::test]
+    async fn partial_payload_poisons_the_link_after_timeout() {
+        let (host_task, mut join_link) = connecting_links(16).await;
+        join_link
+            .send
+            .write_all(&4_u32.to_be_bytes())
+            .await
+            .expect("write length");
+        join_link
+            .send
+            .write_all(&[1, 2])
+            .await
+            .expect("write partial payload");
+        let mut host_link = host_task.await.expect("host task");
+
+        assert_eq!(
+            host_link.receive_frame(Duration::from_millis(20)).await,
+            Err(IrohFastError::DeadlineExceeded)
+        );
+        assert_eq!(
+            host_link.receive_frame(TEST_DEADLINE).await,
+            Err(IrohFastError::ConnectionUnavailable)
+        );
+        assert_eq!(
+            host_link.close(TEST_DEADLINE).await,
+            Err(IrohFastError::ConnectionUnavailable)
         );
     }
 }

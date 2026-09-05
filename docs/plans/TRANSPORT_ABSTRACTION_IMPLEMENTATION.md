@@ -3,8 +3,9 @@
 Status: active staged implementation plan; ADR 0015 is accepted, the generalized
 dispatch and Task 6 conformance slices are complete, Task 9's durable
 owner-store plus capability-admission/MLS composition checkpoints are complete,
-and the durable client-reload and independent-process L1 checkpoints are
-complete before network work
+the durable client-reload and independent-process L1 checkpoints are complete,
+and a separately authorised pre-adapter Iroh feasibility slice is retained
+without satisfying the Phase 1 checkpoint or Task 10
 
 Date: 2026-08-20
 
@@ -760,11 +761,31 @@ Iroh frame-link feasibility slice below was retained early as a pre-adapter
 experiment; it neither satisfies this checkpoint nor waives Task 10's
 dependency on it.
 
+## Retained pre-checkpoint Iroh frame-link feasibility
+
+**Status:** Complete as separately authorised feasibility evidence only. Task
+10 is not started.
+
+This narrow exception retains a pinned authenticated Iroh frame link, a
+direct-only loopback composition, and an explicitly invoked public N0 command.
+It carries the already-canonical scripted Phase 1 frames but does not implement
+or register an `EnvelopeDelivery` provider. The bearer invitation is created
+before network acceptance and must be transferred over a separate authenticated
+confidential channel; the Iroh stream begins with the HPKE-protected join.
+
+The feasibility slice is bounded by a 256 KiB crate-wide frame ceiling, checked
+operation deadlines, poisoned-link behavior after partial I/O, canonical host
+identity parsing, explicit Fast metadata disclosure, and no Private fallback.
+It supplies no offline mailbox, durable network authority, cursor, rotation,
+reconnection, packet-capture, route-change, outage, or relay-path two-peer
+evidence. Those remain Task 10 gates after the Phase 1 checkpoint. Further
+reusable adapter work is prohibited until that dependency is satisfied.
+
 ## Phase E: real-network experiments
 
 ### Task 10: Implement the Iroh Fast adapter
 
-Current pre-adapter feasibility increment: the pinned authenticated online
+**Status:** Not started. A pre-adapter feasibility increment retains the pinned authenticated online
 frame link and complete scripted `sessionctl-net` composition pass over
 direct-only loopback. Public N0 endpoint reachability is retained as an
 explicit ignored smoke test. This does not complete Task 10 or implement its
@@ -916,7 +937,7 @@ generic security-service interface.
 | Capability appears in logs or errors | High | Non-debug secret types and seeded redaction tests |
 | Strong adapter ordering leaks into core assumptions | Medium | Adverse memory schedule remains mandatory control path |
 | Dynamic dispatch complicates Rust API prematurely | Medium | Resolve only after types and semantics compile generically |
-| Too many candidate adapters delay Phase 1 | High | No real-network work before the Phase 1 checkpoint |
+| Too many candidate adapters delay Phase 1 | High | No reusable adapter work before the Phase 1 checkpoint; any earlier feasibility slice requires separate scope and cannot satisfy Task 10 |
 | Public mixnet exists but Session Chat has a tiny distinguishable traffic set | High | Measure application anonymity set and retain conservative claims |
 
 ## Open questions requiring maintainer review

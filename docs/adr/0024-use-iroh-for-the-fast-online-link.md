@@ -41,14 +41,21 @@ versioned Session Chat IPC frames:
   Session Chat admission proof before membership;
 - accept only the lowercase hexadecimal endpoint-ID text emitted by the host;
 - prefix every frame with a fixed-width length and reject zero or oversized
-  frames before allocation;
+  frames before allocation, with a crate-wide 256 KiB maximum caller bound and
+  fallible allocation inside that ceiling;
 - reject zero or greater-than-five-minute operation bounds, derive one checked
   absolute deadline per operation, and share it across connection setup, frame
   reads/writes, and graceful shutdown;
 - report graceful shutdown only after the peer acknowledges all outbound bytes
   and cleanly finishes its inbound stream; peer reset and connection failure
   are not receipts;
+- poison the ordered link after any failed, timed-out, or cancelled frame
+  operation, so a partial prefix or payload cannot desynchronize later reuse;
 - retain the existing canonical protocol decoders after network receipt;
+- create the durable bearer invitation before accepting a peer, require the
+  operator to transfer it over a separate authenticated confidential channel,
+  and begin the Iroh stream with the HPKE-protected join request rather than
+  sending the invitation to the first connector;
 - keep the endpoint key ephemeral for the headless proof; and
 - expose the N0 preset only through an explicit Fast network command.
 
@@ -76,6 +83,9 @@ automatic profile fallback.
 - A malicious peer, relay, or network can still drop, delay, duplicate, replay,
   reorder across reconnections, or refuse traffic. Existing protocol checks
   remain authoritative.
+- An unauthorised first connector can deny service to this one-connection
+  experiment, but it cannot retrieve the bearer invitation from the host or
+  construct a valid protected join without independently obtaining that file.
 - Deadlines, peer mismatch, noncanonical endpoint text, oversized remote frame
   declarations, and reset-before-receipt fail closed with payload-free errors.
 - Ephemeral endpoint keys make this a demonstration path, not durable peer

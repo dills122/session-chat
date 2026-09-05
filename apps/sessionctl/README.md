@@ -46,18 +46,26 @@ services. On the first computer, choose a new local state directory and run:
 cargo run -p sessionctl --bin sessionctl-net --locked -- host /tmp/session-chat-network-host
 ```
 
-The host prints a public `endpoint=` value. On the second computer, copy only
-that endpoint ID and choose a different new local state directory:
+The host prints a public `endpoint=` value, then creates the bearer invitation
+at `/tmp/session-chat-network-host/direct/invitation.v2` and reports
+`invitation=ready`. Transfer that invitation file to the second computer over
+an authenticated, confidential channel independent of Iroh. The endpoint ID is
+public; the invitation file is admission authority and must remain secret.
+Choose a different new local state directory on the second computer and run:
 
 ```sh
-cargo run -p sessionctl --bin sessionctl-net --locked -- join HOST_ENDPOINT_ID /tmp/session-chat-network-join
+cargo run -p sessionctl --bin sessionctl-net --locked -- join HOST_ENDPOINT_ID /tmp/session-chat-invitation.v2 /tmp/session-chat-network-join
 ```
 
-Both commands report `status=complete` after the protected invitation, join,
-Welcome, two MLS application messages, path update, removal, and post-removal
-rejection cross the authenticated Iroh link. Each computer keeps its own
+Both commands report `status=complete` after the separately transferred
+invitation authorizes a protected join, Welcome, two MLS application messages,
+path update, removal, and post-removal rejection over the authenticated Iroh
+link. The first network frame is the HPKE-protected join request; the host never
+sends the bearer invitation to a connector. Each computer keeps its own
 temporary SQLCipher/local capability state and removes only its marked state
-directory on success.
+directory on success. The join command does not delete the separately
+transferred source file; remove it according to the transfer system's handling
+policy after the proof completes.
 
 This command explicitly selects the FastV1 experiment. A direct peer can learn
 the other peer's address; N0 relay, address-lookup, and DNS infrastructure can

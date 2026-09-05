@@ -80,10 +80,15 @@ async fn local_frame_bounds_and_idle_receive_deadline_fail_closed() {
         host_link.receive_frame(Duration::from_millis(20)).await,
         Err(IrohFastError::DeadlineExceeded)
     );
-    let (join_close, host_close) =
-        tokio::join!(join_link.close(DEADLINE), host_link.close(DEADLINE),);
-    join_close.expect("close join");
-    host_close.expect("close host");
+    assert_eq!(
+        host_link.receive_frame(DEADLINE).await,
+        Err(IrohFastError::ConnectionUnavailable)
+    );
+    assert_eq!(
+        host_link.close(DEADLINE).await,
+        Err(IrohFastError::ConnectionUnavailable)
+    );
+    assert!(join_link.close(DEADLINE).await.is_err());
 }
 
 #[tokio::test]

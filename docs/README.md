@@ -85,12 +85,14 @@ all.
   slices. The cursor-bearing provider/owner composition and closed lifecycle
   evidence matrix complete the P1-5 common verdict work.
 - `transport-iroh` pins Iroh 1.1.0 and retains a direct-only loopback proof of
-  authenticated endpoint identity, bounded frame exchange, local oversize
-  rejection, remote length rejection before allocation, checked operation
-  deadlines, canonical endpoint text, authenticated-peer rejection, and
-  receipt-before-close behavior that rejects peer resets. It is an online
-  FastV1 link, not an offline mailbox or complete reusable delivery adapter.
-- `sessionctl-net` carries the complete scripted protected-join, Welcome,
+  authenticated endpoint identity, a crate-wide 256 KiB frame ceiling, local
+  oversize rejection, fallible bounded allocation, remote length rejection,
+  checked operation deadlines, poisoned-link rejection after partial I/O,
+  canonical endpoint text, authenticated-peer rejection, and receipt-before-
+  close behavior that rejects peer resets. It is an online FastV1 link, not an
+  offline mailbox or complete reusable delivery adapter.
+- `sessionctl-net` requires the bearer invitation to be transferred separately
+  over an authenticated confidential channel, then carries the scripted protected-join, Welcome,
   bidirectional-message, update, removal, and post-removal scenario over that
   bounded link. Its ordinary retained test is direct-only loopback; an ignored
   public N0 reachability smoke test is available for explicitly networked runs.

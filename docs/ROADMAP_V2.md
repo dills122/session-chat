@@ -280,7 +280,9 @@ The transport slice follows the profile-bound contract proposed in
 [`TRANSPORT_ABSTRACTION_V1.md`](specs/TRANSPORT_ABSTRACTION_V1.md). Stabilize
 the existing right-specific local Welcome adapter, then add the generalized
 contract, deterministic adverse-network control path, and shared conformance
-harness before any real network dependency. The detailed task order and
+harness before any reusable network adapter. The separately authorised Iroh
+frame-link feasibility slice is evidence only and does not change that order.
+The detailed task order and
 checkpoints are in the
 [transport abstraction implementation plan](plans/TRANSPORT_ABSTRACTION_IMPLEMENTATION.md).
 The cross-system scenarios, evidence format, and progression from deterministic
