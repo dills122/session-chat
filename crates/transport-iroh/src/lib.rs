@@ -1,10 +1,11 @@
 #![forbid(unsafe_code)]
 
-//! Bounded Iroh link for explicit FastV1 online experiments.
+//! Bounded Iroh link and connected FastV1 envelope-delivery adapter.
 //!
 //! This crate carries already-canonical Session Chat frames between two
-//! authenticated Iroh endpoints. It is not an offline mailbox and does not
-//! implement the reusable `EnvelopeDelivery` lifecycle contract.
+//! authenticated Iroh endpoints. The connected adapter implements bounded
+//! delivery operations against an explicitly online, volatile mailbox peer.
+//! It is not an offline mailbox and does not provide durable provider state.
 //!
 //! The endpoint/stream patterns follow Iroh 1.1.0's official examples:
 //! <https://docs.rs/iroh/1.1.0/iroh/#examples>.
@@ -17,6 +18,16 @@ use iroh::{
 };
 use thiserror::Error;
 use tokio::time::{Instant, timeout_at};
+
+mod adapter;
+
+pub use adapter::{
+    FastAcknowledgementCapability, FastDepositEndpoint, FastMailboxAuthorities, FastMailboxPolicy,
+    FastReceiveCapability, IrohFastDelivery, IrohFastMailboxService,
+    MAX_FAST_BATCH_CANONICAL_BYTES, MAX_FAST_ENVELOPES_PER_MAILBOX, MAX_FAST_LIVE_MAILBOXES,
+    MAX_FAST_MAILBOX_LIFETIME_SECONDS, MAX_FAST_REQUESTS_PER_CONNECTION,
+    MAX_FAST_RETAINED_BYTES_PER_MAILBOX,
+};
 
 /// ALPN dedicated to the first version of Session Chat's Fast online link.
 pub const SESSION_CHAT_FAST_ALPN_V1: &[u8] = b"session-chat/fast-link/1";
@@ -256,6 +267,12 @@ impl IrohFastLink {
         FastEndpointId(self.connection.remote_id())
     }
 
+    /// Returns the immutable link-wide frame ceiling.
+    #[must_use]
+    pub const fn maximum_frame_bytes(&self) -> usize {
+        self.maximum_frame_bytes
+    }
+
     /// Writes one nonempty bounded frame within the supplied deadline.
     pub async fn send_frame(
         &mut self,
@@ -289,8 +306,24 @@ impl IrohFastLink {
 
     /// Reads one length-prefixed frame and rejects its length before allocation.
     pub async fn receive_frame(&mut self, deadline: Duration) -> Result<Vec<u8>, IrohFastError> {
+        self.receive_frame_bounded(deadline, self.maximum_frame_bytes)
+            .await
+    }
+
+    /// Reads one frame under a caller-supplied per-operation payload ceiling.
+    ///
+    /// The smaller ceiling is applied to the untrusted length prefix before
+    /// allocation and can never widen the link-wide bound.
+    pub async fn receive_frame_bounded(
+        &mut self,
+        deadline: Duration,
+        maximum_bytes: usize,
+    ) -> Result<Vec<u8>, IrohFastError> {
         self.require_usable()?;
         let deadline = checked_deadline(deadline)?;
+        if maximum_bytes == 0 || maximum_bytes > self.maximum_frame_bytes {
+            return Err(IrohFastError::InvalidBound);
+        }
         self.usable = false;
         let result = timeout_at(deadline, async {
             let mut length = [0_u8; FRAME_LENGTH_BYTES];
@@ -300,7 +333,7 @@ impl IrohFastLink {
                 .map_err(|_| IrohFastError::FrameRejected)?;
             let length = usize::try_from(u32::from_be_bytes(length))
                 .map_err(|_| IrohFastError::FrameRejected)?;
-            if length == 0 || length > self.maximum_frame_bytes {
+            if length == 0 || length > maximum_bytes {
                 return Err(IrohFastError::FrameRejected);
             }
             let mut bytes = Vec::new();
@@ -360,6 +393,11 @@ impl IrohFastLink {
         } else {
             Err(IrohFastError::ConnectionUnavailable)
         }
+    }
+
+    fn poison(&mut self) {
+        self.usable = false;
+        self.connection.close(1_u8.into(), b"protocol rejected");
     }
 }
 

@@ -1,9 +1,10 @@
 # transport-iroh
 
-`transport-iroh` is the bounded authenticated online link for Session Chat's
-explicit FastV1 experiment. It pins Iroh 1.1.0, uses the AWS-LC TLS provider,
-and carries nonempty length-prefixed frames under caller-owned size and time
-bounds. Caller frame bounds cannot exceed the crate-wide 256 KiB ceiling.
+`transport-iroh` is the bounded authenticated online link and first connected
+`EnvelopeDelivery` adapter for Session Chat's explicit FastV1 experiment. It
+pins Iroh 1.1.0, uses the AWS-LC TLS provider, and carries nonempty
+length-prefixed frames under caller-owned size and time bounds. Caller frame
+bounds cannot exceed the crate-wide 256 KiB ceiling.
 Timed operations reject zero or durations above five minutes, derive one
 checked absolute deadline, and share its remaining budget across every step.
 Endpoint IDs accept only the lowercase hexadecimal form emitted by the host.
@@ -20,10 +21,22 @@ Two modes are intentionally separate:
   forwarding, address lookup, DNS, NAT discovery, and port mapping. Callers
   must label it Fast and disclose that metadata observer set.
 
-This crate does not provide offline storage, mailbox issuance, cursor
-persistence, acknowledgement durability, rotation, anonymity, or a complete
-`EnvelopeDelivery` implementation. Iroh endpoint authentication also does not
-authorize Session Chat admission or MLS membership.
+The connected adapter uses a versioned canonical CBOR request/response schema
+with independent deposit, receive, and acknowledgement capabilities. The
+volatile service retains only domain-separated capability digests, validates
+the authenticated server endpoint on the client, and returns a 40-byte
+mailbox-scoped HMAC cursor. Per-mailbox count, lifetime, retained-byte, poll,
+frame, request-count, attempt, and operation-deadline bounds fail closed. The
+shared connected-delivery conformance case proves byte-identical canonical
+envelopes, exact deposit retry identity, conflicting same-ID rejection,
+polling, exact-set acknowledgement, acknowledgement retry, and final absence
+over a direct loopback Iroh connection.
+
+This crate does not provide offline storage, durable mailbox state, cursor or
+acknowledgement persistence across service loss, lifecycle rotation,
+reconnection, anonymity, or retained relay/NAT/outage evidence. Iroh endpoint
+authentication also does not authorize Session Chat admission or MLS
+membership.
 
 Official API sources:
 

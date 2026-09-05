@@ -3994,9 +3994,15 @@ dependencies = [
 name = "transport-iroh"
 version = "0.1.0"
 dependencies = [
+ "aws-lc-rs",
  "iroh",
+ "minicbor",
+ "session-protocol",
+ "session-transport",
  "thiserror 2.0.20",
  "tokio",
+ "transport-conformance",
+ "zeroize",
 ]
 
 [[package]]

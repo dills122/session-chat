@@ -2,9 +2,15 @@
 
 //! Shared, test-only transport conformance traces and runners.
 
+mod delivery;
 mod lifecycle_provider;
 mod receive_owner;
 mod trace;
+
+pub use delivery::{
+    CONNECTED_DELIVERY_CONFORMANCE_REQUESTS_V1, DeliveryConformanceErrorV1,
+    DeliveryConformanceStepV1, run_connected_delivery_conformance_v1,
+};
 
 pub use lifecycle_provider::{
     DeterministicAcknowledgementCapabilityV1, DeterministicDepositEndpointV1,

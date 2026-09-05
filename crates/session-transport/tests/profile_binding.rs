@@ -1,7 +1,7 @@
 use session_transport::{
     AdapterExecutionV1, AdapterId, AdapterLimitsV1, AdapterManifestV1, AdapterOperationsV1,
     AdapterVersionV1, BackgroundWorkV1, BindingErrorV1, EgressDeclarationV1, EnforcementModeV1,
-    InternalRetryV1, TransportProfileId, bind_transport_v1,
+    InternalRetryV1, TransportProfileId, bind_fast_transport_v1, bind_transport_v1,
 };
 
 const SELECTED_AT: u64 = 1_700_000_000;
@@ -41,6 +41,17 @@ fn local_manifest() -> AdapterManifestV1 {
     )
 }
 
+fn fast_manifest() -> AdapterManifestV1 {
+    manifest(
+        TransportProfileId::FastV1,
+        AdapterLimitsV1::new(65_536, 192 * 1024, 64, 40).expect("bounded Fast limits"),
+        AdapterOperationsV1::DepositPollAcknowledge,
+        InternalRetryV1::CoordinatorOnly,
+        EgressDeclarationV1::AmbientNetwork,
+        BackgroundWorkV1::Declared,
+    )
+}
+
 #[test]
 fn local_manifest_binds_one_profile_without_minting_authority() {
     let record = bind_transport_v1(
@@ -64,6 +75,39 @@ fn local_manifest_binds_one_profile_without_minting_authority() {
     let diagnostics = format!("{record:?}");
     assert!(!diagnostics.contains("route"));
     assert!(!diagnostics.contains("capability"));
+}
+
+#[test]
+fn fast_manifest_records_ambient_network_enforcement_without_fallback() {
+    let record = bind_fast_transport_v1(fast_manifest(), [0xb6; 32], SELECTED_AT)
+        .expect("reviewed FastV1 manifest");
+
+    assert_eq!(record.profile(), TransportProfileId::FastV1);
+    assert_eq!(
+        record.enforcement(),
+        EnforcementModeV1::InProcessAmbientNetwork
+    );
+    assert_eq!(record.configuration_fingerprint(), &[0xb6; 32]);
+}
+
+#[test]
+fn fast_binding_rejects_local_or_underdeclared_manifests() {
+    assert_eq!(
+        bind_fast_transport_v1(local_manifest(), [0xb6; 32], SELECTED_AT),
+        Err(BindingErrorV1::ManifestMismatch)
+    );
+    let no_background = manifest(
+        TransportProfileId::FastV1,
+        AdapterLimitsV1::new(65_536, 192 * 1024, 64, 40).expect("bounded Fast limits"),
+        AdapterOperationsV1::DepositPollAcknowledge,
+        InternalRetryV1::CoordinatorOnly,
+        EgressDeclarationV1::AmbientNetwork,
+        BackgroundWorkV1::None,
+    );
+    assert_eq!(
+        bind_fast_transport_v1(no_background, [0xb6; 32], SELECTED_AT),
+        Err(BindingErrorV1::ManifestMismatch)
+    );
 }
 
 #[test]

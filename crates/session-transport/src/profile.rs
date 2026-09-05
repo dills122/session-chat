@@ -5,6 +5,11 @@ use crate::{AdapterId, MAX_POLL_ENCODED_BYTES, MAX_POLL_ENVELOPES, TransportProf
 const MANIFEST_VERSION_V1: u16 = 1;
 const LOCAL_CONFIGURATION_SCHEMA_V1: u16 = 1;
 const LOCAL_MAX_ENVELOPE_ENCODED_BYTES: u32 = 65_536;
+const FAST_CONFIGURATION_SCHEMA_V1: u16 = 1;
+const FAST_MAX_ENVELOPE_ENCODED_BYTES: u32 = 65_536;
+const FAST_MAX_BATCH_ENCODED_BYTES: u32 = 192 * 1024;
+const FAST_MAX_BATCH_ENVELOPES: u16 = 64;
+const FAST_MAX_CURSOR_BYTES: u16 = 40;
 const CONFIGURATION_FINGERPRINT_BYTES: usize = 32;
 const MAX_ADAPTER_VERSION_BYTES: usize = 64;
 
@@ -107,6 +112,8 @@ pub enum AdapterExecutionV1 {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum EnforcementModeV1 {
     InProcessNoNetwork,
+    /// In-process adapter with explicitly disclosed ordinary network access.
+    InProcessAmbientNetwork,
     ScopedNetworkBroker,
     IsolatedProcess,
 }
@@ -249,6 +256,45 @@ pub fn bind_transport_v1(
         adapter_version: manifest.adapter_version,
         configuration_fingerprint,
         enforcement,
+        selected_at_unix_seconds,
+    })
+}
+
+/// Binds the reviewed version 1 Fast profile to one ambient-network adapter.
+///
+/// This records the profile's direct/relay metadata exposure and admits no
+/// fallback profile. It does not claim network isolation, offline delivery, or
+/// durable mailbox state.
+pub fn bind_fast_transport_v1(
+    manifest: AdapterManifestV1,
+    configuration_fingerprint: [u8; CONFIGURATION_FINGERPRINT_BYTES],
+    selected_at_unix_seconds: u64,
+) -> Result<TransportBindingRecordV1, BindingErrorV1> {
+    if manifest.configuration_schema_version != FAST_CONFIGURATION_SCHEMA_V1 {
+        return Err(BindingErrorV1::UnsupportedConfigurationSchema);
+    }
+    if manifest.profile != TransportProfileId::FastV1
+        || manifest.limits.maximum_envelope_encoded_bytes != FAST_MAX_ENVELOPE_ENCODED_BYTES
+        || manifest.limits.maximum_batch_encoded_bytes != FAST_MAX_BATCH_ENCODED_BYTES
+        || manifest.limits.maximum_batch_envelopes != FAST_MAX_BATCH_ENVELOPES
+        || manifest.limits.maximum_cursor_bytes != FAST_MAX_CURSOR_BYTES
+        || manifest.operations != AdapterOperationsV1::DepositPollAcknowledge
+        || manifest.internal_retry != InternalRetryV1::CoordinatorOnly
+        || manifest.egress != EgressDeclarationV1::AmbientNetwork
+        || manifest.background_work != BackgroundWorkV1::Declared
+        || manifest.execution != AdapterExecutionV1::InProcess
+    {
+        return Err(BindingErrorV1::ManifestMismatch);
+    }
+    if configuration_fingerprint.iter().all(|byte| *byte == 0) || selected_at_unix_seconds == 0 {
+        return Err(BindingErrorV1::InvalidBindingRecord);
+    }
+    Ok(TransportBindingRecordV1 {
+        profile: TransportProfileId::FastV1,
+        adapter_id: manifest.adapter_id,
+        adapter_version: manifest.adapter_version,
+        configuration_fingerprint,
+        enforcement: EnforcementModeV1::InProcessAmbientNetwork,
         selected_at_unix_seconds,
     })
 }

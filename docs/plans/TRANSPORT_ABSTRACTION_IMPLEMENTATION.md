@@ -6,7 +6,8 @@ owner-store plus capability-admission/MLS composition checkpoints are complete,
 the durable client-reload and independent-process L1 checkpoints are complete,
 and a separately authorised pre-adapter Iroh feasibility slice is retained
 without satisfying Task 10; the Phase 1 checkpoint is now closed by the
-[closeout evidence](../evidence/phase1-closeout.md), and Task 10 remains unstarted
+[closeout evidence](../evidence/phase1-closeout.md), and Task 10 is in progress
+with its first connected direct-loopback delivery slice retained
 
 Date: 2026-08-20
 
@@ -760,12 +761,12 @@ and the retained SQLCipher MLS/storage increment governed by ADRs 0008 and 0015
 The [full closeout gate](../evidence/phase1-closeout.md) on
 `5a220bd9376d51b9b3943e997fc5c93ddcfa91ca` closes this checkpoint. The bounded
 Iroh frame-link feasibility slice below was retained early as a pre-adapter
-experiment; it does not satisfy Task 10. That reusable adapter remains later work.
+experiment. Task 10 now builds the reusable connected adapter on that evidence.
 
 ## Retained pre-checkpoint Iroh frame-link feasibility
 
-**Status:** Complete as separately authorised feasibility evidence only. Task
-10 is not started.
+**Status:** Complete as separately authorised feasibility evidence. Task 10 is
+now in progress as a distinct reusable-adapter increment.
 
 This narrow exception retains a pinned authenticated Iroh frame link, a
 direct-only loopback composition, and an explicitly invoked public N0 command.
@@ -782,19 +783,28 @@ its invitation reader rejects non-regular files before public work.
 It supplies no offline mailbox, durable network authority, cursor, rotation,
 reconnection, packet-capture, route-change, outage, or relay-path two-peer
 evidence. Those remain Task 10 gates after the Phase 1 checkpoint. Further
-reusable adapter work is prohibited until that dependency is satisfied.
+reusable adapter completion gates.
 
 ## Phase E: real-network experiments
 
 ### Task 10: Implement the Iroh Fast adapter
 
-**Status:** Not started. A pre-adapter feasibility increment retains the pinned authenticated online
-frame link and complete scripted `sessionctl-net` composition pass over
-direct-only loopback. Public N0 endpoint reachability is retained as an
-explicit ignored smoke test. This does not complete Task 10 or implement its
-common transport contract. The full mailbox adapter, shared conformance
-verdicts, relay-path two-peer evidence, route-change/outage cases, and packet
-captures remain open.
+**Status:** In progress. The first reusable slice implements the common
+`EnvelopeDelivery` deposit, poll, and acknowledgement operations over one
+authenticated connected Iroh stream. It includes split right-specific
+capabilities, canonical versioned request/response frames, a volatile bounded
+mailbox service, authenticated opaque cursors, caller-owned operation budgets,
+an exact FastV1 manifest/binder, and a shared connected-delivery case that also
+passes against the memory adapter. Direct-loopback evidence covers
+byte-identical envelopes, exact deposit retry identity, conflict rejection,
+poll, exact-set acknowledgement, acknowledgement retry, and clean close.
+
+The adapter remains online and volatile. Relay-path two-peer evidence,
+route-change/NAT/offline/outage cases, packet captures, durable service state,
+mailbox lifecycle/rotation composition, and the external-network adverse matrix
+remain open. The connected protocol and authority adverse matrix and the exact
+Linux/macOS/Windows implementation revision are retained. Public N0
+reachability remains an explicitly invoked ignored smoke test.
 
 **Description:** Implement the first real adapter for the Fast profile, keeping
 offline mailbox behavior separate where Iroh relays are stateless. Document
@@ -806,11 +816,11 @@ every discovery, relay, direct-peer, and DNS observer.
   contract.
 - [ ] Direct-peer and relay metadata exposure is represented accurately in the
   profile and UI fixture.
-- [ ] No adapter behavior is reused as an offline-mailbox claim.
+- [x] No adapter behavior is reused as an offline-mailbox claim.
 
 **Verification:**
 
-- [ ] Shared conformance suite passes.
+- [x] Shared conformance suite passes.
 - [ ] NAT, relay-only, route change, peer offline, and service outage tests pass.
 - [ ] Packet captures match the Fast observer matrix.
 

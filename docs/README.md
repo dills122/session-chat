@@ -98,8 +98,17 @@ checkpoint is distinct from that immutable tested code revision.
   oversize rejection, fallible bounded allocation, remote length rejection,
   checked operation deadlines, poisoned-link rejection after partial I/O,
   canonical endpoint text, authenticated-peer rejection, and receipt-before-
-  close behavior that rejects peer resets. It is an online FastV1 link, not an
-  offline mailbox or complete reusable delivery adapter.
+  close behavior that rejects peer resets. Its first connected FastV1
+  `EnvelopeDelivery` slice adds versioned canonical deposit, poll, and
+  acknowledgement frames; split right-specific capabilities; a volatile
+  bounded mailbox service; authenticated opaque cursors; an exact Fast
+  manifest/binding; and the shared byte-identity/retry delivery case over
+  direct loopback. It is not an offline or durable mailbox, and Task 10's
+  relay, route-change, outage, lifecycle, and packet-capture evidence remains
+  open.
+- [Iroh Fast adapter evidence](evidence/transport-iroh-fast.md) records the
+  implemented connected contract, its direct-loopback shared conformance case,
+  the dependency-policy re-review, and every remaining Task 10 evidence gate.
 - `sessionctl-net` requires the bearer invitation to be transferred separately
   over an authenticated confidential channel, then carries the scripted protected-join, Welcome,
   bidirectional-message, update, removal, and post-removal scenario over that
