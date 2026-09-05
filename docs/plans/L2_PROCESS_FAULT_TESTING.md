@@ -1,9 +1,8 @@
 # L2 process and storage fault testing plan
 
-Status: L2-0 through L2-5 and the L2-8 portable evidence gate are retained;
-L2-2/L2-3 are locally green and promote only on a clean required CI runner;
-each revision still requires a green three-OS Checkpoint C result; no
-production durability claim
+Status: L2-0 through L2-5 and L2-8 retained; Phase 1 portable gate passed on
+`ac7acf198b926e8fdb80257c899cca5e59a3f0e9`; each later behavior revision still
+requires a green three-OS Checkpoint C result; no production durability claim
 
 Date: 2026-08-26
 
@@ -11,9 +10,9 @@ Date: 2026-08-26
 
 | Work item | Delivery unit and owned path | Dependencies | Acceptance | Status |
 | --- | --- | --- | --- | --- |
-| L2-2 inviter crash/restart atomicity | Lead-owned integration; `apps/sessionctl/tests/l2_crash_restart_inviter.rs` | Retained L2-0/L2-1 | Every baseline-observed inviter checkpoint is exactly I0 or I1 as specified; missing/duplicate coverage, mixed state, and conflicting retry are rejected | Locally green; public promotion requires the per-revision three-OS L2 job |
-| L2-3 joiner crash/restart atomicity | Lead-owned integration; `apps/sessionctl/tests/l2_crash_restart_joiner.rs` | Retained L2-0/L2-1 | Every baseline-observed joiner checkpoint is exactly J0 or J1 as specified; missing/duplicate coverage, retained KeyPackage, and conflicting retry are rejected | Locally green; public promotion requires the per-revision three-OS L2 job |
-| L2-8 portable evidence gate | Lead-owned integration; `apps/sessionctl/src/l2_process/evidence.rs`, checked suite promotion seams, `.github/workflows/ci.yml`, canonical claims | Retained L2-2/L2-3/L2-5 | Sealed complete aggregates emit canonical per-case `l2-evidence-v1` bundles bound to actual compiler, GitHub run/workflow, engine, binary, and artifact provenance; seeded canaries and actual case secrets are absent from every bounded surface; PR smoke catches defective evidence | Gate retained; passing portability evidence remains CI-owned per revision |
+| L2-2 inviter crash/restart atomicity | Lead-owned integration; `apps/sessionctl/tests/l2_crash_restart_inviter.rs` | Retained L2-0/L2-1 | Every baseline-observed inviter checkpoint is exactly I0 or I1 as specified; missing/duplicate coverage, mixed state, and conflicting retry are rejected | Phase 1 portable gate passed; later revisions require their own three-OS L2 job |
+| L2-3 joiner crash/restart atomicity | Lead-owned integration; `apps/sessionctl/tests/l2_crash_restart_joiner.rs` | Retained L2-0/L2-1 | Every baseline-observed joiner checkpoint is exactly J0 or J1 as specified; missing/duplicate coverage, retained KeyPackage, and conflicting retry are rejected | Phase 1 portable gate passed; later revisions require their own three-OS L2 job |
+| L2-8 portable evidence gate | Lead-owned integration; `apps/sessionctl/src/l2_process/evidence.rs`, checked suite promotion seams, `.github/workflows/ci.yml`, canonical claims | Retained L2-2/L2-3/L2-5 | Sealed complete aggregates emit canonical per-case `l2-evidence-v1` bundles bound to actual compiler, GitHub run/workflow, engine, binary, and artifact provenance; seeded canaries and actual case secrets are absent from every bounded surface; PR smoke catches defective evidence | Passed for the exact Phase 1 revision; portability remains CI-owned per revision |
 
 The lead task owns shared controller changes, canonical documentation,
 integration verification, commits, and the eventual pull request. Both lanes
@@ -50,6 +49,11 @@ contract, and the retained
 [`SQLCipher durable-outbox fault decision packet`](../research/SQLCIPHER_DURABLE_OUTBOX_FAULTS_2026-08-25.md).
 The requested `SQLCIPHER_DURABILITY_FAULT_RECONCILIATION_2026-08-25.md` source
 does not exist in this checkout; this plan does not imply that it was reviewed.
+
+The exact Phase 1 portable result, including the Linux, macOS, and Windows job
+links and complete public case counts, is retained in the
+[Phase 1 evidence matrix](../evidence/phase1-closeout.md). That result applies to
+immutable code revision `ac7acf198b926e8fdb80257c899cca5e59a3f0e9`.
 
 ## Retained baseline and exact scope
 

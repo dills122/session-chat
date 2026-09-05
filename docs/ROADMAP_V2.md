@@ -14,8 +14,8 @@ for its security properties.
 
 ## Current target
 
-**Decision:** Phase 0 is sufficient to begin implementation. Continue Phase 1
-as a capability-only Rust protocol laboratory. V1 is retired under ADR 0006;
+**Decision:** Phase 1 is complete as a capability-only Rust protocol laboratory;
+its exact evidence is recorded below. V1 is retired under ADR 0006;
 do not turn that cleanup into GitHub integration, SSI, a production mailbox, a
 GUI, or a reusable/product network transport. A separately invoked bounded
 Iroh frame-link feasibility experiment exists, but it does not satisfy a Phase
@@ -48,7 +48,10 @@ Exit criteria:
 
 ## Phase 1: protocol laboratory
 
-Implementation status: in progress. Retained increments now establish the Rust
+Implementation status: complete on tested code revision
+`ac7acf198b926e8fdb80257c899cca5e59a3f0e9`; the
+[completion evidence](evidence/phase1-closeout.md) records the full portable gate
+and distinguishes its later documentation checkpoint. Retained increments establish the Rust
 workspace, bounded deterministic-CBOR opaque envelope, canonical
 domain-separated Ed25519 secret-capability invitation, exhaustive field-boundary
 fixtures, and a bounded inviter-owned invitation reservation/consumption state
@@ -89,7 +92,7 @@ independent-process runner: malformed, expired, copied, wrong-invitation,
 wrong-KeyPackage, wrong-verifier, reordered, and exact-replay inputs reject
 before approval, MLS Add, or durable membership mutation, and fresh inspection
 proves the owner state unchanged. Welcome-delivery lease/result process-kill
-recovery remains sequenced by the closeout plan. The separate SQLCipher
+recovery is retained with full portable evidence in the closeout matrix. The SQLCipher
 laboratory now
 implements the same sole-owner coordinator port with version-2 migration,
 close/reopen leases, terminal states, and ambiguous exact-retry evidence; it is
@@ -153,8 +156,8 @@ the lifecycle, reaps every child, and emits a bounded redacted manifest.
 The checked L2 suites add bounded inviter/joiner application-kill recovery.
 Welcome-delivery application and SQLite commit-window kill recovery are now
 implemented in the checked closeout suites. The [evidence matrix](evidence/phase1-closeout.md)
-records their exact tests; Phase 1 completion still requires independent review
-and the merged-revision full three-platform gate. Power-loss evidence, human
+records their exact tests, independent review and passing merged-revision full
+three-platform gate. Power-loss evidence, human
 approval UX, and a network profile remain later gates.
 
 The Rust source-coverage gate now measures production code through integration
@@ -278,8 +281,8 @@ The retained Phase 1 workspace includes the original foundation:
 - Deterministic in-memory transport
 - `sessionctl` headless client
 
-The remaining work and the exact boundary between laboratory completion,
-pre-network safety, and later production evidence are defined in the
+The completed work and the exact boundary between laboratory completion,
+pre-network safety, and later production evidence are recorded in the historical
 [Phase 1 protocol laboratory closeout plan](plans/PHASE1_PROTOCOL_CLOSEOUT.md).
 
 The transport slice follows the profile-bound contract proposed in

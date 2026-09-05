@@ -5,7 +5,8 @@ dispatch and Task 6 conformance slices are complete, Task 9's durable
 owner-store plus capability-admission/MLS composition checkpoints are complete,
 the durable client-reload and independent-process L1 checkpoints are complete,
 and a separately authorised pre-adapter Iroh feasibility slice is retained
-without satisfying the Phase 1 checkpoint or Task 10
+without satisfying Task 10; the Phase 1 checkpoint is now closed by the
+[closeout evidence](../evidence/phase1-closeout.md), and Task 10 remains unstarted
 
 Date: 2026-08-20
 
@@ -27,7 +28,7 @@ The cross-system execution cadence, stable scenario IDs, retained evidence
 bundle, and progression from offline two-client tests to process, storage,
 network, packet-capture, and release gates are defined in
 [`REAL_WORLD_E2E_TESTING.md`](REAL_WORLD_E2E_TESTING.md).
-The remaining Phase 1 subset is sequenced by
+The completed Phase 1 subset is recorded by
 [`PHASE1_PROTOCOL_CLOSEOUT.md`](PHASE1_PROTOCOL_CLOSEOUT.md); later real-network
 experiments in this plan do not block the protocol laboratory.
 
@@ -747,7 +748,7 @@ and the retained SQLCipher MLS/storage increment governed by ADRs 0008 and 0015
 - [x] Memory transport remains deterministic and offline.
 - [x] The complete Phase 1 headless flow passes through the common transport
   boundary.
-- [ ] Process-crash recovery cannot repeat membership transitions; bounded
+- [x] Process-crash recovery cannot repeat membership transitions; bounded
   duplicate/reordered memory schedules are retained.
 - [x] The owner-local transaction store is the sole durable outbox and lease
   authority; coordinator restart does not create a second ledger.
@@ -756,10 +757,10 @@ and the retained SQLCipher MLS/storage increment governed by ADRs 0008 and 0015
 - [x] `cargo test --workspace`
 - [x] Review retained evidence before any real network adapter.
 
-The unchecked crash-recovery criterion keeps this checkpoint open. The bounded
+The [full closeout gate](../evidence/phase1-closeout.md) on
+`ac7acf198b926e8fdb80257c899cca5e59a3f0e9` closes this checkpoint. The bounded
 Iroh frame-link feasibility slice below was retained early as a pre-adapter
-experiment; it neither satisfies this checkpoint nor waives Task 10's
-dependency on it.
+experiment; it does not satisfy Task 10. That reusable adapter remains later work.
 
 ## Retained pre-checkpoint Iroh frame-link feasibility
 

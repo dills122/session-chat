@@ -1,6 +1,6 @@
 # ADR 0025: Close Phase 1 recovery and conformance evidence
 
-Status: accepted; implementation and exact-revision completion gate in progress
+Status: accepted; implementation and exact-revision completion gate passed
 
 Date: 2026-09-05
 
@@ -63,8 +63,10 @@ schema 1 is rejected rather than silently reinterpreted.
 ## Consequences and limits
 
 The [Phase 1 evidence matrix](../evidence/phase1-closeout.md) is the claim index.
-Phase 1 remains in progress until a merged immutable revision passes the full
-three-platform non-PR gate and a later metadata-only checkpoint cites it.
+Phase 1 completed its full three-platform non-PR gate on
+`ac7acf198b926e8fdb80257c899cca5e59a3f0e9`. The later metadata-only checkpoint
+cites that immutable code revision and does not claim the same gate for its own
+subsequent hash.
 
 This evidence is application-kill and SQLite-visible laboratory evidence. It
 proves neither physical power-loss safety, stale-snapshot rollback resistance,

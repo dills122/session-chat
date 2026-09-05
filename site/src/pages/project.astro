@@ -13,7 +13,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         <h1>Today: a command-line protocol demo, not a chat app.</h1>
       </div>
       <p class="lede">
-        Phase 1 proves the two-person invitation, approval, encryption, messaging, update, and removal flow in memory. You cannot install or host Session Chat yet. Durable state, a human approval screen, desktop packaging, and real transports are still missing.
+        Phase 1 laboratory work is complete: the headless two-person flow, hostile inputs, deterministic delivery faults, and encrypted SQLCipher recovery passed the Linux, macOS, and Windows gate. Product key custody, a human approval screen, desktop packaging, and reusable network transports remain later work.
       </p>
     </header>
   </div>
@@ -22,20 +22,20 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     <div class="section-inner">
       <div class="section-head">
         <h2 id="now-title">What you can run today.</h2>
-        <p class="section-lede">The <code>sessionctl</code> command runs a fresh Alice-and-Bob flow through the implemented in-memory components.</p>
+        <p class="section-lede">The <code>sessionctl</code> command runs an Alice-and-Bob flow through the composed laboratory components and deterministic local transport.</p>
       </div>
       <div class="evidence-callout">
         <strong>Create → protect → approve → join → message → update → remove.</strong>
         <p><code>sessionctl</code> creates a private capability invitation, protects Bob’s join request, records a simulated approval, delivers the MLS Welcome, exchanges protected messages in both directions, updates the group, removes Bob, and confirms that Bob’s post-removal access is rejected.</p>
-        <p>This proves that the local components work together in one fresh process. It does not prove durable storage, a human approval interface, a hosted realm, network delivery, or production security.</p>
+        <p>The independent-process runner and checked fault suites also retain restart and Welcome-delivery recovery evidence. The <a href="https://github.com/dills122/session-chat/blob/master/docs/evidence/phase1-closeout.md">Phase 1 evidence matrix</a> records the exact tested revision and the remaining product, physical-durability, and platform-key limits.</p>
       </div>
 
       <dl class="crate-map">
         <div class="crate-row"><dt>Protocol objects</dt><dd>Canonical envelopes, invitation v1/v2, protected join framing, exact AAD, and local deposit endpoint.</dd><dd class="crate-state">bounded fixtures retained</dd></div>
-        <div class="crate-row"><dt>Admission path</dt><dd>HPKE provenance, exact KeyPackage ownership, replay reservation, local invitation binding, and simulated approval.</dd><dd class="crate-state">in memory</dd></div>
+        <div class="crate-row"><dt>Admission path</dt><dd>HPKE provenance, exact KeyPackage ownership, durable laboratory replay reservation, local invitation binding, and simulated approval.</dd><dd class="crate-state">laboratory composition</dd></div>
         <div class="crate-row"><dt>MLS path</dt><dd>Two-member Add/Welcome, protected messages, update, removal, replay, and reordering behavior.</dd><dd class="crate-state">isolated adapter</dd></div>
         <div class="crate-row"><dt>Delivery path</dt><dd>Right-specific local Welcome mailbox and a deterministic adverse memory transport.</dd><dd class="crate-state">not networked</dd></div>
-        <div class="crate-row"><dt>Storage evidence</dt><dd>Separate sealed-vault, passphrase-wrapper, transaction, and SQLCipher laboratories.</dd><dd class="crate-state">not integrated</dd></div>
+        <div class="crate-row"><dt>Storage evidence</dt><dd>Composed SQLCipher transaction and process-recovery evidence; separate sealed-vault and passphrase-wrapper laboratories.</dd><dd class="crate-state">laboratory only</dd></div>
         <div class="crate-row"><dt>Platform baseline</dt><dd>Workspace build, lint, and test matrix on Linux, macOS, and Windows CI.</dd><dd class="crate-state">CI gate active</dd></div>
       </dl>
     </div>
@@ -48,7 +48,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         <p class="section-lede">This roadmap shows the proposed order of evidence, not delivery dates. Completing one laboratory phase does not prove the whole product is ready.</p>
       </div>
       <dl class="roadmap">
-        <div class="roadmap-row current"><dt><span class="phase-code">Phase 1</span><br />Protocol prototype</dt><dd>Prove private invitation access, two-device MLS, hostile input handling, deterministic delivery faults, and one command-line flow.</dd><dd class="crate-state">in progress</dd></div>
+        <div class="roadmap-row current"><dt><span class="phase-code">Phase 1</span><br />Protocol prototype</dt><dd>Capability invitation access, two-party MLS, hostile input handling, deterministic delivery faults, and process recovery passed the three-platform laboratory gate.</dd><dd class="crate-state">complete</dd></div>
         <div class="roadmap-row"><dt><span class="phase-code">Validation track</span><br />Product understanding</dt><dd>Test whether people understand the difference between account proof and trust, verification and approval, device changes, and Fast versus Private network metadata.</dd><dd class="crate-state">before UI selection</dd></div>
         <div class="roadmap-row"><dt><span class="phase-code">Phase 2</span><br />Identity independence</dt><dd>Add GitHub control evidence through a minimal bridge while the capability path continues to work unchanged.</dd><dd class="crate-state">planned</dd></div>
         <div class="roadmap-row"><dt><span class="phase-code">Phase 3</span><br />Rendezvous + fast delivery</dt><dd>Opaque capability mailboxes, offline delivery, bounded service behavior, a fast direct/relay adapter, and self-hosted realm deployment.</dd><dd class="crate-state">planned</dd></div>
