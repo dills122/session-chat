@@ -1,6 +1,6 @@
 # Phase 1 closeout independent review record
 
-Status: implementation and plan review Ready; merged portable completion pending
+Status: implementation and plan review Ready; full portable completion gate passed
 
 Base: `b85e92cd2f6be7caa06e0979c0be8b2b973ee95c`
 
@@ -41,14 +41,22 @@ after the reviewed revision: the controller could observe the filename before
 the writer finished its contents. The CI follow-up writes and closes a temporary
 marker before renaming it to the readiness filename, and gives malformed marker
 reads a distinct coarse stage. This narrowly scoped test synchronization change
-was author-reviewed and requires corrected sweeps and subsequent CI; it
+was author-reviewed and passed the corrected sweeps and subsequent CI; it
 is not represented as part of the earlier independent verdict. No fourth review
 instance was started.
 
-This review establishes implementation/plan readiness, not Phase 1 completion.
-Hosted positive evidence promotion and the full non-PR Linux, macOS and Windows
-run must pass on the immutable merged code revision. The separate completion
-metadata commit must cite that revision explicitly.
+The subsequent full Windows run exposed an existing retry-conflict probe failure
+that a multi-command shell step could mask with a later success. PR #304 gives
+each Cargo command its own native CI step and repeats that exact probe across
+eight fresh fixtures with coarse diagnostics. The first failure did not
+reproduce; this is not a claimed storage defect diagnosis. These CI/test changes
+were author-reviewed, and no further independent review instance was started.
+
+The independent review established implementation/plan readiness. Completion is
+separately supported by the [full non-PR gate](phase1-closeout.md) on immutable
+merged code revision `ac7acf198b926e8fdb80257c899cca5e59a3f0e9`, including hosted
+positive promotion and all Linux, macOS and Windows suites. The later completion
+metadata checkpoint cites that revision rather than its own subsequent hash.
 
 The Welcome fixture's authorization/opening tables are empty; populated durable
 authorization has separate executable evidence. Engine promotion hashes the

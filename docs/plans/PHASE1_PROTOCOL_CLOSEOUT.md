@@ -1,8 +1,14 @@
 # Implementation plan: Phase 1 protocol laboratory closeout
 
-Status: P1-0 through P1-7 retained; P1-8/P1-9 implementation and independent review ready; publication and P1-10 exact-revision gate pending
+Status: historical completed plan; P1-0 through P1-10 complete
 
 Date: 2026-09-02
+
+Completed: 2026-09-05 on immutable tested code revision
+`ac7acf198b926e8fdb80257c899cca5e59a3f0e9`. The
+[evidence matrix](../evidence/phase1-closeout.md) records the full non-PR
+three-platform run. This later checkpoint changes only evidence/status metadata
+and does not represent its own hash as the tested code revision.
 
 ## Objective
 
@@ -15,7 +21,7 @@ recover, and close a capability-admitted two-person session through the
 complete Phase 1 protocol boundary under bounded deterministic hostile
 conditions, without a GUI or real network service.
 
-This plan sequences the remaining work. The canonical product, architecture,
+This historical plan records the completed work. The canonical product, architecture,
 threat-model, protocol specifications, and accepted ADRs remain authoritative.
 If implementation requires a security or protocol contract to change, update
 the shared contract first and record the consequential decision in an ADR and
@@ -521,7 +527,7 @@ commit, re-lease, and terminalization, then verify state in a fresh process.
 - [x] Ambiguous adapter acceptance, stale or foreign results, last-attempt
       expiry, and re-lease cannot resurrect work, consume another attempt, or
       mutate a newer generation.
-- [ ] Raw case evidence remains non-public; the public aggregate retains only
+- [x] Raw case evidence remains non-public; the public aggregate retains only
       bounded secret-free completion evidence on Linux, macOS, and Windows.
 
 **Verification:**
@@ -546,9 +552,9 @@ checkpoints plus every supported clean-observed named-VFS commit-window ordinal.
 The fresh verifier compares complete owner transitions and all immutable rows,
 retries through the actual coordinator, and rejects stale/foreign results.
 See [ADR 0025](../adr/0025-close-phase-one-recovery-and-conformance-evidence.md)
-and the [evidence matrix](../evidence/phase1-closeout.md). Local checks and the
-independent review passed; portable passage remains tied to the exact completion
-revision. The unchecked aggregate criterion above requires that portable run.
+and the [evidence matrix](../evidence/phase1-closeout.md). Local checks, independent
+review and the full portable gate passed; the matrix names the tested revision
+and retains the exact case counts and run links.
 
 **Estimated scope:** Medium; application-kill evidence only, not physical
 power-loss or rollback evidence
@@ -565,7 +571,7 @@ it outside Phase 1 before requesting completion review.
 - [x] The matrix covers `E2E-JOIN-001`, `E2E-JOIN-002`, `E2E-TXN-001`,
       `E2E-MSG-001`, `E2E-MSG-002`, `E2E-REMOVE-001`, `E2E-AUTH-001`, and the
       Phase 1 portions of retention, upgrade, and abuse scenarios.
-- [ ] Every passing claim links to executable evidence on the exact revision;
+- [x] Every passing claim links to executable evidence on the exact revision;
       missing physical/platform/product evidence remains visibly deferred.
 - [x] A fresh-context independent review finds no contradiction among the
       matrix, roadmap, architecture, threat model, ADRs, and active plans.
@@ -606,12 +612,12 @@ gate, and must not imply that its own later hash received the full L2 matrix.
 
 - [x] The complete local gate passes, or any environment-only command is
       identified and verified by the corresponding required CI job.
-- [ ] The merged candidate revision passes Rust, Node, coverage, dependency,
+- [x] The merged candidate revision passes Rust, Node, coverage, dependency,
       and complete L2 evidence jobs on every required platform.
-- [ ] A follow-up documentation checkpoint records the exact revision, marks
+- [x] A follow-up documentation checkpoint records the exact revision, marks
       this plan historical, and preserves every remaining product/network/
       platform limitation.
-- [ ] The completion status names the immutable tested revision explicitly and
+- [x] The completion status names the immutable tested revision explicitly and
       distinguishes it from the evidence-only documentation commit.
 
 **Verification:**
@@ -624,7 +630,7 @@ gate, and must not imply that its own later hash received the full L2 matrix.
 - [x] `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps --locked --offline`
 - [x] `cargo deny --all-features --locked check`, locally or through the required
       dependency-policy CI job
-- [ ] The complete checked-cfg L2 suites from `.github/workflows/ci.yml` pass on
+- [x] The complete checked-cfg L2 suites from `.github/workflows/ci.yml` pass on
       Linux, macOS, and Windows for the exact completion revision.
 
 **Dependencies:** P1-9

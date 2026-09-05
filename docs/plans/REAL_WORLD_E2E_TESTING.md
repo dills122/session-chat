@@ -1,8 +1,8 @@
 # Real-world end-to-end security test strategy
 
 Status: accepted test strategy; bounded Phase 1 hostile first-contact,
-transaction and Welcome process-kill suites retained; exact-revision closeout
-gate pending
+transaction and Welcome process-kill suites retained; exact-revision Phase 1
+closeout gate passed, with later product/physical/platform evidence still open
 
 Date: 2026-08-20
 
@@ -91,13 +91,13 @@ records, roadmap gates, and external audit findings can refer to the same case.
 | --- | --- | --- |
 | `session-protocol` | Canonical fixtures and malformed/boundary tests | Continuous fuzz corpus, compatibility corpus, and cross-version decode matrix |
 | `session-core` | Invitation validation and lifecycle state tests | Two-process invitation/join orchestration with restart and concurrent request races |
-| `admission-capability` | Exact binding, replay, expiry, reservation, durability-resolution tests, the positive protected-join path through independent clients, and one exact-replay rejection through that process boundary | Remaining malformed, expired, copied, wrong-invitation, wrong-KeyPackage, and wrong-verifier process cases |
+| `admission-capability` | Exact binding, replay, expiry, reservation, durability-resolution tests, the positive protected-join path through independent clients, and the complete hostile first-contact process matrix | Human approval UX and later provider-specific admission evidence |
 | `session-crypto-hpke` | RFC and independent-provider vectors, hostile context rejection, and cross-process protected join | Captured-artifact inspection that does not retain authority-bearing material |
 | `session-crypto-mls` | Two-party lifecycle, replay/reorder, update/removal, storage-call evidence, exact Alice process-exit reload, and bounded join-writer application-kill recovery | Cross-implementation vectors and corrupted-state tests |
-| `session-inviter-transaction` | Deterministic atomicity/fault model plus LocalV1 coordinator owner-port acceptance, failure, and ambiguous exact-retry integration | Welcome-delivery process-kill, real disk/power fault, restore, and stale-snapshot evidence |
-| `storage-sqlcipher` | Real capability admission and inviter MLS composition, ambiguous commit recovery, schema migration, exact identity/group reload across graceful process exit, sole-owner Welcome leases, stale/foreign rejection, exhaustion/expiry, exact retry, rollback, durable `sessionctl` composition, real joiner MLS consumption, and bounded application-kill/SQLite-visible fault recovery | Welcome-delivery process-kill, real disk/power fault, restore, and stale-snapshot evidence |
-| `session-transport`, `transport-memory`, and `transport-conformance` | Local and provider-neutral right separation, bounds, idempotency, canonical opaque envelopes, deterministic adverse controls, strict bounded double-replay and queue-saturation conformance with defective bridges, fail-closed LocalV1 binding, a deposit-only coordinator, and cross-platform blocking supervision | Arbitrary-delay and exhaustive authority/resource verdicts, provider-wide conformance, durable owner-store composition, real network adapters, and packet-captured evidence |
-| `sessionctl` | In-process and independent-process two-client capability join through SQLCipher commit/reload and coordinator delivery, messaging, update, removal, bounded IPC, cleanup, a redacted evidence manifest, one exact-replay rejection before durable membership mutation, and bounded L2 application-kill/SQLite-visible fault scheduling | Remaining hostile L1 cases, Welcome-delivery process-kill recovery, and a separate future power-loss lab |
+| `session-inviter-transaction` | Deterministic atomicity/fault model plus LocalV1 coordinator owner-port acceptance, failure, and ambiguous exact-retry integration | Real disk/power fault, restore, and stale-snapshot evidence |
+| `storage-sqlcipher` | Real capability admission and inviter MLS composition, ambiguous commit recovery, schema migration, exact identity/group reload across graceful process exit, sole-owner Welcome leases, stale/foreign rejection, exhaustion/expiry, exact retry, rollback, durable `sessionctl` composition, real joiner MLS consumption, and bounded transaction/Welcome application-kill and SQLite-visible recovery | Real disk/power fault, restore, and stale-snapshot evidence |
+| `session-transport`, `transport-memory`, and `transport-conformance` | Local and provider-neutral right separation, bounds, idempotency, canonical opaque envelopes, deterministic adverse controls, bounded delay/lifecycle/authority/resource conformance with defective bridges, fail-closed LocalV1 binding, a deposit-only coordinator, and cross-platform blocking supervision | Production provider conformance, durable product receive ownership, real network adapters, and packet-captured evidence |
+| `sessionctl` | In-process and independent-process two-client capability join through SQLCipher commit/reload and coordinator delivery, messaging, update, removal, bounded IPC, cleanup, complete hostile first contact, redacted evidence manifests, and bounded transaction/Welcome application-kill and SQLite-visible fault scheduling | Product network/vault composition and a separate future power-loss lab |
 | Client vault | Sealed lifecycle, opaque locked inbox, bounded unlock orchestration, and portable passphrase laboratory | Product storage composition, OS credential input, process isolation, crash-dump, rollback, recovery, and deletion evidence |
 | Realm services | Design and disposable invitation-provider spike only | Container isolation, quotas, migration/restore, and operational redaction tests |
 
@@ -209,24 +209,23 @@ passes a happy path.
    `sessionctl` without repeating the existing MLS transition.
 3. **Complete:** extend that composition into the canonical independent-process
    L1 runner and redacted evidence producer.
-4. **In progress:** complete the remaining hostile independent-process cases
-   and provider-wide lifecycle/cursor conformance. The bounded L2
-   application-kill/SQLite-fault scheduler is retained.
+4. **Complete for Phase 1:** hostile independent-process cases and bounded
+   lifecycle/cursor conformance are retained. Welcome recovery and the full
+   application-kill/SQLite-fault gate passed on all three platforms.
 5. Add the containerized realm runner before deployment claims.
 6. Evaluate Fast, Tor/Arti, SMP, and mixnet candidates through the same scenario
    IDs, evidence schema, and packet-capture policy.
 7. Add platform vault, update, restore, and operated-release lanes only when
    their product surfaces exist.
 
-The bounded work required to close item 4 and make the Phase 1 completion
-decision is decomposed in
+The completed bounded work and exact Phase 1 completion decision are recorded in
 [`PHASE1_PROTOCOL_CLOSEOUT.md`](PHASE1_PROTOCOL_CLOSEOUT.md).
 
 ## Current gaps
 
-- The independent-process positive scenario, bounded manifest, and one exact
-  protected-request replay rejection exist, but the remaining hostile
-  first-contact cases and restricted raw artifact bundle do not.
+- The independent-process positive scenario, bounded manifest and complete
+  Phase 1 hostile first-contact matrix are retained. A product-facing restricted
+  raw artifact bundle remains later work.
   Authority-bearing frame hashes are deliberately omitted from the public
   manifest.
 - The deterministic memory adapter covers explicit delivery, loss, duplication,
@@ -234,13 +233,13 @@ decision is decomposed in
   corruption, stale replay, and acknowledgement-result loss. The publish-disabled
   conformance crate parses retained traces and executes normalized lifecycle
   and queue-saturation verdicts twice against fresh adapters, with deliberately
-  defective bridges. Arbitrary delay and the exhaustive authority/resource
-  verdict matrix remain open.
+  defective bridges. Bounded arbitrary delay and the Phase 1 authority/resource
+  verdict matrix are retained; production provider conformance remains open.
 - SQLCipher transaction, capability-admission/MLS composition, durable
   coordinator-owner evidence, graceful independent-process reload, bounded
   join-writer application-kill recovery, and SQLite-visible fault injection
-  exist. Welcome-delivery process-kill, real disk/power-fault, restore, and
-  stale-snapshot harnesses remain open.
+  exist. Welcome-delivery process-kill evidence is retained. Real disk/power-fault,
+  restore and stale-snapshot harnesses remain open.
 - The supported-platform CI matrix exists for current Rust foundations, but no
   real transport, packet-capture lane, containerized realm, desktop application,
   signed release, or operated release matrix exists.

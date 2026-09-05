@@ -47,7 +47,7 @@ Page title: Session Chat · Private conversations without permanent accounts
 
 Meta description: Session Chat is an experimental system for temporary, end-to-end encrypted conversations between two people without permanent chat accounts.
 
-Phase 1: protocol prototype
+Phase 1 laboratory complete
 The encrypted join and messaging flow runs in tests and a command-line demo. There is no installable app or online service yet. Do not use it for real conversations.
 # Private conversations without permanent accounts.
 Session Chat is being built as a temporary, encrypted room for two people. One person creates the room, shares a private invitation, approves the other device, and ends the session when the conversation is over.
@@ -246,29 +246,31 @@ Meta description: What can be run in Session Chat today, what is still missing, 
 
 Current project status
 # Today: a command-line protocol demo, not a chat app.
-Phase 1 proves the two-person invitation, approval, encryption, messaging, update, and removal flow in memory. You cannot install or host Session Chat yet. Durable state, a human approval screen, desktop packaging, and real transports are still missing.
+Phase 1 laboratory work is complete: the headless two-person flow, hostile inputs, deterministic delivery faults, and encrypted SQLCipher recovery passed the Linux, macOS, and Windows gate. Product key custody, a human approval screen, desktop packaging, and reusable network transports remain later work.
 ## What you can run today.
-The `sessionctl` command runs a fresh Alice-and-Bob flow through the implemented in-memory components.
+The `sessionctl` command runs an Alice-and-Bob flow through the composed laboratory components and deterministic local transport.
 Create → protect → approve → join → message → update → remove.
 `sessionctl` creates a private capability invitation, protects Bob’s join request, records a simulated approval, delivers the MLS Welcome, exchanges protected messages in both directions, updates the group, removes Bob, and confirms that Bob’s post-removal access is rejected.
-This proves that the local components work together in one fresh process. It does not prove durable storage, a human approval interface, a hosted realm, network delivery, or production security.
+The independent-process runner and checked fault suites also retain restart and Welcome-delivery recovery evidence. The
+Phase 1 evidence matrix
+records the exact tested revision and the remaining product, physical-durability, and platform-key limits.
 Protocol objects — Canonical envelopes, invitation v1/v2, protected join framing, exact AAD, and local deposit endpoint.
 bounded fixtures retained
-Admission path — HPKE provenance, exact KeyPackage ownership, replay reservation, local invitation binding, and simulated approval.
-in memory
+Admission path — HPKE provenance, exact KeyPackage ownership, durable laboratory replay reservation, local invitation binding, and simulated approval.
+laboratory composition
 MLS path — Two-member Add/Welcome, protected messages, update, removal, replay, and reordering behavior.
 isolated adapter
 Delivery path — Right-specific local Welcome mailbox and a deterministic adverse memory transport.
 not networked
-Storage evidence — Separate sealed-vault, passphrase-wrapper, transaction, and SQLCipher laboratories.
-not integrated
+Storage evidence — Composed SQLCipher transaction and process-recovery evidence; separate sealed-vault and passphrase-wrapper laboratories.
+laboratory only
 Platform baseline — Workspace build, lint, and test matrix on Linux, macOS, and Windows CI.
 CI gate active
 ## What must happen before people can use it.
 This roadmap shows the proposed order of evidence, not delivery dates. Completing one laboratory phase does not prove the whole product is ready.
 Phase 1
-Protocol prototype — Prove private invitation access, two-device MLS, hostile input handling, deterministic delivery faults, and one command-line flow.
-in progress
+Protocol prototype — Capability invitation access, two-party MLS, hostile input handling, deterministic delivery faults, and process recovery passed the three-platform laboratory gate.
+complete
 Validation track
 Product understanding — Test whether people understand the difference between account proof and trust, verification and approval, device changes, and Fast versus Private network metadata.
 before UI selection

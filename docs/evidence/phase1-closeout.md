@@ -1,16 +1,21 @@
 # Phase 1 protocol laboratory evidence matrix
 
-Status: implementation and independent review ready; publication and merged
-exact-revision three-platform completion gate pending
+Status: Phase 1 protocol laboratory complete on 2026-09-05
 
 ## Revision and completion rule
 
 Baseline before this closeout: `b85e92cd2f6be7caa06e0979c0be8b2b973ee95c`
 ([PR #302](https://github.com/dills122/session-chat/pull/302)).
 This document does not claim that the baseline ran tests introduced afterward.
-The completion revision and its full CI run will be recorded only after merge
-and successful non-PR verification. A later documentation-only commit will cite
-that immutable tested revision without claiming to be the tested code revision.
+The immutable tested code revision is
+[`ac7acf198b926e8fdb80257c899cca5e59a3f0e9`](https://github.com/dills122/session-chat/commit/ac7acf198b926e8fdb80257c899cca5e59a3f0e9),
+after [PR #303](https://github.com/dills122/session-chat/pull/303) and
+[PR #304](https://github.com/dills122/session-chat/pull/304).
+Its [complete non-PR CI run](https://github.com/dills122/session-chat/actions/runs/33975032966)
+and [CodeQL run](https://github.com/dills122/session-chat/actions/runs/33975032610)
+passed. This later evidence/status documentation checkpoint cites that tested
+revision; its own subsequent hash is not the code revision receiving this full
+L2 matrix. No protocol, storage or transport behavior changes in this checkpoint.
 
 The first merged candidate `36d99f5bc5c45aded88558a73189c2578d76c288`
 ([run 33972775578](https://github.com/dills122/session-chat/actions/runs/33972775578))
@@ -18,13 +23,45 @@ does not qualify: its Windows log contains a failing joiner retry-conflict probe
 The default Windows shell continued to later Cargo commands, so an aggregate
 job result alone cannot establish passage. The follow-up gives every checked
 Cargo command its own CI step and runs that exact probe in PR
-smoke with coarse failure diagnostics. Completion remains pending a corrected
-merged revision and a full passing run.
+smoke with coarse failure diagnostics across eight fresh fixtures. The original
+probe failure did not reproduce in the repeated tests; no diagnosed storage
+defect is claimed. The corrected merged revision above passed the full gate.
 
 Every row below is required on Linux x64 (`ubuntu-24.04`), macOS arm64
 (`macos-15`), and Windows x64 (`windows-2025`) through
 [the CI workflow](../../.github/workflows/ci.yml). A local pass or a PR smoke
 alone does not fill the portable completion cell.
+
+## Exact portable completion evidence
+
+All rows below passed in push run **33975032966, attempt 1**, with clean source
+and workflow revision `ac7acf198b926e8fdb80257c899cca5e59a3f0e9` and Rust 1.97.1.
+Every public case record was checked for source/run binding, complete case
+indices, unique case IDs, consistent matrix digest and passing recovery/redaction
+fields. The job logs contain no failed test suite or failed Cargo test command.
+
+| Platform / image | Ordinary Rust gate | Full checked L2 gate | Public case records |
+| --- | --- | --- | --- |
+| Linux x64 / `ubuntu-24.04` | [Passed](https://github.com/dills122/session-chat/actions/runs/33975032966/job/101330119658) | [Passed](https://github.com/dills122/session-chat/actions/runs/33975032966/job/101330119415) | 715 |
+| macOS arm64 / `macos-15` | [Passed](https://github.com/dills122/session-chat/actions/runs/33975032966/job/101330119585) | [Passed](https://github.com/dills122/session-chat/actions/runs/33975032966/job/101330119641) | 715 |
+| Windows x64 / `windows-2025` | [Passed](https://github.com/dills122/session-chat/actions/runs/33975032966/job/101330119557) | [Passed](https://github.com/dills122/session-chat/actions/runs/33975032966/job/101330119607) | 715 |
+
+| Complete sweep class | Cases on each platform |
+| --- | --- |
+| Inviter application checkpoints | 8 |
+| Inviter SQLite commit-window kills | 46 |
+| Inviter SQLite return-code faults | 222 |
+| Joiner application checkpoints | 7 |
+| Joiner SQLite commit-window kills | 42 |
+| Joiner SQLite return-code faults | 210 |
+| Welcome application checkpoints | 40 |
+| Welcome SQLite commit-window kills | 140 |
+
+The same run passed Node tooling, repository policy, site build, dependency
+policy, [production coverage](https://github.com/dills122/session-chat/actions/runs/33975032966/job/101330119626)
+and the aggregate Gate. Pull-request dependency review was intentionally skipped
+for this push run; it passed on both implementation PRs. This closes P1-7 through
+P1-10 and the reconciled Checkpoints A/B within the laboratory limits below.
 
 ## Requirements and exact executable evidence
 

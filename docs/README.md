@@ -1,6 +1,6 @@
 # Session Chat 2.0 design documents
 
-Status: Phase 1 protocol laboratory in progress
+Status: Phase 1 protocol laboratory complete; product phases remain later work
 
 These documents describe the proposed Session Chat 2.0 pivot. They are a
 working design baseline, not a claim that the current protocol laboratory
@@ -28,8 +28,9 @@ over a mixnet, while an anonymous conversation can use no external identity at
 all.
 
 The [Phase 1 closeout evidence matrix](evidence/phase1-closeout.md) maps the
-retained requirements to exact tests and distinguishes implementation from the
-pending merged-revision three-platform completion gate.
+retained requirements to exact tests and records the passing full three-platform
+gate on `ac7acf198b926e8fdb80257c899cca5e59a3f0e9`. The later status-documentation
+checkpoint is distinct from that immutable tested code revision.
 
 ## Document map
 
@@ -62,9 +63,9 @@ pending merged-revision three-platform completion gate.
   remaining product-storage, delivery-fault, and UI-runtime gaps.
 - [Recovery and conformance closeout decision](adr/0025-close-phase-one-recovery-and-conformance-evidence.md) records checked Welcome kills and exact deterministic owner authority.
 - [Phase 1 protocol laboratory closeout plan](plans/PHASE1_PROTOCOL_CLOSEOUT.md)
-  defines the remaining durable-admission composition, transport-conformance,
-  independent-process, and exact-revision evidence required before Phase 1 can
-  be marked complete.
+  is historical and complete; it records durable-admission composition,
+  transport conformance, independent-process recovery and the exact-revision
+  evidence supporting the laboratory completion decision.
 - [Transport abstraction implementation plan](plans/TRANSPORT_ABSTRACTION_IMPLEMENTATION.md)
   sequences stabilization of the existing local adapter and outbox model, the
   generalized contract, conformance harness, coordinator, and later
