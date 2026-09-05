@@ -328,9 +328,8 @@ impl PollRequest {
         self
     }
 
-    pub(crate) const fn receive_binding(
-        &self,
-    ) -> Option<&crate::receive_state::ReceivePollBindingV1> {
+    /// Checkpoint scope that a provider must match to authenticated receive authority.
+    pub const fn receive_binding(&self) -> Option<&crate::receive_state::ReceivePollBindingV1> {
         self.receive_binding.as_ref()
     }
 

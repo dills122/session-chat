@@ -116,8 +116,10 @@ jobs:
       - name: Prove the pull-request smoke catches defective evidence
         if: github.event_name == 'pull_request'
         run: |
+          cargo test -p sessionctl --test l2_outbox_crash_restart --locked --offline -- --nocapture --test-threads=1
           cargo test -p sessionctl --test l2_public_evidence --locked --offline
           cargo test -p sessionctl --lib l2_process::evidence::tests --locked --offline
+          cargo test -p sessionctl --lib l2_process::welcome::tests --locked --offline -- --test-threads=1
           cargo test -p storage-sqlcipher-fault-vfs controller::tests::defective_persistent_gap_after_target_is_rejected --locked --offline -- --exact
           cargo test -p sessionctl --test l2_process checked::defective_frames_diagnostics_and_semantics_fail_closed --locked --offline -- --exact --test-threads=1
           cargo test -p sessionctl --test l2_io_faults checked::one_shot_full_reopens_as_one_complete_inviter_state --locked --offline -- --exact --test-threads=1
@@ -126,8 +128,10 @@ jobs:
       - name: Run complete portable L2 evidence suites
         if: github.event_name != 'pull_request'
         run: |
+          cargo test -p sessionctl --test l2_outbox_crash_restart --locked --offline -- --nocapture --test-threads=1
           cargo test -p sessionctl --test l2_public_evidence --locked --offline
           cargo test -p sessionctl --lib l2_process::evidence::tests --locked --offline
+          cargo test -p sessionctl --lib l2_process::welcome::tests --locked --offline -- --test-threads=1
           cargo test -p sessionctl --test l2_crash_restart_inviter --locked --offline -- --nocapture --test-threads=1
           cargo test -p sessionctl --test l2_crash_restart_joiner --locked --offline -- --nocapture --test-threads=1
           cargo test -p sessionctl --test l2_io_faults --locked --offline -- --nocapture --test-threads=1

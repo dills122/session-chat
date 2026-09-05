@@ -1,4 +1,4 @@
-use std::future::Future;
+use std::{future::Future, sync::Arc};
 
 use session_transport::{
     AcknowledgementReceipt, AcknowledgementRequest, AcknowledgementRight, BindingFingerprint,
@@ -12,7 +12,7 @@ use session_transport::{
     TransportFailureCode, TransportProfileId,
 };
 
-const CURSOR_SCHEMA_V1: u16 = 1;
+const MODEL_CURSOR_SCHEMA_V2: u16 = 2;
 const PROVIDER_STATE_EPOCH_V1: u64 = 1;
 const MAXIMUM_ROUTINE_DRAIN_SECONDS: u64 = 300;
 const MAX_ENVELOPES_PER_GENERATION: usize = 64;
@@ -23,6 +23,7 @@ const MAX_ENVELOPES_PER_GENERATION: usize = 64;
 /// performs no network I/O and its predictable authority bytes are unsuitable
 /// for production use.
 pub struct DeterministicLifecycleProviderV1 {
+    scope: Arc<()>,
     contract: LifecycleProviderContractV1,
     next_material: u8,
     next_delivery_sequence: u64,
@@ -33,24 +34,28 @@ pub struct DeterministicLifecycleProviderV1 {
 
 /// Provider-private deposit material for the deterministic conformance model.
 pub struct DeterministicDepositEndpointV1 {
+    scope: Arc<()>,
     binding: CursorBindingV1,
     token: [u8; 32],
 }
 
 /// Provider-private receive material for the deterministic conformance model.
 pub struct DeterministicReceiveCapabilityV1 {
+    scope: Arc<()>,
     binding: CursorBindingV1,
     token: [u8; 32],
 }
 
 /// Provider-private acknowledgement material for the deterministic model.
 pub struct DeterministicAcknowledgementCapabilityV1 {
+    scope: Arc<()>,
     binding: CursorBindingV1,
     token: [u8; 32],
 }
 
 /// Provider-private rotation material for the deterministic conformance model.
 pub struct DeterministicRotationCapabilityV1 {
+    scope: Arc<()>,
     binding: CursorBindingV1,
     token: [u8; 32],
 }
@@ -92,9 +97,10 @@ impl DeterministicLifecycleProviderV1 {
     #[must_use]
     pub fn new() -> Self {
         Self {
+            scope: Arc::new(()),
             contract: LifecycleProviderContractV1::new(
                 TransportProfileId::FastV1,
-                CursorSchemaVersion::new(CURSOR_SCHEMA_V1).expect("nonzero cursor schema"),
+                CursorSchemaVersion::new(MODEL_CURSOR_SCHEMA_V2).expect("nonzero cursor schema"),
                 MAXIMUM_ROUTINE_DRAIN_SECONDS,
             )
             .expect("deterministic lifecycle declaration is valid"),
@@ -136,7 +142,7 @@ impl DeterministicLifecycleProviderV1 {
             MailboxGeneration::new(1).map_err(|_| failure(TransportFailureCode::Internal))?,
             request.expires_at_unix_seconds(),
         )?;
-        let authorities = authorities(material);
+        let authorities = authorities(material, &self.scope);
         let result = MailboxIssueResultV1::new(
             self.contract,
             request,
@@ -177,6 +183,9 @@ impl DeterministicLifecycleProviderV1 {
 
         let predecessor = *request.predecessor();
         let authority = authority.provider();
+        if !Arc::ptr_eq(&self.scope, &authority.scope) {
+            return Err(failure(TransportFailureCode::PolicyViolation));
+        }
         let known_predecessor = self
             .mailboxes
             .iter()
@@ -206,7 +215,7 @@ impl DeterministicLifecycleProviderV1 {
             return MailboxRotationResultV1::new(
                 self.contract,
                 request,
-                authorities(record.successor),
+                authorities(record.successor, &self.scope),
                 observation.wall_now_unix_seconds(),
             )
             .map_err(|_| failure(TransportFailureCode::Internal));
@@ -237,7 +246,7 @@ impl DeterministicLifecycleProviderV1 {
         let result = MailboxRotationResultV1::new(
             self.contract,
             request,
-            authorities(successor),
+            authorities(successor, &self.scope),
             observation.wall_now_unix_seconds(),
         )
         .map_err(|_| failure(TransportFailureCode::Internal))?;
@@ -331,6 +340,9 @@ impl DeterministicLifecycleProviderV1 {
     ) -> Result<DepositReceipt, TransportFailure> {
         let first = control.checkpoint(request.budget())?;
         let endpoint = endpoint.provider();
+        if !Arc::ptr_eq(&self.scope, &endpoint.scope) {
+            return Err(failure(TransportFailureCode::PolicyViolation));
+        }
         let mut mailbox_index = self.mailbox_index(
             endpoint.binding,
             &endpoint.token,
@@ -398,13 +410,22 @@ impl DeterministicLifecycleProviderV1 {
     ) -> Result<ReceiveBatch, TransportFailure> {
         let first = control.checkpoint(request.budget())?;
         let authority = authority.provider();
+        if !Arc::ptr_eq(&self.scope, &authority.scope) {
+            return Err(failure(TransportFailureCode::PolicyViolation));
+        }
         let mut mailbox_index = self.mailbox_index(
             authority.binding,
             &authority.token,
             |material| &material.receive,
             first.wall_now_unix_seconds(),
         )?;
-        let requested_cursor = decode_cursor(request.cursor())?;
+        if request
+            .receive_binding()
+            .is_some_and(|binding| *binding.binding() != authority.binding)
+        {
+            return Err(failure(TransportFailureCode::InvalidCursor));
+        }
+        let requested_cursor = decode_cursor(request.cursor(), &cursor_scope(&authority.binding))?;
         let maximum_sequence = self.mailboxes[mailbox_index]
             .deliveries
             .last()
@@ -462,7 +483,15 @@ impl DeterministicLifecycleProviderV1 {
             ));
         }
         let next_cursor = (last_cursor != 0)
-            .then(|| Cursor::new(last_cursor.to_be_bytes().to_vec()))
+            .then(|| {
+                Cursor::new(
+                    [
+                        cursor_scope(&authority.binding).as_slice(),
+                        &last_cursor.to_be_bytes(),
+                    ]
+                    .concat(),
+                )
+            })
             .transpose()
             .map_err(|_| failure(TransportFailureCode::Internal))?;
         ReceiveBatch::new(items, next_cursor, &request, now)
@@ -477,6 +506,9 @@ impl DeterministicLifecycleProviderV1 {
     ) -> Result<AcknowledgementReceipt, TransportFailure> {
         let first = control.checkpoint(request.budget())?;
         let authority = authority.provider();
+        if !Arc::ptr_eq(&self.scope, &authority.scope) {
+            return Err(failure(TransportFailureCode::PolicyViolation));
+        }
         self.mailbox_index(
             authority.binding,
             &authority.token,
@@ -491,6 +523,14 @@ impl DeterministicLifecycleProviderV1 {
             final_observation.wall_now_unix_seconds(),
         )?;
         let (delivery_ids, _) = request.into_parts();
+        if delivery_ids.as_slice().iter().any(|id| {
+            !self.mailboxes[mailbox_index]
+                .deliveries
+                .iter()
+                .any(|delivery| delivery.delivery_id == *id)
+        }) {
+            return Err(failure(TransportFailureCode::PolicyViolation));
+        }
         for delivery in &mut self.mailboxes[mailbox_index].deliveries {
             if delivery_ids.as_slice().contains(&delivery.delivery_id) {
                 delivery.acknowledged = true;
@@ -587,6 +627,7 @@ impl EnvelopeDelivery for DeterministicLifecycleProviderV1 {
 
 fn authorities(
     material: GenerationMaterial,
+    scope: &Arc<()>,
 ) -> MailboxAuthoritySetV1<
     DeterministicDepositEndpointV1,
     DeterministicReceiveCapabilityV1,
@@ -596,30 +637,44 @@ fn authorities(
     MailboxAuthoritySetV1::from_provider(
         material.binding,
         DepositRight::from_provider(DeterministicDepositEndpointV1 {
+            scope: Arc::clone(scope),
             binding: material.binding,
             token: material.deposit,
         }),
         ReceiveRight::from_provider(DeterministicReceiveCapabilityV1 {
+            scope: Arc::clone(scope),
             binding: material.binding,
             token: material.receive,
         }),
         AcknowledgementRight::from_provider(DeterministicAcknowledgementCapabilityV1 {
+            scope: Arc::clone(scope),
             binding: material.binding,
             token: material.acknowledgement,
         }),
         RotationRight::from_provider(DeterministicRotationCapabilityV1 {
+            scope: Arc::clone(scope),
             binding: material.binding,
             token: material.rotation,
         }),
     )
 }
 
-fn decode_cursor(cursor: Option<&Cursor>) -> Result<u64, TransportFailure> {
+fn cursor_scope(binding: &CursorBindingV1) -> [u8; 32] {
+    let mut scope = [0; 32];
+    scope[..16].copy_from_slice(binding.continuity_id().as_bytes());
+    scope[16..24].copy_from_slice(&binding.generation().get().to_be_bytes());
+    scope[24..].copy_from_slice(&binding.provider_state_epoch().get().to_be_bytes());
+    scope
+}
+
+fn decode_cursor(cursor: Option<&Cursor>, token: &[u8; 32]) -> Result<u64, TransportFailure> {
     let Some(cursor) = cursor else {
         return Ok(0);
     };
-    let bytes: [u8; 8] = cursor
-        .as_bytes()
+    if cursor.as_bytes().len() != 40 || &cursor.as_bytes()[..32] != token {
+        return Err(failure(TransportFailureCode::InvalidCursor));
+    }
+    let bytes: [u8; 8] = cursor.as_bytes()[32..]
         .try_into()
         .map_err(|_| failure(TransportFailureCode::InvalidCursor))?;
     let sequence = u64::from_be_bytes(bytes);

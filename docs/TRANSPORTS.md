@@ -2,6 +2,13 @@
 
 Status: proposed, with mixnet deployment research remaining open
 
+The [Phase 1 closeout evidence matrix](evidence/phase1-closeout.md) is the
+current requirement/test/claim index. [ADR 0025](adr/0025-close-phase-one-recovery-and-conformance-evidence.md)
+adds checked Welcome application and SQLite commit-window process kills,
+fresh complete-state verification, and deterministic lifecycle model fixes.
+Public completion remains conditional on independent review and the full
+three-platform gate for the immutable merged revision.
+
 ## Scope
 
 The transport layer moves opaque encrypted envelopes. It does not publish
@@ -266,8 +273,8 @@ count snapshots. The publish-disabled conformance crate now parses a strict,
 bounded, canonical, alias-only trace v1 and runs a first exact-byte normalized
 trace twice against fresh memory adapters. A composed verdict covers the
 retained adverse vocabulary, and paired deliberately defective bridges prove
-receipt, scope, deadline, drop-cleanup, and redaction enforcement. Exhaustive
-common verdict coverage remains incomplete.
+receipt, scope, deadline, drop-cleanup, and redaction enforcement. The bounded Phase 1 common verdicts are retained; production network
+provider conformance remains a later gate.
 
 The first profile-binding implementation is intentionally LocalV1-only. It
 accepts one exact versioned memory-adapter manifest with full mailbox
@@ -304,7 +311,8 @@ result to the product path. A separate checked L2 storage laboratory now covers
 baseline-derived SQLite-visible FULL/extended-IOERR failures and direct writer
 kills at observed engine commit-window pauses and every baseline-observed
 inviter/joiner application checkpoint before fresh reopen. That narrow local
-storage evidence does not establish delivery recovery, power-loss safety,
+storage evidence is supplemented by ADR 0025 Welcome-delivery recovery.
+Neither establishes power-loss safety,
 rollback resistance, platform key custody, or production transport behavior.
 Its raw observations remain non-public; the retained L2-8 gate lets only sealed
 complete aggregates emit canonical per-case bundles with actual compiler,

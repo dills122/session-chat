@@ -2,6 +2,13 @@
 
 Status: proposed
 
+The [Phase 1 closeout evidence matrix](evidence/phase1-closeout.md) is the
+current requirement/test/claim index. [ADR 0025](adr/0025-close-phase-one-recovery-and-conformance-evidence.md)
+adds checked Welcome application and SQLite commit-window process kills,
+fresh complete-state verification, and deterministic lifecycle model fixes.
+Public completion remains conditional on independent review and the full
+three-platform gate for the immutable merged revision.
+
 ## Architectural principle
 
 **Decision:** Session security, admission, rendezvous, and transport are
@@ -232,8 +239,8 @@ architecture:
   normalized virtual-control runner, fresh-adapter double replay, exact-byte
   alias normalization, and adapter-reported quiescence evidence for LocalV1
   memory traces. A composed verdict and paired defective bridges cover the
-  retained adverse slice; the exhaustive common adapter verdict suite remains
-  incomplete.
+  retained adverse slice; the bounded Phase 1 common verdict suite is retained. Conformance for
+  production network providers remains a later gate.
 - `session-inviter-transaction` is a bounded, fault-injectable conformance model
   for all-or-nothing invitation/replay/approval/MLS-snapshot/Welcome-outbox
   visibility, exact retry recovery, and delivery leasing. It is not storage.

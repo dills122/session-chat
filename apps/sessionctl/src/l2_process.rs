@@ -40,6 +40,8 @@ use self::fault_testing::{
 use super::{SessionCtlError, random_nonzero, resolve_l1_process_git_commit, stage};
 
 mod evidence;
+pub mod welcome;
+pub mod welcome_io;
 pub use evidence::{L2EvidenceBundle, L2EvidenceChannels, L2EvidenceManifest};
 
 const ROOT_MARKER_NAME: &str = ".sessionctl-l2-root";
@@ -2203,6 +2205,8 @@ fn verify_l2_io_root(
 pub fn run_l2_process_internal_role(role: &str, root: PathBuf) -> Result<(), SessionCtlError> {
     validate_root(&root)?;
     match role {
+        "welcome-writer" => welcome::writer(&root),
+        "welcome-verifier" => welcome::verifier(&root),
         "writer" => run_writer(&root),
         "verifier" => run_verifier(&root),
         _ => Err(stage("L2 role")),

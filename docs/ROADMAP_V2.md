@@ -127,8 +127,9 @@ bounded outage, corrupt-poll, exact-byte stale-replay, acknowledgement-loss,
 and secret-free state-probe controls. The retained runner proves deterministic,
 quiescent adverse delivery, exact bindings, redaction, bounded wake/drop
 behavior, queue-saturation rejection at the retained eight-envelope bound, and
-common-suite detection of deliberately defective bridges. Arbitrary delay and
-the exhaustive authority/resource matrix remain open. The
+common-suite detection of deliberately defective bridges. Bounded arbitrary-delay traces and the closed Phase 1 lifecycle/authority
+matrix are retained; reference-model corrections and their regression tests
+are described in ADR 0025. Production provider conformance remains a later gate. The
 LocalV1 deposit-only coordinator adds one-attempt owner-store policy plus a
 cross-platform blocking wake/cancel/deadline supervisor; neither is a network
 or production-runtime claim.
@@ -150,8 +151,11 @@ untrusted forwarding service behind bounded local IPC, exits Alice after the
 durable commit, reloads her exact identity/group in a fresh process, completes
 the lifecycle, reaps every child, and emits a bounded redacted manifest.
 The checked L2 suites add bounded inviter/joiner application-kill recovery.
-Welcome-delivery kill recovery remains a Phase 1 closeout gate; power-loss
-evidence, human approval UX, and a network profile remain later gates.
+Welcome-delivery application and SQLite commit-window kill recovery are now
+implemented in the checked closeout suites. The [evidence matrix](evidence/phase1-closeout.md)
+records their exact tests; Phase 1 completion still requires independent review
+and the merged-revision full three-platform gate. Power-loss evidence, human
+approval UX, and a network profile remain later gates.
 
 The Rust source-coverage gate now measures production code through integration
 targets without counting inline test helpers. The clean-master baseline was

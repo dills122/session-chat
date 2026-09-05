@@ -864,3 +864,22 @@ updating ADR 0010 or superseding ADR 0015.
 
 These are implementation-planning questions. They do not reopen the decisions
 that transport is opaque, right-specific, profile-bound, and fail-closed.
+
+## Phase 1 closeout conformance clarification
+
+ADR 0025 and the [closeout matrix](../evidence/phase1-closeout.md) supersede
+historical statements above that defer the bounded P1-5 model suite. They do
+not certify future network adapters. External providers inspect the read-only
+`PollRequest::receive_binding()` and compare its exact `binding()` with their
+authenticated receive authority. Batch construction alone is not provenance.
+The deterministic provider uses the explicit schema-2 cursor fixture, rejects
+foreign acknowledgement ID sets atomically, and preserves exact repeats.
+LocalV1's documented unknown-ID no-op remains unchanged.
+
+The deterministic receive owner binds commit handles to its live owner instance
+and leases to distinct live identities. Restart, recovery and acceptance cannot
+revive an obsolete handle. Retention is capped at 64 unique deliveries and
+4 MiB of canonical bytes; capacity rejection preserves checkpoint and intent,
+while exact duplicates remain admissible. The executable negative tests in
+`crates/transport-conformance/tests/receive_owner.rs` cover these boundaries;
+the lifecycle evidence enum/string inventory is only an index.

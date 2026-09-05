@@ -33,6 +33,8 @@ const SYNTHETIC_CANARIES: [&[u8]; 12] = [
 /// Closed L2 sweep classes eligible for public evidence promotion.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum L2EvidenceSweep {
+    WelcomeProcessKill,
+    WelcomeEngineProcessKill,
     /// Every baseline-observed application checkpoint was killed once.
     ApplicationProcessKill,
     /// Every baseline-derived supported SQLite result-code ordinal was injected.
@@ -45,6 +47,8 @@ impl L2EvidenceSweep {
     const fn label(self) -> &'static str {
         match self {
             Self::ApplicationProcessKill => "application-process-kill",
+            Self::WelcomeProcessKill => "welcome-process-kill",
+            Self::WelcomeEngineProcessKill => "welcome-engine-process-kill",
             Self::SqliteReturnCode => "return-code",
             Self::CommitWindowProcessKill => "pause-process-kill",
         }
@@ -53,6 +57,9 @@ impl L2EvidenceSweep {
     const fn observation_protocol(self) -> &'static str {
         match self {
             Self::ApplicationProcessKill => "l2-checkpoint-observation-v1",
+            Self::WelcomeProcessKill | Self::WelcomeEngineProcessKill => {
+                "l2-welcome-observation-v1"
+            }
             Self::SqliteReturnCode | Self::CommitWindowProcessKill => "l2-io-observation-v1",
         }
     }
@@ -422,9 +429,24 @@ fn promote_l2_evidence(
             .chain(std::iter::once(observation.as_bytes())),
     )?;
 
-    let storage_scenario = match scenario {
-        Scenario::InviterTransaction => "inviter-transaction",
-        Scenario::JoinerTransaction => "joiner-transaction",
+    let storage_scenario = if matches!(
+        sweep,
+        L2EvidenceSweep::WelcomeProcessKill | L2EvidenceSweep::WelcomeEngineProcessKill
+    ) {
+        "welcome-delivery"
+    } else {
+        match scenario {
+            Scenario::InviterTransaction => "inviter-transaction",
+            Scenario::JoinerTransaction => "joiner-transaction",
+        }
+    };
+    let canonical_scenario = if matches!(
+        sweep,
+        L2EvidenceSweep::WelcomeProcessKill | L2EvidenceSweep::WelcomeEngineProcessKill
+    ) {
+        "E2E-MSG-002"
+    } else {
+        "E2E-TXN-001"
     };
     let observation_digest = hex(digest(&SHA256, observation.as_bytes()).as_ref());
     let case_fields = cases.iter().map(case_fields).collect::<Vec<_>>();
@@ -443,7 +465,7 @@ fn promote_l2_evidence(
                 "version=1\n",
                 "protocol=l2-evidence-v1\n",
                 "record=case\n",
-                "scenario=E2E-TXN-001\n",
+                "scenario={}\n",
                 "result=pass\n",
                 "coverage=complete\n",
                 "sweep={}\n",
@@ -493,6 +515,7 @@ fn promote_l2_evidence(
                 "directory_cleanup=pass\n",
                 "cleanup=pass\n"
             ),
+            canonical_scenario,
             sweep.label(),
             storage_scenario,
             case_index,
@@ -524,8 +547,22 @@ fn promote_l2_evidence(
             hex(&case.binding.post_recovery_artifact_digest),
             matrix_digest,
             observation_digest,
-            super::CONTROL_FRAME_BYTES,
-            super::FRAME_WAIT.as_millis(),
+            if matches!(
+                sweep,
+                L2EvidenceSweep::WelcomeProcessKill | L2EvidenceSweep::WelcomeEngineProcessKill
+            ) {
+                super::welcome::FRAME_BYTES
+            } else {
+                super::CONTROL_FRAME_BYTES
+            },
+            if matches!(
+                sweep,
+                L2EvidenceSweep::WelcomeProcessKill | L2EvidenceSweep::WelcomeEngineProcessKill
+            ) {
+                super::CASE_WAIT.as_millis()
+            } else {
+                super::FRAME_WAIT.as_millis()
+            },
             super::CHILD_WAIT.as_millis(),
             super::MAX_APPLICATION_CHECKPOINTS,
             super::MAX_DATABASE_BYTES,
@@ -662,6 +699,48 @@ fn case_fields(case: &L2EvidenceCase) -> String {
     )
 }
 
+impl super::welcome_io::WelcomeEngineSweepReport {
+    /// Promotes only a complete baseline-derived Welcome engine sweep.
+    pub fn promote_v1(
+        &self,
+        executable: &Path,
+        runner_image: &str,
+        channels: &L2EvidenceChannels<'_>,
+    ) -> Result<L2EvidenceBundle, SessionCtlError> {
+        self.validate_coverage()?;
+        let metadata = L2EvidenceMetadata::collect(executable, runner_image, &self.cases)?;
+        promote_l2_evidence(
+            L2EvidenceSweep::WelcomeEngineProcessKill,
+            Scenario::InviterTransaction,
+            &self.encode_v1(),
+            &metadata,
+            &self.cases,
+            channels,
+        )
+    }
+}
+
+impl super::welcome::WelcomeSweepReport {
+    /// Promotes the complete Welcome sweep using the same closed L2 provenance and redaction gate.
+    pub fn promote_v1(
+        &self,
+        executable: &Path,
+        runner_image: &str,
+        channels: &L2EvidenceChannels<'_>,
+    ) -> Result<L2EvidenceBundle, SessionCtlError> {
+        self.validate_coverage()?;
+        let metadata = L2EvidenceMetadata::collect(executable, runner_image, &self.cases)?;
+        promote_l2_evidence(
+            L2EvidenceSweep::WelcomeProcessKill,
+            Scenario::InviterTransaction,
+            &self.encode_v1(),
+            &metadata,
+            &self.cases,
+            channels,
+        )
+    }
+}
+
 impl L2ProcessSweepReport {
     /// Promotes one complete application-checkpoint sweep using exact runtime provenance.
     pub fn promote_v1(
@@ -741,6 +820,26 @@ fn validate_observation(
         return Err(stage("L2 internal observation"));
     }
     let expected_fields: &[&str] = match sweep {
+        L2EvidenceSweep::WelcomeProcessKill | L2EvidenceSweep::WelcomeEngineProcessKill => &[
+            "version",
+            "protocol",
+            "scenario",
+            "publication",
+            "status",
+            "coverage",
+            "sweep",
+            "fault_build",
+            "storage_scenario",
+            "completed_cases",
+            "integrity",
+            "schema",
+            "semantic_oracle",
+            "exact_retry",
+            "fixture_cleanup",
+            "handle_cleanup",
+            "child_cleanup",
+            "directory_cleanup",
+        ],
         L2EvidenceSweep::ApplicationProcessKill => &[
             "version",
             "protocol",
@@ -838,13 +937,28 @@ fn validate_observation(
     {
         return Err(stage("L2 internal observation"));
     }
-    let storage_scenario = match scenario {
-        Scenario::InviterTransaction => "inviter-transaction",
-        Scenario::JoinerTransaction => "joiner-transaction",
+    let storage_scenario = if matches!(
+        sweep,
+        L2EvidenceSweep::WelcomeProcessKill | L2EvidenceSweep::WelcomeEngineProcessKill
+    ) {
+        "welcome-delivery"
+    } else {
+        match scenario {
+            Scenario::InviterTransaction => "inviter-transaction",
+            Scenario::JoinerTransaction => "joiner-transaction",
+        }
+    };
+    let canonical_scenario = if matches!(
+        sweep,
+        L2EvidenceSweep::WelcomeProcessKill | L2EvidenceSweep::WelcomeEngineProcessKill
+    ) {
+        "E2E-MSG-002"
+    } else {
+        "E2E-TXN-001"
     };
     for required in [
         format!("protocol={}", sweep.observation_protocol()),
-        String::from("scenario=E2E-TXN-001"),
+        format!("scenario={canonical_scenario}"),
         String::from("publication=prohibited"),
         String::from("status=validated"),
         String::from("coverage=complete"),

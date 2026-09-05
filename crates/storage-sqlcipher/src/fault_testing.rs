@@ -20,6 +20,57 @@ pub const FAULT_BUILD: bool = true;
 /// One closed SQLite VFS name accepted by the cfg-only connection seam.
 pub const FAULT_VFS_NAME: &str = "session-chat-storage-fault-v1";
 
+/// Closed, secret-free Welcome owner statement boundaries in checked builds.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
+pub enum WelcomeCheckpoint {
+    /// Expiry and attempt housekeeping staged, before selection.
+    Housekeeping = 1,
+    /// Exact eligible row selected, before mutation.
+    Selected = 2,
+    /// Lease generation and attempt staged.
+    LeaseUpdated = 3,
+    /// Lease or terminal housekeeping transaction is about to commit.
+    LeaseBeforeCommit = 4,
+    /// Lease or terminal housekeeping commit returned.
+    LeaseAfterCommit = 5,
+    /// Accepted-result update staged.
+    AcceptedUpdated = 6,
+    /// Accepted-result commit returned.
+    AcceptedAfterCommit = 7,
+    /// Failed-result update staged.
+    FailedUpdated = 8,
+    /// Failed-result commit returned.
+    FailedAfterCommit = 9,
+}
+
+/// Checked-only barrier; receives no lease, authority, or protocol material.
+pub trait WelcomeBarrier: Send + Sync {
+    /// Blocks at a statement boundary until the controller continues or kills it.
+    fn checkpoint(&self, checkpoint: WelcomeCheckpoint) -> Result<(), BarrierFailure>;
+}
+
+/// Attaches an observer after a closed baseline, without changing ordinary opens.
+pub fn observe_welcome(
+    storage: &SqlCipherStorage,
+    observer: Arc<dyn WelcomeBarrier>,
+) -> Result<(), StoreError> {
+    storage.lock()?.welcome_observer = Some(observer);
+    Ok(())
+}
+
+pub(super) fn welcome_checkpoint(
+    observer: &Option<Arc<dyn WelcomeBarrier>>,
+    checkpoint: WelcomeCheckpoint,
+) -> Result<(), session_transport::OutboxPortError> {
+    if let Some(observer) = observer {
+        observer
+            .checkpoint(checkpoint)
+            .map_err(|_| session_transport::OutboxPortError::Internal)?;
+    }
+    Ok(())
+}
+
 /// Creates a fault-observed store while retaining SQLite's default VFS.
 pub fn create(
     path: &Path,

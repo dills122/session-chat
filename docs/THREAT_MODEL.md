@@ -2,6 +2,13 @@
 
 Status: design baseline for the v2 architecture and protocol laboratory
 
+The [Phase 1 closeout evidence matrix](evidence/phase1-closeout.md) is the
+current requirement/test/claim index. [ADR 0025](adr/0025-close-phase-one-recovery-and-conformance-evidence.md)
+adds checked Welcome application and SQLite commit-window process kills,
+fresh complete-state verification, and deterministic lifecycle model fixes.
+Public completion remains conditional on independent review and the full
+three-platform gate for the immutable merged revision.
+
 ## Overview
 
 Session Chat is a privacy- and security-sensitive messaging project. The active
@@ -501,9 +508,8 @@ recovery, and bounded outbox leases over in-memory records. The SQLCipher
 laboratory now supplies the corresponding real MLS transaction and durable
 coordinator owner port, and a retained integration test wires it to capability
 admission through restart delivery and real joiner processing. Remaining
-requirements include human approval UX, integration of ADR 0023's implemented
-durable authorization/approval/replay owner into the headless composition,
-portable and public process-kill evidence, rollback protection, vault-backed
+requirements include human approval UX, portable passage of the composed ADR 0023 owner and ADR 0025 process-kill
+suites on the exact completion revision, rollback protection, vault-backed
 confidentiality, and broader disk/power-fault evidence. The separate checked L2
 laboratory locally covers baseline-derived SQLite-visible FULL/extended-IOERR
 failures, observed engine commit-window process kills, and every
@@ -708,9 +714,8 @@ replays one trace against two fresh memory adapters, and rejects non-quiescent
 adapter-reported state. It accepts only LocalV1 and rejects unbound profile
 labels. A stale replay is an explicitly injected provider response and
 never restores acknowledged provider-owned state. A composed verdict and
-paired defective bridges exercise the retained adverse slice, but the full
-common verdict matrix remains incomplete and this is not a complete
-adapter-conformance claim.
+paired defective bridges exercise the retained adverse slice, and the bounded Phase 1 common verdict matrix is retained. This does not
+certify a production network adapter.
 
 Within the retained runner, exact retries reuse one mailbox/envelope-bound
 receipt alias; poll normalization rejects a known receipt crossing mailbox
@@ -720,9 +725,12 @@ before the bounded driver may drop it.
 These checks do not prove remote rollback after ambiguous deposit,
 preemptive cancellation inside a provider library, a trusted or rollback-safe
 wall clock, incremental remote-response parsing, a conforming reusable mailbox
-provider, durable product cursor recovery, or any network adapter. P1-5 must
-exercise the closed positive/stale lifecycle vocabulary and exhaustive
-right/resource matrix against a deterministic provider and owner model.
+provider, durable product cursor recovery, or any network adapter. The P1-5 deterministic provider and owner model exercise the closed
+positive/stale vocabulary. ADR 0025 adds exact checkpoint/authority matching,
+owner-instance commit provenance, distinct live lease identities, terminal
+acknowledgement invalidation, foreign-ID rejection and a 64-item/4 MiB
+retention ceiling. Capacity rejects before mutation and never evicts live
+deduplication history; restart invalidates prior live handles.
 
 The first binder slice reduces local misbinding risk without granting network
 authority: it accepts only LocalV1, one exact no-egress manifest/configuration
