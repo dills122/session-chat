@@ -57,6 +57,14 @@ async fn local_frame_bounds_and_idle_receive_deadline_fail_closed() {
         .await
         .expect("connect joiner");
     assert_eq!(
+        join_link.receive_frame_bounded(DEADLINE, 0).await,
+        Err(IrohFastError::InvalidBound)
+    );
+    assert_eq!(
+        join_link.receive_frame_bounded(DEADLINE, 5).await,
+        Err(IrohFastError::InvalidBound)
+    );
+    assert_eq!(
         join_link.send_frame(&[], DEADLINE).await,
         Err(IrohFastError::FrameRejected)
     );

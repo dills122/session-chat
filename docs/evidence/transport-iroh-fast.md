@@ -54,6 +54,13 @@ The direct-loopback Iroh case additionally checks authenticated endpoint setup
 and clean bidirectional shutdown. Link unit and integration tests retain local
 and remote frame-bound rejection, partial-I/O poisoning, reset rejection,
 canonical endpoint parsing, authenticated-peer mismatch, and bounded timeouts.
+Connected adverse-path cases retain queue saturation, authenticated cursor
+pagination, unknown-mailbox and foreign-acknowledgement rejection, exact
+remote-status mapping, local authority/lifetime/budget preflight, and semantic
+link poisoning for malformed, truncated, trailing, and noncanonical requests
+and responses. The production coverage gate records 93.96% line coverage for
+`transport-iroh` and workspace totals of 92.79% lines, 88.01% regions, and
+89.13% functions for this revision.
 
 Commands for this increment:
 
@@ -61,6 +68,7 @@ Commands for this increment:
 cargo clippy -p transport-conformance -p transport-iroh --all-targets --locked --offline -- -D warnings
 cargo test -p transport-conformance --all-targets --locked --offline
 cargo test -p transport-iroh --all-targets --locked --offline -- --test-threads=1
+node scripts/check-rust-coverage.mjs
 ```
 
 The Iroh tests require local loopback socket access. The public N0 reachability
