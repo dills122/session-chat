@@ -56,6 +56,9 @@ versioned Session Chat IPC frames:
   operator to transfer it over a separate authenticated confidential channel,
   and begin the Iroh stream with the HPKE-protected join request rather than
   sending the invitation to the first connector;
+- allow a separately bounded five-minute operator handoff before the host's
+  initial protected-join wait expires, and accept only bounded regular
+  invitation files rather than blocking-capable special filesystem objects;
 - keep the endpoint key ephemeral for the headless proof; and
 - expose the N0 preset only through an explicit Fast network command.
 

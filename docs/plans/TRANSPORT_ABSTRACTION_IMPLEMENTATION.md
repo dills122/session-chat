@@ -776,6 +776,8 @@ confidential channel; the Iroh stream begins with the HPKE-protected join.
 The feasibility slice is bounded by a 256 KiB crate-wide frame ceiling, checked
 operation deadlines, poisoned-link behavior after partial I/O, canonical host
 identity parsing, explicit Fast metadata disclosure, and no Private fallback.
+The manual proof has a separate five-minute initial operator-handoff bound, and
+its invitation reader rejects non-regular files before public work.
 It supplies no offline mailbox, durable network authority, cursor, rotation,
 reconnection, packet-capture, route-change, outage, or relay-path two-peer
 evidence. Those remain Task 10 gates after the Phase 1 checkpoint. Further

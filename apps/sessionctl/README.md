@@ -33,7 +33,8 @@ Then run the joining client in a second terminal:
 cargo run -p sessionctl --bin sessionctl-pair --locked --offline -- join /tmp/session-chat-pair
 ```
 
-The host owns a bounded local forwarder and removes only its marked fresh run
+The host permits up to five minutes for the operator to start the joiner, owns
+a bounded local forwarder, and removes only its marked fresh run
 directory after both commands report `status=complete`. This is a scripted
 two-process protocol demonstration over local filesystem IPC, not yet an
 interactive chat UI or network transport.
@@ -50,7 +51,8 @@ The host prints a public `endpoint=` value, then creates the bearer invitation
 at `/tmp/session-chat-network-host/direct/invitation.v2` and reports
 `invitation=ready`. Transfer that invitation file to the second computer over
 an authenticated, confidential channel independent of Iroh. The endpoint ID is
-public; the invitation file is admission authority and must remain secret.
+public; the invitation file is admission authority and must remain secret. The
+host permits up to five minutes for this operator handoff and connection.
 Choose a different new local state directory on the second computer and run:
 
 ```sh
@@ -77,6 +79,10 @@ or interactive free-form chat claim.
 Output contains only coarse public milestones. Capability material,
 invitation identifiers, KeyPackages, credentials, ciphertext, and plaintext
 are not printed.
+
+The join command accepts only an absolute path to a bounded regular invitation
+file. Directories, symbolic links, FIFOs, and other special files fail closed
+before protocol or public-network work.
 
 `cargo run -p sessionctl --locked --offline -- --evidence-v1` emits a bounded,
 versioned `key=value` scenario result for `E2E-JOIN-001`. The record declares

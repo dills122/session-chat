@@ -267,7 +267,9 @@ Assumptions:
   out-of-band channel. It is never sent to an unauthenticated first Iroh
   connector; the first network frame is the joiner's HPKE-protected request.
   A first connector can still deny service by occupying or closing the sole
-  experimental connection, but cannot obtain admission authority from it.
+  experimental connection, but cannot obtain admission authority from it. The
+  operator handoff is bounded to five minutes. The joiner rejects directories,
+  links, FIFOs, and other non-regular invitation paths before network work.
 
 ### Trust boundary: client to mixnet
 

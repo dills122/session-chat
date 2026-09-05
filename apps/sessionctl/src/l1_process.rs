@@ -79,6 +79,7 @@ const MAX_GIT_REF_BYTES: usize = 512;
 const METADATA_COMMAND_WAIT: Duration = Duration::from_secs(5);
 const TWO_TERMINAL_DONE: &[u8] = b"sessionctl-two-terminal-complete-v1\n";
 const NETWORK_OPERATION_WAIT: Duration = Duration::from_secs(30);
+const OPERATOR_HANDOFF_WAIT: Duration = Duration::from_secs(5 * 60);
 
 const _: () = assert!(MAX_IPC_FRAME_BYTES <= MAX_FAST_FRAME_BYTES);
 
@@ -195,9 +196,10 @@ pub fn run_two_terminal_host(root: PathBuf) -> Result<(), SessionCtlError> {
     let service_root = root.path().to_path_buf();
     println!("mode=host\nstatus=ready\nroot={}", root.path().display());
 
-    let service = thread::spawn(move || run_service(&service_root));
+    let service =
+        thread::spawn(move || run_service_with_initial_wait(&service_root, OPERATOR_HANDOFF_WAIT));
     let scenario_result = (|| {
-        run_alice_init(root.path())?;
+        run_alice_init_with_wait(root.path(), OPERATOR_HANDOFF_WAIT)?;
         run_alice_resume(root.path())?;
         let completion = read_bounded_wait(
             &two_terminal_done_path(root.path()),
@@ -340,7 +342,7 @@ async fn run_network_host_with_endpoint(
 ) -> Result<(), SessionCtlError> {
     let alice_root = root.path().to_path_buf();
     let alice = tokio::task::spawn_blocking(move || {
-        run_alice_init(&alice_root)?;
+        run_alice_init_with_wait(&alice_root, OPERATOR_HANDOFF_WAIT)?;
         run_alice_resume(&alice_root)
     });
     let scenario_result = async {
@@ -359,7 +361,7 @@ async fn run_network_host_with_endpoint(
             direct_invitation_path(root.path()).display()
         );
         let link = endpoint
-            .accept(None, NETWORK_OPERATION_WAIT, MAX_IPC_FRAME_BYTES)
+            .accept(None, OPERATOR_HANDOFF_WAIT, MAX_IPC_FRAME_BYTES)
             .await
             .at_stage("network accept")?;
         network_host_bridge(root.path(), link).await
@@ -413,11 +415,7 @@ fn read_network_invitation(path: &Path) -> Result<Zeroizing<Vec<u8>>, SessionCtl
     if !path.is_absolute() || path.as_os_str().len() > 4_096 {
         return Err(stage("network invitation path"));
     }
-    let invitation = Zeroizing::new(
-        File::open(path)
-            .at_stage("network invitation read")
-            .and_then(|file| read_bounded(file, MAX_WIRE_OBJECT_BYTES))?,
-    );
+    let invitation = Zeroizing::new(read_bounded_regular_file(path, MAX_WIRE_OBJECT_BYTES)?);
     SignedCapabilityInvitationV2::decode_and_verify(&invitation).at_stage("network invitation")?;
     Ok(invitation)
 }
@@ -712,9 +710,20 @@ fn validate_wire_parts(kind: FrameKind, parts: &[Vec<u8>]) -> Result<(), Session
 }
 
 fn run_service(root: &Path) -> Result<(), SessionCtlError> {
+    run_service_with_initial_wait(root, FRAME_WAIT)
+}
+
+fn run_service_with_initial_wait(
+    root: &Path,
+    initial_wait: Duration,
+) -> Result<(), SessionCtlError> {
     for sequence in 1..=EXPECTED_FRAMES {
-        let encoded =
-            read_bounded_wait(&relay_in(root, sequence), MAX_IPC_FRAME_BYTES, FRAME_WAIT)?;
+        let wait = if sequence == 1 {
+            initial_wait
+        } else {
+            FRAME_WAIT
+        };
+        let encoded = read_bounded_wait(&relay_in(root, sequence), MAX_IPC_FRAME_BYTES, wait)?;
         let frame = IpcFrame::decode(&encoded)?;
         let expected = match sequence {
             1 => FrameKind::ProtectedJoin,
@@ -1029,6 +1038,13 @@ fn receive_protected_join(root: &Path, sequence: u8) -> Result<Vec<u8>, SessionC
 }
 
 fn run_alice_init(root: &Path) -> Result<(), SessionCtlError> {
+    run_alice_init_with_wait(root, FRAME_WAIT)
+}
+
+fn run_alice_init_with_wait(
+    root: &Path,
+    protected_join_wait: Duration,
+) -> Result<(), SessionCtlError> {
     let database_key = Zeroizing::new(random_nonzero::<32>()?);
     let storage = SqlCipherStorage::create(
         &database_path(root),
@@ -1060,7 +1076,7 @@ fn run_alice_init(root: &Path) -> Result<(), SessionCtlError> {
     let protected_frame = IpcFrame::decode(&read_bounded_wait(
         &relay_out(root, 1),
         MAX_IPC_FRAME_BYTES,
-        FRAME_WAIT,
+        protected_join_wait,
     )?)?;
     let mut parts = protected_frame.require(FrameKind::ProtectedJoin, 1)?;
     let protected_bytes = parts.pop().ok_or_else(|| stage("process protected join"))?;
@@ -1597,6 +1613,41 @@ fn read_bounded(mut file: impl Read, maximum: usize) -> Result<Vec<u8>, SessionC
         return Err(stage("process channel bound"));
     }
     Ok(bytes)
+}
+
+fn read_bounded_regular_file(path: &Path, maximum: usize) -> Result<Vec<u8>, SessionCtlError> {
+    let before = fs::symlink_metadata(path).at_stage("network invitation metadata")?;
+    if !before.file_type().is_file()
+        || before.len() == 0
+        || before.len() > u64::try_from(maximum).map_err(|_| stage("network invitation bound"))?
+    {
+        return Err(stage("network invitation file"));
+    }
+
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        options.custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW);
+    }
+    let file = options.open(path).at_stage("network invitation read")?;
+    let after = file.metadata().at_stage("network invitation metadata")?;
+    if !after.file_type().is_file()
+        || after.len() != before.len()
+        || after.len() == 0
+        || after.len() > u64::try_from(maximum).map_err(|_| stage("network invitation bound"))?
+    {
+        return Err(stage("network invitation file"));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt as _;
+        if before.dev() != after.dev() || before.ino() != after.ino() {
+            return Err(stage("network invitation file"));
+        }
+    }
+    read_bounded(file, maximum)
 }
 
 fn write_private_state(
@@ -2193,6 +2244,42 @@ mod tests {
                 .expect("host task")
                 .is_err()
         );
+    }
+
+    #[test]
+    fn operator_handoff_wait_is_injectable_without_slow_tests() {
+        let root = ProcessRoot::new().unwrap();
+        let started = Instant::now();
+
+        assert!(run_alice_init_with_wait(root.path(), Duration::from_millis(20)).is_err());
+        assert!(started.elapsed() >= Duration::from_millis(20));
+        assert!(started.elapsed() < Duration::from_secs(5));
+        assert!(direct_invitation_path(root.path()).is_file());
+    }
+
+    #[test]
+    fn invitation_reader_rejects_non_regular_paths() {
+        let root = ProcessRoot::new().unwrap();
+
+        assert!(read_network_invitation(root.path()).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn invitation_reader_rejects_fifo_without_blocking() {
+        let root = ProcessRoot::new().unwrap();
+        let fifo = root.path().join("invitation.fifo");
+        assert!(
+            Command::new("mkfifo")
+                .arg(&fifo)
+                .status()
+                .unwrap()
+                .success()
+        );
+        let started = Instant::now();
+
+        assert!(read_network_invitation(&fifo).is_err());
+        assert!(started.elapsed() < Duration::from_secs(1));
     }
 
     #[test]
