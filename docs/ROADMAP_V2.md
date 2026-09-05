@@ -49,7 +49,7 @@ Exit criteria:
 ## Phase 1: protocol laboratory
 
 Implementation status: complete on tested code revision
-`ac7acf198b926e8fdb80257c899cca5e59a3f0e9`; the
+`5a220bd9376d51b9b3943e997fc5c93ddcfa91ca`; the
 [completion evidence](evidence/phase1-closeout.md) records the full portable gate
 and distinguishes its later documentation checkpoint. Retained increments establish the Rust
 workspace, bounded deterministic-CBOR opaque envelope, canonical
@@ -90,8 +90,10 @@ work. The bounded authenticated Iroh frame-link experiment is not an
 The complete Phase 1 hostile first-contact matrix is now retained by the
 independent-process runner: malformed, expired, copied, wrong-invitation,
 wrong-KeyPackage, wrong-verifier, reordered, and exact-replay inputs reject
-before approval, MLS Add, or durable membership mutation, and fresh inspection
-proves the owner state unchanged. Welcome-delivery lease/result process-kill
+before approval, MLS Add, or durable membership mutation. The wrong-verifier
+case specifically reaches the production expected-invitation reservation guard,
+requires rejection, and proves its transient replay reservation is released;
+fresh inspection proves the owner state unchanged. Welcome-delivery lease/result process-kill
 recovery is retained with full portable evidence in the closeout matrix. The SQLCipher
 laboratory now
 implements the same sole-owner coordinator port with version-2 migration,

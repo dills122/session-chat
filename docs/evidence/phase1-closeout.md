@@ -8,11 +8,12 @@ Baseline before this closeout: `b85e92cd2f6be7caa06e0979c0be8b2b973ee95c`
 ([PR #302](https://github.com/dills122/session-chat/pull/302)).
 This document does not claim that the baseline ran tests introduced afterward.
 The immutable tested code revision is
-[`ac7acf198b926e8fdb80257c899cca5e59a3f0e9`](https://github.com/dills122/session-chat/commit/ac7acf198b926e8fdb80257c899cca5e59a3f0e9),
-after [PR #303](https://github.com/dills122/session-chat/pull/303) and
-[PR #304](https://github.com/dills122/session-chat/pull/304).
-Its [complete non-PR CI run](https://github.com/dills122/session-chat/actions/runs/33975032966)
-and [CodeQL run](https://github.com/dills122/session-chat/actions/runs/33975032610)
+[`5a220bd9376d51b9b3943e997fc5c93ddcfa91ca`](https://github.com/dills122/session-chat/commit/5a220bd9376d51b9b3943e997fc5c93ddcfa91ca),
+after [PR #303](https://github.com/dills122/session-chat/pull/303),
+[PR #304](https://github.com/dills122/session-chat/pull/304), and the final
+review corrections in [PR #306](https://github.com/dills122/session-chat/pull/306).
+Its [complete non-PR CI run](https://github.com/dills122/session-chat/actions/runs/33981196485)
+and [CodeQL run](https://github.com/dills122/session-chat/actions/runs/33981196334)
 passed. This later evidence/status documentation checkpoint cites that tested
 revision; its own subsequent hash is not the code revision receiving this full
 L2 matrix. No protocol, storage or transport behavior changes in this checkpoint.
@@ -25,7 +26,11 @@ job result alone cannot establish passage. The follow-up gives every checked
 Cargo command its own CI step and runs that exact probe in PR
 smoke with coarse failure diagnostics across eight fresh fixtures. The original
 probe failure did not reproduce in the repeated tests; no diagnosed storage
-defect is claimed. The corrected merged revision above passed the full gate.
+defect is claimed. The corrected revision
+`ac7acf198b926e8fdb80257c899cca5e59a3f0e9` passed its full gate, but the fourth
+independent review later found that the wrong-verifier process case stopped
+before the production expected-invitation reservation boundary. PR #306 closes
+that evidence gap, and the final merged revision above passed the full gate again.
 
 Every row below is required on Linux x64 (`ubuntu-24.04`), macOS arm64
 (`macos-15`), and Windows x64 (`windows-2025`) through
@@ -34,17 +39,17 @@ alone does not fill the portable completion cell.
 
 ## Exact portable completion evidence
 
-All rows below passed in push run **33975032966, attempt 1**, with clean source
-and workflow revision `ac7acf198b926e8fdb80257c899cca5e59a3f0e9` and Rust 1.97.1.
+All rows below passed in push run **33981196485, attempt 1**, with clean source
+and workflow revision `5a220bd9376d51b9b3943e997fc5c93ddcfa91ca` and Rust 1.97.1.
 Every public case record was checked for source/run binding, complete case
 indices, unique case IDs, consistent matrix digest and passing recovery/redaction
 fields. The job logs contain no failed test suite or failed Cargo test command.
 
 | Platform / image | Ordinary Rust gate | Full checked L2 gate | Public case records |
 | --- | --- | --- | --- |
-| Linux x64 / `ubuntu-24.04` | [Passed](https://github.com/dills122/session-chat/actions/runs/33975032966/job/101330119658) | [Passed](https://github.com/dills122/session-chat/actions/runs/33975032966/job/101330119415) | 715 |
-| macOS arm64 / `macos-15` | [Passed](https://github.com/dills122/session-chat/actions/runs/33975032966/job/101330119585) | [Passed](https://github.com/dills122/session-chat/actions/runs/33975032966/job/101330119641) | 715 |
-| Windows x64 / `windows-2025` | [Passed](https://github.com/dills122/session-chat/actions/runs/33975032966/job/101330119557) | [Passed](https://github.com/dills122/session-chat/actions/runs/33975032966/job/101330119607) | 715 |
+| Linux x64 / `ubuntu-24.04` | [Passed](https://github.com/dills122/session-chat/actions/runs/33981196485/job/101346595205) | [Passed](https://github.com/dills122/session-chat/actions/runs/33981196485/job/101346595069) | 715 |
+| macOS arm64 / `macos-15` | [Passed](https://github.com/dills122/session-chat/actions/runs/33981196485/job/101346595076) | [Passed](https://github.com/dills122/session-chat/actions/runs/33981196485/job/101346595114) | 715 |
+| Windows x64 / `windows-2025` | [Passed](https://github.com/dills122/session-chat/actions/runs/33981196485/job/101346595072) | [Passed](https://github.com/dills122/session-chat/actions/runs/33981196485/job/101346595016) | 715 |
 
 | Complete sweep class | Cases on each platform |
 | --- | --- |
@@ -58,8 +63,9 @@ fields. The job logs contain no failed test suite or failed Cargo test command.
 | Welcome SQLite commit-window kills | 140 |
 
 The same run passed Node tooling, repository policy, site build, dependency
-policy, [production coverage](https://github.com/dills122/session-chat/actions/runs/33975032966/job/101330119626)
-and the aggregate Gate. Pull-request dependency review was intentionally skipped
+policy, [production coverage](https://github.com/dills122/session-chat/actions/runs/33981196485/job/101346594911)
+at 92.89% lines, 88.11% regions and 90.17% functions, and the aggregate Gate.
+Pull-request dependency review was intentionally skipped
 for this push run; it passed on both implementation PRs. This closes P1-7 through
 P1-10 and the reconciled Checkpoints A/B within the laboratory limits below.
 
@@ -69,7 +75,7 @@ P1-10 and the reconciled Checkpoints A/B within the laboratory limits below.
 | --- | --- | --- |
 | GUI/network-independent two-client flow; `E2E-JOIN-001` | [phase_one.rs](../../apps/sessionctl/tests/phase_one.rs): `headless_flow_joins_exchanges_updates_and_removes`; [l1_process.rs](../../apps/sessionctl/tests/l1_process.rs): `independent_process_runner_emits_bounded_redacted_evidence` | Capability-only protected join, explicit simulated approval, exact MLS Add, durable commit, Welcome and full two-party lifecycle over local test channels. No human approval UX or hosted service. |
 | P1-1–P1-3 durable authorization | [durable_authorization.rs](../../crates/storage-sqlcipher/tests/durable_authorization.rs), [invitation_opening_context.rs](../../crates/storage-sqlcipher/tests/invitation_opening_context.rs), [capability_composition.rs](../../crates/storage-sqlcipher/tests/capability_composition.rs), and [l1_process.rs](../../apps/sessionctl/tests/l1_process.rs): `app_storage_owner_recovers_abandonment_joiner_consumption_and_welcome_retry` | Opening context commits before publication; restart abandons lost live provider authority, retains replay and reconciles exact membership outcome. No reconstructed KeyPackage or second Add. No rollback anchor or platform vault. |
-| P1-7 hostile first contact; `E2E-JOIN-002` | [l1_process.rs](../../apps/sessionctl/tests/l1_process.rs): `hostile_first_contact_matrix_rejects_every_remaining_process_case`, `hostile_replayed_join_is_rejected_before_durable_membership_mutation`, malformed IPC and role tests | Malformed, expired, copied, wrong invitation, wrong KeyPackage, wrong verifier, duplicate, reordered and replayed requests reject before approval/membership mutation; fresh inspector checks unchanged authority. Local controller is trusted. |
+| P1-7 hostile first contact; `E2E-JOIN-002` | [l1_process.rs](../../apps/sessionctl/tests/l1_process.rs): `hostile_first_contact_matrix_rejects_every_remaining_process_case`, `hostile_replayed_join_is_rejected_before_durable_membership_mutation`, malformed IPC and role tests | Malformed, expired, copied, wrong invitation, wrong KeyPackage, duplicate, reordered and replayed requests reject before approval/membership mutation. The wrong-verifier case opens and verifies a valid foreign request, then requires rejection at the production `reserve_v2_for_approval` boundary for the expected invitation, released replay state, an available invitation, and unchanged durable membership under fresh inspection. Local controller is trusted. |
 | Join crash atomicity; `E2E-TXN-001` | [l2_crash_restart_inviter.rs](../../apps/sessionctl/tests/l2_crash_restart_inviter.rs), [l2_crash_restart_joiner.rs](../../apps/sessionctl/tests/l2_crash_restart_joiner.rs), [l2_io_faults.rs](../../apps/sessionctl/tests/l2_io_faults.rs) | Every clean-observed application checkpoint, supported SQLite FULL/IOERR ordinal and commit-window pause recovers exact I0/I1 or J0/J1 with exact retry. Physical power loss and rollback remain excluded. |
 | Encrypted bidirectional messaging; `E2E-MSG-001` | [phase_one.rs](../../apps/sessionctl/tests/phase_one.rs), [l1_process.rs](../../apps/sessionctl/tests/l1_process.rs), [faults.rs](../../apps/sessionctl/tests/faults.rs) | Client-owned MLS content, coarse milestones, bounded redacted manifests and no plaintext at the untrusted forwarder. No packet-capture or deployed relay claim. |
 | P1-4–P1-6 adverse common transport; `E2E-MSG-002` | [memory.rs](../../crates/transport-conformance/tests/memory.rs): `memory_adapter_passes_the_composed_common_verdict_trace`, `queue_saturation_is_deterministic_and_detects_an_over_accepting_bridge`, `held_delivery_survives_bounded_arbitrary_virtual_delay_without_sleeping`, and deliberately defective bridge tests | Bounded loss, delay, duplicate, reorder, corruption, stale replay, acknowledgement loss, saturation, wake/drop and exact-byte retry. No eventual delivery guarantee. The lifecycle matrix inventory is an index, not an independent verdict. |
@@ -140,7 +146,14 @@ rejects delivery, attempt/generation changes and retained lease fields for expir
 work. Review instance 3 returned Ready with no actionable findings at
 `9c9e24d785015147849fecddca5e6fa96e6becb2`; the
 [retained review record](phase1-closeout-review.md) records all dispositions and
-remaining execution limits. Checkpoints A and B are reconciled on that basis.
+remaining execution limits. The user explicitly authorized review instance 4
+after the original three-instance limit. It assessed the later completion state
+at `9e959033f236b0e8d19e01911d70188d278b376b` and found the wrong-verifier
+process-boundary gap and stale portable-evidence wording. Both findings are
+accepted and corrected in PR #306; the exact merged correction revision passed
+the full portable gate and CodeQL. The authorized four-review limit is exhausted,
+so the corrections were not submitted to a fifth independent review. Checkpoints
+A and B remain reconciled.
 
 P1-1 has a closed transition/fixture matrix and current negative tests. The
 original combined implementation did not retain independently replayable

@@ -6,8 +6,10 @@ The [Phase 1 closeout evidence matrix](evidence/phase1-closeout.md) is the
 current requirement/test/claim index. [ADR 0025](adr/0025-close-phase-one-recovery-and-conformance-evidence.md)
 adds checked Welcome application and SQLite commit-window process kills,
 fresh complete-state verification, and deterministic lifecycle model fixes.
-Public completion remains conditional on independent review and the full
-three-platform gate for the immutable merged revision.
+All findings from the authorized independent-review closeout are remediated,
+and the immutable merged revision recorded in the matrix passed the full
+three-platform gate. Later behavior or evidence revisions require their own
+exact-revision result.
 
 ## Architectural principle
 

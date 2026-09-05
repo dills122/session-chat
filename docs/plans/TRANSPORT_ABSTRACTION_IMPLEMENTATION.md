@@ -758,7 +758,7 @@ and the retained SQLCipher MLS/storage increment governed by ADRs 0008 and 0015
 - [x] Review retained evidence before any real network adapter.
 
 The [full closeout gate](../evidence/phase1-closeout.md) on
-`ac7acf198b926e8fdb80257c899cca5e59a3f0e9` closes this checkpoint. The bounded
+`5a220bd9376d51b9b3943e997fc5c93ddcfa91ca` closes this checkpoint. The bounded
 Iroh frame-link feasibility slice below was retained early as a pre-adapter
 experiment; it does not satisfy Task 10. That reusable adapter remains later work.
 

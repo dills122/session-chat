@@ -5,7 +5,7 @@ Status: historical completed plan; P1-0 through P1-10 complete
 Date: 2026-09-02
 
 Completed: 2026-09-05 on immutable tested code revision
-`ac7acf198b926e8fdb80257c899cca5e59a3f0e9`. The
+`5a220bd9376d51b9b3943e997fc5c93ddcfa91ca`. The
 [evidence matrix](../evidence/phase1-closeout.md) records the full non-PR
 three-platform run. This later checkpoint changes only evidence/status metadata
 and does not represent its own hash as the tested code revision.
@@ -491,6 +491,10 @@ unsafe duplication/reordering at the untrusted forwarder.
 - [x] Every canonical `E2E-JOIN-002` class fails before approval, MLS Add, or
       durable membership mutation and a fresh inspector proves the authoritative
       state is unchanged.
+- [x] The wrong-verifier case opens and verifies a valid foreign request, then
+      reaches the production expected-invitation reservation boundary, requires
+      rejection, and proves replay state is released while the expected
+      invitation remains available.
 - [x] The untrusted service receives only canonical public objects and cannot
       obtain bearer invitation, raw vault key, provider proof, or client-only
       authority.
@@ -573,8 +577,10 @@ it outside Phase 1 before requesting completion review.
       Phase 1 portions of retention, upgrade, and abuse scenarios.
 - [x] Every passing claim links to executable evidence on the exact revision;
       missing physical/platform/product evidence remains visibly deferred.
-- [x] A fresh-context independent review finds no contradiction among the
-      matrix, roadmap, architecture, threat model, ADRs, and active plans.
+- [x] Fresh-context independent-review findings across the matrix, roadmap,
+      architecture, threat model, ADRs, and active plans are retained and all
+      actionable contradictions are remediated. The final authorized reviewer
+      did not reassess the fixes.
 
 **Verification:**
 
