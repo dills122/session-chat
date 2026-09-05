@@ -53,6 +53,17 @@ at `/tmp/session-chat-network-host/direct/invitation.v2` and reports
 an authenticated, confidential channel independent of Iroh. The endpoint ID is
 public; the invitation file is admission authority and must remain secret. The
 host permits up to five minutes for this operator handoff and connection.
+
+For this alpha, use an existing end-to-end encrypted messenger conversation
+with the intended recipient whose contact identity you already trust, and send
+the invitation as a file attachment. The public endpoint ID may travel in the
+same conversation. Do not paste or post the invitation, upload it to a public
+link, or send it through ordinary email. After both clients complete, remove
+the downloaded invitation and the sent attachment or message where supported;
+messenger backups or the recipient device may retain copies, so this is not a
+secure-erasure guarantee. The messenger is only the temporary bearer-capability
+handoff and is not part of the Session Chat protocol security boundary.
+
 Choose a different new local state directory on the second computer and run:
 
 ```sh
