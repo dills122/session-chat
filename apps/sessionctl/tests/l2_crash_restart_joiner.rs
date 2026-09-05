@@ -120,10 +120,17 @@ mod checked {
 
     #[test]
     fn changed_committed_joiner_retry_is_rejected_without_mutation() {
-        assert!(matches!(
-            run_l2_process_probe(&executable(), L2HarnessProbe::JoinerRetryMutation),
-            Err(SessionCtlError::Stage("L2 retry conflict confirmed"))
-        ));
+        for attempt in 0..8 {
+            let error =
+                run_l2_process_probe(&executable(), L2HarnessProbe::JoinerRetryMutation).err();
+            assert!(
+                matches!(
+                    error,
+                    Some(SessionCtlError::Stage("L2 retry conflict confirmed"))
+                ),
+                "unexpected coarse probe outcome on run {attempt}: {error:?}"
+            );
+        }
     }
 
     #[test]

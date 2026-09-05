@@ -69,6 +69,10 @@ jobs:
 
   l2-evidence:
     name: L2 evidence (${{ matrix.name }})
+    defaults:
+      run:
+        # Bash -e/pipefail makes every Cargo failure fatal on Windows too.
+        shell: bash
     strategy:
       fail-fast: false
       matrix:
@@ -116,6 +120,7 @@ jobs:
       - name: Prove the pull-request smoke catches defective evidence
         if: github.event_name == 'pull_request'
         run: |
+          cargo test -p sessionctl --test l2_crash_restart_joiner checked::changed_committed_joiner_retry_is_rejected_without_mutation --locked --offline -- --exact --test-threads=1
           cargo test -p sessionctl --test l2_outbox_crash_restart --locked --offline -- --nocapture --test-threads=1
           cargo test -p sessionctl --test l2_public_evidence --locked --offline
           cargo test -p sessionctl --lib l2_process::evidence::tests --locked --offline
