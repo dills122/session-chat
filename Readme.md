@@ -6,6 +6,10 @@ Session Chat is a protocol-first project for disposable, end-to-end encrypted
 conversations with pluggable admission and delivery. The project is currently a
 headless research and implementation laboratory, not a deployable chat product.
 
+**Current milestone:** Phase 1 is complete. The first source-only protocol
+laboratory prerelease is documented as
+[`v0.1.0-alpha.1`](docs/releases/v0.1.0-alpha.1.md).
+
 The design principle is: **publish the door, not the key**.
 
 ## Current implementation
@@ -36,6 +40,9 @@ The Rust workspace currently contains:
   provider-neutral right-specific opaque-envelope transport contract
 - `transport-memory`, with bounded deterministic drop, hold, duplicate,
   reordering, retry, and acknowledgement controls for headless protocol tests
+- `transport-iroh`, with a bounded authenticated Iroh frame link used by the
+  explicit FastV1 online experiment; it is not an offline mailbox or a complete
+  reusable transport provider
 - `transport-conformance`, with publish-disabled, offline adverse-trace parsing
   and reusable LocalV1 memory-adapter verdicts
 - `session-inviter-transaction`, with a bounded fault-injectable conformance
@@ -57,7 +64,8 @@ The Rust workspace currently contains:
   Alice/Bob conformance flows covering protected join, explicit approval,
   SQLCipher close/reopen and application-kill recovery, Welcome delivery,
   bidirectional MLS messages, path update, removal, and post-removal rejection
-  over local test adapters
+  over local test adapters, plus an explicitly selected scripted two-computer
+  proof over the experimental Iroh FastV1 link
 
 The signing key authenticates the invitation bytes, not a GitHub identity or
 person. The capability invitation is a secret bearer object and must not be
@@ -65,7 +73,8 @@ posted publicly or placed in a transport envelope. The MLS adapter exposes a
 generic persistence boundary, and the headless conformance client composes its
 approved Add with SQLCipher and a durable Welcome outbox. Invitation,
 approval, and replay shadows remain in the initialization process and cannot be
-reloaded as one durable authorization owner; there is no network path.
+reloaded as one durable authorization owner in that in-memory composition; its
+LocalV1 delivery path is not a network path.
 The protected-join and capability-admission adapters prove possession for one
 exact typed HPKE context, preserve the exact signed-invitation instance,
 independently validate and own the exact KeyPackage, and reserve replay values
