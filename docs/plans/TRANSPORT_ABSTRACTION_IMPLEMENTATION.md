@@ -801,9 +801,10 @@ poll, exact-set acknowledgement, acknowledgement retry, and clean close.
 
 The adapter remains online and volatile. Relay-path two-peer evidence,
 route-change/NAT/offline/outage cases, packet captures, durable service state,
-mailbox lifecycle/rotation composition, and the complete adverse conformance
-matrix remain open. Public N0 reachability remains an explicitly invoked
-ignored smoke test.
+mailbox lifecycle/rotation composition, and the external-network adverse matrix
+remain open. The connected protocol and authority adverse matrix and the exact
+Linux/macOS/Windows implementation revision are retained. Public N0
+reachability remains an explicitly invoked ignored smoke test.
 
 **Description:** Implement the first real adapter for the Fast profile, keeping
 offline mailbox behavior separate where Iroh relays are stateless. Document
@@ -819,7 +820,7 @@ every discovery, relay, direct-peer, and DNS observer.
 
 **Verification:**
 
-- [ ] Shared conformance suite passes.
+- [x] Shared conformance suite passes.
 - [ ] NAT, relay-only, route change, peer offline, and service outage tests pass.
 - [ ] Packet captures match the Fast observer matrix.
 

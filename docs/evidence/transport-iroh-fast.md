@@ -62,6 +62,12 @@ and responses. The production coverage gate records 93.96% line coverage for
 `transport-iroh` and workspace totals of 92.79% lines, 88.01% regions, and
 89.13% functions for this revision.
 
+GitHub CI on implementation revision
+`ba83404c27e485af38dbf7141dca8e7a2f93fcc9` passed the Rust and L2 evidence
+jobs on Linux x64, macOS arm64, and Windows x64, along with production
+coverage, dependency policy and review, repository policy, retained Node tools,
+the project site, CodeQL, and the aggregate gate.
+
 Commands for this increment:
 
 ```sh
@@ -80,7 +86,6 @@ case remains ignored unless an operator explicitly runs it with network access.
 - direct and relay path classification with byte-identical envelope evidence;
 - NAT, forced relay-only, route-change, peer-offline, and service-outage cases;
 - packet captures reconciled with the Fast observer matrix;
-- supported-platform CI on the exact implementation revision;
 - durable mailbox-service and client receive-state integration if offline
   delivery is later selected; and
 - mailbox lifecycle issuance/rotation and reconnection composition.
