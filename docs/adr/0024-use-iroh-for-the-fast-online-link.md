@@ -94,6 +94,29 @@ automatic profile fallback.
 - Ephemeral endpoint keys make this a demonstration path, not durable peer
   identity, recovery, or rollback-resistant endpoint state.
 
+## Dependency-policy review
+
+The pinned Iroh graph is checked only for the three supported application CI
+targets: x86_64 Linux GNU, Apple Silicon macOS, and x86_64 Windows MSVC. This
+excludes WebAssembly-only dependencies from the retained local-app claim rather
+than granting their licenses repository-wide.
+
+Four exact transitive crates require narrow license exceptions in `deny.toml`:
+`attohttpc 0.30.1` under MPL-2.0, `foldhash 0.2.0` under Zlib, `spez 0.1.2`
+under BSD-2-Clause, and `webpki-roots 1.0.9` under CDLA-Permissive-2.0. The
+exceptions are version-specific and do not authorize those licenses for
+unrelated dependencies. The MPL dependency is
+consumed unmodified, while the CDLA dependencies contain the public root data
+used by the TLS graph; this review is a repository policy decision, not legal
+advice.
+
+`paste 1.0.15` is reported by RUSTSEC-2024-0436 as unmaintained and has no safe
+upgrade. It is a transitive macro dependency of Iroh's Linux network watcher,
+not cryptographic or protocol authority. The repository therefore retains one
+named advisory exception owned by `@dills122`, expiring on 2026-12-04 or before
+Task 10 begins, whichever comes first. The reusable adapter may not inherit the
+exception without a fresh dependency review.
+
 ## Alternatives considered
 
 ### Ad hoc TCP framing
@@ -123,3 +146,6 @@ authentication cannot replace admission or MLS authorization.
 - A later mailbox adapter defines right-specific network authority and passes
   the complete `EnvelopeDelivery` conformance suite before claiming offline
   delivery.
+- Before Task 10, remove or explicitly re-review the `paste 1.0.15` advisory
+  exception and every Iroh-specific license exception against the then-pinned
+  dependency graph.

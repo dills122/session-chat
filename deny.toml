@@ -1,8 +1,15 @@
 [graph]
 all-features = true
+targets = [
+  "x86_64-unknown-linux-gnu",
+  "aarch64-apple-darwin",
+  "x86_64-pc-windows-msvc",
+]
 
 [advisories]
-ignore = []
+ignore = [
+  { id = "RUSTSEC-2024-0436", reason = "paste 1.0.15 is an unmaintained transitive Linux-only macro dependency through pinned iroh 1.1.0/netwatch; no safe upgrade exists. Owner: @dills122. Remove before Task 10 or review by 2026-12-04." },
+]
 
 [licenses]
 allow = [
@@ -16,6 +23,14 @@ allow = [
   "Unicode-3.0",
 ]
 confidence-threshold = 0.8
+exceptions = [
+  # Exact transitive dependencies of pinned iroh 1.1.0. These exceptions do
+  # not permit the license for unrelated crates or later versions.
+  { allow = ["MPL-2.0"], crate = "attohttpc@0.30.1" },
+  { allow = ["Zlib"], crate = "foldhash@0.2.0" },
+  { allow = ["BSD-2-Clause"], crate = "spez@0.1.2" },
+  { allow = ["CDLA-Permissive-2.0"], crate = "webpki-roots@1.0.9" },
+]
 
 [bans]
 multiple-versions = "warn"

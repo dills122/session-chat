@@ -14,7 +14,7 @@ does not certify future architecture or make a test build production-ready.
 | Retained Node tools | Exact Node patch and all dependency-free repository/provider tests |
 | Rust production coverage | Pinned source-based driver; integration-target production measurement; 92.23% workspace lines, 88.53% regions, 85.64% functions, and 90% lines for every vital library component |
 | Repository policy | Local Markdown links, JSON parsing, evidence-manifest references/digests, absence of developer-local paths/placeholders, and immutable action references |
-| Rust dependency policy | RustSec advisories/yanks, reviewed license allowlist, crates.io-only sources, and no wildcard requirements |
+| Rust dependency policy | RustSec advisories/yanks, reviewed license allowlist and exact-crate exceptions, supported application target graph, crates.io-only sources, and no wildcard requirements |
 | Pull-request dependency review | Rejects newly introduced moderate-or-higher vulnerabilities in runtime or unknown scopes |
 | Gate | Uses `always()` and verifies every intended job result, including an intentional dependency-review skip outside pull requests |
 
@@ -82,6 +82,9 @@ capture the settings through GitHub when preparing an audit or release.
 
 No dependency or cryptographic update is auto-merged. Advisory exceptions need
 an affected-path analysis, owner, expiry or removal condition, and review.
+License exceptions must be exact-crate scoped and justified in the selecting
+ADR; unsupported target-only dependencies are excluded through the explicit
+three-platform graph rather than silently licensed repository-wide.
 
 The [real-world E2E security test strategy](plans/REAL_WORLD_E2E_TESTING.md)
 defines when deterministic two-client scenarios enter this required gate and
