@@ -25,7 +25,7 @@ edition = "2024"
 license = "MIT"
 
 [workspace.dependencies]
-argon2 = { version = "=0.5.3", default-features = false, features = ["zeroize"] }
+argon2 = { version = "=0.6.0", default-features = false, features = ["zeroize"] }
 ed25519-dalek = { version = "=3.0.0", default-features = false, features = ["fast", "zeroize"] }
 aws-lc-rs = { version = "=1.16.3", default-features = false, features = ["non-fips"] }
 iroh = { version = "=1.1.0", default-features = false, features = ["portmapper", "tls-aws-lc-rs"] }
