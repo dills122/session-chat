@@ -160,6 +160,52 @@ fn hostile_replayed_join_is_rejected_before_durable_membership_mutation() {
 }
 
 #[test]
+fn hostile_first_contact_matrix_rejects_every_remaining_process_case() {
+    let root = marked_root("hostile-matrix");
+    let output = Command::new(env!("CARGO_BIN_EXE_sessionctl-l1"))
+        .args(["--internal-role", "hostile-matrix-controller"])
+        .arg(&root)
+        .output()
+        .expect("run hostile first-contact matrix");
+
+    let controller_removed_root = !root.exists();
+    if !controller_removed_root {
+        fs::remove_dir_all(&root).expect("remove failed hostile matrix root");
+    }
+    assert!(output.status.success(), "status: {:?}", output.status);
+    assert!(
+        output.stderr.is_empty(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stdout.len() <= MAX_EVIDENCE_BYTES);
+    assert_eq!(
+        output.stdout,
+        b"version=1\nscenario=E2E-JOIN-002\ntopology=two-clients-one-untrusted-service\nresult=pass\ncases=malformed-protected-join,expired-protected-join,copied-protected-join,wrong-invitation,wrong-key-package,wrong-verifier,reordered-protected-joins\ncase_count=7\napproval=not-reached\nmls_add=not-reached\nmembership=unchanged\nservice_input=canonical-public-only\nredaction=pass\nchild_cleanup=pass\ndirectory_cleanup=pass\n"
+    );
+    let lowercase = String::from_utf8_lossy(&output.stdout).to_ascii_lowercase();
+    for forbidden in [
+        "capability",
+        "plaintext",
+        "ciphertext",
+        "vault",
+        "database_key",
+        "invitation_id",
+        "mailbox_id",
+        "envelope_id",
+        ".sqlite",
+        "/tmp/",
+        "\\temp\\",
+    ] {
+        assert!(!lowercase.contains(forbidden), "leaked term {forbidden:?}");
+    }
+    assert!(
+        controller_removed_root,
+        "controller must remove the scenario root"
+    );
+}
+
+#[test]
 fn internal_role_boundary_rejects_unmarked_and_unknown_scopes() {
     assert!(run_l1_process_internal_role("bob", "/".into()).is_err());
 
@@ -234,6 +280,17 @@ fn internal_roles_fail_closed_on_missing_or_malformed_scoped_inputs() {
         !hostile_controller.exists(),
         "failed hostile controller must still reap children and remove its root"
     );
+
+    for role in [
+        "hostile-matrix-service",
+        "hostile-matrix-alice",
+        "hostile-matrix-bob",
+        "hostile-matrix-inspector",
+    ] {
+        let root = marked_root(role);
+        assert!(run_l1_process_internal_role(role, root.clone()).is_err());
+        fs::remove_dir_all(root).expect("remove hostile matrix role root");
+    }
 }
 
 fn marked_root(label: &str) -> std::path::PathBuf {

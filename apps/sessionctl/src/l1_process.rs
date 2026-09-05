@@ -562,6 +562,11 @@ pub fn run_l1_process_internal_role(role: &str, root: PathBuf) -> Result<(), Ses
         "hostile-replay-alice" => run_hostile_replay_alice(&root),
         "hostile-replay-bob" => run_hostile_replay_bob(&root),
         "hostile-replay-inspector" => run_hostile_replay_inspector(&root),
+        "hostile-matrix-controller" => run_hostile_matrix_controller(&root),
+        "hostile-matrix-service" => run_hostile_matrix_service(&root),
+        "hostile-matrix-alice" => run_hostile_matrix_alice(&root),
+        "hostile-matrix-bob" => run_hostile_matrix_bob(&root),
+        "hostile-matrix-inspector" => run_hostile_matrix_inspector(&root),
         _ => Err(stage("process role")),
     }
 }
@@ -571,6 +576,56 @@ enum FrameKind {
     ProtectedJoin = 1,
     WelcomeDeposit = 2,
     OpaqueEnvelope = 3,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum HostileJoinCase {
+    Malformed,
+    Expired,
+    Copied,
+    WrongInvitation,
+    WrongKeyPackage,
+    WrongVerifier,
+    Reordered,
+}
+
+impl HostileJoinCase {
+    const ALL: [Self; 7] = [
+        Self::Malformed,
+        Self::Expired,
+        Self::Copied,
+        Self::WrongInvitation,
+        Self::WrongKeyPackage,
+        Self::WrongVerifier,
+        Self::Reordered,
+    ];
+
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Malformed => "malformed-protected-join",
+            Self::Expired => "expired-protected-join",
+            Self::Copied => "copied-protected-join",
+            Self::WrongInvitation => "wrong-invitation",
+            Self::WrongKeyPackage => "wrong-key-package",
+            Self::WrongVerifier => "wrong-verifier",
+            Self::Reordered => "reordered-protected-joins",
+        }
+    }
+
+    fn parse(bytes: &[u8]) -> Result<Self, SessionCtlError> {
+        Self::ALL
+            .into_iter()
+            .find(|case| bytes == case.label().as_bytes())
+            .ok_or_else(|| stage("hostile process case"))
+    }
+
+    const fn request_count(self) -> u8 {
+        if matches!(self, Self::Reordered) {
+            2
+        } else {
+            1
+        }
+    }
 }
 
 impl TryFrom<u8> for FrameKind {
@@ -1023,6 +1078,415 @@ fn run_hostile_replay_inspector(root: &Path) -> Result<(), SessionCtlError> {
     }
     print!("role=inspector\nresult=pass\ndurable_membership=unchanged\n");
     Ok(())
+}
+
+fn run_hostile_matrix_controller(root: &Path) -> Result<(), SessionCtlError> {
+    let executable = std::env::current_exe().at_stage("hostile matrix executable")?;
+    for case in HostileJoinCase::ALL {
+        let mut case_root = ProcessRoot::create_at(root.join(case.label()))?;
+        atomic_write(
+            &hostile_case_path(case_root.path()),
+            case.label().as_bytes(),
+            64,
+        )?;
+        let mut children = ChildSet::new();
+        let scenario_result = (|| {
+            children.spawn(&executable, "hostile-matrix-service", case_root.path())?;
+            children.spawn(&executable, "hostile-matrix-bob", case_root.path())?;
+            children.spawn(&executable, "hostile-matrix-alice", case_root.path())?;
+
+            let alice = children.wait_role("hostile-matrix-alice", CHILD_WAIT)?;
+            require_child_output(
+                &alice,
+                format!(
+                    "role=alice\nresult=pass\ncase={}\napproval=not-reached\nmls_add=not-reached\nmembership=unchanged\n",
+                    case.label()
+                )
+                .as_bytes(),
+            )?;
+            children.spawn(&executable, "hostile-matrix-inspector", case_root.path())?;
+            let inspector = children.wait_role("hostile-matrix-inspector", CHILD_WAIT)?;
+            require_child_output(
+                &inspector,
+                b"role=inspector\nresult=pass\ndurable_membership=unchanged\n",
+            )?;
+            let bob = children.wait_role("hostile-matrix-bob", CHILD_WAIT)?;
+            require_child_output(
+                &bob,
+                format!(
+                    "role=bob\nresult=pass\ncase={}\nrequests={}\n",
+                    case.label(),
+                    case.request_count()
+                )
+                .as_bytes(),
+            )?;
+            let service = children.wait_role("hostile-matrix-service", CHILD_WAIT)?;
+            let forwarded = if matches!(case, HostileJoinCase::Reordered) {
+                1
+            } else {
+                case.request_count()
+            };
+            require_child_output(
+                &service,
+                format!(
+                    "role=untrusted-service\nresult=pass\ncase={}\nreceived={}\nforwarded={}\n",
+                    case.label(),
+                    case.request_count(),
+                    forwarded
+                )
+                .as_bytes(),
+            )?;
+            if !children.is_empty() {
+                return Err(stage("hostile matrix process cleanup"));
+            }
+            Ok(())
+        })();
+        let child_cleanup_result = children.cleanup();
+        let directory_cleanup_result = case_root.cleanup();
+        scenario_result?;
+        child_cleanup_result?;
+        directory_cleanup_result?;
+    }
+
+    validate_root(root)?;
+    fs::remove_dir_all(root).at_stage("hostile matrix root removal")?;
+    print!(
+        "version=1\nscenario=E2E-JOIN-002\ntopology=two-clients-one-untrusted-service\nresult=pass\ncases=malformed-protected-join,expired-protected-join,copied-protected-join,wrong-invitation,wrong-key-package,wrong-verifier,reordered-protected-joins\ncase_count=7\napproval=not-reached\nmls_add=not-reached\nmembership=unchanged\nservice_input=canonical-public-only\nredaction=pass\nchild_cleanup=pass\ndirectory_cleanup=pass\n"
+    );
+    Ok(())
+}
+
+fn run_hostile_matrix_service(root: &Path) -> Result<(), SessionCtlError> {
+    let case = read_hostile_case(root)?;
+    let mut received = Vec::with_capacity(usize::from(case.request_count()));
+    for sequence in 1..=case.request_count() {
+        let encoded =
+            read_bounded_wait(&relay_in(root, sequence), MAX_IPC_FRAME_BYTES, FRAME_WAIT)?;
+        let frame = IpcFrame::decode(&encoded)?;
+        frame.require(FrameKind::ProtectedJoin, sequence)?;
+        received.push(encoded);
+    }
+
+    if matches!(case, HostileJoinCase::Reordered) {
+        atomic_write(&relay_out(root, 1), &received[1], MAX_IPC_FRAME_BYTES)?;
+    } else if matches!(case, HostileJoinCase::Malformed) {
+        let frame = IpcFrame::decode(&received[0])?;
+        let mut parts = frame.require(FrameKind::ProtectedJoin, 1)?;
+        let encoded = parts
+            .pop()
+            .ok_or_else(|| stage("hostile malformed protected join"))?;
+        let protected = ProtectedJoinRequest::decode_canonical(&encoded)
+            .at_stage("hostile malformed protected join")?;
+        let mut ciphertext = protected.ciphertext().to_vec();
+        ciphertext[0] ^= 1;
+        let malformed = ProtectedJoinRequest::new(
+            *protected.invitation_id(),
+            *protected.invitation_key_id(),
+            *protected.encapsulated_key(),
+            ciphertext,
+        )
+        .at_stage("hostile malformed protected join")?
+        .encode_canonical()
+        .at_stage("hostile malformed protected join")?;
+        write_frame(
+            &relay_out(root, 1),
+            IpcFrame::new(FrameKind::ProtectedJoin, 1, vec![malformed])?,
+        )?;
+    } else {
+        atomic_write(&relay_out(root, 1), &received[0], MAX_IPC_FRAME_BYTES)?;
+    }
+
+    let forwarded = if matches!(case, HostileJoinCase::Reordered) {
+        1
+    } else {
+        case.request_count()
+    };
+    print!(
+        "role=untrusted-service\nresult=pass\ncase={}\nreceived={}\nforwarded={}\n",
+        case.label(),
+        case.request_count(),
+        forwarded
+    );
+    Ok(())
+}
+
+fn run_hostile_matrix_alice(root: &Path) -> Result<(), SessionCtlError> {
+    let case = read_hostile_case(root)?;
+    let database_key = Zeroizing::new(random_nonzero::<32>()?);
+    let storage = SqlCipherStorage::create(
+        &database_path(root),
+        VaultKey::new(*database_key).at_stage("hostile matrix owner key")?,
+    )
+    .at_stage("hostile matrix owner store")?;
+    let group_id = SessionGroupId::new(random_nonzero()?).at_stage("hostile matrix group ID")?;
+    let alice = create_durable_client_with_storage(
+        group_id,
+        storage.clone(),
+        storage.clone(),
+        storage.clone(),
+    )
+    .at_stage("hostile matrix Alice client")?;
+    let group = alice
+        .create_group(group_id, NOW)
+        .at_stage("hostile matrix Alice group")?;
+    let protector = AwsLcInvitationJoinProtector::new();
+    let invitation_issued_at = if matches!(case, HostileJoinCase::Expired) {
+        NOW.saturating_sub(10)
+    } else {
+        NOW
+    };
+    let issued = storage
+        .issue_capability_invitation(
+            &protector,
+            invitation_issued_at,
+            INVITATION_EXPIRES_AT,
+            invitation_issued_at,
+        )
+        .at_stage("hostile matrix invitation generation")?;
+    let foreign = storage
+        .issue_capability_invitation(&protector, NOW, INVITATION_EXPIRES_AT, NOW)
+        .at_stage("hostile matrix foreign invitation generation")?;
+    atomic_write(
+        &direct_invitation_path(root),
+        &issued
+            .invitation()
+            .encode_canonical()
+            .at_stage("hostile matrix invitation encoding")?,
+        MAX_WIRE_OBJECT_BYTES,
+    )?;
+    atomic_write(
+        &foreign_invitation_path(root),
+        &foreign
+            .invitation()
+            .encode_canonical()
+            .at_stage("hostile matrix foreign invitation encoding")?,
+        MAX_WIRE_OBJECT_BYTES,
+    )?;
+    write_private_state(root, &database_key, group_id)?;
+
+    match case {
+        HostileJoinCase::Reordered => {
+            if receive_protected_join(root, 1).is_ok() {
+                return Err(stage("hostile reordered join rejection"));
+            }
+        }
+        HostileJoinCase::Malformed | HostileJoinCase::Copied | HostileJoinCase::WrongInvitation => {
+            let encoded = receive_protected_join(root, 1)?;
+            let protected = ProtectedJoinRequest::decode_canonical(&encoded)
+                .at_stage("hostile matrix protected join")?;
+            if protector
+                .open_capability_request(issued.private_key(), issued.invitation(), &protected)
+                .is_ok()
+            {
+                return Err(stage("hostile protected join rejection"));
+            }
+        }
+        HostileJoinCase::WrongVerifier => {
+            let encoded = receive_protected_join(root, 1)?;
+            let protected = ProtectedJoinRequest::decode_canonical(&encoded)
+                .at_stage("hostile wrong verifier protected join")?;
+            let opened = protector
+                .open_capability_request(foreign.private_key(), foreign.invitation(), &protected)
+                .at_stage("hostile wrong verifier opening")?;
+            if opened.request().intended_verifier() == issued.invitation().inviter_verifying_key() {
+                return Err(stage("hostile wrong verifier context"));
+            }
+        }
+        HostileJoinCase::Expired | HostileJoinCase::WrongKeyPackage => {
+            let encoded = receive_protected_join(root, 1)?;
+            let protected = ProtectedJoinRequest::decode_canonical(&encoded)
+                .at_stage("hostile matrix protected join")?;
+            let opened = protector
+                .open_capability_request(issued.private_key(), issued.invitation(), &protected)
+                .at_stage("hostile matrix join opening")?;
+            let mut admission = CapabilityAdmissionVerifier::new(
+                CapabilityAdmissionPolicy::new(3_600, 5, 8)
+                    .at_stage("hostile matrix admission policy")?,
+            );
+            if admission.verify_and_reserve(opened, NOW).is_ok() || admission.pending_count() != 0 {
+                return Err(stage("hostile admission rejection"));
+            }
+        }
+    }
+    if group.epoch() != 0 || group.member_count() != 1 {
+        return Err(stage("hostile matrix membership mutation"));
+    }
+    drop(group);
+    drop(alice);
+    drop(storage);
+    print!(
+        "role=alice\nresult=pass\ncase={}\napproval=not-reached\nmls_add=not-reached\nmembership=unchanged\n",
+        case.label()
+    );
+    Ok(())
+}
+
+fn run_hostile_matrix_bob(root: &Path) -> Result<(), SessionCtlError> {
+    let case = read_hostile_case(root)?;
+    let invitation_path = if matches!(
+        case,
+        HostileJoinCase::Copied | HostileJoinCase::WrongVerifier
+    ) {
+        foreign_invitation_path(root)
+    } else {
+        direct_invitation_path(root)
+    };
+    let invitation_bytes = Zeroizing::new(read_bounded_wait(
+        &invitation_path,
+        MAX_WIRE_OBJECT_BYTES,
+        FRAME_WAIT,
+    )?);
+    let invitation = SignedCapabilityInvitationV2::decode_and_verify(&invitation_bytes)
+        .at_stage("hostile matrix invitation decode")?;
+
+    for sequence in 1..=case.request_count() {
+        let mut protected = build_hostile_join_request(&invitation, case)?;
+        if matches!(case, HostileJoinCase::WrongInvitation) {
+            protected = ProtectedJoinRequest::new(
+                random_nonzero()?,
+                *protected.invitation_key_id(),
+                *protected.encapsulated_key(),
+                protected.ciphertext().to_vec(),
+            )
+            .at_stage("hostile wrong invitation outer")?;
+        }
+        write_frame(
+            &relay_in(root, sequence),
+            IpcFrame::new(
+                FrameKind::ProtectedJoin,
+                sequence,
+                vec![
+                    protected
+                        .encode_canonical()
+                        .at_stage("hostile matrix join encoding")?,
+                ],
+            )?,
+        )?;
+    }
+    print!(
+        "role=bob\nresult=pass\ncase={}\nrequests={}\n",
+        case.label(),
+        case.request_count()
+    );
+    Ok(())
+}
+
+fn build_hostile_join_request(
+    invitation: &SignedCapabilityInvitationV2,
+    case: HostileJoinCase,
+) -> Result<ProtectedJoinRequest, SessionCtlError> {
+    let (issued_at, expires_at) = if matches!(case, HostileJoinCase::Expired) {
+        (NOW.saturating_sub(2), NOW.saturating_sub(1))
+    } else {
+        (NOW, REQUEST_EXPIRES_AT)
+    };
+    let mut welcome_transport = LocalMemoryWelcomeTransport::new(
+        LocalMailboxPolicy::new(300, 1).at_stage("hostile matrix Welcome policy")?,
+    )
+    .at_stage("hostile matrix Welcome transport")?;
+    let mailbox = welcome_transport
+        .create_welcome_mailbox(expires_at, issued_at)
+        .at_stage("hostile matrix Welcome mailbox")?;
+    let (deposit_endpoint, _, _) = mailbox.into_parts();
+    let bob = create_client().at_stage("hostile matrix Bob client")?;
+    let key_package = bob
+        .generate_key_package(issued_at)
+        .at_stage("hostile matrix Bob KeyPackage")?;
+    let validated = create_key_package_validator()
+        .validate_key_package(key_package.as_bytes(), issued_at)
+        .at_stage("hostile matrix Bob KeyPackage validation")?;
+    let (key_package_bytes, credential_identity, leaf_signature_key) =
+        if matches!(case, HostileJoinCase::WrongKeyPackage) {
+            let foreign_key_package = bob
+                .generate_key_package(issued_at)
+                .at_stage("hostile matrix foreign KeyPackage")?;
+            let foreign_validated = create_key_package_validator()
+                .validate_key_package(foreign_key_package.as_bytes(), issued_at)
+                .at_stage("hostile matrix foreign KeyPackage validation")?;
+            (
+                foreign_key_package.as_bytes().to_vec(),
+                *foreign_validated.credential_identity(),
+                *foreign_validated.leaf_signature_key(),
+            )
+        } else {
+            (
+                key_package.as_bytes().to_vec(),
+                *validated.credential_identity(),
+                *validated.leaf_signature_key(),
+            )
+        };
+    let request = CapabilityJoinRequest::new(
+        InvitationJoinBinding::new(
+            *invitation.invitation_id(),
+            *invitation.join_challenge(),
+            *invitation.invitation_key_id(),
+            *invitation.inviter_verifying_key(),
+        )
+        .at_stage("hostile matrix invitation binding")?,
+        JoinRequestBinding::new(random_nonzero()?, issued_at, expires_at, random_nonzero()?)
+            .at_stage("hostile matrix request binding")?,
+        MlsKeyPackageBinding::new(
+            *validated.key_package_reference(),
+            key_package_bytes,
+            credential_identity,
+            leaf_signature_key,
+        )
+        .at_stage("hostile matrix MLS binding")?,
+        deposit_endpoint,
+    )
+    .at_stage("hostile matrix join request")?;
+    AwsLcInvitationJoinProtector::new()
+        .seal_capability_request(invitation, &request)
+        .at_stage("hostile matrix join protection")
+}
+
+fn run_hostile_matrix_inspector(root: &Path) -> Result<(), SessionCtlError> {
+    let _case = read_hostile_case(root)?;
+    let (database_key, group_id) = read_private_state(root)?;
+    let storage = SqlCipherStorage::open(
+        &database_path(root),
+        VaultKey::new(*database_key).at_stage("hostile matrix reopen key")?,
+    )
+    .at_stage("hostile matrix owner reopen")?;
+    if storage
+        .recover_pre_membership_authorizations(&AwsLcInvitationJoinProtector::new(), NOW + 1)
+        .at_stage("hostile matrix authorization recovery")?
+        != 0
+    {
+        return Err(stage("hostile matrix authorization mutation"));
+    }
+    let invitation_bytes = Zeroizing::new(read_bounded_wait(
+        &direct_invitation_path(root),
+        MAX_WIRE_OBJECT_BYTES,
+        FRAME_WAIT,
+    )?);
+    let invitation = SignedCapabilityInvitationV2::decode_and_verify(&invitation_bytes)
+        .at_stage("hostile matrix recovery invitation")?;
+    if storage
+        .invitation_opening_state(invitation.invitation_id())
+        .at_stage("hostile matrix invitation state")?
+        != Some(InvitationOpeningState::Available)
+    {
+        return Err(stage("hostile matrix invitation mutation"));
+    }
+    let alice = load_durable_client_with_storage(
+        group_id,
+        storage.clone(),
+        storage.clone(),
+        storage.clone(),
+    )
+    .at_stage("hostile matrix Alice identity reload")?;
+    if alice.load_group(group_id).is_ok() {
+        return Err(stage("hostile matrix durable membership"));
+    }
+    print!("role=inspector\nresult=pass\ndurable_membership=unchanged\n");
+    Ok(())
+}
+
+fn read_hostile_case(root: &Path) -> Result<HostileJoinCase, SessionCtlError> {
+    let encoded = read_bounded_file(&hostile_case_path(root), 64)
+        .ok_or_else(|| stage("hostile process case"))?;
+    HostileJoinCase::parse(&encoded)
 }
 
 fn receive_protected_join(root: &Path, sequence: u8) -> Result<Vec<u8>, SessionCtlError> {
@@ -1962,6 +2426,14 @@ fn require_child_output(output: &ChildOutput, expected: &[u8]) -> Result<(), Ses
 
 fn direct_invitation_path(root: &Path) -> PathBuf {
     root.join("direct/invitation.v2")
+}
+
+fn foreign_invitation_path(root: &Path) -> PathBuf {
+    root.join("direct/foreign-invitation.v2")
+}
+
+fn hostile_case_path(root: &Path) -> PathBuf {
+    root.join("direct/hostile.case")
 }
 
 fn private_state_path(root: &Path) -> PathBuf {
