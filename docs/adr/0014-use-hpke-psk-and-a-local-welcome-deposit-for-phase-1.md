@@ -2,7 +2,8 @@
 
 Status: accepted; canonical protocol values, one-shot HPKE, bounded in-memory
 approval-gated MLS coordination, and local Welcome delivery implemented;
-SQLCipher laboratory composition retained
+SQLCipher laboratory composition retained; restart behavior extended by ADR
+0023
 
 Date: 2026-08-20
 
@@ -149,6 +150,14 @@ abandoned work releases invitation and replay state without changing membership;
 successful in-memory Add consumes the invitation before returning its outputs.
 This is not human UI approval, a durable membership transaction, durable replay
 protection, or a Welcome outbox.
+
+ADR 0023 specifies the durable successor to this in-memory release behavior.
+It commits the exact signed invitation plus matching HPKE private key before
+publication, retains a non-authorizing authorization/replay shadow after
+verification, and abandons rather than reconstructs a lost provider-owned
+KeyPackage after restart. Abandonment retains replay values through the
+invitation-generation expiry and returns the generation to `Available` only
+when its exact opening context reloads successfully.
 
 `session-transport` separately implements the local one-Welcome mailbox. It
 generates independent deposit, receive, and acknowledgement authorities,

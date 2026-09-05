@@ -16,7 +16,13 @@ The same provider boundary can generate a complete invitation-v2 context. It
 uses the selected AWS-LC CSPRNG for the invitation ID, challenge, bearer
 capability, encryption-key ID, and Ed25519 signing seed, and generates the HPKE
 keypair through the existing provider operation. Callers provide only the issue
-and expiration times.
+and expiration times. A dedicated sink projects the canonical invitation and
+an ephemeral private-key view into protected storage without a generic callback
+return path. Restore consumes an opaque, non-cloneable, zeroizing key transfer
+object and accepts only an exact canonical signed invitation whose stored
+X25519 private key derives the public key authenticated by that invitation;
+oversized, malformed, or mismatched parts fail through the same coarse error
+surface.
 
 Successful open returns a privately constructed, non-`Clone`, non-`Debug`
 `OpenedCapabilityJoinRequest`. The later admission boundary can therefore
@@ -31,6 +37,8 @@ Retained evidence includes:
   is a dev-only oracle rather than a runtime dependency;
 - two complete generated invitations with independent random fields, canonical
   authentication, and a working seal/open round trip;
+- a close/reload protected-storage-sink round trip plus malformed, oversized, and
+  wrong-private-key rejection;
 - exact canonical inner round trips; and
 - rejection of wrong keys, changed signed context, mismatched inner bindings,
   and tampered encapsulation, ciphertext, or outer AAD fields through one

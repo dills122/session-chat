@@ -70,8 +70,9 @@ const BASELINE_NOW: u64 = 1_900_000_000;
 const RESERVATION_EXPIRES_AT: u64 = BASELINE_NOW + 300;
 const OUTBOX_EXPIRES_AT: u64 = BASELINE_NOW + 180;
 const APPROVAL_RECORD: &[u8] = b"l2-approved";
+const EXPECTED_SCHEMA_VERSION: u32 = 5;
 const SCHEMA_FINGERPRINT_SHA256: &str =
-    "ed39426dff273ef7192ae3ca326e46747c6dc98f200e47734c2d5223e2ece192";
+    "f365ba3c3ad9720e4ea20915d5c1579b9570800a04c385cfc23ca1cefd5a31c6";
 
 /// Checked harness cases used to prove the reusable controller boundary.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -3123,7 +3124,7 @@ fn verify_complete_state(
         VaultKey::new(**key).map_err(|_| stage("L2 production reopen"))?,
     )
     .map_err(|_| stage("L2 production reopen"))?;
-    if storage.schema_version().map_err(|_| stage("L2 schema"))? != 4
+    if storage.schema_version().map_err(|_| stage("L2 schema"))? != EXPECTED_SCHEMA_VERSION
         || storage
             .cipher_version()
             .map_err(|_| stage("L2 cipher"))?
@@ -3184,8 +3185,9 @@ fn verify_complete_state(
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )
         .map_err(|_| stage("L2 schema"))?;
-    if user_version != 4
-        || metadata != (1, 4, 4)
+    let expected_schema_version = i64::from(EXPECTED_SCHEMA_VERSION);
+    if user_version != expected_schema_version
+        || metadata != (1, expected_schema_version, expected_schema_version)
         || schema_fingerprint(&connection)? != SCHEMA_FINGERPRINT_SHA256
     {
         return Err(stage("L2 schema"));

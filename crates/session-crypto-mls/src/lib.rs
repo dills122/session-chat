@@ -2,8 +2,17 @@
 
 //! Isolated MLS protocol adapter for Session Chat Phase 1.
 
-use std::time::Duration;
+use std::{
+    cell::RefCell,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
+    thread::ThreadId,
+    time::Duration,
+};
 
+use aws_lc_rs::digest::{Context, SHA256};
 use mls_rs::mls_rs_codec::{self, MlsDecode, MlsEncode};
 use mls_rs::{
     CipherSuite, CipherSuiteProvider, Client, CryptoProvider, ExtensionList, Group, MlsMessage,
@@ -18,7 +27,11 @@ use mls_rs::{
         basic::{BasicCredential, BasicIdentityProvider},
     },
 };
-use mls_rs_core::{group::GroupStateStorage, key_package::KeyPackageStorage};
+use mls_rs_core::{
+    error::IntoAnyError,
+    group::{EpochRecord, GroupState, GroupStateStorage},
+    key_package::KeyPackageStorage,
+};
 use mls_rs_crypto_awslc::AwsLcCryptoProvider;
 use session_crypto::{
     ApplicationMessage, MessageEvent, MessageSession, MessageSessionError, ProtectedMessage,
@@ -53,6 +66,7 @@ const DURABLE_IDENTITY_PROVIDER_AWS_LC: u8 = 1;
 const SIGNATURE_PUBLIC_KEY_BYTES: usize = 32;
 const SIGNATURE_SECRET_KEY_BYTES: usize = 64;
 const DURABLE_IDENTITY_KEY_CHECK: &[u8] = b"session-chat/durable-mls-identity/v1";
+const PROVIDER_STATE_WRITE_DIGEST_CONTEXT: &[u8] = b"session-chat/provider-state-write/v1";
 
 /// Coarse, non-provider-specific MLS adapter failures.
 #[derive(Clone, Copy, Debug, Eq, Error, PartialEq)]
@@ -78,6 +92,17 @@ pub enum MlsAdapterError {
     /// Phase 1 permits exactly two members.
     #[error("the two-member Phase 1 group is full")]
     GroupFull,
+}
+
+/// Failure while inseparably staging and persisting one provider-applied Add.
+#[derive(Debug)]
+pub enum CommittedAdditionPersistenceError<E> {
+    /// The caller-supplied durable staging transition failed.
+    Staging(E),
+    /// The group no longer holds the exact state produced by this Add.
+    StaleSnapshot,
+    /// The provider could not serialize or persist its current state.
+    Provider(MlsAdapterError),
 }
 
 /// Opaque secret-bearing durable client-identity record.
@@ -147,6 +172,56 @@ pub trait DurableClientIdentityStorage: Clone {
         group_id: &SessionGroupId,
         encoded: DurableClientIdentityRecord,
     ) -> Result<(), Self::Error>;
+}
+
+#[derive(Clone)]
+struct ProviderStateBoundStorage<S>(S);
+
+#[derive(Debug)]
+enum ProviderStateBoundStorageError<E> {
+    Boundary,
+    Inner(E),
+}
+
+impl<E: IntoAnyError> IntoAnyError for ProviderStateBoundStorageError<E> {}
+
+impl<S: GroupStateStorage> GroupStateStorage for ProviderStateBoundStorage<S> {
+    type Error = ProviderStateBoundStorageError<S::Error>;
+
+    fn state(&self, group_id: &[u8]) -> Result<Option<Zeroizing<Vec<u8>>>, Self::Error> {
+        self.0
+            .state(group_id)
+            .map_err(ProviderStateBoundStorageError::Inner)
+    }
+
+    fn epoch(
+        &self,
+        group_id: &[u8],
+        epoch_id: u64,
+    ) -> Result<Option<Zeroizing<Vec<u8>>>, Self::Error> {
+        self.0
+            .epoch(group_id, epoch_id)
+            .map_err(ProviderStateBoundStorageError::Inner)
+    }
+
+    fn write(
+        &mut self,
+        state: GroupState,
+        epoch_inserts: Vec<EpochRecord>,
+        epoch_updates: Vec<EpochRecord>,
+    ) -> Result<(), Self::Error> {
+        capture_current_provider_state_write(&state, &epoch_inserts, &epoch_updates)
+            .map_err(|_| ProviderStateBoundStorageError::Boundary)?;
+        self.0
+            .write(state, epoch_inserts, epoch_updates)
+            .map_err(ProviderStateBoundStorageError::Inner)
+    }
+
+    fn max_epoch_id(&self, group_id: &[u8]) -> Result<Option<u64>, Self::Error> {
+        self.0
+            .max_epoch_id(group_id)
+            .map_err(ProviderStateBoundStorageError::Inner)
+    }
 }
 
 struct DurableClientIdentity {
@@ -388,7 +463,7 @@ where
         .identity_provider(BasicIdentityProvider)
         .crypto_provider(crypto)
         .key_package_repo(key_package_storage)
-        .group_state_storage(group_state_storage)
+        .group_state_storage(ProviderStateBoundStorage(group_state_storage))
         .protocol_version(ProtocolVersion::MLS_10)
         .key_package_lifetime(KEY_PACKAGE_LIFETIME)
         .signing_identity(identity, secret, CIPHERSUITE)
@@ -485,7 +560,7 @@ where
         .identity_provider(BasicIdentityProvider)
         .crypto_provider(crypto)
         .key_package_repo(key_package_storage)
-        .group_state_storage(group_state_storage)
+        .group_state_storage(ProviderStateBoundStorage(group_state_storage))
         .protocol_version(ProtocolVersion::MLS_10)
         .key_package_lifetime(KEY_PACKAGE_LIFETIME)
         .signing_identity(
@@ -823,6 +898,7 @@ pub enum IncomingMessage {
 pub struct SessionMlsGroup<C: MlsConfig> {
     inner: Group<C>,
     group_id: SessionGroupId,
+    state_binding: Arc<AtomicU64>,
     inactive: bool,
 }
 
@@ -837,6 +913,7 @@ impl<C: MlsConfig> SessionMlsGroup<C> {
         let group = Self {
             inner,
             group_id,
+            state_binding: Arc::new(AtomicU64::new(0)),
             inactive: false,
         };
         if !group.phase_one_invariants_hold() {
@@ -903,6 +980,10 @@ impl<C: MlsConfig> SessionMlsGroup<C> {
         self.group_id.as_bytes()
     }
 
+    fn invalidate_state_binding(&self) {
+        self.state_binding.fetch_add(1, Ordering::AcqRel);
+    }
+
     /// Persists the provider's complete current snapshot and pending epochs.
     ///
     /// For a joining client, `mls-rs` subsequently asks its configured
@@ -920,6 +1001,7 @@ impl<C: MlsConfig> SessionMlsGroup<C> {
         validated: ValidatedKeyPackage,
         now_unix_seconds: u64,
     ) -> Result<PreparedAddition<'_, C>, MlsAdapterError> {
+        self.invalidate_state_binding();
         if self.member_count() != 1 {
             return Err(MlsAdapterError::GroupFull);
         }
@@ -938,6 +1020,8 @@ impl<C: MlsConfig> SessionMlsGroup<C> {
 
         let epoch_before = self.epoch();
         let reference = validated.reference;
+        let credential_identity = validated.credential_identity;
+        let leaf_signature_key = validated.leaf_signature_key;
         let output = self
             .inner
             .commit_builder()
@@ -976,6 +1060,8 @@ impl<C: MlsConfig> SessionMlsGroup<C> {
             group: self,
             epoch_before,
             reference,
+            credential_identity,
+            leaf_signature_key,
             welcome: Some(welcome),
             commit: Some(commit),
             applied: false,
@@ -987,6 +1073,7 @@ impl<C: MlsConfig> SessionMlsGroup<C> {
         &mut self,
         now_unix_seconds: u64,
     ) -> Result<PreparedRemoval<'_, C>, MlsAdapterError> {
+        self.invalidate_state_binding();
         if self.member_count() != 2 {
             return Err(MlsAdapterError::ProtocolRejected);
         }
@@ -1030,6 +1117,7 @@ impl<C: MlsConfig> SessionMlsGroup<C> {
         &mut self,
         now_unix_seconds: u64,
     ) -> Result<PreparedEpochUpdate<'_, C>, MlsAdapterError> {
+        self.invalidate_state_binding();
         if self.inactive || !(1..=2).contains(&self.member_count()) {
             return Err(MlsAdapterError::ProtocolRejected);
         }
@@ -1066,6 +1154,7 @@ impl<C: MlsConfig> SessionMlsGroup<C> {
         &mut self,
         plaintext: &[u8],
     ) -> Result<MlsWireMessage, MlsAdapterError> {
+        self.invalidate_state_binding();
         if self.inactive {
             return Err(MlsAdapterError::ProtocolRejected);
         }
@@ -1084,6 +1173,7 @@ impl<C: MlsConfig> SessionMlsGroup<C> {
         &mut self,
         message: MlsWireMessage,
     ) -> Result<IncomingMessage, MlsAdapterError> {
+        self.invalidate_state_binding();
         if self.inactive {
             return Err(MlsAdapterError::ProtocolRejected);
         }
@@ -1212,6 +1302,8 @@ pub struct PreparedAddition<'a, C: MlsConfig> {
     group: &'a mut SessionMlsGroup<C>,
     epoch_before: u64,
     reference: KeyPackageReference,
+    credential_identity: [u8; SESSION_CREDENTIAL_ID_BYTES],
+    leaf_signature_key: [u8; 32],
     welcome: Option<WelcomeMessage>,
     commit: Option<MlsWireMessage>,
     applied: bool,
@@ -1258,8 +1350,17 @@ impl<C: MlsConfig> PreparedAddition<'_, C> {
             return Err(MlsAdapterError::UnexpectedProviderOutput);
         };
         self.applied = true;
+        self.group.invalidate_state_binding();
         Ok(CommittedAddition {
+            group_id: *self.group.group_id(),
+            epoch_before: self.epoch_before,
+            epoch_after: self.group.epoch(),
+            state_binding: Arc::clone(&self.group.state_binding),
+            state_revision: self.group.state_binding.load(Ordering::Acquire),
+            write_authority: ProviderStateWriteAuthority::new(),
             reference: self.reference,
+            credential_identity: self.credential_identity,
+            leaf_signature_key: self.leaf_signature_key,
             welcome,
             commit,
         })
@@ -1276,9 +1377,192 @@ impl<C: MlsConfig> Drop for PreparedAddition<'_, C> {
 
 /// Applied in-memory Add plus the exact opaque transport outputs it produced.
 pub struct CommittedAddition {
+    group_id: [u8; SESSION_GROUP_ID_BYTES],
+    epoch_before: u64,
+    epoch_after: u64,
+    state_binding: Arc<AtomicU64>,
+    state_revision: u64,
+    write_authority: ProviderStateWriteAuthority,
     reference: KeyPackageReference,
+    credential_identity: [u8; SESSION_CREDENTIAL_ID_BYTES],
+    leaf_signature_key: [u8; 32],
     welcome: WelcomeMessage,
     commit: MlsWireMessage,
+}
+
+/// Opaque, one-shot proof of the exact provider-applied Add entering durable storage.
+pub struct CommittedAdditionStorageBinding {
+    group_id: [u8; SESSION_GROUP_ID_BYTES],
+    epoch_before: u64,
+    epoch_after: u64,
+    reference: KeyPackageReference,
+    credential_identity: [u8; SESSION_CREDENTIAL_ID_BYTES],
+    leaf_signature_key: [u8; 32],
+    welcome: WelcomeMessage,
+    write_authority: ProviderStateWriteAuthority,
+}
+
+#[derive(Clone)]
+struct ProviderStateWriteAuthority(Arc<Mutex<Option<ActiveProviderStateWrite>>>);
+
+struct ActiveProviderStateWrite {
+    thread_id: ThreadId,
+    digest: Option<Zeroizing<[u8; 32]>>,
+}
+
+thread_local! {
+    static CURRENT_PROVIDER_STATE_WRITE: RefCell<Option<ProviderStateWriteAuthority>> =
+        const { RefCell::new(None) };
+}
+
+impl ProviderStateWriteAuthority {
+    fn new() -> Self {
+        Self(Arc::new(Mutex::new(None)))
+    }
+
+    fn activate(&self) -> Result<ProviderStateWriteGuard, MlsAdapterError> {
+        let mut active = self
+            .0
+            .lock()
+            .map_err(|_| MlsAdapterError::ProtocolRejected)?;
+        if active.is_some() {
+            return Err(MlsAdapterError::ProtocolRejected);
+        }
+        CURRENT_PROVIDER_STATE_WRITE.with(|current| {
+            let mut current = current
+                .try_borrow_mut()
+                .map_err(|_| MlsAdapterError::ProtocolRejected)?;
+            if current.is_some() {
+                return Err(MlsAdapterError::ProtocolRejected);
+            }
+            *current = Some(self.clone());
+            Ok(())
+        })?;
+        *active = Some(ActiveProviderStateWrite {
+            thread_id: std::thread::current().id(),
+            digest: None,
+        });
+        Ok(ProviderStateWriteGuard(self.clone()))
+    }
+
+    fn capture(
+        &self,
+        state: &GroupState,
+        epoch_inserts: &[EpochRecord],
+        epoch_updates: &[EpochRecord],
+    ) -> Result<(), MlsAdapterError> {
+        let digest = provider_state_write_digest(state, epoch_inserts, epoch_updates)?;
+        let mut active = self
+            .0
+            .lock()
+            .map_err(|_| MlsAdapterError::ProtocolRejected)?;
+        let active = active
+            .as_mut()
+            .filter(|active| active.thread_id == std::thread::current().id())
+            .ok_or(MlsAdapterError::ProtocolRejected)?;
+        if active.digest.is_some() {
+            return Err(MlsAdapterError::ProtocolRejected);
+        }
+        active.digest = Some(digest);
+        Ok(())
+    }
+
+    fn authorizes_current_write(
+        &self,
+        state: &GroupState,
+        epoch_inserts: &[EpochRecord],
+        epoch_updates: &[EpochRecord],
+    ) -> bool {
+        let Ok(candidate_digest) = provider_state_write_digest(state, epoch_inserts, epoch_updates)
+        else {
+            return false;
+        };
+        self.0.lock().is_ok_and(|active| {
+            active.as_ref().is_some_and(|active| {
+                active.thread_id == std::thread::current().id()
+                    && active.digest.as_deref() == Some(&*candidate_digest)
+            })
+        })
+    }
+}
+
+fn capture_current_provider_state_write(
+    state: &GroupState,
+    epoch_inserts: &[EpochRecord],
+    epoch_updates: &[EpochRecord],
+) -> Result<(), MlsAdapterError> {
+    let authority = CURRENT_PROVIDER_STATE_WRITE.with(|current| {
+        current
+            .try_borrow()
+            .map_err(|_| MlsAdapterError::ProtocolRejected)
+            .map(|current| current.clone())
+    })?;
+    authority.map_or(Ok(()), |authority| {
+        authority.capture(state, epoch_inserts, epoch_updates)
+    })
+}
+
+fn provider_state_write_digest(
+    state: &GroupState,
+    epoch_inserts: &[EpochRecord],
+    epoch_updates: &[EpochRecord],
+) -> Result<Zeroizing<[u8; 32]>, MlsAdapterError> {
+    let mut digest = Context::new(&SHA256);
+    digest.update(PROVIDER_STATE_WRITE_DIGEST_CONTEXT);
+    update_provider_state_digest_bytes(&mut digest, state.id.as_slice())?;
+    update_provider_state_digest_bytes(&mut digest, state.data.as_slice())?;
+    update_provider_state_digest_epochs(&mut digest, b'I', epoch_inserts)?;
+    update_provider_state_digest_epochs(&mut digest, b'U', epoch_updates)?;
+    let digest: [u8; 32] = digest
+        .finish()
+        .as_ref()
+        .try_into()
+        .map_err(|_| MlsAdapterError::UnexpectedProviderOutput)?;
+    Ok(Zeroizing::new(digest))
+}
+
+fn update_provider_state_digest_epochs(
+    digest: &mut Context,
+    kind: u8,
+    epochs: &[EpochRecord],
+) -> Result<(), MlsAdapterError> {
+    digest.update(&[kind]);
+    let count = u64::try_from(epochs.len()).map_err(|_| MlsAdapterError::InputTooLarge)?;
+    digest.update(&count.to_be_bytes());
+    for epoch in epochs {
+        digest.update(&epoch.id.to_be_bytes());
+        update_provider_state_digest_bytes(digest, epoch.data.as_slice())?;
+    }
+    Ok(())
+}
+
+fn update_provider_state_digest_bytes(
+    digest: &mut Context,
+    bytes: &[u8],
+) -> Result<(), MlsAdapterError> {
+    let length = u64::try_from(bytes.len()).map_err(|_| MlsAdapterError::InputTooLarge)?;
+    digest.update(&length.to_be_bytes());
+    digest.update(bytes);
+    Ok(())
+}
+
+struct ProviderStateWriteGuard(ProviderStateWriteAuthority);
+
+impl Drop for ProviderStateWriteGuard {
+    fn drop(&mut self) {
+        if let Ok(mut active) = self.0.0.lock() {
+            *active = None;
+        }
+        CURRENT_PROVIDER_STATE_WRITE.with(|current| {
+            if let Ok(mut current) = current.try_borrow_mut()
+                && current
+                    .as_ref()
+                    .is_some_and(|authority| Arc::ptr_eq(&authority.0, &self.0.0))
+            {
+                *current = None;
+            }
+        });
+    }
 }
 
 impl CommittedAddition {
@@ -1286,6 +1570,51 @@ impl CommittedAddition {
     #[must_use]
     pub const fn key_package_reference(&self) -> &KeyPackageReference {
         &self.reference
+    }
+
+    /// Stages and immediately persists the exact provider state produced by this Add.
+    ///
+    /// The storage-only binding is exposed solely to `stage`. Safe callers cannot
+    /// mutate or replace `group` before the provider's storage callback runs. Any
+    /// intervening operation that could alter the serialized snapshot invalidates
+    /// this one-shot authority before durable staging begins.
+    pub fn stage_and_write_to_storage<C, E>(
+        self,
+        group: &mut SessionMlsGroup<C>,
+        stage: impl FnOnce(CommittedAdditionStorageBinding) -> Result<(), E>,
+    ) -> Result<(), CommittedAdditionPersistenceError<E>>
+    where
+        C: MlsConfig,
+    {
+        if !Arc::ptr_eq(&self.state_binding, &group.state_binding)
+            || self.state_revision != group.state_binding.load(Ordering::Acquire)
+            || self.group_id != *group.group_id()
+            || self.epoch_after != group.epoch()
+        {
+            return Err(CommittedAdditionPersistenceError::StaleSnapshot);
+        }
+        let expected_revision = self.state_revision;
+        let write_authority = self.write_authority;
+        let binding = CommittedAdditionStorageBinding {
+            group_id: self.group_id,
+            epoch_before: self.epoch_before,
+            epoch_after: self.epoch_after,
+            reference: self.reference,
+            credential_identity: self.credential_identity,
+            leaf_signature_key: self.leaf_signature_key,
+            welcome: self.welcome,
+            write_authority: write_authority.clone(),
+        };
+        stage(binding).map_err(CommittedAdditionPersistenceError::Staging)?;
+        if expected_revision != group.state_binding.load(Ordering::Acquire) {
+            return Err(CommittedAdditionPersistenceError::StaleSnapshot);
+        }
+        let _write_guard = write_authority
+            .activate()
+            .map_err(CommittedAdditionPersistenceError::Provider)?;
+        group
+            .write_to_storage()
+            .map_err(CommittedAdditionPersistenceError::Provider)
     }
 
     /// Borrows the Commit output for future durable outbox staging.
@@ -1304,6 +1633,63 @@ impl CommittedAddition {
     #[must_use]
     pub fn into_welcome(self) -> WelcomeMessage {
         self.welcome
+    }
+}
+
+impl CommittedAdditionStorageBinding {
+    /// Returns the exact group whose provider state was advanced.
+    #[must_use]
+    pub const fn group_id(&self) -> &[u8; SESSION_GROUP_ID_BYTES] {
+        &self.group_id
+    }
+
+    /// Returns the provider epoch before the exact Add.
+    #[must_use]
+    pub const fn epoch_before(&self) -> u64 {
+        self.epoch_before
+    }
+
+    /// Returns the provider epoch after the exact Add.
+    #[must_use]
+    pub const fn epoch_after(&self) -> u64 {
+        self.epoch_after
+    }
+
+    /// Returns the canonical reference of the exact KeyPackage added by the provider.
+    #[must_use]
+    pub const fn key_package_reference(&self) -> &KeyPackageReference {
+        &self.reference
+    }
+
+    /// Returns the admitted BasicCredential identity authenticated by that KeyPackage.
+    #[must_use]
+    pub const fn credential_identity(&self) -> &[u8; SESSION_CREDENTIAL_ID_BYTES] {
+        &self.credential_identity
+    }
+
+    /// Returns the leaf signature key authenticated by that KeyPackage.
+    #[must_use]
+    pub const fn leaf_signature_key(&self) -> &[u8; 32] {
+        &self.leaf_signature_key
+    }
+
+    /// Returns the exact Welcome emitted for the applied Add.
+    #[must_use]
+    pub const fn welcome(&self) -> &WelcomeMessage {
+        &self.welcome
+    }
+
+    /// Reports whether this callback matches the exact originating provider write.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn authorizes_current_provider_write(
+        &self,
+        state: &GroupState,
+        epoch_inserts: &[EpochRecord],
+        epoch_updates: &[EpochRecord],
+    ) -> bool {
+        self.write_authority
+            .authorizes_current_write(state, epoch_inserts, epoch_updates)
     }
 }
 
@@ -1521,7 +1907,7 @@ mod tests {
             .crypto_provider(crypto)
             .protocol_version(ProtocolVersion::MLS_10)
             .key_package_lifetime(KEY_PACKAGE_LIFETIME)
-            .group_state_storage(storage)
+            .group_state_storage(ProviderStateBoundStorage(storage))
             .signing_identity(identity, secret, CIPHERSUITE)
             .build();
 
@@ -1531,6 +1917,34 @@ mod tests {
             signature_public_key,
             bound_group_id: None,
         })
+    }
+
+    #[test]
+    fn provider_state_write_digest_binds_state_and_ordered_epoch_records() {
+        let state = GroupState {
+            id: vec![0x11; SESSION_GROUP_ID_BYTES],
+            data: Zeroizing::new(vec![0x22; 64]),
+        };
+        let inserts = vec![EpochRecord::new(7, Zeroizing::new(vec![0x33; 32]))];
+        let updates = vec![EpochRecord::new(6, Zeroizing::new(vec![0x44; 32]))];
+        let expected = provider_state_write_digest(&state, &inserts, &updates).expect("digest");
+
+        let mut changed_state = state.clone();
+        changed_state.data[0] ^= 1;
+        assert_ne!(
+            provider_state_write_digest(&changed_state, &inserts, &updates).expect("state digest"),
+            expected
+        );
+
+        let changed_inserts = vec![EpochRecord::new(7, Zeroizing::new(vec![0x35; 32]))];
+        assert_ne!(
+            provider_state_write_digest(&state, &changed_inserts, &updates).expect("epoch digest"),
+            expected
+        );
+        assert_ne!(
+            provider_state_write_digest(&state, &updates, &inserts).expect("ordered digest"),
+            expected
+        );
     }
 
     #[test]

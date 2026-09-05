@@ -56,6 +56,9 @@ Current areas:
   port, and cross-platform blocking supervision baseline
 - `crates/transport-memory`: bounded deterministic delivery-fault adapter for
   opaque-envelope headless and conformance tests; not a network transport
+- `crates/transport-iroh`: bounded authenticated Iroh frame link for explicit
+  FastV1 online experiments; not an offline mailbox or complete reusable
+  `EnvelopeDelivery` provider
 - `crates/transport-conformance`: publish-disabled offline trace-schema and
   shared adapter-evidence support; its strict adverse-trace parser and first
   normalized lifecycle and queue-saturation double-replay verdicts exist,
@@ -74,8 +77,9 @@ Current areas:
 - `crates/storage-sqlcipher-fault-vfs`: publish-disabled, named SQLite VFS
   delegator for bounded L2 fault evidence; never selected by ordinary connections
 - `apps/sessionctl`: headless two-client Phase 1 composition plus a bounded
-  independent-process conformance runner over local test channels; not a
-  networked, production, or platform-vault-backed client
+  independent-process conformance runner over local test channels and an
+  explicit scripted Iroh FastV1 cross-computer proof; not an offline,
+  production, private-profile, or platform-vault-backed client
 - `spikes/`: disposable feasibility code; production packages must not depend on it
 - `docs/`: canonical v2 product, architecture, threat-model, protocol, ADR, and legacy-evidence baseline
 - `scripts/`: tested repository and AI Central setup tooling

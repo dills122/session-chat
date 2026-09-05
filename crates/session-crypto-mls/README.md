@@ -27,7 +27,14 @@ The adapter currently provides:
   value owning the exact validated message, reference, credential identity,
   and leaf signature key;
 - in-memory two-member Add/Welcome, application-message, path-update, and
-  removal transitions with explicit prepare/apply stages; and
+  removal transitions with explicit prepare/apply stages;
+- a non-forgeable, one-shot persistence operation derived from an applied Add,
+  tied to the exact group instance and state revision, and carrying its exact
+  KeyPackage reference, credential identity, leaf key, group, epoch transition,
+  and Welcome; any intervening state-changing operation invalidates it before
+  durable staging, while a one-shot thread-bound authority plus an MLS-owned
+  domain-separated digest of the exact group-state and ordered epoch callback
+  records rejects callbacks substituted by caller-supplied storage; and
 - a versioned opaque durable-identity contract that creates once, reloads the
   same credential and AWS-LC signing key, and rejects a stored group whose local
   member does not match that reconstructed client; and

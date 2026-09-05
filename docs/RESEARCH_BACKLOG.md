@@ -56,8 +56,9 @@ Immediate gate: retain the isolated ADR 0012 laboratory with exact KeyPackage
 ownership, two-party lifecycle, removal, and reordered/lost-message evidence.
 That lifecycle and the bounded durable storage/crash laboratory are
 implemented; independent cross-implementation fixtures, complete restartable
-authorization ownership, physical power-loss, and rollback evidence remain
-open. Phase 1 retains no interoperability or production-durability claim.
+authorization composition in the headless path, physical power-loss, and
+rollback evidence remain open. Phase 1 retains no interoperability or
+production-durability claim.
 
 ### P0: invitation protocol
 

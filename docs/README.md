@@ -57,7 +57,7 @@ all.
   supervision baseline to the inviter-owned outbox while preserving the
   remaining product-storage, delivery-fault, and UI-runtime gaps.
 - [Phase 1 protocol laboratory closeout plan](plans/PHASE1_PROTOCOL_CLOSEOUT.md)
-  defines the remaining durable-authorization, transport-conformance,
+  defines the remaining durable-admission composition, transport-conformance,
   independent-process, and exact-revision evidence required before Phase 1 can
   be marked complete.
 - [Transport abstraction implementation plan](plans/TRANSPORT_ABSTRACTION_IMPLEMENTATION.md)
@@ -80,9 +80,40 @@ all.
   right-separation evidence without claiming a generalized provider contract.
 - `transport-conformance` retains the canonical adverse-trace parser, hostile
   fixtures, and a first normalized double-replay runner over the real memory
-  adapter. Composed lifecycle and queue-saturation verdicts plus deliberately
-  defective bridges cover the retained adverse slices; arbitrary delay and the
-  exhaustive authority/resource verdict remain Phase 1 closeout work.
+  adapter. Composed lifecycle, queue-saturation, and bounded arbitrary-delay
+  verdicts plus deliberately defective bridges cover the retained adverse
+  slices. The cursor-bearing provider/owner composition and closed lifecycle
+  evidence matrix complete the P1-5 common verdict work.
+- `transport-iroh` pins Iroh 1.1.0 and retains a direct-only loopback proof of
+  authenticated endpoint identity, a crate-wide 256 KiB frame ceiling, local
+  oversize rejection, fallible bounded allocation, remote length rejection,
+  checked operation deadlines, poisoned-link rejection after partial I/O,
+  canonical endpoint text, authenticated-peer rejection, and receipt-before-
+  close behavior that rejects peer resets. It is an online FastV1 link, not an
+  offline mailbox or complete reusable delivery adapter.
+- `sessionctl-net` requires the bearer invitation to be transferred separately
+  over an authenticated confidential channel, then carries the scripted protected-join, Welcome,
+  bidirectional-message, update, removal, and post-removal scenario over that
+  bounded link. Its ordinary retained test is direct-only loopback; an ignored
+  public N0 reachability smoke test is available for explicitly networked runs.
+- `session-transport` now also fixes the reusable mailbox lifecycle boundary:
+  bounded four-right issuance, exact generation/cursor binding,
+  compare-and-swap rotation, explicit resynchronization, and a separate atomic
+  receive-state owner with committed-checkpoint reload, cursorless successor
+  revisions, exact cursor-position page/checkpoint binding, owner-recorded
+  resynchronization, restart-safe acknowledgement leases, opaque commit evidence,
+  duplicate-ID rejection, and explicit expiry checks. Lifecycle declarations bind issuance and rotation and reject
+  LocalV1 lifecycle state. A publish-disabled deterministic FastV1 provider now
+  exercises issuance and rotation, and a companion bounded owner model covers
+  cursor progress, overlap deduplication, restart-safe acknowledgement intent,
+  and explicit resynchronization. The provider now also drives bounded canonical
+  deposit, cursor-bearing poll, and acknowledgement through the shared dispatch
+  boundary. LocalV1 stays cursorless and has no rotation operation.
+- `sessionctl` now routes application messages, epoch updates, removal, and the
+  post-removal rejection check through that common bounded dispatch interface.
+  Its LocalV1 memory composition remains explicitly cursorless, and a
+  deliberately mismatched adapter proves that the composition rejects broken
+  delivery identity without changing MLS or admission code.
 - [Threat model](THREAT_MODEL.md) defines assets, trust boundaries, attackers,
   invariants, and severity calibration.
 - [Rust code-coverage policy](CODE_COVERAGE.md) defines the source-based
@@ -114,6 +145,14 @@ all.
 - [Provider-neutral approval-context decision](adr/0022-use-a-provider-neutral-approval-context.md)
   gives headless and later UI composition one display-only decision seam while
   concrete providers retain exact proof, reservation, and KeyPackage authority.
+- [Iroh Fast online-link decision](adr/0024-use-iroh-for-the-fast-online-link.md)
+  selects a pinned authenticated direct/relay substrate for the explicit
+  cross-computer experiment while keeping offline mailbox semantics and
+  admission authority out of scope.
+- [Restartable durable capability-authorization decision](adr/0023-use-restartable-durable-capability-authorization-shadows.md)
+  retains exact invitation opening state and non-authorizing replay/approval
+  shadows while abandoning unreconstructible pre-membership authority after a
+  restart.
 - [Session-scoped sealed-vault decision](adr/0016-use-a-session-scoped-sealed-vault-contract.md)
   defines the locked-mode capability matrix, linear lifecycle transitions, and
   bounded opaque receipt contract without selecting durable storage.
@@ -240,15 +279,22 @@ The invitation's self-contained key proves descriptor integrity only. The
 registry accepts provider-generated invitation v2 and models its bounded
 reservation lifecycle. The approval-gated in-memory path now connects it to
 automated admission and MLS sequencing.
+ADR 0023's SQLCipher boundary now commits the exact signed invitation and
+matching HPKE private key before publication, validates that context on reload,
+and owns bounded non-authorizing authorization/replay transitions through
+restart and exact membership-outcome recovery. Both headless admission paths
+compose through that owner while preserving live provider authority only in
+memory.
 ADR 0014 now defines the HPKE capability-proof and local response contracts.
 Their bounded canonical invitation-v2, protected outer/inner, exact AAD, and
 deposit-endpoint value types are implemented with retained fixtures. The
 one-shot HPKE operation has RFC and independent-provider evidence. Replay-safe
 automated capability admission, explicit simulated approval, exact v2
 reservation, failure release, and post-Add consumption now have retained
-in-memory evidence. Human approval UX, atomic durable membership/replay state,
-rollback protection, and durable or network transport remain unimplemented at
-product level. A bounded fault-injectable model now retains evidence for the
+in-memory evidence. The headless paths now add durable opening, replay,
+approval, membership, and Welcome ownership through SQLCipher. Human approval
+UX, rollback protection, and network transport remain unimplemented at product
+level. A bounded fault-injectable model now retains evidence for the
 required atomic visibility, retry, and Welcome-outbox state semantics without
 claiming disk durability. A right-specific local one-Welcome mailbox now has
 bounded in-memory evidence, and the committed approved-join result carries its

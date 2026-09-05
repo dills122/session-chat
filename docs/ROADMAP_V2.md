@@ -17,7 +17,9 @@ for its security properties.
 **Decision:** Phase 0 is sufficient to begin implementation. Continue Phase 1
 as a capability-only Rust protocol laboratory. V1 is retired under ADR 0006;
 do not turn that cleanup into GitHub integration, SSI, a production mailbox, a
-GUI, or a real network transport.
+GUI, or a reusable/product network transport. A separately invoked bounded
+Iroh frame-link feasibility experiment exists, but it does not satisfy a Phase
+1 exit criterion or the later Fast adapter milestone.
 
 The complete scope, acceptance evidence, bounded research questions, and later
 integration order are recorded in
@@ -79,10 +81,15 @@ evidence against the real local mailbox. The real capability-admission/MLS path
 now crosses the SQLCipher transaction through an explicit durability-pending
 one-shot value, recovers an ambiguous commit, finalizes invitation state once,
 reopens the owner store, and delivers the exact Welcome to the original joiner.
-Human approval UX and network transport remain later-phase work. The remaining
-Phase 1 hostile process-fault coverage is sequenced by the closeout plan. One
-independent-process exact replay case now rejects the duplicate before
-approval, MLS Add, or durable membership mutation. The separate SQLCipher
+Human approval UX and reusable/product network transport remain later-phase
+work. The bounded authenticated Iroh frame-link experiment is not an
+`EnvelopeDelivery` provider, offline mailbox, or completed network profile.
+The complete Phase 1 hostile first-contact matrix is now retained by the
+independent-process runner: malformed, expired, copied, wrong-invitation,
+wrong-KeyPackage, wrong-verifier, reordered, and exact-replay inputs reject
+before approval, MLS Add, or durable membership mutation, and fresh inspection
+proves the owner state unchanged. Welcome-delivery lease/result process-kill
+recovery remains sequenced by the closeout plan. The separate SQLCipher
 laboratory now
 implements the same sole-owner coordinator port with version-2 migration,
 close/reopen leases, terminal states, and ambiguous exact-retry evidence; it is
@@ -102,8 +109,17 @@ receipts before dispatch, while received batches enforce the originating poll's
 count/byte limits and local expiry. The runtime-neutral generalized dispatch
 trait and its deterministic memory adoption now add explicit clock/cancellation,
 exact-set acknowledgement, fail-closed cursor, idempotency-conflict, and
-provider-redaction evidence. Lifecycle, valid cursor persistence, and
-provider-wide capability issuance remain open.
+provider-redaction evidence. The provider-neutral lifecycle contract now adds
+bounded four-right issuance, generation-bound cursor validity,
+compare-and-swap rotation, explicit resynchronization, and a separate atomic
+receive-state owner port with exact committed-checkpoint reload, cursorless
+successor revisions, page/checkpoint binding, owner-opaque commit evidence, and
+explicit expiry checks. Exact checkpoint provenance includes cursor position
+and bytes; owner-CAS resynchronization is restartable, recovered acknowledgement
+leases survive crashes, and duplicate IDs fail at the batch boundary. Lifecycle declarations bind a nonlocal semantic
+profile, cursor schema, drain policy, and wall-time validity to issuance and rotation; LocalV1
+lifecycle declarations, issue requests, and cursor bindings fail closed. A conforming reusable provider and
+durable product cursor persistence remain open.
 A new publish-disabled `transport-conformance` crate now retains the strict
 bounded adverse-trace v1 parser, hostile fixtures, and a first normalized
 double-replay memory runner, while `transport-memory` adds
@@ -224,17 +240,24 @@ for the remaining headless and durable composition:
   ADR 0014.
 
 The isolated MLS crate still uses only in-memory providers for deterministic
-protocol tests, as ADR 0012 specifies. The separate SQLCipher composition now
-proves the real inviter and joiner MLS writes plus the committed Welcome owner,
-but the headless path cannot yet durably resolve pre-commit replay,
-invitation-reservation, and approval state after process loss. Before any
-networked or user-facing join path is enabled, one restartable durable owner
-must resolve reservation recovery, request replay state, the MLS membership
-transition, invitation consumption, approval/result state, and the encrypted
-Welcome outbox job with an idempotency key. Dropped or abandoned reservation
-tokens must return safely to `Available` without permitting a second concurrent
-admission. Until that gate passes, the laboratory makes no networked,
-user-facing, durability, rollback-resistance, or product-security claim.
+protocol tests, as ADR 0012 specifies. The SQLCipher-backed headless paths now
+use one restartable durable owner for opening-context recovery, request replay,
+invitation reservation, approval/result shadows, the exact MLS membership
+transition, invitation consumption, and the encrypted Welcome outbox job.
+Dropped or restarted pre-membership work returns the exact usable generation to
+`Available` while retaining replay, and outcome-unknown recovery never repeats
+MLS Add. This passes the laboratory composition gate without establishing a
+networked, user-facing, rollback-resistant, or production-secure client.
+
+ADR 0023 now freezes that recovery contract: invitation publication follows
+durable retention of its exact signed descriptor and matching HPKE private key;
+pending authorization persists only as a non-authorizing replay/conflict
+shadow; and restart abandons rather than reconstructs a lost live KeyPackage.
+The SQLCipher opening-context and authorization-shadow schema/API slices are
+retained and used by both headless compositions. They enforce bounded replay
+retention, restart abandonment, exact generation ownership, and
+membership-transaction outcome reconciliation while the provider keeps its
+exact parsed KeyPackage only for the live attempt.
 
 The retained Phase 1 workspace includes the original foundation:
 
@@ -259,7 +282,9 @@ The transport slice follows the profile-bound contract proposed in
 [`TRANSPORT_ABSTRACTION_V1.md`](specs/TRANSPORT_ABSTRACTION_V1.md). Stabilize
 the existing right-specific local Welcome adapter, then add the generalized
 contract, deterministic adverse-network control path, and shared conformance
-harness before any real network dependency. The detailed task order and
+harness before any reusable network adapter. The separately authorised Iroh
+frame-link feasibility slice is evidence only and does not change that order.
+The detailed task order and
 checkpoints are in the
 [transport abstraction implementation plan](plans/TRANSPORT_ABSTRACTION_IMPLEMENTATION.md).
 The cross-system scenarios, evidence format, and progression from deterministic

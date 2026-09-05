@@ -26,7 +26,15 @@ pre-commit failure release invitation and replay state. The legacy in-memory
 apply consumes the invitation immediately; durable composition instead returns
 a one-shot applied result that preserves both reservations until SQL recovery
 proves commit or rollback. It does not perform human UI approval or
-rollback-resistant persistence. A local transport adapter implements
+rollback-resistant persistence. ADR 0023 specifies the restartable successor.
+SQLCipher now commits the exact signed invitation and matching HPKE private key
+before publication, revalidates that opening context after restart, and owns
+the bounded authorization replay/conflict shadow. Loss of a live verified or
+approved KeyPackage abandons that attempt, retains replay state through the
+generation expiry, and releases the generation only when its exact opening
+context reloads successfully. The single-process and independent-process
+headless admission paths now use this owner; their provider-owned parsed
+KeyPackage remains live and non-serializable through MLS Add. A local transport adapter implements
 bounded one-Welcome deposit, receive, and acknowledgement with independent
 provider-generated authorities. The approved in-memory join result carries only
 the authenticated deposit endpoint beside its MLS outputs, and a retained test
@@ -37,8 +45,9 @@ ownership without ordinary debug output, finite operation budgets, bounded
 retry advice, context-free failures, bounded operation requests and receipts,
 and post-receive batch validation. Later Phase 1 increments added the
 runtime-neutral dispatch trait, deterministic memory adapter, LocalV1 binder,
-and deposit-only coordinator. Generalized capability issuance and network
-authority remain absent. A separate bounded, fault-injectable model exercises
+deposit-only coordinator, and the provider-neutral four-right mailbox lifecycle
+plus receive-state owner contract. No reusable lifecycle provider or network
+authority is implemented. A separate bounded, fault-injectable model exercises
 all-or-nothing inviter state, ambiguous-result recovery, and Welcome-outbox
 leasing semantics without providing storage or connecting to that sequential
 join path. The SQLCipher laboratory now implements the same sole-owner port
@@ -241,6 +250,26 @@ Assumptions:
 - Content encryption does not imply anonymity.
 - NAT traversal and discovery services may add further metadata observers.
 - A relay may drop, replay, or delay traffic.
+- The explicitly selected Iroh Fast experiment authenticates endpoint public
+  keys at QUIC setup, but that identity does not authorize Session Chat
+  admission or MLS membership. Direct paths expose peer addresses; the N0
+  relay, address-lookup, and DNS services can observe endpoint, timing, size,
+  and lookup metadata. Its first bounded online link is not an offline mailbox
+  and uses ephemeral endpoint keys.
+- The experiment accepts only the host's canonical lowercase hexadecimal
+  endpoint text. Each timed operation rejects zero or greater-than-five-minute
+  bounds and uses one checked absolute deadline. Caller frame bounds cannot
+  exceed 256 KiB; failed, timed-out, or cancelled partial frame I/O poisons the
+  ordered link. Graceful close requires both acknowledged outbound bytes and a
+  clean inbound finish; a reset or connection error cannot be reported as
+  receipt.
+- The bearer capability invitation must cross an authenticated confidential
+  out-of-band channel. It is never sent to an unauthenticated first Iroh
+  connector; the first network frame is the joiner's HPKE-protected request.
+  A first connector can still deny service by occupying or closing the sole
+  experimental connection, but cannot obtain admission authority from it. The
+  operator handoff is bounded to five minutes. The joiner rejects directories,
+  links, FIFOs, and other non-regular invitation paths before network work.
 
 ### Trust boundary: client to mixnet
 
@@ -281,10 +310,10 @@ Assumptions:
 - The retained LocalV1 coordinator slice is deposit-only. Its sender-only
   adapter surface, exact canonical reconstruction, one-attempt budget, coarse
   failures, and drop-on-supervision evidence now include the in-memory inviter
-  owner port and exact retry after an unrecorded remote acceptance. They do not
-  now include cross-platform wake/cancel/deadline supervision and pending-work
-  drop for the standard-library blocking baseline. They do not prove durable
-  restart recovery, receipt, recipient processing, or future UI-runtime wiring.
+  owner port, exact retry after an unrecorded remote acceptance, and
+  cross-platform wake/cancel/deadline supervision with pending-work drop for the
+  standard-library blocking baseline. They do not prove durable restart
+  recovery, receipt, recipient processing, or future UI-runtime wiring.
 
 ### Trust boundary: local persistent storage and operating system
 
@@ -396,6 +425,15 @@ integration remain open. Invitation v2 itself now has an independent
 signature domain, exact fixture, closed suite/profile code points, and the same
 pre-parse size and canonical-decoding controls as v1.
 
+ADR 0023 closes the recovery-contract ambiguity. Its first retained slice
+implements the requirement that, before publication, the durable owner retains
+the exact canonical signed invitation and its matching invitation-scoped HPKE
+private key. Returning a reservation to `Available` after restart is allowed
+only after that context reloads, revalidates, and remains unexpired; otherwise
+the generation becomes terminally unusable. This prevents identifier-only state
+from masquerading as a usable invitation and prevents silent key regeneration
+under an existing signed generation.
+
 Attacker story: an attacker copies a public targeted invitation and submits a
 validly encoded join request for their own key. Correct behavior is a policy
 mismatch or explicit rejection, not membership.
@@ -463,7 +501,8 @@ recovery, and bounded outbox leases over in-memory records. The SQLCipher
 laboratory now supplies the corresponding real MLS transaction and durable
 coordinator owner port, and a retained integration test wires it to capability
 admission through restart delivery and real joiner processing. Remaining
-requirements include human approval UX, durable approval/replay reload,
+requirements include human approval UX, integration of ADR 0023's implemented
+durable authorization/approval/replay owner into the headless composition,
 portable and public process-kill evidence, rollback protection, vault-backed
 confidentiality, and broader disk/power-fault evidence. The separate checked L2
 laboratory locally covers baseline-derived SQLite-visible FULL/extended-IOERR
@@ -587,8 +626,12 @@ The local receive and acknowledgement values now have private fields and
 crate-only constructors, compile-fail evidence rejects cross-right substitution
 and use of a delivery identifier as authority, and a seeded foreign-deposit
 fixture proves coarse diagnostics omit known authority and ciphertext bytes.
-These checks do not establish provider-neutral capability issuance, operating-
-system memory erasure, process isolation, or network-metadata privacy.
+The generalized lifecycle boundary adds non-cloneable/non-debuggable rotation
+authority, rejects receive-right or cursor substitution at compile time, and
+tests that coarse failures omit seeded configuration, continuity, receive-scope,
+and rotation-authority bytes. These checks do not establish operating-system
+memory erasure, process isolation, network-metadata privacy, or that an
+unimplemented provider generates non-derivable authority material.
 
 The additive generalized operation values reject empty or oversized cursors,
 zero or excessive poll counts, aggregate poll-byte limits above either the 4 MiB
@@ -621,6 +664,37 @@ domain-separated commitments. Ambiguous post-commit cancellation, deadline,
 and clock failure are reconciled only with the exact same idempotency identity
 under a fresh budget; `RetryAdvice::Never` ends the current budget rather than
 asserting non-commit.
+
+The reusable-mailbox contract binds every persisted cursor to the exact
+profile/configuration, continuity ID, generation, receive scope, cursor schema,
+provider-state epoch, and expiry. Missing or mismatched fields fail closed;
+polling again from no cursor after initialization requires an explicit recorded
+resynchronization. Rotation requires a separate right, exact predecessor,
+successor generation, and idempotent rotation ID. Routine overlap is bounded;
+compromise rotation has none. A separate receive-state owner must atomically
+compare-and-swap its checkpoint, retain canonical envelopes or duplicate
+outcomes, persist exact acknowledgement intents, and advance the cursor before
+it leases immediate or restart-recovered acknowledgement work. The owner port
+reloads only the latest checkpoint for the exact live binding, including a
+successor revision with no continuation cursor. The reusable poll request and
+validated batch carry the exact binding, owner revision, checkpoint-position
+kind, and cursor bytes into commit; duplicate delivery IDs fail validation.
+Explicit resynchronization is owner-CAS recorded before polling from none and is
+restart reloadable.
+Owner-defined opaque commit evidence cannot be constructed or token-spliced by
+callers, and explicit wall time gates commit, load, immediate lease, and restart
+recovery. Mismatched outcome cardinality, page binding, commit evidence, CAS
+revision, or expiry fails before owner mutation. The adapter has no method that
+can commit this owner state.
+
+Reusable providers must declare these cursor, generation, rotation/drain,
+acknowledgement-scope, and ownership semantics before use; the declaration is
+non-secret and does not prove implementation behavior. Its nonlocal profile,
+cursor schema, and routine-drain policy must match issuance and rotation, and
+expired issuance results fail at explicit observed wall time;
+LocalV1 lifecycle declarations, issue requests, and cursor bindings fail closed,
+and no declaration enables a profile in the binder.
+
 The adverse-control increment remains test-only: `transport-memory` can
 script persistent outage, one normalized corrupt poll, digest-checked stale
 replay, and acknowledgement-result loss before or after deletion. Its snapshot
@@ -645,8 +719,10 @@ before the bounded driver may drop it.
 
 These checks do not prove remote rollback after ambiguous deposit,
 preemptive cancellation inside a provider library, a trusted or rollback-safe
-wall clock, generalized capability issuance, mailbox lifecycle, incremental
-remote-response parsing, durable cursor recovery, or any network adapter.
+wall clock, incremental remote-response parsing, a conforming reusable mailbox
+provider, durable product cursor recovery, or any network adapter. P1-5 must
+exercise the closed positive/stale lifecycle vocabulary and exhaustive
+right/resource matrix against a deterministic provider and owner model.
 
 The first binder slice reduces local misbinding risk without granting network
 authority: it accepts only LocalV1, one exact no-egress manifest/configuration
@@ -764,6 +840,39 @@ vault or product credential path. This does not establish a deployable
 independent-process client, platform key protector, rollback resistance,
 production packaging, behavior on broader hardware/OS versions, power-loss
 safety beyond the checked local L2 process-kill laboratory, or secure deletion.
+
+ADR 0023 adds active invitation opening context and non-authorizing
+authorization shadows to the SQLCipher laboratory state. The canonical signed
+invitation contains the bearer
+capability, and its paired HPKE private key can open requests for that exact
+generation. Both are therefore high-value local secrets: issuance must commit
+before publication, loading must prove their exact public/private binding, and
+expiry, consumption, corruption, or missing material must make the generation
+unusable without fallback regeneration. The implemented authorization shadows
+retain request ID, nonce, fingerprint, verifier, and the ADR 0009 tuple for
+replay/conflict recovery, but never KeyPackage bytes or provider-owned
+membership authority. They abandon lost pre-membership authority after restart.
+Reservation repeats opening-context restoration under its write transaction;
+decode or restoration failure atomically marks the exact available generation
+unusable and zeroes its opening key, including corruption introduced after an
+earlier successful load.
+The authorized membership transaction consumes a provider-created binding for
+the exact applied KeyPackage tuple, group/epoch, Welcome, group-instance state
+revision, and one-shot originating-thread write authority. An MLS-owned
+provider-facing wrapper additionally fingerprints the exact serialized group
+state and ordered epoch insert/update records before any caller-supplied
+storage wrapper runs; SQLCipher recomputes that domain-separated SHA-256 digest
+from the callback it receives. It rechecks the resulting binding with the
+exact authorization and fresh monotonic elapsed time under the database write
+lock, and commits the terminal authorization and invitation states atomically
+with MLS and outbox state; exact
+non-commit recovery that wins the lock first fences any staged writer. Store
+open also rejects contradictory terminal cross-row state. The headless
+admission compositions use this owner and settle their bounded in-memory
+shadows only after exact durable recovery.
+This contract still depends on SQLCipher confidentiality with a caller-supplied
+key and remains vulnerable to stale-snapshot rollback; platform custody,
+rollback detection, and secure deletion are later gates.
 
 ADR 0019 and `key-protector-passphrase` add only a bounded portable conformance
 construction, now connected to the deterministic ADR 0020 lifecycle boundary.

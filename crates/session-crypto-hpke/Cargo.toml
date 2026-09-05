@@ -6,6 +6,7 @@ license.workspace = true
 publish = false
 
 [dependencies]
+aws-lc-rs.workspace = true
 ed25519-dalek.workspace = true
 mls-rs-core.workspace = true
 mls-rs-crypto-awslc.workspace = true

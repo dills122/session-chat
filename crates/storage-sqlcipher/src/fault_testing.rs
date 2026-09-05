@@ -26,7 +26,13 @@ pub fn create(
     key: VaultKey,
     observer: FaultObserver,
 ) -> Result<SqlCipherStorage, StoreError> {
-    SqlCipherStorage::open_internal(path, key, true, OpenMode::ObservedDefault(observer))
+    SqlCipherStorage::open_internal(
+        path,
+        key,
+        true,
+        OpenMode::ObservedDefault(observer),
+        super::AuthorizationPolicy::phase_one(),
+    )
 }
 
 /// Opens a fault-observed store while retaining SQLite's default VFS.
@@ -35,7 +41,13 @@ pub fn open(
     key: VaultKey,
     observer: FaultObserver,
 ) -> Result<SqlCipherStorage, StoreError> {
-    SqlCipherStorage::open_internal(path, key, false, OpenMode::ObservedDefault(observer))
+    SqlCipherStorage::open_internal(
+        path,
+        key,
+        false,
+        OpenMode::ObservedDefault(observer),
+        super::AuthorizationPolicy::phase_one(),
+    )
 }
 
 /// Creates a fault-observed store through the one closed named VFS.
@@ -44,7 +56,13 @@ pub fn create_with_fault_vfs(
     key: VaultKey,
     observer: FaultObserver,
 ) -> Result<SqlCipherStorage, StoreError> {
-    SqlCipherStorage::open_internal(path, key, true, OpenMode::ObservedFaultVfs(observer))
+    SqlCipherStorage::open_internal(
+        path,
+        key,
+        true,
+        OpenMode::ObservedFaultVfs(observer),
+        super::AuthorizationPolicy::phase_one(),
+    )
 }
 
 /// Opens a fault-observed store through the one closed named VFS.
@@ -53,7 +71,13 @@ pub fn open_with_fault_vfs(
     key: VaultKey,
     observer: FaultObserver,
 ) -> Result<SqlCipherStorage, StoreError> {
-    SqlCipherStorage::open_internal(path, key, false, OpenMode::ObservedFaultVfs(observer))
+    SqlCipherStorage::open_internal(
+        path,
+        key,
+        false,
+        OpenMode::ObservedFaultVfs(observer),
+        super::AuthorizationPolicy::phase_one(),
+    )
 }
 
 /// Public, nonzero identifier for one disposable fault case.

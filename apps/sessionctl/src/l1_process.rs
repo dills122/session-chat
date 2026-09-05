@@ -8,7 +8,7 @@
 use std::{
     ffi::OsStr,
     fs::{self, File, OpenOptions},
-    future::ready,
+    future::{Future, ready},
     io::{Read, Write},
     path::{Path, PathBuf},
     process::{Child, Command, ExitStatus, Stdio},
@@ -17,8 +17,8 @@ use std::{
 };
 
 use admission_capability::{
-    CapabilityAdmissionError, CapabilityAdmissionPolicy, CapabilityAdmissionVerifier,
-    CapabilityApprovalOutcome, ManualApprovalDecision,
+    CapabilityAdmissionPolicy, CapabilityAdmissionVerifier, CapabilityApprovalOutcome,
+    ManualApprovalDecision,
 };
 use aws_lc_rs::digest::{SHA256, digest};
 use session_admission::{AdmissionMethod, PendingAdmission};
@@ -42,8 +42,12 @@ use session_transport::{
     ThreadDispatchControl, TransportFailure, TransportFailureCode, WelcomeDeliveryCoordinator,
 };
 use storage_sqlcipher::{
-    InvitationState, InviterJoinTransaction, PersistenceFault, SqlCipherStorage, VaultKey,
-    WelcomeOutboxState,
+    AuthorizationShadowInput, AuthorizationState, InvitationOpeningState, InviterJoinTransaction,
+    PersistenceFault, SqlCipherStorage, StoreError, VaultKey, WelcomeOutboxState,
+};
+use transport_iroh::{
+    FastEndpointAddress, FastEndpointId, IrohFastEndpoint, IrohFastError, IrohFastLink,
+    MAX_FAST_FRAME_BYTES,
 };
 use zeroize::{Zeroize, Zeroizing};
 
@@ -73,6 +77,11 @@ const MAX_TOOLCHAIN_BYTES: usize = 4_096;
 const MAX_GIT_PATH_BYTES: usize = 4_096;
 const MAX_GIT_REF_BYTES: usize = 512;
 const METADATA_COMMAND_WAIT: Duration = Duration::from_secs(5);
+const TWO_TERMINAL_DONE: &[u8] = b"sessionctl-two-terminal-complete-v1\n";
+const NETWORK_OPERATION_WAIT: Duration = Duration::from_secs(30);
+const OPERATOR_HANDOFF_WAIT: Duration = Duration::from_secs(5 * 60);
+
+const _: () = assert!(MAX_IPC_FRAME_BYTES <= MAX_FAST_FRAME_BYTES);
 
 /// Secret-free outcome of the bounded independent-process scenario.
 #[derive(Clone, Eq, PartialEq)]
@@ -177,6 +186,338 @@ pub fn run_l1_process_demo() -> Result<L1ProcessReport, SessionCtlError> {
     Ok(report)
 }
 
+/// Runs Alice and the bounded local forwarder for a user-driven two-terminal proof.
+///
+/// `root` must be an absolute path that does not exist. The host creates and
+/// removes the marked run directory; it never reuses or deletes an unmarked
+/// path.
+pub fn run_two_terminal_host(root: PathBuf) -> Result<(), SessionCtlError> {
+    let mut root = ProcessRoot::create_at(root)?;
+    let service_root = root.path().to_path_buf();
+    println!("mode=host\nstatus=ready\nroot={}", root.path().display());
+
+    let service =
+        thread::spawn(move || run_service_with_initial_wait(&service_root, OPERATOR_HANDOFF_WAIT));
+    let scenario_result = (|| {
+        run_alice_init_with_wait(root.path(), OPERATOR_HANDOFF_WAIT)?;
+        run_alice_resume(root.path())?;
+        let completion = read_bounded_wait(
+            &two_terminal_done_path(root.path()),
+            TWO_TERMINAL_DONE.len(),
+            FRAME_WAIT,
+        )?;
+        if completion != TWO_TERMINAL_DONE {
+            return Err(stage("two-terminal completion"));
+        }
+        Ok(())
+    })();
+    let service_result = service
+        .join()
+        .map_err(|_| stage("two-terminal service join"))?;
+    scenario_result?;
+    service_result?;
+    root.cleanup()?;
+    println!("mode=host\nstatus=complete");
+    Ok(())
+}
+
+/// Runs Bob against a ready host-owned directory for a two-terminal proof.
+pub fn run_two_terminal_join(root: PathBuf) -> Result<(), SessionCtlError> {
+    validate_root(&root)?;
+    println!("mode=join\nstatus=connected");
+    run_bob(&root)?;
+    atomic_write(
+        &two_terminal_done_path(&root),
+        TWO_TERMINAL_DONE,
+        TWO_TERMINAL_DONE.len(),
+    )?;
+    println!("mode=join\nstatus=complete");
+    Ok(())
+}
+
+/// Hosts the full Phase 1 proof over the explicit public Iroh Fast link.
+pub async fn run_network_host(root: PathBuf) -> Result<(), SessionCtlError> {
+    let (root, endpoint) = prepare_public_endpoint(
+        root,
+        "network host endpoint",
+        |_| Ok(()),
+        IrohFastEndpoint::bind_public,
+    )
+    .await?;
+    endpoint
+        .wait_online(NETWORK_OPERATION_WAIT)
+        .await
+        .at_stage("network host online")?;
+    println!(
+        "mode=network-host\nprofile=fast-v1\nmetadata=peer-or-relay-addresses-timing-volume\nendpoint={}",
+        endpoint.id().as_text()
+    );
+    run_network_host_with_endpoint(root, endpoint).await
+}
+
+/// Joins a public Iroh Fast host with a separately transferred bearer invitation.
+pub async fn run_network_join(
+    host: &str,
+    invitation_path: PathBuf,
+    root: PathBuf,
+) -> Result<(), SessionCtlError> {
+    let invitation = read_network_invitation(&invitation_path)?;
+    let host = FastEndpointId::parse(host).at_stage("network host identity")?;
+    let (root, endpoint) = prepare_public_endpoint(
+        root,
+        "network join endpoint",
+        |root| {
+            atomic_write(
+                &direct_invitation_path(root.path()),
+                &invitation,
+                MAX_WIRE_OBJECT_BYTES,
+            )
+        },
+        IrohFastEndpoint::bind_public,
+    )
+    .await?;
+    endpoint
+        .wait_online(NETWORK_OPERATION_WAIT)
+        .await
+        .at_stage("network join online")?;
+    let link = endpoint
+        .connect_public(host, NETWORK_OPERATION_WAIT, MAX_IPC_FRAME_BYTES)
+        .await
+        .at_stage("network connect")?;
+    println!(
+        "mode=network-join\nprofile=fast-v1\nmetadata=peer-or-relay-addresses-timing-volume\nstatus=connected"
+    );
+    run_network_join_with_link(root, link).await
+}
+
+/// Runs the full network composition over relay-free Iroh loopback endpoints.
+pub async fn run_network_loopback_demo() -> Result<(), SessionCtlError> {
+    let host_root = ProcessRoot::create_at(fresh_process_root_path("network-host")?)?;
+    let join_root = ProcessRoot::create_at(fresh_process_root_path("network-join")?)?;
+    let host = IrohFastEndpoint::bind_loopback()
+        .await
+        .at_stage("network loopback host")?;
+    let host_address = host.address();
+    let host_invitation = direct_invitation_path(host_root.path());
+    let join = IrohFastEndpoint::bind_loopback()
+        .await
+        .at_stage("network loopback join")?;
+
+    let (host_result, join_result) = tokio::join!(
+        run_network_host_with_endpoint(host_root, host),
+        connect_network_loopback_join(join_root, join, host_address, host_invitation),
+    );
+    host_result?;
+    join_result
+}
+
+async fn connect_network_loopback_join(
+    root: ProcessRoot,
+    endpoint: IrohFastEndpoint,
+    host: FastEndpointAddress,
+    invitation_path: PathBuf,
+) -> Result<(), SessionCtlError> {
+    let invitation = read_bounded_wait_async(
+        invitation_path,
+        MAX_WIRE_OBJECT_BYTES,
+        NETWORK_OPERATION_WAIT,
+    )
+    .await?;
+    SignedCapabilityInvitationV2::decode_and_verify(&invitation).at_stage("network invitation")?;
+    atomic_write(
+        &direct_invitation_path(root.path()),
+        &invitation,
+        MAX_WIRE_OBJECT_BYTES,
+    )?;
+    let link = endpoint
+        .connect_address(host, NETWORK_OPERATION_WAIT, MAX_IPC_FRAME_BYTES)
+        .await
+        .at_stage("network loopback connect")?;
+    run_network_join_with_link(root, link).await
+}
+
+async fn run_network_host_with_endpoint(
+    mut root: ProcessRoot,
+    endpoint: IrohFastEndpoint,
+) -> Result<(), SessionCtlError> {
+    let alice_root = root.path().to_path_buf();
+    let alice = tokio::task::spawn_blocking(move || {
+        run_alice_init_with_wait(&alice_root, OPERATOR_HANDOFF_WAIT)?;
+        run_alice_resume(&alice_root)
+    });
+    let scenario_result = async {
+        let invitation = Zeroizing::new(
+            read_bounded_wait_async(
+                direct_invitation_path(root.path()),
+                MAX_WIRE_OBJECT_BYTES,
+                FRAME_WAIT,
+            )
+            .await?,
+        );
+        SignedCapabilityInvitationV2::decode_and_verify(&invitation)
+            .at_stage("network invitation")?;
+        println!(
+            "mode=network-host\ninvitation=ready\ninvitation_file={}",
+            direct_invitation_path(root.path()).display()
+        );
+        let link = endpoint
+            .accept(None, OPERATOR_HANDOFF_WAIT, MAX_IPC_FRAME_BYTES)
+            .await
+            .at_stage("network accept")?;
+        network_host_bridge(root.path(), link).await
+    }
+    .await;
+    let alice_result = alice.await.map_err(|_| stage("network Alice task"))?;
+    let cleanup_result = root.cleanup();
+    scenario_result?;
+    alice_result?;
+    cleanup_result?;
+    println!("mode=network-host\nstatus=complete");
+    Ok(())
+}
+
+async fn run_network_join_with_link(
+    mut root: ProcessRoot,
+    mut link: IrohFastLink,
+) -> Result<(), SessionCtlError> {
+    let bob_root = root.path().to_path_buf();
+    let bob = tokio::task::spawn_blocking(move || run_bob(&bob_root));
+    let scenario_result = network_join_bridge(root.path(), &mut link).await;
+    let bob_result = bob.await.map_err(|_| stage("network Bob task"))?;
+    let close_result = link
+        .close(NETWORK_OPERATION_WAIT)
+        .await
+        .at_stage("network join close");
+    let cleanup_result = root.cleanup();
+    scenario_result?;
+    bob_result?;
+    close_result?;
+    cleanup_result?;
+    println!("mode=network-join\nstatus=complete");
+    Ok(())
+}
+
+async fn network_host_bridge(root: &Path, mut link: IrohFastLink) -> Result<(), SessionCtlError> {
+    receive_network_frame(root, &mut link, 1, FrameKind::ProtectedJoin).await?;
+    for sequence in [2_u8, 3] {
+        send_network_frame(root, &mut link, sequence).await?;
+    }
+    receive_network_frame(root, &mut link, 4, FrameKind::OpaqueEnvelope).await?;
+    for sequence in 5_u8..=7 {
+        send_network_frame(root, &mut link, sequence).await?;
+    }
+    link.close(NETWORK_OPERATION_WAIT)
+        .await
+        .at_stage("network host close")
+}
+
+fn read_network_invitation(path: &Path) -> Result<Zeroizing<Vec<u8>>, SessionCtlError> {
+    if !path.is_absolute() || path.as_os_str().len() > 4_096 {
+        return Err(stage("network invitation path"));
+    }
+    let invitation = Zeroizing::new(read_bounded_regular_file(path, MAX_WIRE_OBJECT_BYTES)?);
+    SignedCapabilityInvitationV2::decode_and_verify(&invitation).at_stage("network invitation")?;
+    Ok(invitation)
+}
+
+async fn prepare_public_endpoint<Prepare, Bind, BindFuture>(
+    root: PathBuf,
+    endpoint_stage: &'static str,
+    prepare: Prepare,
+    bind: Bind,
+) -> Result<(ProcessRoot, IrohFastEndpoint), SessionCtlError>
+where
+    Prepare: FnOnce(&ProcessRoot) -> Result<(), SessionCtlError>,
+    Bind: FnOnce() -> BindFuture,
+    BindFuture: Future<Output = Result<IrohFastEndpoint, IrohFastError>>,
+{
+    let root = ProcessRoot::create_at(root)?;
+    prepare(&root)?;
+    let endpoint = bind().await.at_stage(endpoint_stage)?;
+    Ok((root, endpoint))
+}
+
+async fn network_join_bridge(root: &Path, link: &mut IrohFastLink) -> Result<(), SessionCtlError> {
+    send_network_frame(root, link, 1).await?;
+    for sequence in [2_u8, 3] {
+        receive_network_frame(
+            root,
+            link,
+            sequence,
+            if sequence == 2 {
+                FrameKind::WelcomeDeposit
+            } else {
+                FrameKind::OpaqueEnvelope
+            },
+        )
+        .await?;
+    }
+    send_network_frame(root, link, 4).await?;
+    for sequence in 5_u8..=7 {
+        receive_network_frame(root, link, sequence, FrameKind::OpaqueEnvelope).await?;
+    }
+    Ok(())
+}
+
+async fn send_network_frame(
+    root: &Path,
+    link: &mut IrohFastLink,
+    sequence: u8,
+) -> Result<(), SessionCtlError> {
+    let encoded =
+        read_bounded_wait_async(relay_in(root, sequence), MAX_IPC_FRAME_BYTES, FRAME_WAIT).await?;
+    let frame = IpcFrame::decode(&encoded)?;
+    let expected = expected_frame_kind(sequence)?;
+    frame.require(expected, sequence)?;
+    link.send_frame(&encoded, NETWORK_OPERATION_WAIT)
+        .await
+        .at_stage("network frame send")
+}
+
+async fn receive_network_frame(
+    root: &Path,
+    link: &mut IrohFastLink,
+    sequence: u8,
+    expected: FrameKind,
+) -> Result<(), SessionCtlError> {
+    let encoded = link
+        .receive_frame(NETWORK_OPERATION_WAIT)
+        .await
+        .at_stage("network frame receive")?;
+    let frame = IpcFrame::decode(&encoded)?;
+    frame.require(expected, sequence)?;
+    atomic_write_async(relay_out(root, sequence), encoded, MAX_IPC_FRAME_BYTES).await
+}
+
+fn expected_frame_kind(sequence: u8) -> Result<FrameKind, SessionCtlError> {
+    match sequence {
+        1 => Ok(FrameKind::ProtectedJoin),
+        2 => Ok(FrameKind::WelcomeDeposit),
+        3..=7 => Ok(FrameKind::OpaqueEnvelope),
+        _ => Err(stage("network frame schedule")),
+    }
+}
+
+async fn read_bounded_wait_async(
+    path: PathBuf,
+    maximum: usize,
+    timeout: Duration,
+) -> Result<Vec<u8>, SessionCtlError> {
+    tokio::task::spawn_blocking(move || read_bounded_wait(&path, maximum, timeout))
+        .await
+        .map_err(|_| stage("network file read task"))?
+}
+
+async fn atomic_write_async(
+    path: PathBuf,
+    bytes: Vec<u8>,
+    maximum: usize,
+) -> Result<(), SessionCtlError> {
+    tokio::task::spawn_blocking(move || atomic_write(&path, &bytes, maximum))
+        .await
+        .map_err(|_| stage("network file write task"))?
+}
+
 fn run_l1_process_children(root: &Path, children: &mut ChildSet) -> Result<(), SessionCtlError> {
     let executable = std::env::current_exe().at_stage("process executable")?;
     children.spawn(&executable, "service", root)?;
@@ -221,6 +562,11 @@ pub fn run_l1_process_internal_role(role: &str, root: PathBuf) -> Result<(), Ses
         "hostile-replay-alice" => run_hostile_replay_alice(&root),
         "hostile-replay-bob" => run_hostile_replay_bob(&root),
         "hostile-replay-inspector" => run_hostile_replay_inspector(&root),
+        "hostile-matrix-controller" => run_hostile_matrix_controller(&root),
+        "hostile-matrix-service" => run_hostile_matrix_service(&root),
+        "hostile-matrix-alice" => run_hostile_matrix_alice(&root),
+        "hostile-matrix-bob" => run_hostile_matrix_bob(&root),
+        "hostile-matrix-inspector" => run_hostile_matrix_inspector(&root),
         _ => Err(stage("process role")),
     }
 }
@@ -230,6 +576,56 @@ enum FrameKind {
     ProtectedJoin = 1,
     WelcomeDeposit = 2,
     OpaqueEnvelope = 3,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum HostileJoinCase {
+    Malformed,
+    Expired,
+    Copied,
+    WrongInvitation,
+    WrongKeyPackage,
+    WrongVerifier,
+    Reordered,
+}
+
+impl HostileJoinCase {
+    const ALL: [Self; 7] = [
+        Self::Malformed,
+        Self::Expired,
+        Self::Copied,
+        Self::WrongInvitation,
+        Self::WrongKeyPackage,
+        Self::WrongVerifier,
+        Self::Reordered,
+    ];
+
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Malformed => "malformed-protected-join",
+            Self::Expired => "expired-protected-join",
+            Self::Copied => "copied-protected-join",
+            Self::WrongInvitation => "wrong-invitation",
+            Self::WrongKeyPackage => "wrong-key-package",
+            Self::WrongVerifier => "wrong-verifier",
+            Self::Reordered => "reordered-protected-joins",
+        }
+    }
+
+    fn parse(bytes: &[u8]) -> Result<Self, SessionCtlError> {
+        Self::ALL
+            .into_iter()
+            .find(|case| bytes == case.label().as_bytes())
+            .ok_or_else(|| stage("hostile process case"))
+    }
+
+    const fn request_count(self) -> u8 {
+        if matches!(self, Self::Reordered) {
+            2
+        } else {
+            1
+        }
+    }
 }
 
 impl TryFrom<u8> for FrameKind {
@@ -369,9 +765,20 @@ fn validate_wire_parts(kind: FrameKind, parts: &[Vec<u8>]) -> Result<(), Session
 }
 
 fn run_service(root: &Path) -> Result<(), SessionCtlError> {
+    run_service_with_initial_wait(root, FRAME_WAIT)
+}
+
+fn run_service_with_initial_wait(
+    root: &Path,
+    initial_wait: Duration,
+) -> Result<(), SessionCtlError> {
     for sequence in 1..=EXPECTED_FRAMES {
-        let encoded =
-            read_bounded_wait(&relay_in(root, sequence), MAX_IPC_FRAME_BYTES, FRAME_WAIT)?;
+        let wait = if sequence == 1 {
+            initial_wait
+        } else {
+            FRAME_WAIT
+        };
+        let encoded = read_bounded_wait(&relay_in(root, sequence), MAX_IPC_FRAME_BYTES, wait)?;
         let frame = IpcFrame::decode(&encoded)?;
         let expected = match sequence {
             1 => FrameKind::ProtectedJoin,
@@ -462,16 +869,11 @@ fn run_hostile_replay_alice(root: &Path) -> Result<(), SessionCtlError> {
         .at_stage("hostile process Alice group")?;
 
     let protector = AwsLcInvitationJoinProtector::new();
-    let generated = protector
-        .generate_capability_invitation(NOW, INVITATION_EXPIRES_AT)
+    let issued = storage
+        .issue_capability_invitation(&protector, NOW, INVITATION_EXPIRES_AT, NOW)
         .at_stage("hostile process invitation generation")?;
-    let mut registry = InvitationRegistry::new(
-        InvitationPolicy::new(3_600, 5, 8).at_stage("hostile process invitation policy")?,
-    );
-    let issued = registry
-        .issue_v2(generated, NOW)
-        .at_stage("hostile process invitation issue")?;
     let encoded_invitation = issued
+        .invitation()
         .encode_canonical()
         .at_stage("hostile process invitation encoding")?;
     atomic_write(
@@ -495,15 +897,64 @@ fn run_hostile_replay_alice(root: &Path) -> Result<(), SessionCtlError> {
     let opened_second = protector
         .open_capability_request(issued.private_key(), issued.invitation(), &second)
         .at_stage("hostile process replayed join opening")?;
+    let first_fingerprint: [u8; 32] = digest(&SHA256, &first_bytes)
+        .as_ref()
+        .try_into()
+        .map_err(|_| stage("hostile process first fingerprint"))?;
+    let first_shadow = AuthorizationShadowInput::new(
+        *opened_first.request().invitation_id(),
+        *issued.invitation().signature(),
+        *opened_first.request().join_challenge(),
+        *opened_first.request().join_request_id(),
+        *opened_first.request().request_nonce(),
+        *opened_first.request().intended_verifier(),
+        *opened_first.request().key_package_reference(),
+        *opened_first.request().credential_identity(),
+        *opened_first.request().leaf_signature_key(),
+        first_fingerprint,
+        opened_first.request().issued_at_unix_seconds(),
+        opened_first.request().expires_at_unix_seconds(),
+        issued.invitation().expires_at_unix_seconds(),
+    )
+    .at_stage("hostile process first shadow")?;
+    let second_fingerprint: [u8; 32] = digest(&SHA256, &second_bytes)
+        .as_ref()
+        .try_into()
+        .map_err(|_| stage("hostile process replay fingerprint"))?;
+    let second_shadow = AuthorizationShadowInput::new(
+        *opened_second.request().invitation_id(),
+        *issued.invitation().signature(),
+        *opened_second.request().join_challenge(),
+        *opened_second.request().join_request_id(),
+        *opened_second.request().request_nonce(),
+        *opened_second.request().intended_verifier(),
+        *opened_second.request().key_package_reference(),
+        *opened_second.request().credential_identity(),
+        *opened_second.request().leaf_signature_key(),
+        second_fingerprint,
+        opened_second.request().issued_at_unix_seconds(),
+        opened_second.request().expires_at_unix_seconds(),
+        issued.invitation().expires_at_unix_seconds(),
+    )
+    .at_stage("hostile process replay shadow")?;
     let mut admission = CapabilityAdmissionVerifier::new(
         CapabilityAdmissionPolicy::new(3_600, 5, 8).at_stage("hostile process admission policy")?,
     );
     let _reserved = admission
         .verify_and_reserve(opened_first, NOW)
         .at_stage("hostile process first reservation")?;
+    let _durable_reserved = storage
+        .reserve_authorization(&protector, first_shadow, NOW)
+        .at_stage("hostile process first durable reservation")?;
+    let mut fresh_admission = CapabilityAdmissionVerifier::new(
+        CapabilityAdmissionPolicy::new(3_600, 5, 8).at_stage("hostile process replay policy")?,
+    );
+    let _replay_verified = fresh_admission
+        .verify_and_reserve(opened_second, NOW)
+        .at_stage("hostile process replay verification")?;
     if !matches!(
-        admission.verify_and_reserve(opened_second, NOW),
-        Err(CapabilityAdmissionError::Replay)
+        storage.reserve_authorization(&protector, second_shadow, NOW),
+        Err(StoreError::Replay)
     ) || admission.pending_count() != 1
         || group.epoch() != 0
         || group.member_count() != 1
@@ -590,6 +1041,31 @@ fn run_hostile_replay_inspector(root: &Path) -> Result<(), SessionCtlError> {
         VaultKey::new(*database_key).at_stage("hostile process reopen key")?,
     )
     .at_stage("hostile process owner reopen")?;
+    if storage
+        .recover_pre_membership_authorizations(&AwsLcInvitationJoinProtector::new(), NOW + 1)
+        .at_stage("hostile process authorization recovery")?
+        != 1
+    {
+        return Err(stage("hostile process authorization recovery"));
+    }
+    let invitation_bytes = Zeroizing::new(read_bounded_wait(
+        &direct_invitation_path(root),
+        MAX_WIRE_OBJECT_BYTES,
+        FRAME_WAIT,
+    )?);
+    let invitation = SignedCapabilityInvitationV2::decode_and_verify(&invitation_bytes)
+        .at_stage("hostile process recovery invitation")?;
+    let reloaded = storage
+        .load_capability_invitation(
+            &AwsLcInvitationJoinProtector::new(),
+            invitation.invitation_id(),
+            NOW + 1,
+        )
+        .at_stage("hostile process opening recovery")?
+        .ok_or_else(|| stage("hostile process opening recovery"))?;
+    if reloaded.invitation().signature() != invitation.signature() {
+        return Err(stage("hostile process opening recovery"));
+    }
     let alice = load_durable_client_with_storage(
         group_id,
         storage.clone(),
@@ -602,6 +1078,415 @@ fn run_hostile_replay_inspector(root: &Path) -> Result<(), SessionCtlError> {
     }
     print!("role=inspector\nresult=pass\ndurable_membership=unchanged\n");
     Ok(())
+}
+
+fn run_hostile_matrix_controller(root: &Path) -> Result<(), SessionCtlError> {
+    let executable = std::env::current_exe().at_stage("hostile matrix executable")?;
+    for case in HostileJoinCase::ALL {
+        let mut case_root = ProcessRoot::create_at(root.join(case.label()))?;
+        atomic_write(
+            &hostile_case_path(case_root.path()),
+            case.label().as_bytes(),
+            64,
+        )?;
+        let mut children = ChildSet::new();
+        let scenario_result = (|| {
+            children.spawn(&executable, "hostile-matrix-service", case_root.path())?;
+            children.spawn(&executable, "hostile-matrix-bob", case_root.path())?;
+            children.spawn(&executable, "hostile-matrix-alice", case_root.path())?;
+
+            let alice = children.wait_role("hostile-matrix-alice", CHILD_WAIT)?;
+            require_child_output(
+                &alice,
+                format!(
+                    "role=alice\nresult=pass\ncase={}\napproval=not-reached\nmls_add=not-reached\nmembership=unchanged\n",
+                    case.label()
+                )
+                .as_bytes(),
+            )?;
+            children.spawn(&executable, "hostile-matrix-inspector", case_root.path())?;
+            let inspector = children.wait_role("hostile-matrix-inspector", CHILD_WAIT)?;
+            require_child_output(
+                &inspector,
+                b"role=inspector\nresult=pass\ndurable_membership=unchanged\n",
+            )?;
+            let bob = children.wait_role("hostile-matrix-bob", CHILD_WAIT)?;
+            require_child_output(
+                &bob,
+                format!(
+                    "role=bob\nresult=pass\ncase={}\nrequests={}\n",
+                    case.label(),
+                    case.request_count()
+                )
+                .as_bytes(),
+            )?;
+            let service = children.wait_role("hostile-matrix-service", CHILD_WAIT)?;
+            let forwarded = if matches!(case, HostileJoinCase::Reordered) {
+                1
+            } else {
+                case.request_count()
+            };
+            require_child_output(
+                &service,
+                format!(
+                    "role=untrusted-service\nresult=pass\ncase={}\nreceived={}\nforwarded={}\n",
+                    case.label(),
+                    case.request_count(),
+                    forwarded
+                )
+                .as_bytes(),
+            )?;
+            if !children.is_empty() {
+                return Err(stage("hostile matrix process cleanup"));
+            }
+            Ok(())
+        })();
+        let child_cleanup_result = children.cleanup();
+        let directory_cleanup_result = case_root.cleanup();
+        scenario_result?;
+        child_cleanup_result?;
+        directory_cleanup_result?;
+    }
+
+    validate_root(root)?;
+    fs::remove_dir_all(root).at_stage("hostile matrix root removal")?;
+    print!(
+        "version=1\nscenario=E2E-JOIN-002\ntopology=two-clients-one-untrusted-service\nresult=pass\ncases=malformed-protected-join,expired-protected-join,copied-protected-join,wrong-invitation,wrong-key-package,wrong-verifier,reordered-protected-joins\ncase_count=7\napproval=not-reached\nmls_add=not-reached\nmembership=unchanged\nservice_input=canonical-public-only\nredaction=pass\nchild_cleanup=pass\ndirectory_cleanup=pass\n"
+    );
+    Ok(())
+}
+
+fn run_hostile_matrix_service(root: &Path) -> Result<(), SessionCtlError> {
+    let case = read_hostile_case(root)?;
+    let mut received = Vec::with_capacity(usize::from(case.request_count()));
+    for sequence in 1..=case.request_count() {
+        let encoded =
+            read_bounded_wait(&relay_in(root, sequence), MAX_IPC_FRAME_BYTES, FRAME_WAIT)?;
+        let frame = IpcFrame::decode(&encoded)?;
+        frame.require(FrameKind::ProtectedJoin, sequence)?;
+        received.push(encoded);
+    }
+
+    if matches!(case, HostileJoinCase::Reordered) {
+        atomic_write(&relay_out(root, 1), &received[1], MAX_IPC_FRAME_BYTES)?;
+    } else if matches!(case, HostileJoinCase::Malformed) {
+        let frame = IpcFrame::decode(&received[0])?;
+        let mut parts = frame.require(FrameKind::ProtectedJoin, 1)?;
+        let encoded = parts
+            .pop()
+            .ok_or_else(|| stage("hostile malformed protected join"))?;
+        let protected = ProtectedJoinRequest::decode_canonical(&encoded)
+            .at_stage("hostile malformed protected join")?;
+        let mut ciphertext = protected.ciphertext().to_vec();
+        ciphertext[0] ^= 1;
+        let malformed = ProtectedJoinRequest::new(
+            *protected.invitation_id(),
+            *protected.invitation_key_id(),
+            *protected.encapsulated_key(),
+            ciphertext,
+        )
+        .at_stage("hostile malformed protected join")?
+        .encode_canonical()
+        .at_stage("hostile malformed protected join")?;
+        write_frame(
+            &relay_out(root, 1),
+            IpcFrame::new(FrameKind::ProtectedJoin, 1, vec![malformed])?,
+        )?;
+    } else {
+        atomic_write(&relay_out(root, 1), &received[0], MAX_IPC_FRAME_BYTES)?;
+    }
+
+    let forwarded = if matches!(case, HostileJoinCase::Reordered) {
+        1
+    } else {
+        case.request_count()
+    };
+    print!(
+        "role=untrusted-service\nresult=pass\ncase={}\nreceived={}\nforwarded={}\n",
+        case.label(),
+        case.request_count(),
+        forwarded
+    );
+    Ok(())
+}
+
+fn run_hostile_matrix_alice(root: &Path) -> Result<(), SessionCtlError> {
+    let case = read_hostile_case(root)?;
+    let database_key = Zeroizing::new(random_nonzero::<32>()?);
+    let storage = SqlCipherStorage::create(
+        &database_path(root),
+        VaultKey::new(*database_key).at_stage("hostile matrix owner key")?,
+    )
+    .at_stage("hostile matrix owner store")?;
+    let group_id = SessionGroupId::new(random_nonzero()?).at_stage("hostile matrix group ID")?;
+    let alice = create_durable_client_with_storage(
+        group_id,
+        storage.clone(),
+        storage.clone(),
+        storage.clone(),
+    )
+    .at_stage("hostile matrix Alice client")?;
+    let group = alice
+        .create_group(group_id, NOW)
+        .at_stage("hostile matrix Alice group")?;
+    let protector = AwsLcInvitationJoinProtector::new();
+    let invitation_issued_at = if matches!(case, HostileJoinCase::Expired) {
+        NOW.saturating_sub(10)
+    } else {
+        NOW
+    };
+    let issued = storage
+        .issue_capability_invitation(
+            &protector,
+            invitation_issued_at,
+            INVITATION_EXPIRES_AT,
+            invitation_issued_at,
+        )
+        .at_stage("hostile matrix invitation generation")?;
+    let foreign = storage
+        .issue_capability_invitation(&protector, NOW, INVITATION_EXPIRES_AT, NOW)
+        .at_stage("hostile matrix foreign invitation generation")?;
+    atomic_write(
+        &direct_invitation_path(root),
+        &issued
+            .invitation()
+            .encode_canonical()
+            .at_stage("hostile matrix invitation encoding")?,
+        MAX_WIRE_OBJECT_BYTES,
+    )?;
+    atomic_write(
+        &foreign_invitation_path(root),
+        &foreign
+            .invitation()
+            .encode_canonical()
+            .at_stage("hostile matrix foreign invitation encoding")?,
+        MAX_WIRE_OBJECT_BYTES,
+    )?;
+    write_private_state(root, &database_key, group_id)?;
+
+    match case {
+        HostileJoinCase::Reordered => {
+            if receive_protected_join(root, 1).is_ok() {
+                return Err(stage("hostile reordered join rejection"));
+            }
+        }
+        HostileJoinCase::Malformed | HostileJoinCase::Copied | HostileJoinCase::WrongInvitation => {
+            let encoded = receive_protected_join(root, 1)?;
+            let protected = ProtectedJoinRequest::decode_canonical(&encoded)
+                .at_stage("hostile matrix protected join")?;
+            if protector
+                .open_capability_request(issued.private_key(), issued.invitation(), &protected)
+                .is_ok()
+            {
+                return Err(stage("hostile protected join rejection"));
+            }
+        }
+        HostileJoinCase::WrongVerifier => {
+            let encoded = receive_protected_join(root, 1)?;
+            let protected = ProtectedJoinRequest::decode_canonical(&encoded)
+                .at_stage("hostile wrong verifier protected join")?;
+            let opened = protector
+                .open_capability_request(foreign.private_key(), foreign.invitation(), &protected)
+                .at_stage("hostile wrong verifier opening")?;
+            if opened.request().intended_verifier() == issued.invitation().inviter_verifying_key() {
+                return Err(stage("hostile wrong verifier context"));
+            }
+        }
+        HostileJoinCase::Expired | HostileJoinCase::WrongKeyPackage => {
+            let encoded = receive_protected_join(root, 1)?;
+            let protected = ProtectedJoinRequest::decode_canonical(&encoded)
+                .at_stage("hostile matrix protected join")?;
+            let opened = protector
+                .open_capability_request(issued.private_key(), issued.invitation(), &protected)
+                .at_stage("hostile matrix join opening")?;
+            let mut admission = CapabilityAdmissionVerifier::new(
+                CapabilityAdmissionPolicy::new(3_600, 5, 8)
+                    .at_stage("hostile matrix admission policy")?,
+            );
+            if admission.verify_and_reserve(opened, NOW).is_ok() || admission.pending_count() != 0 {
+                return Err(stage("hostile admission rejection"));
+            }
+        }
+    }
+    if group.epoch() != 0 || group.member_count() != 1 {
+        return Err(stage("hostile matrix membership mutation"));
+    }
+    drop(group);
+    drop(alice);
+    drop(storage);
+    print!(
+        "role=alice\nresult=pass\ncase={}\napproval=not-reached\nmls_add=not-reached\nmembership=unchanged\n",
+        case.label()
+    );
+    Ok(())
+}
+
+fn run_hostile_matrix_bob(root: &Path) -> Result<(), SessionCtlError> {
+    let case = read_hostile_case(root)?;
+    let invitation_path = if matches!(
+        case,
+        HostileJoinCase::Copied | HostileJoinCase::WrongVerifier
+    ) {
+        foreign_invitation_path(root)
+    } else {
+        direct_invitation_path(root)
+    };
+    let invitation_bytes = Zeroizing::new(read_bounded_wait(
+        &invitation_path,
+        MAX_WIRE_OBJECT_BYTES,
+        FRAME_WAIT,
+    )?);
+    let invitation = SignedCapabilityInvitationV2::decode_and_verify(&invitation_bytes)
+        .at_stage("hostile matrix invitation decode")?;
+
+    for sequence in 1..=case.request_count() {
+        let mut protected = build_hostile_join_request(&invitation, case)?;
+        if matches!(case, HostileJoinCase::WrongInvitation) {
+            protected = ProtectedJoinRequest::new(
+                random_nonzero()?,
+                *protected.invitation_key_id(),
+                *protected.encapsulated_key(),
+                protected.ciphertext().to_vec(),
+            )
+            .at_stage("hostile wrong invitation outer")?;
+        }
+        write_frame(
+            &relay_in(root, sequence),
+            IpcFrame::new(
+                FrameKind::ProtectedJoin,
+                sequence,
+                vec![
+                    protected
+                        .encode_canonical()
+                        .at_stage("hostile matrix join encoding")?,
+                ],
+            )?,
+        )?;
+    }
+    print!(
+        "role=bob\nresult=pass\ncase={}\nrequests={}\n",
+        case.label(),
+        case.request_count()
+    );
+    Ok(())
+}
+
+fn build_hostile_join_request(
+    invitation: &SignedCapabilityInvitationV2,
+    case: HostileJoinCase,
+) -> Result<ProtectedJoinRequest, SessionCtlError> {
+    let (issued_at, expires_at) = if matches!(case, HostileJoinCase::Expired) {
+        (NOW.saturating_sub(2), NOW.saturating_sub(1))
+    } else {
+        (NOW, REQUEST_EXPIRES_AT)
+    };
+    let mut welcome_transport = LocalMemoryWelcomeTransport::new(
+        LocalMailboxPolicy::new(300, 1).at_stage("hostile matrix Welcome policy")?,
+    )
+    .at_stage("hostile matrix Welcome transport")?;
+    let mailbox = welcome_transport
+        .create_welcome_mailbox(expires_at, issued_at)
+        .at_stage("hostile matrix Welcome mailbox")?;
+    let (deposit_endpoint, _, _) = mailbox.into_parts();
+    let bob = create_client().at_stage("hostile matrix Bob client")?;
+    let key_package = bob
+        .generate_key_package(issued_at)
+        .at_stage("hostile matrix Bob KeyPackage")?;
+    let validated = create_key_package_validator()
+        .validate_key_package(key_package.as_bytes(), issued_at)
+        .at_stage("hostile matrix Bob KeyPackage validation")?;
+    let (key_package_bytes, credential_identity, leaf_signature_key) =
+        if matches!(case, HostileJoinCase::WrongKeyPackage) {
+            let foreign_key_package = bob
+                .generate_key_package(issued_at)
+                .at_stage("hostile matrix foreign KeyPackage")?;
+            let foreign_validated = create_key_package_validator()
+                .validate_key_package(foreign_key_package.as_bytes(), issued_at)
+                .at_stage("hostile matrix foreign KeyPackage validation")?;
+            (
+                foreign_key_package.as_bytes().to_vec(),
+                *foreign_validated.credential_identity(),
+                *foreign_validated.leaf_signature_key(),
+            )
+        } else {
+            (
+                key_package.as_bytes().to_vec(),
+                *validated.credential_identity(),
+                *validated.leaf_signature_key(),
+            )
+        };
+    let request = CapabilityJoinRequest::new(
+        InvitationJoinBinding::new(
+            *invitation.invitation_id(),
+            *invitation.join_challenge(),
+            *invitation.invitation_key_id(),
+            *invitation.inviter_verifying_key(),
+        )
+        .at_stage("hostile matrix invitation binding")?,
+        JoinRequestBinding::new(random_nonzero()?, issued_at, expires_at, random_nonzero()?)
+            .at_stage("hostile matrix request binding")?,
+        MlsKeyPackageBinding::new(
+            *validated.key_package_reference(),
+            key_package_bytes,
+            credential_identity,
+            leaf_signature_key,
+        )
+        .at_stage("hostile matrix MLS binding")?,
+        deposit_endpoint,
+    )
+    .at_stage("hostile matrix join request")?;
+    AwsLcInvitationJoinProtector::new()
+        .seal_capability_request(invitation, &request)
+        .at_stage("hostile matrix join protection")
+}
+
+fn run_hostile_matrix_inspector(root: &Path) -> Result<(), SessionCtlError> {
+    let _case = read_hostile_case(root)?;
+    let (database_key, group_id) = read_private_state(root)?;
+    let storage = SqlCipherStorage::open(
+        &database_path(root),
+        VaultKey::new(*database_key).at_stage("hostile matrix reopen key")?,
+    )
+    .at_stage("hostile matrix owner reopen")?;
+    if storage
+        .recover_pre_membership_authorizations(&AwsLcInvitationJoinProtector::new(), NOW + 1)
+        .at_stage("hostile matrix authorization recovery")?
+        != 0
+    {
+        return Err(stage("hostile matrix authorization mutation"));
+    }
+    let invitation_bytes = Zeroizing::new(read_bounded_wait(
+        &direct_invitation_path(root),
+        MAX_WIRE_OBJECT_BYTES,
+        FRAME_WAIT,
+    )?);
+    let invitation = SignedCapabilityInvitationV2::decode_and_verify(&invitation_bytes)
+        .at_stage("hostile matrix recovery invitation")?;
+    if storage
+        .invitation_opening_state(invitation.invitation_id())
+        .at_stage("hostile matrix invitation state")?
+        != Some(InvitationOpeningState::Available)
+    {
+        return Err(stage("hostile matrix invitation mutation"));
+    }
+    let alice = load_durable_client_with_storage(
+        group_id,
+        storage.clone(),
+        storage.clone(),
+        storage.clone(),
+    )
+    .at_stage("hostile matrix Alice identity reload")?;
+    if alice.load_group(group_id).is_ok() {
+        return Err(stage("hostile matrix durable membership"));
+    }
+    print!("role=inspector\nresult=pass\ndurable_membership=unchanged\n");
+    Ok(())
+}
+
+fn read_hostile_case(root: &Path) -> Result<HostileJoinCase, SessionCtlError> {
+    let encoded = read_bounded_file(&hostile_case_path(root), 64)
+        .ok_or_else(|| stage("hostile process case"))?;
+    HostileJoinCase::parse(&encoded)
 }
 
 fn receive_protected_join(root: &Path, sequence: u8) -> Result<Vec<u8>, SessionCtlError> {
@@ -617,6 +1502,13 @@ fn receive_protected_join(root: &Path, sequence: u8) -> Result<Vec<u8>, SessionC
 }
 
 fn run_alice_init(root: &Path) -> Result<(), SessionCtlError> {
+    run_alice_init_with_wait(root, FRAME_WAIT)
+}
+
+fn run_alice_init_with_wait(
+    root: &Path,
+    protected_join_wait: Duration,
+) -> Result<(), SessionCtlError> {
     let database_key = Zeroizing::new(random_nonzero::<32>()?);
     let storage = SqlCipherStorage::create(
         &database_path(root),
@@ -624,8 +1516,8 @@ fn run_alice_init(root: &Path) -> Result<(), SessionCtlError> {
     )
     .at_stage("process owner store")?;
     let protector = AwsLcInvitationJoinProtector::new();
-    let generated = protector
-        .generate_capability_invitation(NOW, INVITATION_EXPIRES_AT)
+    let generated = storage
+        .issue_capability_invitation(&protector, NOW, INVITATION_EXPIRES_AT, NOW)
         .at_stage("process invitation generation")?;
     let mut registry = InvitationRegistry::new(
         InvitationPolicy::new(3_600, 5, 8).at_stage("process invitation policy")?,
@@ -648,7 +1540,7 @@ fn run_alice_init(root: &Path) -> Result<(), SessionCtlError> {
     let protected_frame = IpcFrame::decode(&read_bounded_wait(
         &relay_out(root, 1),
         MAX_IPC_FRAME_BYTES,
-        FRAME_WAIT,
+        protected_join_wait,
     )?)?;
     let mut parts = protected_frame.require(FrameKind::ProtectedJoin, 1)?;
     let protected_bytes = parts.pop().ok_or_else(|| stage("process protected join"))?;
@@ -663,6 +1555,22 @@ fn run_alice_init(root: &Path) -> Result<(), SessionCtlError> {
         .at_stage("process join opening")?;
     let join_request_id = *opened.request().join_request_id();
     let expected_key_package_reference = *opened.request().key_package_reference();
+    let authorization_shadow = AuthorizationShadowInput::new(
+        *opened.request().invitation_id(),
+        *issued.invitation().signature(),
+        *opened.request().join_challenge(),
+        join_request_id,
+        *opened.request().request_nonce(),
+        *opened.request().intended_verifier(),
+        expected_key_package_reference,
+        *opened.request().credential_identity(),
+        *opened.request().leaf_signature_key(),
+        request_fingerprint,
+        opened.request().issued_at_unix_seconds(),
+        opened.request().expires_at_unix_seconds(),
+        issued.invitation().expires_at_unix_seconds(),
+    )
+    .at_stage("process authorization shadow")?;
 
     let validated_key_package = create_key_package_validator()
         .validate_key_package(opened.request().key_package(), NOW)
@@ -685,15 +1593,10 @@ fn run_alice_init(root: &Path) -> Result<(), SessionCtlError> {
     {
         return Err(stage("process approval context"));
     }
-    storage
-        .seed_reservation(
-            *issued.invitation().invitation_id(),
-            *issued.invitation().signature(),
-            join_request_id,
-            INVITATION_EXPIRES_AT,
-            NOW,
-        )
+    let durable_pending = storage
+        .reserve_authorization(&protector, authorization_shadow, NOW)
         .at_stage("process durable reservation")?;
+    let authorization_attempt_id = *durable_pending.attempt_id();
     let approval_record = encode_approval_record(approval_context);
     let CapabilityApprovalOutcome::Approved(approved) = admission
         .decide_v2(&mut registry, pending, ManualApprovalDecision::Approve, NOW)
@@ -701,6 +1604,9 @@ fn run_alice_init(root: &Path) -> Result<(), SessionCtlError> {
     else {
         return Err(stage("process approval"));
     };
+    let durable_approved = storage
+        .approve_authorization(durable_pending, &protector, NOW)
+        .at_stage("process durable approval")?;
 
     let group_id = SessionGroupId::new(random_nonzero()?).at_stage("process group ID")?;
     let alice = create_durable_client_with_storage(
@@ -716,9 +1622,15 @@ fn run_alice_init(root: &Path) -> Result<(), SessionCtlError> {
     let prepared = admission
         .prepare_approved_add(&mut registry, approved, &mut group, NOW)
         .at_stage("process MLS Add")?;
-    let pending_durability = prepared
-        .apply_awaiting_durability(NOW)
-        .at_stage("process MLS apply")?;
+    let pending_durability = match prepared.apply_awaiting_durability(NOW) {
+        Ok(pending) => pending,
+        Err(_) => {
+            storage
+                .abandon_approved_authorization(durable_approved, &protector, NOW)
+                .at_stage("process durable MLS apply cleanup")?;
+            return Err(stage("process MLS apply"));
+        }
+    };
     let welcome_envelope = OpaqueEnvelope::new(
         random_nonzero()?,
         REQUEST_EXPIRES_AT,
@@ -747,10 +1659,22 @@ fn run_alice_init(root: &Path) -> Result<(), SessionCtlError> {
         REQUEST_EXPIRES_AT,
     )
     .at_stage("process inviter transaction")?;
-    storage
-        .stage_inviter(transaction, NOW, PersistenceFault::None)
-        .at_stage("process membership staging")?;
-    group.write_to_storage().at_stage("process group storage")?;
+    let membership = storage
+        .begin_membership_authorization(durable_approved, transaction_id, &protector, NOW)
+        .at_stage("process membership authorization")?;
+    let (committed_addition, _response_endpoint, shadow_settlement) =
+        pending_durability.into_durable_owner_parts();
+    committed_addition
+        .stage_and_write_to_storage(&mut group, |binding| {
+            storage.stage_authorized_inviter(
+                membership,
+                binding,
+                transaction,
+                NOW,
+                PersistenceFault::None,
+            )
+        })
+        .at_stage("process group storage")?;
     let recovered = storage
         .recover_inviter(&transaction_id)
         .at_stage("process membership recovery")?;
@@ -761,18 +1685,20 @@ fn run_alice_init(root: &Path) -> Result<(), SessionCtlError> {
     }) {
         return Err(stage("process membership recovery"));
     }
-    let committed = pending_durability
-        .finalize_committed()
-        .at_stage("process membership finalization")?;
-    if committed.key_package_reference() != &expected_key_package_reference
+    if storage
+        .recover_authorization_outcome(&authorization_attempt_id, &transaction_id, &protector, NOW)
+        .at_stage("process authorization recovery")?
+        != AuthorizationState::Committed
         || storage
-            .invitation_state(issued.invitation().invitation_id())
+            .invitation_opening_state(issued.invitation().invitation_id())
             .at_stage("process invitation state")?
-            != Some(InvitationState::Consumed)
+            != Some(InvitationOpeningState::Consumed)
     {
         return Err(stage("process membership finalization"));
     }
-    drop(committed);
+    shadow_settlement
+        .finalize_committed()
+        .at_stage("process membership shadow finalization")?;
     drop(group);
     drop(alice);
     drop(storage);
@@ -1153,6 +2079,41 @@ fn read_bounded(mut file: impl Read, maximum: usize) -> Result<Vec<u8>, SessionC
     Ok(bytes)
 }
 
+fn read_bounded_regular_file(path: &Path, maximum: usize) -> Result<Vec<u8>, SessionCtlError> {
+    let before = fs::symlink_metadata(path).at_stage("network invitation metadata")?;
+    if !before.file_type().is_file()
+        || before.len() == 0
+        || before.len() > u64::try_from(maximum).map_err(|_| stage("network invitation bound"))?
+    {
+        return Err(stage("network invitation file"));
+    }
+
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        options.custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW);
+    }
+    let file = options.open(path).at_stage("network invitation read")?;
+    let after = file.metadata().at_stage("network invitation metadata")?;
+    if !after.file_type().is_file()
+        || after.len() != before.len()
+        || after.len() == 0
+        || after.len() > u64::try_from(maximum).map_err(|_| stage("network invitation bound"))?
+    {
+        return Err(stage("network invitation file"));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt as _;
+        if before.dev() != after.dev() || before.ino() != after.ino() {
+            return Err(stage("network invitation file"));
+        }
+    }
+    read_bounded(file, maximum)
+}
+
 fn write_private_state(
     root: &Path,
     database_key: &[u8; 32],
@@ -1197,15 +2158,13 @@ struct ProcessRoot(Option<PathBuf>);
 
 impl ProcessRoot {
     fn new() -> Result<Self, SessionCtlError> {
-        let identifier: [u8; 16] = random_nonzero()?;
-        let name = format!(
-            "session-chat-l1-{}",
-            identifier
-                .iter()
-                .map(|byte| format!("{byte:02x}"))
-                .collect::<String>()
-        );
-        let root = std::env::temp_dir().join(name);
+        Self::create_at(fresh_process_root_path("l1")?)
+    }
+
+    fn create_at(root: PathBuf) -> Result<Self, SessionCtlError> {
+        if !root.is_absolute() || root.as_os_str().len() > 4_096 || root.exists() {
+            return Err(stage("process root"));
+        }
         fs::create_dir(&root).at_stage("process root")?;
         let process_root = Self(Some(root));
         atomic_write(
@@ -1255,6 +2214,18 @@ impl Drop for ProcessRoot {
     }
 }
 
+fn fresh_process_root_path(label: &str) -> Result<PathBuf, SessionCtlError> {
+    let identifier: [u8; 16] = random_nonzero()?;
+    let name = format!(
+        "session-chat-{label}-{}",
+        identifier
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
+    );
+    Ok(std::env::temp_dir().join(name))
+}
+
 fn validate_root(root: &Path) -> Result<(), SessionCtlError> {
     if !root.is_absolute()
         || root.as_os_str().len() > 4_096
@@ -1264,6 +2235,10 @@ fn validate_root(root: &Path) -> Result<(), SessionCtlError> {
         return Err(stage("process root validation"));
     }
     Ok(())
+}
+
+fn two_terminal_done_path(root: &Path) -> PathBuf {
+    root.join("join-complete")
 }
 
 struct ManagedChild {
@@ -1451,6 +2426,14 @@ fn require_child_output(output: &ChildOutput, expected: &[u8]) -> Result<(), Ses
 
 fn direct_invitation_path(root: &Path) -> PathBuf {
     root.join("direct/invitation.v2")
+}
+
+fn foreign_invitation_path(root: &Path) -> PathBuf {
+    root.join("direct/foreign-invitation.v2")
+}
+
+fn hostile_case_path(root: &Path) -> PathBuf {
+    root.join("direct/hostile.case")
 }
 
 fn private_state_path(root: &Path) -> PathBuf {
@@ -1672,6 +2655,104 @@ fn hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
+
+    #[tokio::test]
+    async fn invalid_process_root_fails_before_public_endpoint_binding() {
+        let binder_called = Arc::new(AtomicBool::new(false));
+        let called_by_binder = Arc::clone(&binder_called);
+
+        let result = prepare_public_endpoint(
+            PathBuf::from("relative-network-root"),
+            "test endpoint",
+            |_| Ok(()),
+            move || {
+                called_by_binder.store(true, Ordering::SeqCst);
+                ready(Err(IrohFastError::EndpointUnavailable))
+            },
+        )
+        .await;
+
+        assert!(result.is_err());
+        assert!(!binder_called.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn network_bridge_sends_no_invitation_after_a_public_probe() {
+        let root = ProcessRoot::new().unwrap();
+        let root_path = root.path().to_path_buf();
+        let host = IrohFastEndpoint::bind_loopback().await.unwrap();
+        let host_address = host.address();
+        let join = IrohFastEndpoint::bind_loopback().await.unwrap();
+        let host_task = tokio::spawn(async move {
+            let link = host
+                .accept(None, NETWORK_OPERATION_WAIT, MAX_IPC_FRAME_BYTES)
+                .await
+                .unwrap();
+            network_host_bridge(&root_path, link).await
+        });
+        let mut connector = join
+            .connect_address(host_address, NETWORK_OPERATION_WAIT, MAX_IPC_FRAME_BYTES)
+            .await
+            .unwrap();
+
+        connector
+            .send_frame(b"public-probe", NETWORK_OPERATION_WAIT)
+            .await
+            .unwrap();
+        assert!(
+            connector
+                .receive_frame(Duration::from_secs(2))
+                .await
+                .is_err()
+        );
+        assert!(
+            tokio::time::timeout(Duration::from_secs(2), host_task)
+                .await
+                .expect("host bridge stopped")
+                .expect("host task")
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn operator_handoff_wait_is_injectable_without_slow_tests() {
+        let root = ProcessRoot::new().unwrap();
+        let started = Instant::now();
+
+        assert!(run_alice_init_with_wait(root.path(), Duration::from_millis(20)).is_err());
+        assert!(started.elapsed() >= Duration::from_millis(20));
+        assert!(started.elapsed() < Duration::from_secs(5));
+        assert!(direct_invitation_path(root.path()).is_file());
+    }
+
+    #[test]
+    fn invitation_reader_rejects_non_regular_paths() {
+        let root = ProcessRoot::new().unwrap();
+
+        assert!(read_network_invitation(root.path()).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn invitation_reader_rejects_fifo_without_blocking() {
+        let root = ProcessRoot::new().unwrap();
+        let fifo = root.path().join("invitation.fifo");
+        assert!(
+            Command::new("mkfifo")
+                .arg(&fifo)
+                .status()
+                .unwrap()
+                .success()
+        );
+        let started = Instant::now();
+
+        assert!(read_network_invitation(&fifo).is_err());
+        assert!(started.elapsed() < Duration::from_secs(1));
+    }
 
     #[test]
     fn process_root_cleanup_failure_is_reported_and_drop_retries() {

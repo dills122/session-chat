@@ -212,14 +212,20 @@ architecture:
   retains wake, cancellation, deadline, and pending-drop evidence for headless
   or worker-thread composition; a future UI may replace it behind the same
   runtime-neutral future contract. The SQLCipher laboratory now implements the
-  same sole-owner port with schema-v2 lease/restart evidence. Fast, Private,
-  network authority, and network adapters remain unavailable.
+  same sole-owner port with schema-v2 lease/restart evidence. Reusable Fast and
+  Private adapters, network authority, and product network profiles remain
+  unavailable.
 - `transport-memory` implements both traits with bounded deterministic drop,
   hold/release, duplication, reordering, retry, outage, one-shot corruption,
   exact-byte stale replay, acknowledgement-result loss, poll-page, exact-set
   acknowledgement, cursor-rejection, and secret-free probe controls for
   headless tests.
   It is not a network transport.
+- `transport-iroh` is a bounded authenticated ordered-frame link for explicit
+  FastV1 online experiments. Its retained path is direct-only loopback, with a
+  separately invoked public N0 reachability smoke test. It is not an
+  `EnvelopeDelivery` provider, offline mailbox, reusable Fast adapter, or
+  product network profile.
 - `transport-conformance` is a publish-disabled offline test-support crate. Its
   first increment owns the strict, bounded, canonical, secret-free adverse
   trace v1 schema and hostile parser fixtures. Its next retained slice adds a
@@ -277,8 +283,10 @@ architecture:
   bidirectional application messages, path update, removal, and post-removal
   rejection. Its ADR 0021 conformance binary repeats that lifecycle across
   independent Alice, Bob, and untrusted-service processes using bounded local
-  IPC and emits a redacted manifest. It is not a hosted, networked,
-  platform-vault-backed, or deployable client.
+  IPC and emits a redacted manifest. A separate scripted `sessionctl-net`
+  experiment carries the same bounded canonical objects over `transport-iroh`;
+  it does not turn the local transport contract into a reusable network
+  provider. `sessionctl` is not hosted, platform-vault-backed, or deployable.
 
 The invitation registry, replay verifier, and MLS adapter remain separate
 in-process state machines. The capability adapter coordinates them through an
@@ -286,18 +294,40 @@ approval-gated one-shot API: rejection and pre-commit failure release both
 reservations, abandonment also clears the MLS pending Commit, and the legacy
 in-memory apply consumes the invitation before returning its outputs. Durable
 composition instead retains an applied, durability-pending value until SQL
-recovery proves commit or rollback. This is retained component integration, not
-a persistent cross-process or rollback-resistant client. Human approval UX and
-durable replay loading do not exist in the headless product path. The separate
-memory conformance model and SQLCipher laboratory exercise atomic visibility,
-durable Welcome-owner recovery, and ambiguous-result retry, and the real
-capability integration now crosses that store boundary. The in-memory committed join result
-now carries the
+recovery proves commit or rollback, then settles the provider's in-memory
+shadows from that exact result. The SQLCipher-backed headless paths issue the
+opening context before publication, retain replay and approval shadows across
+restart, and abandon rather than reconstruct lost provider authority. This is
+retained laboratory integration, not a rollback-resistant product client.
+Human approval UX does not exist. The separate memory conformance model and
+SQLCipher laboratory exercise atomic visibility, durable Welcome-owner
+recovery, and ambiguous-result retry. The in-memory committed join result now carries the
 exact authenticated deposit-only endpoint beside its MLS Welcome, and retained
 integration evidence delivers that Welcome through the local mailbox. No
-network transport exists. The headless composition retains an executable
+reusable `EnvelopeDelivery` network provider or product network transport
+exists; the separate Iroh frame link is only an explicitly invoked experiment.
+The headless composition retains an executable
 happy-path acceptance test across these boundaries, but does not make their
 sequential in-memory mutations atomic or persistent.
+
+ADR 0023 now specifies the restartable pre-membership boundary. SQLCipher
+commits the exact signed invitation and matching HPKE private key before
+publication, validates that context on reload, and owns bounded,
+non-authorizing authorization/replay shadows. Restart abandons a lost live
+KeyPackage instead of reconstructing it, retains replay state through the
+generation expiry, and returns the generation to `Available` only when its
+exact opening context reloads successfully. The authorized membership write
+consumes a provider-created binding for the exact applied KeyPackage, member
+identity/key, group, epoch transition, and Welcome, revalidates it with the
+one-shot authorization under the database write lock. An MLS-owned
+provider-facing wrapper fingerprints the exact serialized group state and
+ordered epoch records before delegating, so the durable owner rejects state
+substitution by a caller-supplied wrapper. The transaction atomically commits
+MLS, outbox, authorization, and invitation state. Exact
+non-commit recovery fences a staged writer, while terminal outcomes are
+idempotent in the same open scope; recovery never repeats MLS Add. Both headless
+composition paths now use this owner while retaining the exact parsed
+KeyPackage only in the live provider value.
 
 ADR 0014 accepts the local-only contract: a signed capability invitation v2,
 RFC 9180 PSK-protected join request, the invitation-scoped Ed25519 key as

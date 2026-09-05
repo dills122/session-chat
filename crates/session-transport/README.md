@@ -23,7 +23,37 @@ alias. This positional check is not an issuance proof: each adapter must still
 ensure one right cannot derive another, validate exact scope, and review
 cloning/serialization policy per right. Transferable deposit endpoints remain
 allowed; receive and acknowledgement authority should be non-cloneable by
-default. It returns runtime-neutral
+default.
+
+The provider-neutral lifecycle increment adds bounded mailbox issuance and
+compare-and-swap rotation with a fourth, rotation-only right. Every reusable
+mailbox cursor is bound to the selected profile/configuration, continuity ID,
+monotonic generation, receive-scope fingerprint, cursor schema, provider-state
+epoch, and expiry. Exact rotation retries retain one rotation ID; stale,
+competing, scope-substituted, or generation-exhausted results fail closed. A
+separate `ReceiveStateOwnerPort` owns compare-and-swap cursor advancement,
+canonical envelope retention or deduplication, and exact acknowledgement
+intents in one atomic transition. A reusable poll request carries the exact
+mailbox binding, owner revision, cursorless-state kind, and exact cursor bytes
+into its validated receive batch, so a page cannot advance a foreign or
+colliding checkpoint. Duplicate delivery IDs fail at batch construction. The
+owner reloads every latest committed
+checkpoint for next-page or restart resume, including a successor revision with
+no continuation cursor. Explicit resynchronization is a separate owner CAS
+transition persisted before polling from none. Its associated committed-page type is owner-opaque:
+callers can inspect the bounded result but cannot construct, disassemble, or
+splice commit evidence. Explicit wall time gates poll construction, commit,
+immediate leasing, checkpoint load, and acknowledgement recovery. The adapter
+cannot commit this state. A closed lifecycle-case vocabulary freezes the positive and
+stale-state fixtures that the P1-5 deterministic provider must implement. Each
+reusable provider must also expose a non-secret declaration fixing its cursor
+schema/persistence, non-reused generations, rotation and maximum routine drain,
+exact-set acknowledgement scope, and external receive-state ownership.
+Issuance and rotation receive the expected declaration and validate its
+nonlocal profile, cursor schema, drain policy, and observed wall-time validity. LocalV1 declarations, issue
+requests, and cursor bindings fail closed.
+
+The dispatch boundary returns runtime-neutral
 standard-library futures and receives explicit monotonic-deadline,
 fallible-wall-clock, and cooperative-cancellation observations. Reviewed
 adapters are selected at composition time; neither trait loads code or grants
@@ -56,7 +86,10 @@ receive and acknowledgement types do not implement `Clone`, `Debug`, or
 domain-separated SHA-256 capability commitments. The local capability types
 now live behind private fields and crate-only constructors in `capability.rs`;
 compile-fail tests reject cross-right substitution, while a seeded diagnostic
-fixture proves coarse errors omit both authority and ciphertext bytes.
+fixture proves coarse errors omit both authority and ciphertext bytes. The
+generalized lifecycle tests also reject rotation-right substitution and prove
+coarse failures omit seeded configuration, continuity, receive-scope, and
+rotation-authority bytes.
 
 Each mailbox accepts at most one bounded `OpaqueEnvelope`. The same envelope ID
 and canonical bytes are an idempotent retry. Any changed or different second
@@ -71,7 +104,8 @@ failures use coarse secret-free errors.
 
 This is not a network transport, durable mailbox, crash-safe outbox, anonymous
 profile, or production privacy claim. The local Phase 1 profile deliberately
-has no rotation operation.
+has no rotation operation, and no reusable lifecycle provider is implemented
+in this crate.
 
 ## Verification
 

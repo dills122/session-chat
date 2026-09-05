@@ -95,6 +95,21 @@ Expected privacy properties:
 The UI must disclose these properties. "End-to-end encrypted" must not be
 presented as "anonymous."
 
+ADR 0024 selects pinned Iroh 1.1.0 for the first explicit FastV1 online-link
+experiment. The headless cross-computer path uses authenticated Iroh endpoint
+IDs in one canonical text form and bounded Session Chat frames. Its operations
+use checked absolute deadlines no longer than five minutes, and graceful close
+rejects peer reset or connection failure instead of treating either as a
+receipt. Its caller-selected frame bound has a 256 KiB crate-wide ceiling, and
+a failed, timed-out, or cancelled partial frame poisons the ordered link rather
+than permitting desynchronized reuse. The bearer invitation is transferred
+over an authenticated confidential channel outside Iroh; the first Iroh frame
+is the HPKE-protected join request, so an unauthorised first connector cannot
+retrieve admission authority. The public N0 preset may use direct paths, relay forwarding, address
+lookup, DNS, NAT discovery, and port mapping. This selection does not turn the
+relay into an offline mailbox or make Iroh endpoint identity an admission
+credential.
+
 ## Mixnet transport
 
 Katzenpost is the initial research target because it provides a Sphinx-based

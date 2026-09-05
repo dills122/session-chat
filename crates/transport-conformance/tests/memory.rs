@@ -31,6 +31,7 @@ use transport_memory::{
 const RUNNER_TRACE: &[u8] = include_bytes!("fixtures/memory-runner-v1.txt");
 const COMMON_VERDICTS_TRACE: &[u8] = include_bytes!("fixtures/memory-common-verdicts-v1.txt");
 const QUEUE_SATURATION_TRACE: &[u8] = include_bytes!("fixtures/memory-queue-saturation-v1.txt");
+const ARBITRARY_DELAY_TRACE: &[u8] = include_bytes!("fixtures/memory-arbitrary-delay-v1.txt");
 
 struct MailboxRights {
     deposit: DepositRight<MemoryDepositEndpoint>,
@@ -465,7 +466,7 @@ fn memory_adapter_passes_the_composed_common_verdict_trace() {
         .expect("memory adapter must pass the composed common verdicts twice");
     let report = std::str::from_utf8(report.as_bytes()).expect("ASCII normalized report");
 
-    assert!(report.contains("step|4|poll-accepted|1:1,1:1|none\n"));
+    assert!(report.contains("step|4|poll-accepted|1:1|none\n"));
     assert!(report.contains("step|11|failed|corrupt-remote-response|never\n"));
     assert!(report.contains("step|14|failed|unavailable|never\n"));
     assert!(report.contains("step|19|failed|unavailable|never\n"));
@@ -495,6 +496,23 @@ fn queue_saturation_is_deterministic_and_detects_an_over_accepting_bridge() {
             .expect_err("accepting the over-capacity deposit must fail the common verdict");
     assert_eq!(failure.category(), RunErrorCategoryV1::UnexpectedEvent);
     assert_eq!(failure.step(), Some(10));
+}
+
+#[test]
+fn held_delivery_survives_bounded_arbitrary_virtual_delay_without_sleeping() {
+    assert!(
+        !ARBITRARY_DELAY_TRACE.contains(&b'\r'),
+        "canonical trace fixtures must retain LF line endings"
+    );
+    let trace = AdverseTraceV1::parse(ARBITRARY_DELAY_TRACE)
+        .expect("canonical bounded arbitrary-delay verdict trace");
+    let report = run_adverse_trace_twice_v1(&trace, MemoryTraceAdapter::new)
+        .expect("held delivery must remain deterministic across virtual delay");
+    let report = std::str::from_utf8(report.as_bytes()).expect("ASCII normalized report");
+
+    assert!(report.contains("step|5|poll-accepted|none|none\n"));
+    assert!(report.contains("step|8|poll-accepted|1:1|none\n"));
+    assert!(report.ends_with("end|quiescent\n"));
 }
 
 #[test]
@@ -547,7 +565,7 @@ fn local_memory_runner_rejects_unbound_profile_labels() {
 #[test]
 fn exact_retry_reuses_the_same_normalized_delivery_alias() {
     let trace = AdverseTraceV1::parse(
-        b"session-chat.transport.adverse-trace/v1\nprofile|local\nwall-start|1700000000\nenvelope|1|1|1|32|120\nstep|1|open-mailbox|1|180|expect|mailbox-opened|1\nstep|2|deposit|1|1|5000|4096|1|live:0:0;live:0:0|ready|expect|deposit-accepted|1\nstep|3|deposit|1|1|5000|4096|1|live:0:0;live:0:0|ready|expect|deposit-accepted|1\nstep|4|poll|1|none|4|4096|0|5000|4096|1|live:0:0;live:0:0|ready|expect|poll-accepted|1:1,1:1|none\nstep|5|ack|1|1|5000|4096|1|live:0:0;live:0:0|ready|expect|ack-accepted\n",
+        b"session-chat.transport.adverse-trace/v1\nprofile|local\nwall-start|1700000000\nenvelope|1|1|1|32|120\nstep|1|open-mailbox|1|180|expect|mailbox-opened|1\nstep|2|deposit|1|1|5000|4096|1|live:0:0;live:0:0|ready|expect|deposit-accepted|1\nstep|3|deposit|1|1|5000|4096|1|live:0:0;live:0:0|ready|expect|deposit-accepted|1\nstep|4|poll|1|none|4|4096|0|5000|4096|1|live:0:0;live:0:0|ready|expect|poll-accepted|1:1|none\nstep|5|ack|1|1|5000|4096|1|live:0:0;live:0:0|ready|expect|ack-accepted\n",
     )
     .expect("canonical exact-retry trace");
 
@@ -555,8 +573,23 @@ fn exact_retry_reuses_the_same_normalized_delivery_alias() {
         .expect("the exact retry must retain one normalized receipt identity");
     assert_eq!(
         report.as_bytes(),
-        b"session-chat.transport.adverse-report/v1\nprofile|local\nstep|1|mailbox-opened|1\nstep|2|deposit-accepted|1\nstep|3|deposit-accepted|1\nstep|4|poll-accepted|1:1,1:1|none\nstep|5|ack-accepted\nend|quiescent\n"
+        b"session-chat.transport.adverse-report/v1\nprofile|local\nstep|1|mailbox-opened|1\nstep|2|deposit-accepted|1\nstep|3|deposit-accepted|1\nstep|4|poll-accepted|1:1|none\nstep|5|ack-accepted\nend|quiescent\n"
     );
+}
+
+#[test]
+fn foreign_delivery_id_is_a_noop_under_another_mailbox_acknowledgement_right() {
+    let trace = AdverseTraceV1::parse(
+        b"session-chat.transport.adverse-trace/v1\nprofile|local\nwall-start|1700000000\nenvelope|1|1|1|32|120\nstep|1|open-mailbox|1|180|expect|mailbox-opened|1\nstep|2|open-mailbox|2|180|expect|mailbox-opened|2\nstep|3|deposit|1|1|5000|4096|1|live:0:0;live:0:0|ready|expect|deposit-accepted|1\nstep|4|poll|1|none|4|4096|0|5000|4096|1|live:0:0;live:0:0|ready|expect|poll-accepted|1:1|none\nstep|5|replay-stale|1|expect|fault-applied\nstep|6|ack|2|1|5000|4096|1|live:0:0;live:0:0|ready|expect|ack-accepted\nstep|7|poll|1|none|4|4096|0|5000|4096|1|live:0:0;live:0:0|ready|expect|poll-accepted|1:1|none\nstep|8|ack|1|1|5000|4096|1|live:0:0;live:0:0|ready|expect|ack-accepted\n",
+    )
+    .expect("canonical cross-mailbox acknowledgement trace");
+
+    let report = run_adverse_trace_twice_v1(&trace, MemoryTraceAdapter::new)
+        .expect("foreign delivery ID must remain a deterministic no-op");
+    let report = std::str::from_utf8(report.as_bytes()).expect("ASCII normalized report");
+    assert!(report.contains("step|6|ack-accepted\n"));
+    assert!(report.contains("step|7|poll-accepted|1:1|none\n"));
+    assert!(report.ends_with("end|quiescent\n"));
 }
 
 #[test]
@@ -577,7 +610,7 @@ fn delayed_wake_drop_releases_bridge_owned_work_before_quiescence() {
 #[test]
 fn harness_rejects_changed_receipt_on_an_exact_retry() {
     let trace = AdverseTraceV1::parse(
-        b"session-chat.transport.adverse-trace/v1\nprofile|local\nwall-start|1700000000\nenvelope|1|1|1|32|120\nstep|1|open-mailbox|1|180|expect|mailbox-opened|1\nstep|2|deposit|1|1|5000|4096|1|live:0:0;live:0:0|ready|expect|deposit-accepted|1\nstep|3|deposit|1|1|5000|4096|1|live:0:0;live:0:0|ready|expect|deposit-accepted|1\nstep|4|poll|1|none|4|4096|0|5000|4096|1|live:0:0;live:0:0|ready|expect|poll-accepted|1:1,1:1|none\nstep|5|ack|1|1|5000|4096|1|live:0:0;live:0:0|ready|expect|ack-accepted\n",
+        b"session-chat.transport.adverse-trace/v1\nprofile|local\nwall-start|1700000000\nenvelope|1|1|1|32|120\nstep|1|open-mailbox|1|180|expect|mailbox-opened|1\nstep|2|deposit|1|1|5000|4096|1|live:0:0;live:0:0|ready|expect|deposit-accepted|1\nstep|3|deposit|1|1|5000|4096|1|live:0:0;live:0:0|ready|expect|deposit-accepted|1\nstep|4|poll|1|none|4|4096|0|5000|4096|1|live:0:0;live:0:0|ready|expect|poll-accepted|1:1|none\nstep|5|ack|1|1|5000|4096|1|live:0:0;live:0:0|ready|expect|ack-accepted\n",
     )
     .expect("canonical exact-retry verdict");
     run_adverse_trace_twice_v1(&trace, MemoryTraceAdapter::new)

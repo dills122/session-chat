@@ -16,6 +16,7 @@ members = [
   "crates/storage-sqlcipher-fault-vfs",
   "crates/transport-memory",
   "crates/transport-conformance",
+  "crates/transport-iroh",
 ]
 resolver = "3"
 
@@ -27,6 +28,8 @@ license = "MIT"
 argon2 = { version = "=0.5.3", default-features = false, features = ["zeroize"] }
 ed25519-dalek = { version = "=3.0.0", default-features = false, features = ["fast", "zeroize"] }
 aws-lc-rs = { version = "=1.16.3", default-features = false, features = ["non-fips"] }
+iroh = { version = "=1.1.0", default-features = false, features = ["portmapper", "tls-aws-lc-rs"] }
+libc = "=0.2.189"
 minicbor = { version = "=2.3.0", features = ["std"] }
 mls-rs = { version = "=0.56.0", default-features = false, features = [
   "external_client",
@@ -40,6 +43,7 @@ mls-rs-crypto-hpke = "=0.21.0"
 mls-rs-core = "=0.27.0"
 rusqlite = { version = "=0.40.1", default-features = false, features = ["bundled-sqlcipher-vendored-openssl"] }
 thiserror = "=2.0.20"
+tokio = { version = "=1.53.1", default-features = false, features = ["macros", "rt-multi-thread", "time"] }
 zeroize = { version = "=1.9.0", default-features = false, features = ["alloc"] }
 
 [workspace.lints.rust]

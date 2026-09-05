@@ -1,6 +1,7 @@
 # ADR 0009: Bind admission to the MLS KeyPackage actually added
 
-Status: accepted for the Phase 1 admission contract
+Status: accepted for the Phase 1 admission contract; restart persistence
+constrained by ADR 0023
 
 Date: 2026-08-16
 
@@ -112,8 +113,14 @@ invitation signature, reserves matching local v2 state, and permits only an
 explicitly approved one-shot value to enter MLS preparation. Rejected, expired,
 failed, or abandoned work releases invitation and replay state without changing
 membership; successful in-memory Add consumes the invitation. The approval is a
-simulated API input, not human UI evidence. The SQLCipher laboratory atomically
-retains the approved inviter MLS transition, invitation/replay/approval shadows,
-and Welcome outbox, but it cannot reload them as one complete durable product
-authorization owner and has no rollback anchor. The complete durable product
-transaction is therefore not yet satisfied.
+simulated API input, not human UI evidence. The SQLCipher laboratory and both
+headless paths atomically retain the approved inviter MLS transition,
+invitation/replay/approval shadows, and Welcome outbox. Restart abandons a lost
+live provider value rather than reconstructing its parsed KeyPackage, while
+committed recovery settles the in-memory shadows without a second Add. The
+laboratory still has no rollback anchor or production key custody.
+
+ADR 0023 preserves this ownership boundary across restart by refusing to
+serialize or reconstruct the parsed KeyPackage. Durable pre-membership state is
+only a replay/conflict and approval-result shadow; loss of the live provider
+value abandons that attempt while retaining replay state.

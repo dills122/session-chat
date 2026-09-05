@@ -1,6 +1,7 @@
 # ADR 0008: Use an inviter-owned transactional invitation lifecycle
 
-Status: accepted for the Phase 1 state-machine contract
+Status: accepted for the Phase 1 state-machine contract; restart behavior
+extended by ADR 0023
 
 Date: 2026-08-16
 
@@ -64,6 +65,15 @@ Any known failure before the transaction releases the reservation. An ambiguous
 transaction result must be recovered from durable state: retry must not repeat
 the MLS Add/Commit, a committed result must retain `Consumed` and resume only
 outbox work, and only a proven uncommitted result may return to `Available`.
+
+ADR 0023 makes the process-loss case exact. Pending or approved work whose live
+provider-owned KeyPackage has been lost becomes a terminal abandoned
+authorization attempt while its replay record remains through the invitation
+generation's expiry. The invitation generation returns to `Available` only if
+its exact canonical signed descriptor and matching invitation HPKE private key
+were durably committed before publication and reload successfully. Missing or
+malformed opening state makes the generation terminally unusable rather than
+silently regenerating authority under the old generation.
 
 The in-memory Phase 1 implementation models these transitions but cannot make a
 durability, process-concurrency, or rollback-resistance claim. Its explicit
