@@ -1,6 +1,6 @@
 # Implementation plan: Phase 1 protocol laboratory closeout
 
-Status: P1-0 through P1-7 retained; P1-8/P1-9 closeout implementation and review in progress; P1-10 exact-revision gate pending
+Status: P1-0 through P1-7 retained; P1-8/P1-9 implementation and independent review ready; publication and P1-10 exact-revision gate pending
 
 Date: 2026-09-02
 
@@ -326,10 +326,10 @@ second MLS Add.
 
 ## Checkpoint A: Durable authority
 
-- [ ] P1-1 through P1-3 are complete and independently reviewed.
-- [ ] A process restart cannot erase replay history, create a second live
+- [x] P1-1 through P1-3 are complete and independently reviewed.
+- [x] A process restart cannot erase replay history, create a second live
       invitation reservation, or repeat MLS Add.
-- [ ] The SQLCipher laboratory remains explicitly separate from a product vault
+- [x] The SQLCipher laboratory remains explicitly separate from a product vault
       or rollback-resistance claim.
 
 ## Task P1-4: Complete the provider-neutral transport lifecycle contract
@@ -464,9 +464,13 @@ accepted profile requires it.
 
 ## Checkpoint B: Common transport boundary
 
-- [ ] P1-4 through P1-6 are complete and independently reviewed.
+- [x] P1-4 through P1-6 are complete and independently reviewed.
 - [x] The memory adapter remains the deterministic control path.
 - [x] No real adapter, runtime, or product profile is selected implicitly.
+
+The [independent review record](../evidence/phase1-closeout-review.md) retains
+Checkpoint A/B findings and their dispositions. This reconciliation does not
+replace P1-10's exact merged-revision gate.
 
 ## Task P1-7: Complete hostile independent-process first contact
 
@@ -512,9 +516,9 @@ commit, re-lease, and terminalization, then verify state in a fresh process.
 
 **Acceptance criteria:**
 
-- [ ] Every observed supported checkpoint recovers to one allowed complete
+- [x] Every observed supported checkpoint recovers to one allowed complete
       state with one membership commit and byte-identical retry material.
-- [ ] Ambiguous adapter acceptance, stale or foreign results, last-attempt
+- [x] Ambiguous adapter acceptance, stale or foreign results, last-attempt
       expiry, and re-lease cannot resurrect work, consume another attempt, or
       mutate a newer generation.
 - [ ] Raw case evidence remains non-public; the public aggregate retains only
@@ -522,9 +526,9 @@ commit, re-lease, and terminalization, then verify state in a fresh process.
 
 **Verification:**
 
-- [ ] Checked-cfg Welcome delivery suites pass with
+- [x] Checked-cfg Welcome delivery suites pass with
       `RUSTFLAGS="--cfg session_chat_storage_fault_testing"` and one test thread.
-- [ ] Existing `l2_public_evidence` and deliberately defective-evidence tests
+- [x] Existing `l2_public_evidence` and deliberately defective-evidence tests
       continue to pass.
 
 **Dependencies:** P1-3
@@ -542,8 +546,9 @@ checkpoints plus every supported clean-observed named-VFS commit-window ordinal.
 The fresh verifier compares complete owner transitions and all immutable rows,
 retries through the actual coordinator, and rejects stale/foreign results.
 See [ADR 0025](../adr/0025-close-phase-one-recovery-and-conformance-evidence.md)
-and the [evidence matrix](../evidence/phase1-closeout.md). Portable passage and
-independent closeout review remain tied to the exact completion revision.
+and the [evidence matrix](../evidence/phase1-closeout.md). Local checks and the
+independent review passed; portable passage remains tied to the exact completion
+revision. The unchecked aggregate criterion above requires that portable run.
 
 **Estimated scope:** Medium; application-kill evidence only, not physical
 power-loss or rollback evidence
@@ -557,19 +562,19 @@ it outside Phase 1 before requesting completion review.
 
 **Acceptance criteria:**
 
-- [ ] The matrix covers `E2E-JOIN-001`, `E2E-JOIN-002`, `E2E-TXN-001`,
+- [x] The matrix covers `E2E-JOIN-001`, `E2E-JOIN-002`, `E2E-TXN-001`,
       `E2E-MSG-001`, `E2E-MSG-002`, `E2E-REMOVE-001`, `E2E-AUTH-001`, and the
       Phase 1 portions of retention, upgrade, and abuse scenarios.
 - [ ] Every passing claim links to executable evidence on the exact revision;
       missing physical/platform/product evidence remains visibly deferred.
-- [ ] A fresh-context independent review finds no contradiction among the
+- [x] A fresh-context independent review finds no contradiction among the
       matrix, roadmap, architecture, threat model, ADRs, and active plans.
 
 **Verification:**
 
-- [ ] Repository documentation and link checks pass.
-- [ ] `git diff --check`
-- [ ] The independent review findings are resolved or explicitly accepted with
+- [x] Repository documentation and link checks pass.
+- [x] `git diff --check`
+- [x] The independent review findings are resolved or explicitly accepted with
       rationale before completion is claimed.
 
 **Dependencies:** P1-7 and P1-8
@@ -599,7 +604,7 @@ gate, and must not imply that its own later hash received the full L2 matrix.
 
 **Acceptance criteria:**
 
-- [ ] The complete local gate passes, or any environment-only command is
+- [x] The complete local gate passes, or any environment-only command is
       identified and verified by the corresponding required CI job.
 - [ ] The merged candidate revision passes Rust, Node, coverage, dependency,
       and complete L2 evidence jobs on every required platform.
@@ -611,13 +616,13 @@ gate, and must not imply that its own later hash received the full L2 matrix.
 
 **Verification:**
 
-- [ ] `node --test scripts/check-rust-coverage.test.mjs scripts/check-repository.test.mjs scripts/setup-codex-links.test.mjs spikes/sealed-invitation-provider/test/provider.test.mjs`
-- [ ] `node scripts/check-repository.mjs`
-- [ ] `cargo fmt --all --check`
-- [ ] `cargo clippy --workspace --all-targets --all-features --locked --offline -- -D warnings`
-- [ ] `cargo test --workspace --all-features --locked --offline`
-- [ ] `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps --locked --offline`
-- [ ] `cargo deny --all-features --locked check`, locally or through the required
+- [x] `node --test scripts/check-rust-coverage.test.mjs scripts/check-repository.test.mjs scripts/setup-codex-links.test.mjs spikes/sealed-invitation-provider/test/provider.test.mjs`
+- [x] `node scripts/check-repository.mjs`
+- [x] `cargo fmt --all --check`
+- [x] `cargo clippy --workspace --all-targets --all-features --locked --offline -- -D warnings`
+- [x] `cargo test --workspace --all-features --locked --offline`
+- [x] `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps --locked --offline`
+- [x] `cargo deny --all-features --locked check`, locally or through the required
       dependency-policy CI job
 - [ ] The complete checked-cfg L2 suites from `.github/workflows/ci.yml` pass on
       Linux, macOS, and Windows for the exact completion revision.

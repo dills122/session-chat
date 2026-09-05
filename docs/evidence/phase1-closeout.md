@@ -1,7 +1,7 @@
 # Phase 1 protocol laboratory evidence matrix
 
-Status: implementation evidence assembled; independent closeout review and
-merged exact-revision three-platform completion gate pending
+Status: implementation and independent review ready; publication and merged
+exact-revision three-platform completion gate pending
 
 ## Revision and completion rule
 
@@ -58,6 +58,17 @@ manifests are separate complete sweep classes under `E2E-MSG-002`.
 Only canonical `L2_PUBLIC_EVIDENCE_BEGIN`/`END` records enter CI logs. Raw keys,
 fixtures, baseline databases and case traces remain disposable and non-public.
 
+Local verification on 2026-09-05 passed for code/CI revision
+`9c9e24d785015147849fecddca5e6fa96e6becb2`: ordinary workspace tests, ordinary
+and checked Clippy, rustdoc, dependency policy, formatting, Node tooling and
+repository checks. The checked inviter/joiner/IO/public suites passed at the
+initial closeout revision `3b80d5d2b9e89b4cb1659d58ae4cb6479bebf208`. After the
+localized Welcome-oracle correction, its suite passed all four tests and checked
+L2 library tests passed 22 tests. Coverage passed at 92.88% lines, 88.11% regions and 90.17%
+functions. Ordinary and checked Cargo invocations were run sequentially after a
+concurrent run replaced their shared binary; local Iroh tests required loopback
+socket access. These local results do not fill the portable CI completion cell.
+
 The checked-only Welcome harness modules are explicitly non-instrumented in the
 ordinary coverage inventory, alongside the existing L2 harness; checked L2 tests
 exercise them separately. Coverage thresholds are unchanged. The Welcome fixture
@@ -80,7 +91,10 @@ observed clock. The correction keeps recovery time at or after that clock,
 avoids an expired live-lease probe, and asserts the complete final mutable tuple.
 The retained `expired_recovery_rejects_delivery_attempts_and_clock_rewind` test
 rejects delivery, attempt/generation changes and retained lease fields for expired
-work. Final independent assessment remains pending before checking the boxes.
+work. Review instance 3 returned Ready with no actionable findings at
+`9c9e24d785015147849fecddca5e6fa96e6becb2`; the
+[retained review record](phase1-closeout-review.md) records all dispositions and
+remaining execution limits. Checkpoints A and B are reconciled on that basis.
 
 P1-1 has a closed transition/fixture matrix and current negative tests. The
 original combined implementation did not retain independently replayable
