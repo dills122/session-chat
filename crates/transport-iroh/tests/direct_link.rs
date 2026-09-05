@@ -93,6 +93,14 @@ async fn local_frame_bounds_and_idle_receive_deadline_fail_closed() {
 
 #[tokio::test]
 async fn accept_times_out_and_excessive_deadlines_fail_before_network_work() {
+    let invalid_accept = IrohFastEndpoint::bind_loopback()
+        .await
+        .expect("bind invalid accept endpoint");
+    assert!(matches!(
+        invalid_accept.accept(None, DEADLINE, 0).await,
+        Err(IrohFastError::InvalidBound)
+    ));
+
     let timeout_endpoint = IrohFastEndpoint::bind_loopback()
         .await
         .expect("bind timeout endpoint");
@@ -113,6 +121,24 @@ async fn accept_times_out_and_excessive_deadlines_fail_before_network_work() {
     ));
     host.close(DEADLINE).await.expect("close host");
 
+    let public_host = IrohFastEndpoint::bind_loopback()
+        .await
+        .expect("bind public-id host");
+    let public_host_id = public_host.id();
+    let public_join = IrohFastEndpoint::bind_loopback()
+        .await
+        .expect("bind public-id joiner");
+    assert!(matches!(
+        public_join
+            .connect_public(public_host_id, Duration::MAX, MAXIMUM_FRAME_BYTES)
+            .await,
+        Err(IrohFastError::InvalidBound)
+    ));
+    public_host
+        .close(DEADLINE)
+        .await
+        .expect("close public-id host");
+
     let endpoint = IrohFastEndpoint::bind_loopback()
         .await
         .expect("bind online endpoint");
@@ -120,6 +146,10 @@ async fn accept_times_out_and_excessive_deadlines_fail_before_network_work() {
         endpoint.wait_online(Duration::MAX).await,
         Err(IrohFastError::InvalidBound)
     );
+    assert!(matches!(
+        endpoint.wait_online(Duration::from_millis(20)).await,
+        Ok(()) | Err(IrohFastError::DeadlineExceeded)
+    ));
     endpoint.close(DEADLINE).await.expect("close endpoint");
 
     let endpoint = IrohFastEndpoint::bind_loopback()
@@ -129,6 +159,38 @@ async fn accept_times_out_and_excessive_deadlines_fail_before_network_work() {
         endpoint.close(Duration::MAX).await,
         Err(IrohFastError::InvalidBound)
     );
+}
+
+#[tokio::test]
+async fn receiver_rejects_a_frame_above_its_own_bound() {
+    let host = IrohFastEndpoint::bind_loopback().await.expect("bind host");
+    let host_address = host.address();
+    let join = IrohFastEndpoint::bind_loopback().await.expect("bind join");
+
+    let host_task = tokio::spawn(async move {
+        host.accept(None, DEADLINE, 4)
+            .await
+            .expect("accept bounded joiner")
+    });
+    let mut join_link = join
+        .connect_address(host_address, DEADLINE, 5)
+        .await
+        .expect("connect joiner");
+    join_link
+        .send_frame(&[0xA5; 5], DEADLINE)
+        .await
+        .expect("send locally valid frame");
+    let mut host_link = host_task.await.expect("host task");
+
+    assert_eq!(
+        host_link.receive_frame(DEADLINE).await,
+        Err(IrohFastError::FrameRejected)
+    );
+    assert_eq!(
+        host_link.close(DEADLINE).await,
+        Err(IrohFastError::ConnectionUnavailable)
+    );
+    assert!(join_link.close(DEADLINE).await.is_err());
 }
 
 #[tokio::test]
@@ -218,6 +280,10 @@ async fn endpoint_id_parser_rejects_unbounded_or_noncanonical_input() {
     ));
     assert!(matches!(
         FastEndpointId::parse("not-an-endpoint-id"),
+        Err(IrohFastError::PeerRejected)
+    ));
+    assert!(matches!(
+        FastEndpointId::parse("é"),
         Err(IrohFastError::PeerRejected)
     ));
 

@@ -22,6 +22,7 @@ export const COVERAGE_POLICY = Object.freeze({
     'storage-sqlcipher': 'crates/storage-sqlcipher/src/',
     'storage-sqlcipher-fault-vfs': 'crates/storage-sqlcipher-fault-vfs/src/',
     'transport-conformance': 'crates/transport-conformance/src/',
+    'transport-iroh': 'crates/transport-iroh/src/',
     'transport-memory': 'crates/transport-memory/src/',
   }),
   minimumComponentLines: 90,

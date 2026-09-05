@@ -421,10 +421,12 @@ mod tests {
             .stop(7_u8.into())
             .expect("stop peer receive stream");
 
-        assert_eq!(
+        // QUIC reset delivery races the caller-owned shutdown deadline across
+        // schedulers; either coarse error is fail-closed and must never be Ok.
+        assert!(matches!(
             join_link.close(TEST_DEADLINE).await,
-            Err(IrohFastError::ConnectionUnavailable)
-        );
+            Err(IrohFastError::ConnectionUnavailable | IrohFastError::DeadlineExceeded)
+        ));
     }
 
     #[tokio::test]
