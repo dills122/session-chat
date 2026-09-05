@@ -1,7 +1,7 @@
 # L2 process and storage fault testing plan
 
 Status: L2-0 through L2-5 and L2-8 retained; Phase 1 portable gate passed on
-`ac7acf198b926e8fdb80257c899cca5e59a3f0e9`; each later behavior revision still
+`5a220bd9376d51b9b3943e997fc5c93ddcfa91ca`; each later behavior revision still
 requires a green three-OS Checkpoint C result; no production durability claim
 
 Date: 2026-08-26
@@ -53,7 +53,7 @@ does not exist in this checkout; this plan does not imply that it was reviewed.
 The exact Phase 1 portable result, including the Linux, macOS, and Windows job
 links and complete public case counts, is retained in the
 [Phase 1 evidence matrix](../evidence/phase1-closeout.md). That result applies to
-immutable code revision `ac7acf198b926e8fdb80257c899cca5e59a3f0e9`.
+immutable code revision `5a220bd9376d51b9b3943e997fc5c93ddcfa91ca`.
 
 ## Retained baseline and exact scope
 

@@ -29,7 +29,7 @@ all.
 
 The [Phase 1 closeout evidence matrix](evidence/phase1-closeout.md) maps the
 retained requirements to exact tests and records the passing full three-platform
-gate on `ac7acf198b926e8fdb80257c899cca5e59a3f0e9`. The later status-documentation
+gate on `5a220bd9376d51b9b3943e997fc5c93ddcfa91ca`. The later status-documentation
 checkpoint is distinct from that immutable tested code revision.
 
 ## Document map

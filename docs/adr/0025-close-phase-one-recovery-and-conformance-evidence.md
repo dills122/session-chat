@@ -64,7 +64,7 @@ schema 1 is rejected rather than silently reinterpreted.
 
 The [Phase 1 evidence matrix](../evidence/phase1-closeout.md) is the claim index.
 Phase 1 completed its full three-platform non-PR gate on
-`ac7acf198b926e8fdb80257c899cca5e59a3f0e9`. The later metadata-only checkpoint
+`5a220bd9376d51b9b3943e997fc5c93ddcfa91ca`. The later metadata-only checkpoint
 cites that immutable code revision and does not claim the same gate for its own
 subsequent hash.
 
