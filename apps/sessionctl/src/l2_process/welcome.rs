@@ -378,13 +378,39 @@ pub(super) fn writer(root: &Path) -> Result<(), SessionCtlError> {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 struct Row {
     state: i64,
     attempts: i64,
     generation: i64,
     id: Option<Vec<u8>>,
     expiry: Option<i64>,
+}
+fn recovery_time(workload: WelcomeWorkload, actual: &Row) -> u64 {
+    workload.now().max(actual.expiry.map_or(0, |v| v as u64))
+}
+fn expected_recovery(actual: &Row, now: u64) -> Row {
+    let mut expected = actual.clone();
+    if matches!(actual.state, 1 | 2) {
+        expected.id = None;
+        expected.expiry = None;
+        if now >= OUTBOX_EXPIRES_AT {
+            expected.state = 5;
+        } else if actual.attempts >= i64::from(MAXIMUM_WELCOME_DELIVERY_ATTEMPTS) {
+            expected.state = 4;
+        } else {
+            expected.state = 3;
+            expected.attempts += 1;
+            expected.generation += 1;
+        }
+    }
+    expected
+}
+fn validate_recovery(actual: &Row, recovered: &Row, now: u64) -> Result<(), SessionCtlError> {
+    if *recovered != expected_recovery(actual, now) {
+        return Err(stage("L2 Welcome recovery transition"));
+    }
+    Ok(())
 }
 fn row(connection: &Connection) -> Result<Row, SessionCtlError> {
     if table_count(connection, "inviter_joins")? != 1 {
@@ -552,7 +578,11 @@ pub(super) fn verifier(root: &Path) -> Result<(), SessionCtlError> {
     let before = immutable(&connection)?;
     drop(connection);
     drop(baseline);
-    if actual.state == 2 {
+    if actual.state == 2
+        && actual
+            .expiry
+            .is_some_and(|expiry| expiry as u64 > workload.now())
+    {
         let snapshot = database_digest(root)?;
         if storage
             .lease_next(
@@ -566,17 +596,15 @@ pub(super) fn verifier(root: &Path) -> Result<(), SessionCtlError> {
             return Err(stage("L2 Welcome premature release"));
         }
     }
-    if actual.attempts < i64::from(MAXIMUM_WELCOME_DELIVERY_ATTEMPTS)
+    let now = recovery_time(workload, &actual);
+    if now < OUTBOX_EXPIRES_AT
+        && actual.attempts < i64::from(MAXIMUM_WELCOME_DELIVERY_ATTEMPTS)
         && matches!(actual.state, 1 | 2)
     {
-        let now = actual.expiry.map_or(workload.now(), |v| v as u64);
         coordinate(&mut storage, root, now, None, false)?;
     } else {
         if storage
-            .lease_next(
-                actual.expiry.map_or(OUTBOX_EXPIRES_AT + 1, |v| v as u64),
-                LEASE_SECONDS,
-            )
+            .lease_next(now, LEASE_SECONDS)
             .map_err(|_| stage("L2 Welcome terminal"))?
             .is_some()
         {
@@ -588,12 +616,7 @@ pub(super) fn verifier(root: &Path) -> Result<(), SessionCtlError> {
     }
     drop(storage);
     let connection = open_keyed_connection(&root.join(DATABASE_NAME), &key)?;
-    if actual.state == 2
-        && actual.attempts == i64::from(MAXIMUM_WELCOME_DELIVERY_ATTEMPTS)
-        && row(&connection)?.state != 4
-    {
-        return Err(stage("L2 Welcome exhaustion"));
-    }
+    validate_recovery(&actual, &row(&connection)?, now)?;
     if immutable(&connection)? != before {
         return Err(stage("L2 Welcome retry mutation"));
     }
@@ -785,6 +808,60 @@ fn run_case(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn expired_recovery_rejects_delivery_attempts_and_clock_rewind() {
+        let old = Row {
+            state: 2,
+            attempts: 1,
+            generation: 1,
+            id: Some(vec![1; 16]),
+            expiry: Some((BASELINE_NOW + LEASE_SECONDS) as i64),
+        };
+        let now = recovery_time(WelcomeWorkload::Expired, &old);
+        assert_eq!(now, OUTBOX_EXPIRES_AT);
+        let expired = Row {
+            state: 5,
+            id: None,
+            expiry: None,
+            ..old.clone()
+        };
+        validate_recovery(&old, &expired, now).expect("expiry without another attempt");
+        // The pre-fix oracle delivered at the old lease expiry. That complete
+        // but incorrect tuple must fail against the workload's observed time.
+        let delivered = Row {
+            state: 3,
+            attempts: 2,
+            generation: 2,
+            ..expired.clone()
+        };
+        assert!(validate_recovery(&old, &delivered, now).is_err());
+        for invalid in [
+            Row {
+                attempts: 2,
+                ..expired.clone()
+            },
+            Row {
+                generation: 2,
+                ..expired.clone()
+            },
+            Row {
+                id: old.id.clone(),
+                ..expired.clone()
+            },
+            Row {
+                expiry: old.expiry,
+                ..expired.clone()
+            },
+        ] {
+            assert!(validate_recovery(&old, &invalid, now).is_err());
+        }
+        validate_recovery(
+            &old,
+            &delivered,
+            recovery_time(WelcomeWorkload::Release, &old),
+        )
+        .expect("one eligible retry has an exact accepted tuple");
+    }
     fn complete_fixture() -> WelcomeSweepReport {
         let cases = WelcomeWorkload::ALL
             .iter()

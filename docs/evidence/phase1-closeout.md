@@ -58,14 +58,29 @@ manifests are separate complete sweep classes under `E2E-MSG-002`.
 Only canonical `L2_PUBLIC_EVIDENCE_BEGIN`/`END` records enter CI logs. Raw keys,
 fixtures, baseline databases and case traces remain disposable and non-public.
 
+The checked-only Welcome harness modules are explicitly non-instrumented in the
+ordinary coverage inventory, alongside the existing L2 harness; checked L2 tests
+exercise them separately. Coverage thresholds are unchanged. The Welcome fixture
+preserves the legacy committed membership/approval baseline; its authorization
+and opening-context tables are empty. Populated durable authorization is covered
+by the separate P1-1–P1-3 suites above. Public engine manifests bind the writer
+test executable; the separate fresh verifier relies on the same exact Cargo/CI
+build context, rather than a second executable digest or build attestation.
+
 ## Independent review and historical limitation
 
 The initial fresh-context Checkpoint A/B review found no actionable durable
 access-control defect in A, and four P2 defects in B: poll provenance, opaque
 owner/lease identity, acknowledgement ID scope and cumulative receive retention.
 This closeout corrects those defects and retains the executable negative cases.
-A subsequent fresh-context review must assess both corrections and this matrix
-before the independent-review boxes are checked.
+Review instance 2 assessed commit `3b80d5d2b9e89b4cb1659d58ae4cb6479bebf208`
+and supported all four Checkpoint B corrections. It found one P2 in the Welcome
+expiry oracle: recovery could use an old lease expiry before the workload's
+observed clock. The correction keeps recovery time at or after that clock,
+avoids an expired live-lease probe, and asserts the complete final mutable tuple.
+The retained `expired_recovery_rejects_delivery_attempts_and_clock_rewind` test
+rejects delivery, attempt/generation changes and retained lease fields for expired
+work. Final independent assessment remains pending before checking the boxes.
 
 P1-1 has a closed transition/fixture matrix and current negative tests. The
 original combined implementation did not retain independently replayable
