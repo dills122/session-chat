@@ -507,14 +507,18 @@ components, exact retries, stale-generation rejection, ambiguous commit
 recovery, and bounded outbox leases over in-memory records. The SQLCipher
 laboratory now supplies the corresponding real MLS transaction and durable
 coordinator owner port, and a retained integration test wires it to capability
-admission through restart delivery and real joiner processing. Remaining
-requirements include human approval UX, portable passage of the composed ADR 0023 owner and ADR 0025 process-kill
-suites on the exact completion revision, rollback protection, vault-backed
-confidentiality, and broader disk/power-fault evidence. The separate checked L2
-laboratory locally covers baseline-derived SQLite-visible FULL/extended-IOERR
-failures, observed engine commit-window process kills, and every
-baseline-observed inviter/joiner application checkpoint; its internal
-observations still await public-manifest and portable-CI gates.
+admission through restart delivery and real joiner processing. The exact Phase 1
+implementation revision recorded in the closeout matrix passed the composed ADR
+0023 owner and ADR 0025 process-kill suites through bounded public-manifest and
+Linux, macOS, and Windows CI gates. Each later behavior or evidence revision must
+repeat those exact-revision gates before the completion record advances.
+Remaining product requirements include human approval UX, rollback protection,
+vault-backed confidentiality, and broader disk/power-fault evidence. The
+separate checked L2 laboratory covers baseline-derived SQLite-visible
+FULL/extended-IOERR failures, observed engine commit-window process kills, and
+every baseline-observed inviter/joiner application checkpoint. Raw observations
+remain non-public; only complete, secret-free aggregate manifests may enter the
+portable CI evidence record.
 
 Attacker story: Mallory captures a protected request and resubmits it after the
 invitation expires and is reissued with the same invitation and request IDs.

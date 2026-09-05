@@ -17,12 +17,12 @@ use std::{
 };
 
 use admission_capability::{
-    CapabilityAdmissionPolicy, CapabilityAdmissionVerifier, CapabilityApprovalOutcome,
-    ManualApprovalDecision,
+    CapabilityAdmissionError, CapabilityAdmissionPolicy, CapabilityAdmissionVerifier,
+    CapabilityApprovalOutcome, ManualApprovalDecision,
 };
 use aws_lc_rs::digest::{SHA256, digest};
 use session_admission::{AdmissionMethod, PendingAdmission};
-use session_core::{InvitationPolicy, InvitationRegistry};
+use session_core::{InvitationLifecycle, InvitationPolicy, InvitationRegistry};
 use session_crypto::{MessageEvent, MessageSession, ProtectedMessage};
 use session_crypto_hpke::{AwsLcInvitationJoinProtector, InvitationJoinProtector};
 use session_crypto_mls::{
@@ -1096,11 +1096,16 @@ fn run_hostile_matrix_controller(root: &Path) -> Result<(), SessionCtlError> {
             children.spawn(&executable, "hostile-matrix-alice", case_root.path())?;
 
             let alice = children.wait_role("hostile-matrix-alice", CHILD_WAIT)?;
+            let admission_boundary = if matches!(case, HostileJoinCase::WrongVerifier) {
+                "admission_boundary=reserve-v2-for-approval-rejected\n"
+            } else {
+                ""
+            };
             require_child_output(
                 &alice,
                 format!(
-                    "role=alice\nresult=pass\ncase={}\napproval=not-reached\nmls_add=not-reached\nmembership=unchanged\n",
-                    case.label()
+                    "role=alice\nresult=pass\ncase={}\n{admission_boundary}approval=not-reached\nmls_add=not-reached\nmembership=unchanged\n",
+                    case.label(),
                 )
                 .as_bytes(),
             )?;
@@ -1235,7 +1240,7 @@ fn run_hostile_matrix_alice(root: &Path) -> Result<(), SessionCtlError> {
     } else {
         NOW
     };
-    let issued = storage
+    let generated = storage
         .issue_capability_invitation(
             &protector,
             invitation_issued_at,
@@ -1243,15 +1248,25 @@ fn run_hostile_matrix_alice(root: &Path) -> Result<(), SessionCtlError> {
             invitation_issued_at,
         )
         .at_stage("hostile matrix invitation generation")?;
+    let mut registry = InvitationRegistry::new(
+        InvitationPolicy::new(3_600, 5, 8).at_stage("hostile matrix invitation policy")?,
+    );
+    let issued = registry
+        .issue_v2(generated, NOW)
+        .at_stage("hostile matrix invitation issue")?;
+    let encoded_invitation = issued
+        .invitation()
+        .encode_canonical()
+        .at_stage("hostile matrix invitation encoding")?;
+    let validated_invitation = registry
+        .validate_descriptor_v2(&encoded_invitation, NOW)
+        .at_stage("hostile matrix invitation validation")?;
     let foreign = storage
         .issue_capability_invitation(&protector, NOW, INVITATION_EXPIRES_AT, NOW)
         .at_stage("hostile matrix foreign invitation generation")?;
     atomic_write(
         &direct_invitation_path(root),
-        &issued
-            .invitation()
-            .encode_canonical()
-            .at_stage("hostile matrix invitation encoding")?,
+        &encoded_invitation,
         MAX_WIRE_OBJECT_BYTES,
     )?;
     atomic_write(
@@ -1288,8 +1303,26 @@ fn run_hostile_matrix_alice(root: &Path) -> Result<(), SessionCtlError> {
             let opened = protector
                 .open_capability_request(foreign.private_key(), foreign.invitation(), &protected)
                 .at_stage("hostile wrong verifier opening")?;
-            if opened.request().intended_verifier() == issued.invitation().inviter_verifying_key() {
-                return Err(stage("hostile wrong verifier context"));
+            let mut admission = CapabilityAdmissionVerifier::new(
+                CapabilityAdmissionPolicy::new(3_600, 5, 8)
+                    .at_stage("hostile wrong verifier admission policy")?,
+            );
+            let verified = admission
+                .verify_and_reserve(opened, NOW)
+                .at_stage("hostile wrong verifier verification")?;
+            if !matches!(
+                admission.reserve_v2_for_approval(
+                    &mut registry,
+                    &validated_invitation,
+                    verified,
+                    NOW,
+                ),
+                Err(CapabilityAdmissionError::Rejected)
+            ) || admission.pending_count() != 0
+                || registry.lifecycle(issued.invitation().invitation_id())
+                    != Some(InvitationLifecycle::Available)
+            {
+                return Err(stage("hostile wrong verifier reservation rejection"));
             }
         }
         HostileJoinCase::Expired | HostileJoinCase::WrongKeyPackage => {
@@ -1314,9 +1347,14 @@ fn run_hostile_matrix_alice(root: &Path) -> Result<(), SessionCtlError> {
     drop(group);
     drop(alice);
     drop(storage);
+    let admission_boundary = if matches!(case, HostileJoinCase::WrongVerifier) {
+        "admission_boundary=reserve-v2-for-approval-rejected\n"
+    } else {
+        ""
+    };
     print!(
-        "role=alice\nresult=pass\ncase={}\napproval=not-reached\nmls_add=not-reached\nmembership=unchanged\n",
-        case.label()
+        "role=alice\nresult=pass\ncase={}\n{admission_boundary}approval=not-reached\nmls_add=not-reached\nmembership=unchanged\n",
+        case.label(),
     );
     Ok(())
 }
