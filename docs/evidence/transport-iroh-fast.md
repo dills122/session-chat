@@ -115,8 +115,8 @@ pagination, unknown-mailbox and foreign-acknowledgement rejection, exact
 remote-status mapping, local authority/lifetime/budget preflight, and semantic
 link poisoning for malformed, truncated, trailing, and noncanonical requests
 and responses. The production coverage gate records 93.61% line coverage for
-`transport-iroh` and workspace totals of 92.77% lines, 88.03% regions, and
-89.37% functions for this increment.
+`transport-iroh` and workspace totals of 92.77% lines, 88.04% regions, and
+89.38% functions for this increment.
 
 `sessionctl-fast-adapter` now composes that shared case as explicit host and
 join commands suitable for two computers. The retained local test proves the
@@ -138,12 +138,12 @@ failure and a service outage after request receipt. The latter maps to retryable
 partial work.
 
 GitHub CI on exact implementation revision
-`2490d7e79e3a46d9d8c15690038704f679784a17` passed the Rust and L2 evidence
+`402eae6f98e4a7c4653d51e7348735a56e4c33e1` passed the Rust and L2 evidence
 jobs on Linux x64, macOS arm64, and Windows x64, along with production
 coverage, dependency policy and review, repository policy, retained Node tools,
 the project site, CodeQL, and the aggregate gate. The retained workflow runs
-are [CI 34009943760](https://github.com/dills122/session-chat/actions/runs/34009943760)
-and [CodeQL 34009942266](https://github.com/dills122/session-chat/actions/runs/34009942266).
+are [CI 34010891441](https://github.com/dills122/session-chat/actions/runs/34010891441)
+and [CodeQL 34010890962](https://github.com/dills122/session-chat/actions/runs/34010890962).
 
 Commands for this increment:
 
