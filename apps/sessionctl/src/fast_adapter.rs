@@ -175,9 +175,7 @@ impl FastAdapterAuthorityFileGuard {
         if bytes.is_empty() || bytes.len() > MAX_FAST_OPERATOR_HANDOFF_BYTES {
             return Err(stage("Fast adapter handoff bound"));
         }
-        validate_new_handoff_path(&path)?;
-        let temporary = path.with_extension("partial");
-        validate_new_handoff_path(&temporary)?;
+        let temporary = validate_new_handoff_paths(&path)?;
         let mut options = OpenOptions::new();
         options.write(true).create_new(true);
         #[cfg(unix)]
@@ -453,7 +451,7 @@ pub fn prepare_fast_adapter_host_v1(
     mode: FastAdapterPathMode,
     authority_path: &Path,
 ) -> Result<(), SessionCtlError> {
-    validate_new_handoff_path(authority_path)?;
+    validate_new_handoff_paths(authority_path)?;
     write_fast_adapter_profile_disclosure_v1(output, mode)
 }
 
@@ -504,14 +502,28 @@ pub fn fast_adapter_profile_disclosure_v1(mode: FastAdapterPathMode) -> String {
 }
 
 fn validate_new_handoff_path(path: &Path) -> Result<(), SessionCtlError> {
-    if !path.is_absolute()
-        || path.as_os_str().len() > 4_096
-        || path.exists()
-        || path.parent().is_none_or(|parent| !parent.is_dir())
-    {
+    if !path.is_absolute() || path.as_os_str().len() > 4_096 {
+        return Err(stage("Fast adapter handoff path"));
+    }
+    match fs::symlink_metadata(path) {
+        Ok(_) => return Err(stage("Fast adapter handoff path")),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(_) => return Err(stage("Fast adapter handoff path")),
+    }
+    if path.parent().is_none_or(|parent| !parent.is_dir()) {
         return Err(stage("Fast adapter handoff path"));
     }
     Ok(())
+}
+
+fn validate_new_handoff_paths(path: &Path) -> Result<PathBuf, SessionCtlError> {
+    validate_new_handoff_path(path)?;
+    let temporary = path.with_extension("partial");
+    if temporary == path {
+        return Err(stage("Fast adapter handoff path"));
+    }
+    validate_new_handoff_path(&temporary)?;
+    Ok(temporary)
 }
 
 fn read_handoff(path: &Path) -> Result<Zeroizing<Vec<u8>>, SessionCtlError> {
@@ -611,20 +623,24 @@ fn map_stage<T, E>(result: Result<T, E>, name: &'static str) -> Result<T, Sessio
 }
 
 fn remove_guarded_path(path: &mut Option<GuardedAuthorityPath>) -> Result<(), SessionCtlError> {
-    let Some(owned) = path.take() else {
+    let Some(owned) = path.as_ref() else {
         return Ok(());
     };
     let current = match Handle::from_path(&owned.path) {
         Ok(current) => current,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            *path = None;
+            return Ok(());
+        }
         Err(_) => return Err(stage("Fast adapter handoff identity")),
     };
     if current != owned.identity {
+        *path = None;
         return Ok(());
     }
     drop(current);
-    drop(owned.identity);
-    map_stage(fs::remove_file(owned.path), "Fast adapter handoff removal")?;
+    map_stage(fs::remove_file(&owned.path), "Fast adapter handoff removal")?;
+    *path = None;
     Ok(())
 }
 

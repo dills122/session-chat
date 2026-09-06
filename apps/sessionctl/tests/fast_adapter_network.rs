@@ -380,6 +380,8 @@ fn authority_file_guard_reports_a_removal_failure() {
         .expect("restore fixture directory permissions");
     assert!(removal.is_err());
     assert!(path.exists());
+    guard.remove().expect("retry authority removal");
+    assert!(!path.exists());
     fs::remove_dir_all(root).expect("remove fixtures");
 }
 
@@ -401,6 +403,52 @@ fn authority_file_guard_reports_an_identity_lookup_failure() {
         .expect("restore fixture directory permissions");
     assert!(removal.is_err());
     assert!(path.exists());
+    guard.remove().expect("retry authority removal");
+    assert!(!path.exists());
+    fs::remove_dir_all(root).expect("remove fixtures");
+}
+
+#[cfg(unix)]
+#[test]
+fn host_preflight_rejects_dangling_destination_and_temporary_symlinks() {
+    use std::os::unix::fs::symlink;
+
+    let root = temporary_directory();
+    let missing_target = root.join("missing-target");
+
+    let destination = root.join("destination.v2");
+    symlink(&missing_target, &destination).expect("create dangling destination symlink");
+    let mut output = Vec::new();
+    assert!(
+        prepare_fast_adapter_host_v1(&mut output, FastAdapterPathMode::Auto, &destination).is_err()
+    );
+    assert!(output.is_empty());
+
+    let destination = root.join("temporary.v2");
+    let temporary = destination.with_extension("partial");
+    symlink(&missing_target, &temporary).expect("create dangling temporary symlink");
+    let mut output = Vec::new();
+    assert!(
+        prepare_fast_adapter_host_v1(&mut output, FastAdapterPathMode::Auto, &destination).is_err()
+    );
+    assert!(output.is_empty());
+
+    fs::remove_dir_all(root).expect("remove fixtures");
+}
+
+#[test]
+fn host_preflight_rejects_destination_temporary_aliasing() {
+    let root = temporary_directory();
+    let mut output = Vec::new();
+    assert!(
+        prepare_fast_adapter_host_v1(
+            &mut output,
+            FastAdapterPathMode::RelayOnly,
+            &root.join("authority.partial"),
+        )
+        .is_err()
+    );
+    assert!(output.is_empty());
     fs::remove_dir_all(root).expect("remove fixtures");
 }
 
