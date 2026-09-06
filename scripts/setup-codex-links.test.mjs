@@ -19,7 +19,8 @@ import {
 } from './setup-codex-links.mjs';
 
 test('resolves an AI Central root or templates path without a machine-specific default', () => {
-  const root = path.join(path.sep, 'tmp', 'ai-central');
+  // Keep the Windows drive prefix: a separator-rooted path is drive-relative.
+  const root = path.join(os.tmpdir(), 'ai-central');
   assert.equal(resolveAiCentralRoot(root), root);
   assert.equal(resolveAiCentralRoot(path.join(root, 'templates')), root);
   assert.equal(resolveAiCentralRoot(), path.join(os.homedir(), '.ai-central'));

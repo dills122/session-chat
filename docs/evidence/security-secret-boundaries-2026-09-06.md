@@ -65,6 +65,11 @@ change; no dependency fetch or fixture migration was needed.
 
 ## Failures, review and remaining limits
 
+- The first PR CI run exposed a Windows-only assertion in the pre-existing
+  root-resolution fixture: a separator-rooted path omitted the drive letter.
+  The fixture now uses the OS temporary directory so its expected path is fully
+  qualified on all three platforms; production resolution is unchanged.
+
 - Initial compile checks identified a missing explicit key-buffer type and two
   test assertion type mismatches; these were corrected before passing gates.
 - The network-restricted sandbox caused the existing direct-loopback test to
