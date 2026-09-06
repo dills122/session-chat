@@ -42,6 +42,7 @@ mls-rs-crypto-awslc = { version = "=0.25.0", default-features = false, features 
 mls-rs-crypto-hpke = "=0.21.0"
 mls-rs-core = "=0.27.0"
 rusqlite = { version = "=0.40.1", default-features = false, features = ["bundled-sqlcipher-vendored-openssl"] }
+same-file = "=1.0.6"
 thiserror = "=2.0.20"
 tokio = { version = "=1.53.1", default-features = false, features = ["macros", "rt-multi-thread", "time"] }
 zeroize = { version = "=1.9.0", default-features = false, features = ["alloc"] }

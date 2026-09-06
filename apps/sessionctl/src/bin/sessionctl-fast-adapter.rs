@@ -12,7 +12,7 @@ async fn main() {
             let Some(mode) = mode.to_str() else {
                 unsupported();
             };
-            let mode = FastAdapterPathMode::parse(mode);
+            let mode = mode.parse::<FastAdapterPathMode>();
             match mode {
                 Ok(mode) => sessionctl::run_fast_adapter_host(mode, PathBuf::from(authority)).await,
                 Err(error) => Err(error),
@@ -22,7 +22,7 @@ async fn main() {
             let Some(mode) = mode.to_str() else {
                 unsupported();
             };
-            let mode = FastAdapterPathMode::parse(mode);
+            let mode = mode.parse::<FastAdapterPathMode>();
             match mode {
                 Ok(mode) => sessionctl::run_fast_adapter_join(mode, PathBuf::from(authority))
                     .await

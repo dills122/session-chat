@@ -18,6 +18,7 @@ session-crypto-mls = { version = "=0.1.0", path = "../../crates/session-crypto-m
 session-protocol = { version = "=0.1.0", path = "../../crates/session-protocol" }
 session-transport = { version = "=0.1.0", path = "../../crates/session-transport" }
 rusqlite.workspace = true
+same-file.workspace = true
 storage-sqlcipher = { version = "=0.1.0", path = "../../crates/storage-sqlcipher" }
 thiserror.workspace = true
 tokio.workspace = true

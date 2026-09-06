@@ -279,15 +279,24 @@ Assumptions:
   operation. Its versioned CBOR request/response frames reject malformed,
   trailing, noncanonical, wrong-version, and oversized input before use.
 - The two-computer adapter harness transfers a short-lived canonical all-rights
-  mailbox bundle outside Iroh. Anyone who obtains that file can deposit, read,
-  and acknowledge the test mailbox until expiry, so it must use an
-  authenticated confidential handoff and must never become a product
-  sender-facing format. Its parser rejects special files, malformed or
-  noncanonical bytes, excessive size, and expiry before public network work.
+  mailbox bundle outside Iroh. Its version-two schema binds the requested
+  `auto` or `relay-only` path policy and rejects a joiner mode mismatch before
+  public network work. Anyone who obtains that file can deposit, read, and
+  acknowledge the test mailbox until expiry, so it must use an authenticated
+  confidential handoff and must never become a product sender-facing format.
+  Its parser rejects special files, malformed or noncanonical bytes, excessive
+  size, and expiry before public network work. Cleanup compares the retained
+  file identity and leaves a replacement already present at comparison time
+  untouched. The portable compare-then-remove sequence has a residual
+  concurrent pathname-swap race and remains laboratory behavior.
 - Address-free path evidence distinguishes Iroh's selected direct and relay
   paths without logging socket or relay addresses. Relay-only evidence removes
   direct IP transports but still contacts address lookup, DNS, and relay
   infrastructure.
+- Both harness roles render the complete Fast observer, online-only,
+  non-anonymous, and no-offline-delivery disclosure before binding a public
+  endpoint. Public N0 constructor checks remain ignored operator tests because
+  endpoint creation itself can initiate lookup, DNS, relay, and discovery work.
 - The service bounds live mailboxes, mailbox lifetime, logical envelope count,
   retained canonical bytes, poll size, requests per connection, and one
   absolute deadline per request/response exchange. Its 40-byte continuation

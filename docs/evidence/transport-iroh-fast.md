@@ -42,11 +42,18 @@ reconnection, or production readiness.
   path class and open path-family booleans. Relay-only mode removes direct IP
   transports and fails if an open direct path or non-relay selected path is
   observed.
-- The operator handoff is canonical versioned CBOR bounded to 256 bytes. It
-  contains all three short-lived test capabilities, uses zeroizing buffers,
+- The operator handoff is canonical version-two CBOR bounded to 256 bytes. It
+  binds the requested `auto` or `relay-only` path policy, contains all three
+  short-lived test capabilities, uses zeroizing buffers,
   publishes atomically without replacing an existing path, and rejects
   malformed, expired, excessive, trailing, noncanonical, and aliased
-  special-file input.
+  special-file input. A joiner mode mismatch is rejected before public network
+  work. Cleanup retains ownership after a transient lookup or removal failure
+  so it can be retried, and leaves a replacement already present at comparison
+  time untouched. The portable compare-then-remove sequence retains a
+  concurrent pathname-swap race.
+- Both public roles render the complete stable FastV1 disclosure before endpoint
+  creation. Tests that construct public N0 endpoints are ignored operator checks.
 
 ## FastV1 observer matrix
 
@@ -107,35 +114,36 @@ Connected adverse-path cases retain queue saturation, authenticated cursor
 pagination, unknown-mailbox and foreign-acknowledgement rejection, exact
 remote-status mapping, local authority/lifetime/budget preflight, and semantic
 link poisoning for malformed, truncated, trailing, and noncanonical requests
-and responses. The production coverage gate records 94.78% line coverage for
-`transport-iroh` and workspace totals of 92.76% lines, 88.01% regions, and
-89.46% functions for this increment.
+and responses. The production coverage gate records 93.61% line coverage for
+`transport-iroh` and workspace totals of 92.77% lines, 88.04% regions, and
+89.38% functions for this increment.
 
 `sessionctl-fast-adapter` now composes that shared case as explicit host and
 join commands suitable for two computers. The retained local test proves the
 harness completes over a classified direct loopback path. External public N0
 runs remain required before recording direct or relay two-computer evidence.
 
-An operator-driven single-computer public N0 check on implementation revision
-`79e6605566f709fd27053ffee4b52956c800e799` exercised the same host and join
-commands in both modes. The auto run connected initially through a relay,
-migrated to a direct path while retaining the byte-identical contract result,
-and completed cleanly. The relay-only run selected a relay at both observations,
-reported no open direct path, retained byte identity, and completed cleanly.
-Both runs removed the all-rights handoff file after service completion. These
-checks validate the public harness and route classification but do not satisfy
-the two-computer or NAT evidence gate.
+A historical operator-driven single-computer public N0 check on implementation
+revision `79e6605566f709fd27053ffee4b52956c800e799` exercised the predecessor v1
+handoff in both modes. The auto run connected initially through a relay and
+migrated to a direct path; the relay-only run selected a relay at both
+observations and reported no open direct path. Both retained byte identity and
+completed cleanly. This result remains route-feasibility evidence only. It does
+not validate the current path-bound v2 handoff or satisfy the two-computer, NAT,
+or packet-capture evidence gates.
 
 Deterministic loopback cases also retain a bounded peer-offline connection
 failure and a service outage after request receipt. The latter maps to retryable
 `Unavailable`, poisons the ordered adapter, and prevents reuse after ambiguous
 partial work.
 
-GitHub CI on implementation revision
-`ba83404c27e485af38dbf7141dca8e7a2f93fcc9` passed the Rust and L2 evidence
+GitHub CI on exact implementation revision
+`402eae6f98e4a7c4653d51e7348735a56e4c33e1` passed the Rust and L2 evidence
 jobs on Linux x64, macOS arm64, and Windows x64, along with production
 coverage, dependency policy and review, repository policy, retained Node tools,
-the project site, CodeQL, and the aggregate gate.
+the project site, CodeQL, and the aggregate gate. The retained workflow runs
+are [CI 34010891441](https://github.com/dills122/session-chat/actions/runs/34010891441)
+and [CodeQL 34010890962](https://github.com/dills122/session-chat/actions/runs/34010890962).
 
 Commands for this increment:
 
@@ -143,16 +151,20 @@ Commands for this increment:
 cargo clippy -p transport-conformance -p transport-iroh --all-targets --locked --offline -- -D warnings
 cargo test -p transport-conformance --all-targets --locked --offline
 cargo test -p transport-iroh --all-targets --locked --offline -- --test-threads=1
+cargo test -p sessionctl --test fast_adapter_network --locked --offline
+cargo test -p sessionctl --lib fast_adapter::tests --locked --offline
 node scripts/check-rust-coverage.mjs
 ```
 
-The Iroh tests require local loopback socket access. The public N0 reachability
-case remains ignored unless an operator explicitly runs it with network access.
+The Iroh tests require local loopback socket access. Public N0 endpoint
+construction and reachability cases remain ignored unless an operator
+explicitly runs them with network access.
 
 ## Open Task 10 evidence
 
 - real two-computer direct and relay runs through the prepared common-adapter
   harness;
+- a new public N0 operator run of the path-bound v2 handoff in both modes;
 - real NAT evidence and two-computer repetition of the retained relay-only,
   route-change, peer-offline, and service-outage cases;
 - packet captures reconciled with the Fast observer matrix;

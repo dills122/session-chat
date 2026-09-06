@@ -44,12 +44,18 @@ envelopes, exact deposit retry identity, conflicting same-ID rejection,
 polling, exact-set acknowledgement, acknowledgement retry, and final absence
 over a direct loopback Iroh connection.
 
-The explicit two-computer evidence harness serializes one canonical bounded
-all-rights operator handoff. Its bytes contain every mailbox bearer capability,
+The explicit two-computer evidence harness serializes one canonical bounded v2
+all-rights operator handoff. Its bytes bind the selected path policy and contain
+every mailbox bearer capability,
 are zeroized in temporary buffers, and must cross an authenticated confidential
 channel outside Iroh. The decoder rejects malformed, expired, excessive,
 trailing, and noncanonical files. This test-only bundle is not a product
-invitation or normal deposit-endpoint format.
+invitation or normal deposit-endpoint format. A joiner-selected path policy
+must match the authenticated handoff before public network work begins.
+
+The public endpoint constructor tests are ignored operator checks because even
+binding the N0 preset can contact relay, lookup, DNS, or discovery services.
+Default tests use only the local preset.
 
 This crate does not provide offline storage, durable mailbox state, cursor or
 acknowledgement persistence across service loss, lifecycle rotation,

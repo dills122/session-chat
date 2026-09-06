@@ -221,20 +221,23 @@ architecture:
   retains wake, cancellation, deadline, and pending-drop evidence for headless
   or worker-thread composition; a future UI may replace it behind the same
   runtime-neutral future contract. The SQLCipher laboratory now implements the
-  same sole-owner port with schema-v2 lease/restart evidence. Reusable Fast and
-  Private adapters, network authority, and product network profiles remain
-  unavailable.
+  same sole-owner port with schema-v2 lease/restart evidence. The first bounded
+  connected FastV1 adapter contract exists for explicit headless evidence;
+  Private adapters, durable network authority, and product network profiles
+  remain unavailable.
 - `transport-memory` implements both traits with bounded deterministic drop,
   hold/release, duplication, reordering, retry, outage, one-shot corruption,
   exact-byte stale replay, acknowledgement-result loss, poll-page, exact-set
   acknowledgement, cursor-rejection, and secret-free probe controls for
   headless tests.
   It is not a network transport.
-- `transport-iroh` is a bounded authenticated ordered-frame link for explicit
-  FastV1 online experiments. Its retained path is direct-only loopback, with a
-  separately invoked public N0 reachability smoke test. It is not an
-  `EnvelopeDelivery` provider, offline mailbox, reusable Fast adapter, or
-  product network profile.
+- `transport-iroh` is a bounded authenticated ordered-frame link and connected
+  `EnvelopeDelivery` provider for explicit FastV1 online experiments. Its
+  volatile mailbox service and headless host/join harness reuse the common
+  seven-operation contract over direct-only loopback; public N0 constructors
+  and reachability checks are separately invoked operator tests. It is not an
+  offline mailbox, durable provider, product network profile, or production
+  client transport.
 - `transport-conformance` is a publish-disabled offline test-support crate. Its
   first increment owns the strict, bounded, canonical, secret-free adverse
   trace v1 schema and hostile parser fixtures. Its next retained slice adds a
@@ -312,9 +315,10 @@ Human approval UX does not exist. The separate memory conformance model and
 SQLCipher laboratory exercise atomic visibility, durable Welcome-owner
 recovery, and ambiguous-result retry. The in-memory committed join result now carries the
 exact authenticated deposit-only endpoint beside its MLS Welcome, and retained
-integration evidence delivers that Welcome through the local mailbox. No
-reusable `EnvelopeDelivery` network provider or product network transport
-exists; the separate Iroh frame link is only an explicitly invoked experiment.
+integration evidence delivers that Welcome through the local mailbox. A
+bounded connected Iroh `EnvelopeDelivery` provider now exists for explicit
+FastV1 evidence, but no product network transport exists and the Iroh path
+remains an online-only, volatile experiment.
 The headless composition retains an executable
 happy-path acceptance test across these boundaries, but does not make their
 sequential in-memory mutations atomic or persistent.

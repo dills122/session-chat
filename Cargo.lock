@@ -3354,6 +3354,7 @@ dependencies = [
  "libc",
  "mls-rs-core",
  "rusqlite",
+ "same-file",
  "session-admission",
  "session-core",
  "session-crypto",
