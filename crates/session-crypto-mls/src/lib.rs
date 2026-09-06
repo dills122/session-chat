@@ -884,7 +884,7 @@ impl MlsWireMessage {
 }
 
 /// Coarse result of processing a bounded MLS message.
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Eq, PartialEq)]
 pub enum IncomingMessage {
     /// Decrypted application bytes.
     Application(Vec<u8>),
@@ -892,6 +892,19 @@ pub enum IncomingMessage {
     EpochAdvanced,
     /// A valid Commit removed this client.
     Removed,
+}
+
+impl std::fmt::Debug for IncomingMessage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Application(bytes) => f
+                .debug_struct("Application")
+                .field("byte_len", &bytes.len())
+                .finish_non_exhaustive(),
+            Self::EpochAdvanced => f.write_str("EpochAdvanced"),
+            Self::Removed => f.write_str("Removed"),
+        }
+    }
 }
 
 /// In-memory two-member Phase 1 group behind the Session Chat adapter.

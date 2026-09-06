@@ -174,3 +174,22 @@ fn accepts_the_exact_ciphertext_size_boundary() {
 
     assert_eq!(decoded.ciphertext().len(), MAX_ENVELOPE_CIPHERTEXT_BYTES);
 }
+
+#[test]
+fn debug_redacts_envelope_contents_and_metadata_in_all_formats() {
+    let envelope =
+        OpaqueEnvelope::new([0xa7; 16], 1_987_654_321, b"ciphertext-canary".to_vec()).unwrap();
+    let encoded = envelope.encode_canonical().unwrap();
+    for output in [format!("{envelope:?}"), format!("{envelope:#?}")] {
+        assert_eq!(output, "OpaqueEnvelope([REDACTED])");
+    }
+    assert_eq!(
+        format!("{:?}", Ok::<_, ()>(&envelope)),
+        "Ok(OpaqueEnvelope([REDACTED]))"
+    );
+    assert_eq!(
+        OpaqueEnvelope::decode_canonical(&encoded).unwrap(),
+        envelope
+    );
+    assert_eq!(envelope.ciphertext(), b"ciphertext-canary");
+}

@@ -8,6 +8,7 @@ node_modules/
 
 # Local AI Central skill links; recreate with scripts/setup-codex-links.mjs.
 /.agents/skills/
+/.agents/ai-central-snapshots/
 /.codex/skills/
 
 /target/

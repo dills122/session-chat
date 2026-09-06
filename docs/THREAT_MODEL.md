@@ -68,7 +68,8 @@ her group. ADR 0021 now exercises that owner across graceful Alice process exit
 and a fresh reload process while Bob and an untrusted forwarding service remain
 separate. The bounded test-only IPC admits only canonical protected-join,
 exercised LocalV1 deposit, and opaque-envelope objects; the bearer invitation
-and disposable raw owner key stay on separate client-only channels. This does
+stays on a separate direct channel; the disposable raw owner key uses an
+anonymous pipe inherited only by Alice roles, or a direct in-memory move. This does
 not establish hostile local-controller isolation, platform key custody, or
 abrupt-kill recovery. A separate deterministic memory transport uses right-specific
 authorities and bounded explicit drop, duplicate, hold/release, retry, expiry,
@@ -485,6 +486,13 @@ the generation becomes terminally unusable. This prevents identifier-only state
 from masquerading as a usable invitation and prevents silent key regeneration
 under an existing signed generation.
 
+Current capability invitation v1/v2 objects are bearer secrets, not public
+locators. L1 and network scripts automatically approve a valid capability
+request for its exact KeyPackage; they do not verify an intended human. Copying
+a published bearer invitation permits an admission race. Distribution guidance
+and host output require authenticated confidential transfer and disclose
+simulated automatic approval. Future public targeted descriptors remain absent.
+
 Attacker story: an attacker copies a public targeted invitation and submits a
 validly encoded join request for their own key. Correct behavior is a policy
 mismatch or explicit rejection, not membership.
@@ -890,9 +898,14 @@ an ambiguous SQL commit before finalizing its in-memory invitation shadow,
 reopens the store, delivers once, and proves the original joiner consumes that
 Welcome without a second MLS Add. The headless flows also reload Alice's exact
 identity and group after close/reopen, including one graceful
-independent-process exit/reload path. The test-only raw key handoff is a
-mode-`0600` file where Unix supports it and is deleted on load; it is not a
-vault or product credential path. This does not establish a deployable
+independent-process exit/reload path. The test-only raw key handoff uses an unread controller-routed anonymous
+pipe between Alice roles, including hostile-test inspectors, or an in-memory
+move for same-process compositions. No raw key resume file is written or read.
+The fixed frame rejects malformed, truncated, zero-key/group, and trailing
+input without a file fallback. This removes shared-directory key exposure,
+but not same-account process-memory/handle inspection or bearer-invitation
+access. Cross-platform OS isolation and platform custody remain blockers to
+running truly untrusted local service code. This does not establish a deployable
 independent-process client, platform key protector, rollback resistance,
 production packaging, behavior on broader hardware/OS versions, power-loss
 safety beyond the checked local L2 process-kill laboratory, or secure deletion.
@@ -991,11 +1004,33 @@ useful controls within the legacy model, but they did not create end-to-end
 encryption. New work must not revive that server-trusted architecture through a
 compatibility layer. See `docs/legacy-v1/` and the `legacy-v1` tag for evidence.
 
+### Diagnostic formatting
+
+`IncomingMessage::Application` exposes plaintext only through explicit data
+access; ordinary and pretty Debug report the variant and length. Both
+`OpaqueEnvelope` and `ReceivedEnvelope` Debug redact all fields, including
+ciphertext, envelope/delivery identifiers and expiration. Nested diagnostic
+formatting inherits the redaction. This does not sanitize explicit byte
+accessors, serialization, third-party provider internals, or process dumps.
+
 ### Supply chain and updates
 
 Relevant attacks include dependency compromise, lockfile manipulation,
 unreviewed cryptographic features, malicious build scripts, signing-key theft,
 rollback to a vulnerable client, and unsigned or ambiguously sourced updates.
+
+ADR 0026 records the AI Central setup boundary. The wrapper validates every tracked regular file against its
+Git blob at the reviewed commit, rejects dirty bytes, staged differences,
+symlink/submodule trees and source symlinks, and ignores extra untracked or
+ignored content. It constructs a fresh retained snapshot from the verified
+buffers before executing any installer. Managed skill links, including prior
+checkout links, point to those verified snapshot bytes. Source edits after
+validation cannot change execution or installed skills. Pin recording applies
+the same content checks. Git replace objects and inherited Git redirection
+variables are disabled. Snapshot files are owner-readable and read-only (with
+execute permission where required); this is not protection from a malicious
+same-account process that can change permissions or replace snapshots. Trusted
+local tooling, Git object integrity, and the reviewed commit remain assumptions.
 
 Required controls include pinned dependencies, minimal crypto dependencies,
 reviewed feature sets, CI isolation, artifact signing, protected release keys,

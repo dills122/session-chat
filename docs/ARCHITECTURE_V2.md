@@ -495,9 +495,10 @@ coordinator makes bounded attempts without promising eventual delivery, and the
 protocol core remains correct under loss, omission, arbitrary delay, expiry,
 and unavailability.
 
-Invitation publication is intentionally outside `EnvelopeDelivery`. An invite
-may be posted to GitHub, copied privately, rendered as a QR code, or exchanged
-through another system.
+Invitation publication is intentionally outside `EnvelopeDelivery`. Future targeted public descriptors may be posted to GitHub. Current capability
+invitations must instead be transferred privately to the intended recipient
+through an authenticated confidential channel; QR codes carrying them must
+remain private.
 
 ## Proposed repository layout
 

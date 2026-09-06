@@ -121,7 +121,7 @@ approval, exact v2/replay reservation, and MLS coordination. The isolated MLS
 adapter uses exact `mls-rs` 0.56.0 and AWS-LC 0.25.0 dependencies. The headless
 path uses its storage and group-bound identity-reload boundaries through
 SQLCipher. The L1 process runner crosses graceful Alice exit, but hands its
-disposable raw database key through an Alice-only test file rather than a
+disposable raw database key through an Alice-only inherited pipe rather than a
 platform vault and retains approval/replay shadows only in the initialization
 process. The superseded OpenMLS selection remains
 blocked by repository dependency policy. The Node simulator's custom
@@ -386,7 +386,7 @@ rollback or ambiguous commit, reloads the exact group-bound client identity and
 group after close/reopen, and resumes Welcome delivery from the sole-owner
 outbox. ADR 0021 repeats the positive lifecycle across graceful Alice process
 exit, Bob, and an untrusted forwarder. The approval/replay shadows are still
-process memory, and the raw database key uses a disposable Alice-only test file
+process memory, and the raw database key uses a disposable Alice-only inherited pipe
 rather than a platform vault.
 
 The next evidence-producing research or implementation tasks are:

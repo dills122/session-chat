@@ -39,6 +39,11 @@ Session Chat further restricts the version 1 profile:
 Future signatures and content-derived identifiers cover these validated
 deterministic bytes. Diagnostic JSON, if added, is never a signature boundary.
 
+Ordinary and pretty Debug for `OpaqueEnvelope` and transport `ReceivedEnvelope`
+redact all fields, including ciphertext, identifiers, and expiry. Explicit wire
+encoding and byte access remain unchanged; diagnostic formatting is not a wire
+representation.
+
 The dependency is pinned exactly for the first protocol milestone. Upgrades
 must retain the committed wire fixtures and negative tests.
 

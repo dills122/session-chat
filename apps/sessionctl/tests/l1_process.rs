@@ -356,7 +356,7 @@ fn internal_roles_fail_closed_on_missing_or_malformed_scoped_inputs() {
     fs::create_dir(alice_resume.join("alice")).expect("create Alice state directory");
     fs::write(alice_resume.join("alice/resume.state"), b"invalid")
         .expect("write malformed Alice state");
-    assert!(run_l1_process_internal_role("alice-resume", alice_resume.clone()).is_err());
+    assert_role_rejects_without_private_pipe("alice-resume", &alice_resume);
     fs::remove_dir_all(alice_resume).expect("remove Alice-resume root");
 
     let bob = marked_root("bob");
@@ -393,10 +393,7 @@ fn internal_roles_fail_closed_on_missing_or_malformed_scoped_inputs() {
         .expect("create hostile inspector state directory");
     fs::write(hostile_inspector.join("alice/resume.state"), b"invalid")
         .expect("write malformed hostile inspector state");
-    assert!(
-        run_l1_process_internal_role("hostile-replay-inspector", hostile_inspector.clone())
-            .is_err()
-    );
+    assert_role_rejects_without_private_pipe("hostile-replay-inspector", &hostile_inspector);
     fs::remove_dir_all(hostile_inspector).expect("remove hostile inspector root");
 
     let hostile_alice = marked_root("hostile-alice");
@@ -420,7 +417,7 @@ fn internal_roles_fail_closed_on_missing_or_malformed_scoped_inputs() {
         "hostile-matrix-inspector",
     ] {
         let root = marked_root(role);
-        assert!(run_l1_process_internal_role(role, root.clone()).is_err());
+        assert_role_rejects_without_private_pipe(role, &root);
         fs::remove_dir_all(root).expect("remove hostile matrix role root");
     }
 }
@@ -727,4 +724,88 @@ fn marked_root(label: &str) -> std::path::PathBuf {
     fs::create_dir(&root).expect("create marked test root");
     fs::write(root.join(".sessionctl-l1-root"), b"sessionctl-l1-v1\n").expect("write root marker");
     root
+}
+
+#[test]
+fn alice_restart_key_is_absent_from_service_visible_files_and_diagnostics() {
+    use std::{
+        io::{Read, Write},
+        process::Stdio,
+    };
+    let root = marked_root("pipe-key-handoff");
+    for directory in ["alice", "direct", "relay/in", "relay/out"] {
+        fs::create_dir_all(root.join(directory)).unwrap();
+    }
+    let spawn = |role: &str, input: Stdio, errors: Stdio| {
+        Command::new(env!("CARGO_BIN_EXE_sessionctl-l1"))
+            .args(["--internal-role", role])
+            .arg(&root)
+            .stdin(input)
+            .stdout(Stdio::piped())
+            .stderr(errors)
+            .spawn()
+            .unwrap()
+    };
+    let service = spawn("service", Stdio::null(), Stdio::piped());
+    let bob = spawn("bob", Stdio::null(), Stdio::piped());
+    let (mut key_reader, key_writer) = std::io::pipe().unwrap();
+    let init = spawn("alice-init", Stdio::null(), key_writer.into());
+    let init = init.wait_with_output().unwrap();
+    assert!(init.status.success());
+    // This test alone inspects the disposable frame to scan the same files a
+    // malicious forwarder could read. The real controller never reads it.
+    let mut frame = Zeroizing::new(Vec::new());
+    key_reader.read_to_end(&mut frame).unwrap();
+    assert_eq!(frame.len(), 72);
+    assert!(!root.join("alice/resume.state").exists());
+    fn scan(directory: &std::path::Path, key: &[u8]) {
+        for entry in fs::read_dir(directory).unwrap() {
+            let entry = entry.unwrap();
+            if entry.file_type().unwrap().is_dir() {
+                scan(&entry.path(), key);
+            } else {
+                let bytes = fs::read(entry.path()).unwrap();
+                assert!(!bytes.windows(key.len()).any(|window| window == key));
+            }
+        }
+    }
+    scan(&root, &frame[8..40]);
+    assert!(
+        !init
+            .stdout
+            .windows(32)
+            .any(|window| window == &frame[8..40])
+    );
+    let (reader, mut writer) = std::io::pipe().unwrap();
+    writer.write_all(&frame).unwrap();
+    drop(writer);
+    let resumed = spawn("alice-resume", reader.into(), Stdio::piped())
+        .wait_with_output()
+        .unwrap();
+    assert!(resumed.status.success());
+    for output in [
+        resumed,
+        bob.wait_with_output().unwrap(),
+        service.wait_with_output().unwrap(),
+    ] {
+        assert!(output.status.success());
+        assert!(output.stderr.is_empty());
+        assert!(
+            !output
+                .stdout
+                .windows(32)
+                .any(|window| window == &frame[8..40])
+        );
+    }
+    fs::remove_dir_all(root).unwrap();
+}
+
+fn assert_role_rejects_without_private_pipe(role: &str, root: &std::path::Path) {
+    let output = Command::new(env!("CARGO_BIN_EXE_sessionctl-l1"))
+        .args(["--internal-role", role])
+        .arg(root)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
 }

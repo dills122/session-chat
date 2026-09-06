@@ -130,10 +130,16 @@ impl DeliveryId {
 }
 
 /// One received opaque envelope paired with its untrusted delivery identifier.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct ReceivedEnvelope {
     delivery_id: DeliveryId,
     envelope: OpaqueEnvelope,
+}
+
+impl std::fmt::Debug for ReceivedEnvelope {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("ReceivedEnvelope([REDACTED])")
+    }
 }
 
 impl ReceivedEnvelope {

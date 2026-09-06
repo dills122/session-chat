@@ -95,9 +95,12 @@ SQLCipher conformance path separately proves its durable outbox; neither path
 proves a network profile.
 The `sessionctl` binaries compose those present pieces into an in-process flow
 and an ADR 0021 independent-process conformance run. The latter keeps the
-bearer invitation and disposable SQLCipher key off the untrusted forwarding
-process, admits only canonical public wire objects to bounded IPC, reloads
-Alice in a fresh process, and prints only a redacted manifest. This is retained
+bearer invitation outside the forwarding interface and transfers the disposable
+SQLCipher key through an Alice-only inherited pipe. It admits only canonical
+public wire objects to bounded IPC, reloads
+Alice in a fresh process, and prints only a redacted manifest. The same-account
+processes are not OS-isolated; running truly untrusted local code remains
+unsupported. This is retained
 integration evidence, not a deployable client, human approval UX, durable
 vault, hosted realm, abrupt-crash guarantee, or production transport.
 

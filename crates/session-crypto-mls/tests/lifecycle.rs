@@ -98,6 +98,8 @@ fn exact_validated_key_package_reaches_add_welcome_and_two_party_messages()
         received,
         IncomingMessage::Application(b"hello bob".to_vec())
     );
+    assert_eq!(format!("{received:?}"), "Application { byte_len: 9, .. }");
+    assert!(!format!("{received:#?}").contains("104, 101, 108"));
 
     assert_eq!(
         bob_group.process_message(MlsWireMessage::from_bytes(&ciphertext_bytes)?),
@@ -378,4 +380,30 @@ fn otherwise_valid_key_package_with_leaf_extension_is_rejected() -> Result<(), M
     ));
 
     Ok(())
+}
+
+#[test]
+fn incoming_application_debug_redacts_plaintext_including_nested_and_pretty() {
+    for bytes in [
+        Vec::new(),
+        b"plaintext-canary".to_vec(),
+        vec![0xff, 0, 0x81],
+    ] {
+        let incoming = IncomingMessage::Application(bytes.clone());
+        for output in [
+            format!("{incoming:?}"),
+            format!("{incoming:#?}"),
+            format!("{:?}", Ok::<_, ()>(&incoming)),
+        ] {
+            assert!(!output.contains("plaintext-canary"));
+            assert!(!output.contains(&format!("{bytes:?}")));
+            assert!(output.contains("byte_len"));
+        }
+        assert_eq!(incoming, IncomingMessage::Application(bytes));
+    }
+    assert_eq!(
+        format!("{:?}", IncomingMessage::EpochAdvanced),
+        "EpochAdvanced"
+    );
+    assert_eq!(format!("{:?}", IncomingMessage::Removed), "Removed");
 }

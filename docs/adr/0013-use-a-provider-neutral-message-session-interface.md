@@ -30,6 +30,8 @@ application-facing message contract:
 - `ApplicationMessage` bounds decrypted application bytes and redacts them from
   `Debug` output;
 - `MessageEvent` exposes bounded application bytes, epoch advancement, or removal;
+- the concrete `IncomingMessage::Application` also redacts plaintext in ordinary,
+  pretty and nested Debug, retaining only the variant and byte length;
 - `MessageSessionError` exposes only `InputTooLarge` or `Rejected`;
 - `MessageSession` exposes epoch and member-count observations, application
   message protection, and protected-message processing; and

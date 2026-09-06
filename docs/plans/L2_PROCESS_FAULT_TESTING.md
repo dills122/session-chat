@@ -253,7 +253,7 @@ replace the inviter/joiner atomicity gate above.
 
 The L2 controller must generate or retain the disposable database key and
 expected public identifiers before starting a killable child. It must not rely
-on the L1 pattern where Alice creates the key and writes a resume file only
+on the L1 pattern where Alice creates the key and writes its private pipe only
 after commit; killing that child earlier would make the test database
 unverifiable. This test-only controller channel has the same-account limitation
 as ADR 0021 and is not a vault or process-isolation claim.
