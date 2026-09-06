@@ -116,13 +116,15 @@ join commands suitable for two computers. The retained local test proves the
 harness completes over a classified direct loopback path. External public N0
 runs remain required before recording direct or relay two-computer evidence.
 
-An operator-driven single-computer public N0 check exercised the same host and
-join commands in both modes. The auto run connected initially through a relay,
+An operator-driven single-computer public N0 check on implementation revision
+`79e6605566f709fd27053ffee4b52956c800e799` exercised the same host and join
+commands in both modes. The auto run connected initially through a relay,
 migrated to a direct path while retaining the byte-identical contract result,
 and completed cleanly. The relay-only run selected a relay at both observations,
 reported no open direct path, retained byte identity, and completed cleanly.
-These checks validate the public harness and route classification but do not
-satisfy the two-computer or NAT evidence gate.
+Both runs removed the all-rights handoff file after service completion. These
+checks validate the public harness and route classification but do not satisfy
+the two-computer or NAT evidence gate.
 
 Deterministic loopback cases also retain a bounded peer-offline connection
 failure and a service outage after request receipt. The latter maps to retryable
