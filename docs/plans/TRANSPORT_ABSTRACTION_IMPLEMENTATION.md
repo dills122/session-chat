@@ -809,13 +809,13 @@ non-anonymous behavior, and both public commands render it before endpoint
 creation. A real two-computer direct and relay run remains an
 external evidence gate.
 
-A historical single-computer public N0 operator check passed in both modes on
-the predecessor v1 handoff: auto migrated from relay to direct during the
-byte-identical common contract, while relay-only stayed on relay with no direct
-path. The path-bound v2 handoff still requires a new public run. Deterministic
-peer-offline and mid-operation service-outage cases fail within bounds; an
-outage maps to a retryable unavailable result and poisons the connection. These
-do not replace the real two-computer NAT and outage matrix.
+A single-computer public N0 operator check now passes in both modes on the
+path-bound v2 handoff at merged revision `3e752f4`: `auto` started on relay and
+migrated to direct during the byte-identical common contract, while
+`relay-only` stayed on relay with no direct path. Deterministic peer-offline and
+mid-operation service-outage cases fail within bounds; an outage maps to a
+retryable unavailable result and poisons the connection. These do not replace
+the real two-computer NAT and outage matrix or packet-capture evidence.
 
 The adapter remains online and volatile. Relay-path two-peer evidence,
 route-change/NAT/offline/outage cases, packet captures, durable service state,

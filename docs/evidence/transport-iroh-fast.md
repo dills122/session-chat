@@ -2,7 +2,7 @@
 
 Status: Task 10 in progress; two-computer common-adapter harness ready for external runs
 
-Date: 2026-09-05
+Date: 2026-09-06
 
 ## Claim boundary
 
@@ -123,6 +123,17 @@ join commands suitable for two computers. The retained local test proves the
 harness completes over a classified direct loopback path. External public N0
 runs remain required before recording direct or relay two-computer evidence.
 
+An operator-driven single-computer public N0 check on merged revision
+`3e752f4189916ea2d8306ef15ab980a1e93adca5` exercised the path-bound v2
+handoff on macOS arm64 with Iroh 1.1.0. In `auto` mode, both roles authenticated
+the requested mode, connected initially through a relay, and the joiner
+migrated to a direct path while completing the byte-identical common contract.
+In `relay-only` mode, both initial and final joiner observations selected a
+relay and reported no open direct path. Both hosts and joiners completed
+cleanly, and the host removed each authority file it had published. This is
+current-handoff route-feasibility evidence on one computer; it does not satisfy
+the two-computer, NAT, route-change, outage, or packet-capture gates.
+
 A historical operator-driven single-computer public N0 check on implementation
 revision `79e6605566f709fd27053ffee4b52956c800e799` exercised the predecessor v1
 handoff in both modes. The auto run connected initially through a relay and
@@ -164,7 +175,6 @@ explicitly runs them with network access.
 
 - real two-computer direct and relay runs through the prepared common-adapter
   harness;
-- a new public N0 operator run of the path-bound v2 handoff in both modes;
 - real NAT evidence and two-computer repetition of the retained relay-only,
   route-change, peer-offline, and service-outage cases;
 - packet captures reconciled with the Fast observer matrix;
