@@ -800,26 +800,30 @@ byte-identical envelopes, exact deposit retry identity, conflict rejection,
 poll, exact-set acknowledgement, acknowledgement retry, and clean close.
 
 This retained slice adds a separate two-computer common-adapter harness,
-canonical bounded all-rights operator handoff, public auto and relay-only
-endpoint modes, and address-free selected-path snapshots. Its loopback test
+canonical bounded v2 all-rights operator handoff with an authenticated path
+policy, public auto and relay-only endpoint modes, and address-free
+selected-path snapshots. Its loopback test
 passes the shared contract on a classified direct path. The exact FastV1 UI
 fixture now discloses direct-peer, relay, lookup, DNS, NAT, online-only, and
-non-anonymous behavior. A real two-computer direct and relay run remains an
+non-anonymous behavior, and both public commands render it before endpoint
+creation. A real two-computer direct and relay run remains an
 external evidence gate.
 
-A single-computer public N0 operator check passed in both modes: auto migrated
-from relay to direct during the byte-identical common contract, while
-relay-only stayed on relay with no direct path. Deterministic peer-offline and
-mid-operation service-outage cases now fail within bounds; an outage maps to a
-retryable unavailable result and poisons the connection. These do not replace
-the real two-computer NAT and outage matrix.
+A historical single-computer public N0 operator check passed in both modes on
+the predecessor v1 handoff: auto migrated from relay to direct during the
+byte-identical common contract, while relay-only stayed on relay with no direct
+path. The path-bound v2 handoff still requires a new public run. Deterministic
+peer-offline and mid-operation service-outage cases fail within bounds; an
+outage maps to a retryable unavailable result and poisons the connection. These
+do not replace the real two-computer NAT and outage matrix.
 
 The adapter remains online and volatile. Relay-path two-peer evidence,
 route-change/NAT/offline/outage cases, packet captures, durable service state,
 mailbox lifecycle/rotation composition, and the external-network adverse matrix
 remain open. The connected protocol and authority adverse matrix and the exact
-Linux/macOS/Windows implementation revision are retained. Public N0
-reachability remains an explicitly invoked ignored smoke test.
+Linux/macOS/Windows implementation revision are retained. Public N0 endpoint
+construction and reachability remain explicitly invoked ignored operator
+tests.
 
 **Description:** Implement the first real adapter for the Fast profile, keeping
 offline mailbox behavior separate where Iroh relays are stateless. Document

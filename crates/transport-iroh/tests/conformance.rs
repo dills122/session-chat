@@ -12,9 +12,9 @@ use transport_conformance::{
     CONNECTED_DELIVERY_CONFORMANCE_REQUESTS_V1, run_connected_delivery_conformance_v1,
 };
 use transport_iroh::{
-    FastMailboxAuthorities, FastMailboxPolicy, IrohFastDelivery, IrohFastEndpoint,
-    IrohFastMailboxService, MAX_FAST_ENVELOPES_PER_MAILBOX, MAX_FAST_LIVE_MAILBOXES,
-    MAX_FAST_MAILBOX_LIFETIME_SECONDS, MAX_FAST_REQUESTS_PER_CONNECTION,
+    FastMailboxAuthorities, FastMailboxPolicy, FastOperatorPathModeV1, IrohFastDelivery,
+    IrohFastEndpoint, IrohFastMailboxService, MAX_FAST_ENVELOPES_PER_MAILBOX,
+    MAX_FAST_LIVE_MAILBOXES, MAX_FAST_MAILBOX_LIFETIME_SECONDS, MAX_FAST_REQUESTS_PER_CONNECTION,
     MAX_FAST_RETAINED_BYTES_PER_MAILBOX,
 };
 
@@ -84,6 +84,7 @@ fn wire_response(operation: u8, status: u16, payload: &[u8]) -> Vec<u8> {
 
 fn operator_handoff_fixture(
     header: (u64, u16),
+    path_mode: Option<u8>,
     authority: [&[u8]; 5],
     expires_at_unix_seconds: u64,
 ) -> Vec<u8> {
@@ -93,7 +94,12 @@ fn operator_handoff_fixture(
     encoder
         .array(fields)
         .and_then(|encoder| encoder.u16(version))
-        .and_then(|encoder| encoder.bytes(server))
+        .expect("encode handoff header");
+    if let Some(path_mode) = path_mode {
+        encoder.u8(path_mode).expect("encode path mode");
+    }
+    encoder
+        .bytes(server)
         .and_then(|encoder| encoder.bytes(mailbox))
         .and_then(|encoder| encoder.bytes(deposit))
         .and_then(|encoder| encoder.bytes(receive))
@@ -359,10 +365,14 @@ async fn direct_loopback_uses_the_common_delivery_contract() {
         .issue_mailbox(host_id, now + 300, now)
         .expect("issue online mailbox");
     let handoff = authorities
-        .encode_operator_handoff_v1()
+        .encode_operator_handoff_v2(FastOperatorPathModeV1::Auto)
         .expect("encode canonical operator handoff");
-    let authorities = FastMailboxAuthorities::decode_operator_handoff_v1(&handoff, now)
-        .expect("decode canonical operator handoff");
+    let authorities = FastMailboxAuthorities::decode_operator_handoff_v2(
+        &handoff,
+        now,
+        FastOperatorPathModeV1::Auto,
+    )
+    .expect("decode canonical operator handoff");
     assert!(authorities.server_id() == host_id);
     let (deposit, receive, acknowledgement) = authorities.into_dispatch_parts();
 
@@ -430,49 +440,121 @@ async fn operator_handoff_rejects_expired_malformed_and_noncanonical_input() {
         .issue_mailbox(endpoint.id(), now + 300, now)
         .expect("issue mailbox");
     let encoded = authorities
-        .encode_operator_handoff_v1()
+        .encode_operator_handoff_v2(FastOperatorPathModeV1::Auto)
         .expect("encode handoff");
+    let relay_only = authorities
+        .encode_operator_handoff_v2(FastOperatorPathModeV1::RelayOnly)
+        .expect("encode relay-only handoff");
 
-    assert!(FastMailboxAuthorities::decode_operator_handoff_v1(&encoded, now).is_ok());
-    assert!(FastMailboxAuthorities::decode_operator_handoff_v1(&encoded, now + 300).is_err());
-    assert!(FastMailboxAuthorities::decode_operator_handoff_v1(&encoded[..4], now).is_err());
+    assert!(
+        FastMailboxAuthorities::decode_operator_handoff_v2(
+            &encoded,
+            now,
+            FastOperatorPathModeV1::Auto,
+        )
+        .is_ok()
+    );
+    assert!(
+        FastMailboxAuthorities::decode_operator_handoff_v2(
+            &relay_only,
+            now,
+            FastOperatorPathModeV1::RelayOnly,
+        )
+        .is_ok()
+    );
+    assert!(
+        FastMailboxAuthorities::decode_operator_handoff_v2(
+            &encoded,
+            now,
+            FastOperatorPathModeV1::RelayOnly,
+        )
+        .is_err()
+    );
+    assert!(
+        FastMailboxAuthorities::decode_operator_handoff_v2(
+            &encoded,
+            now + 300,
+            FastOperatorPathModeV1::Auto,
+        )
+        .is_err()
+    );
+    assert!(
+        FastMailboxAuthorities::decode_operator_handoff_v2(
+            &encoded[..4],
+            now,
+            FastOperatorPathModeV1::Auto,
+        )
+        .is_err()
+    );
 
     let mut trailing = encoded.to_vec();
     trailing.push(0);
-    assert!(FastMailboxAuthorities::decode_operator_handoff_v1(&trailing, now).is_err());
+    assert!(
+        FastMailboxAuthorities::decode_operator_handoff_v2(
+            &trailing,
+            now,
+            FastOperatorPathModeV1::Auto,
+        )
+        .is_err()
+    );
 
-    assert_eq!(encoded[1], 1);
+    assert_eq!(encoded[1], 2);
     let mut noncanonical = Vec::with_capacity(encoded.len() + 1);
     noncanonical.push(encoded[0]);
     noncanonical.extend_from_slice(&[0x18, encoded[1]]);
     noncanonical.extend_from_slice(&encoded[2..]);
-    assert!(FastMailboxAuthorities::decode_operator_handoff_v1(&noncanonical, now).is_err());
+    assert!(
+        FastMailboxAuthorities::decode_operator_handoff_v2(
+            &noncanonical,
+            now,
+            FastOperatorPathModeV1::Auto,
+        )
+        .is_err()
+    );
 
     let mut decoder = minicbor::Decoder::new(&encoded);
-    assert_eq!(decoder.array().expect("array"), Some(7));
-    assert_eq!(decoder.u16().expect("version"), 1);
+    assert_eq!(decoder.array().expect("array"), Some(8));
+    assert_eq!(decoder.u16().expect("version"), 2);
+    let path_mode = decoder.u8().expect("path mode");
     let server = decoder.bytes().expect("server").to_vec();
     let mailbox = decoder.bytes().expect("mailbox").to_vec();
     let deposit = decoder.bytes().expect("deposit").to_vec();
     let receive = decoder.bytes().expect("receive").to_vec();
     let acknowledgement = decoder.bytes().expect("acknowledgement").to_vec();
     let expiry = decoder.u64().expect("expiry");
-    let valid = |header, authority, expiry| operator_handoff_fixture(header, authority, expiry);
+    let valid =
+        |header, mode, authority, expiry| operator_handoff_fixture(header, mode, authority, expiry);
 
-    assert!(FastMailboxAuthorities::decode_operator_handoff_v1(&[], now).is_err());
     assert!(
-        FastMailboxAuthorities::decode_operator_handoff_v1(
+        FastMailboxAuthorities::decode_operator_handoff_v2(&[], now, FastOperatorPathModeV1::Auto,)
+            .is_err()
+    );
+    assert!(
+        FastMailboxAuthorities::decode_operator_handoff_v2(
             &vec![0_u8; transport_iroh::MAX_FAST_OPERATOR_HANDOFF_BYTES + 1],
             now,
+            FastOperatorPathModeV1::Auto,
         )
         .is_err()
     );
     let all = [&server[..], &mailbox, &deposit, &receive, &acknowledgement];
+    let legacy_v1 = valid((7, 1), None, all, expiry);
+    assert!(
+        FastMailboxAuthorities::decode_operator_handoff_v2(
+            &legacy_v1,
+            now,
+            FastOperatorPathModeV1::Auto,
+        )
+        .is_err()
+    );
     for hostile in [
-        valid((6, 1), all, expiry),
-        valid((7, 2), all, expiry),
+        valid((7, 2), Some(path_mode), all, expiry),
+        valid((8, 1), Some(path_mode), all, expiry),
+        valid((8, 2), Some(0), all, expiry),
+        valid((8, 2), Some(3), all, expiry),
         valid(
-            (7, 1),
+            (8, 2),
+            Some(path_mode),
             [
                 &server[..31],
                 &mailbox,
@@ -483,7 +565,8 @@ async fn operator_handoff_rejects_expired_malformed_and_noncanonical_input() {
             expiry,
         ),
         valid(
-            (7, 1),
+            (8, 2),
+            Some(path_mode),
             [
                 &server,
                 &mailbox[..15],
@@ -494,7 +577,8 @@ async fn operator_handoff_rejects_expired_malformed_and_noncanonical_input() {
             expiry,
         ),
         valid(
-            (7, 1),
+            (8, 2),
+            Some(path_mode),
             [
                 &server,
                 &mailbox,
@@ -505,7 +589,8 @@ async fn operator_handoff_rejects_expired_malformed_and_noncanonical_input() {
             expiry,
         ),
         valid(
-            (7, 1),
+            (8, 2),
+            Some(path_mode),
             [
                 &server,
                 &mailbox,
@@ -516,7 +601,8 @@ async fn operator_handoff_rejects_expired_malformed_and_noncanonical_input() {
             expiry,
         ),
         valid(
-            (7, 1),
+            (8, 2),
+            Some(path_mode),
             [
                 &server,
                 &mailbox,
@@ -527,45 +613,71 @@ async fn operator_handoff_rejects_expired_malformed_and_noncanonical_input() {
             expiry,
         ),
         valid(
-            (7, 1),
+            (8, 2),
+            Some(path_mode),
             [&server, &[0; 16], &deposit, &receive, &acknowledgement],
             expiry,
         ),
         valid(
-            (7, 1),
+            (8, 2),
+            Some(path_mode),
             [&server, &mailbox, &[0; 32], &receive, &acknowledgement],
             expiry,
         ),
         valid(
-            (7, 1),
+            (8, 2),
+            Some(path_mode),
             [&server, &mailbox, &deposit, &[0; 32], &acknowledgement],
             expiry,
         ),
         valid(
-            (7, 1),
+            (8, 2),
+            Some(path_mode),
             [&server, &mailbox, &deposit, &receive, &[0; 32]],
             expiry,
         ),
         valid(
-            (7, 1),
+            (8, 2),
+            Some(path_mode),
             [&server, &mailbox, &deposit, &deposit, &acknowledgement],
             expiry,
         ),
         valid(
-            (7, 1),
+            (8, 2),
+            Some(path_mode),
             [&server, &mailbox, &deposit, &receive, &deposit],
             expiry,
         ),
         valid(
-            (7, 1),
+            (8, 2),
+            Some(path_mode),
             [&server, &mailbox, &deposit, &receive, &receive],
             expiry,
         ),
-        valid((7, 1), all, now + MAX_FAST_MAILBOX_LIFETIME_SECONDS + 1),
+        valid(
+            (8, 2),
+            Some(path_mode),
+            all,
+            now + MAX_FAST_MAILBOX_LIFETIME_SECONDS + 1,
+        ),
     ] {
-        assert!(FastMailboxAuthorities::decode_operator_handoff_v1(&hostile, now).is_err());
+        assert!(
+            FastMailboxAuthorities::decode_operator_handoff_v2(
+                &hostile,
+                now,
+                FastOperatorPathModeV1::Auto,
+            )
+            .is_err()
+        );
     }
-    assert!(FastMailboxAuthorities::decode_operator_handoff_v1(&encoded, u64::MAX - 1).is_err());
+    assert!(
+        FastMailboxAuthorities::decode_operator_handoff_v2(
+            &encoded,
+            u64::MAX - 1,
+            FastOperatorPathModeV1::Auto,
+        )
+        .is_err()
+    );
 
     endpoint
         .close(OPERATION_DURATION)

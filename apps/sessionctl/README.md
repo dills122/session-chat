@@ -102,27 +102,31 @@ Task 10 has a separate two-computer command that exercises the reusable
 flow above. Start its volatile mailbox service on the first computer:
 
 ```sh
-cargo run -p sessionctl --bin sessionctl-fast-adapter --locked -- host auto /tmp/session-chat-fast-authority.v1
+cargo run -p sessionctl --bin sessionctl-fast-adapter --locked -- host auto /tmp/session-chat-fast-authority.v2
 ```
 
 The host atomically publishes the new authority file without replacing an
-existing path, uses owner-only permissions on Unix, and prints
-`authority_handoff=ready`. This canonical file contains the deposit,
-receive, and acknowledgement bearer capabilities for one ten-minute test
-mailbox. Transfer it through the same authenticated end-to-end encrypted
-messenger guidance used for the alpha invitation, then run on the second
-computer:
+existing path, uses owner-only permissions on Unix, and prints the complete
+Fast privacy disclosure before creating a public endpoint. It then prints
+`authority_handoff=ready`. This canonical v2 file binds the requested path
+policy and contains the deposit, receive, and acknowledgement bearer
+capabilities for one ten-minute test mailbox. Transfer it through the same
+authenticated end-to-end encrypted messenger guidance used for the alpha
+invitation, then run on the second computer:
 
 ```sh
-cargo run -p sessionctl --bin sessionctl-fast-adapter --locked -- join auto /tmp/session-chat-fast-authority.v1
+cargo run -p sessionctl --bin sessionctl-fast-adapter --locked -- join auto /tmp/session-chat-fast-authority.v2
 ```
 
-The joiner executes the shared seven-operation adapter conformance case and
-reports `byte_identity=pass` only after exact retry, conflict, poll,
+The joiner rejects a CLI path mode that differs from the authenticated handoff,
+prints the same complete disclosure before creating a public endpoint, then
+executes the shared seven-operation adapter conformance case. It reports
+`byte_identity=pass` only after exact retry, conflict, poll,
 acknowledgement, acknowledgement retry, and final-empty checks pass. Both sides
 print only address-free `direct`, `relay`, `custom`, or `undetermined` path
 classes and booleans for open path families. The host removes its authority
-file on completion; remove the transferred copy separately.
+file on completion only if that path still names the file it published; remove
+the transferred copy separately.
 
 For an explicit relay-only evidence run, replace `auto` with `relay-only` on
 both computers. This removes Iroh's direct IP transports and fails unless the

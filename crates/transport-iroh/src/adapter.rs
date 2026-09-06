@@ -35,8 +35,8 @@ const RECEIVE_DOMAIN: &[u8] = b"session-chat/iroh-fast/receive/v1\0";
 const ACKNOWLEDGEMENT_DOMAIN: &[u8] = b"session-chat/iroh-fast/acknowledgement/v1\0";
 const CURSOR_DOMAIN: &[u8] = b"session-chat/iroh-fast/cursor/v1\0";
 const ENVELOPE_DOMAIN: &[u8] = b"session-chat/iroh-fast/envelope/v1\0";
-const OPERATOR_HANDOFF_VERSION: u16 = 1;
-const OPERATOR_HANDOFF_FIELDS: u64 = 7;
+const OPERATOR_HANDOFF_VERSION: u16 = 2;
+const OPERATOR_HANDOFF_FIELDS: u64 = 8;
 
 /// Maximum lifetime accepted by the connected Fast mailbox laboratory.
 pub const MAX_FAST_MAILBOX_LIFETIME_SECONDS: u64 = 24 * 60 * 60;
@@ -150,6 +150,32 @@ pub struct FastMailboxAuthorities {
     acknowledgement: FastAcknowledgementCapability,
 }
 
+/// Path policy authenticated by the version-two operator handoff.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FastOperatorPathModeV1 {
+    /// Permit Iroh to select a direct or relay path.
+    Auto,
+    /// Remove direct IP transports so application data uses an N0 relay.
+    RelayOnly,
+}
+
+impl FastOperatorPathModeV1 {
+    const fn wire_value(self) -> u8 {
+        match self {
+            Self::Auto => 1,
+            Self::RelayOnly => 2,
+        }
+    }
+
+    fn from_wire(value: u8) -> Result<Self, IrohFastError> {
+        match value {
+            1 => Ok(Self::Auto),
+            2 => Ok(Self::RelayOnly),
+            _ => Err(IrohFastError::FrameRejected),
+        }
+    }
+}
+
 impl FastMailboxAuthorities {
     /// Returns the authenticated service endpoint bound into every right.
     #[must_use]
@@ -157,16 +183,21 @@ impl FastMailboxAuthorities {
         self.deposit.server
     }
 
-    /// Encodes the all-rights bundle used only by the explicit two-computer test harness.
+    /// Encodes the path-bound all-rights bundle used only by the explicit
+    /// two-computer test harness.
     ///
     /// The result contains every bearer capability and must be moved through an
     /// authenticated confidential channel. It is not a product invitation or a
     /// normal sender-facing deposit endpoint.
-    pub fn encode_operator_handoff_v1(&self) -> Result<Zeroizing<Vec<u8>>, IrohFastError> {
+    pub fn encode_operator_handoff_v2(
+        &self,
+        path_mode: FastOperatorPathModeV1,
+    ) -> Result<Zeroizing<Vec<u8>>, IrohFastError> {
         let mut encoder = Encoder::new(Vec::with_capacity(MAX_FAST_OPERATOR_HANDOFF_BYTES));
         encoder
             .array(OPERATOR_HANDOFF_FIELDS)
             .and_then(|encoder| encoder.u16(OPERATOR_HANDOFF_VERSION))
+            .and_then(|encoder| encoder.u8(path_mode.wire_value()))
             .and_then(|encoder| encoder.bytes(self.deposit.server.0.as_bytes()))
             .and_then(|encoder| encoder.bytes(&self.deposit.mailbox_id))
             .and_then(|encoder| encoder.bytes(&self.deposit.secret))
@@ -181,10 +212,12 @@ impl FastMailboxAuthorities {
         Ok(encoded)
     }
 
-    /// Decodes and validates the canonical all-rights two-computer test handoff.
-    pub fn decode_operator_handoff_v1(
+    /// Decodes the canonical all-rights two-computer handoff and rejects a
+    /// path-policy mismatch.
+    pub fn decode_operator_handoff_v2(
         bytes: &[u8],
         now_unix_seconds: u64,
+        expected_path_mode: FastOperatorPathModeV1,
     ) -> Result<Self, IrohFastError> {
         if bytes.is_empty() || bytes.len() > MAX_FAST_OPERATOR_HANDOFF_BYTES {
             return Err(IrohFastError::FrameRejected);
@@ -192,6 +225,12 @@ impl FastMailboxAuthorities {
         let mut decoder = Decoder::new(bytes);
         require_array(&mut decoder, OPERATOR_HANDOFF_FIELDS)?;
         if decoder.u16().map_err(|_| IrohFastError::FrameRejected)? != OPERATOR_HANDOFF_VERSION {
+            return Err(IrohFastError::FrameRejected);
+        }
+        let path_mode = FastOperatorPathModeV1::from_wire(
+            decoder.u8().map_err(|_| IrohFastError::FrameRejected)?,
+        )?;
+        if path_mode != expected_path_mode {
             return Err(IrohFastError::FrameRejected);
         }
         let server_bytes =
@@ -259,7 +298,7 @@ impl FastMailboxAuthorities {
                 expires_at_unix_seconds,
             },
         };
-        let canonical = authorities.encode_operator_handoff_v1()?;
+        let canonical = authorities.encode_operator_handoff_v2(path_mode)?;
         if canonical.as_slice() != bytes {
             return Err(IrohFastError::FrameRejected);
         }

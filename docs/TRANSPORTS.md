@@ -128,8 +128,11 @@ credential.
 The reusable-adapter evidence harness can remove Iroh's direct IP transports
 for a relay-only run. It records address-free initial and final selected-path
 classes from Iroh's connection path API. Its separately transferred canonical
-test file contains all three mailbox rights and is therefore an operator-only
-conformance artifact, not a product invitation or sender endpoint.
+v2 test file binds the selected path policy and contains all three mailbox
+rights. A mode mismatch fails before public endpoint creation. The harness
+renders the complete Fast disclosure before either role starts public network
+work. This remains an operator-only conformance artifact, not a product
+invitation or sender endpoint.
 
 ## Mixnet transport
 

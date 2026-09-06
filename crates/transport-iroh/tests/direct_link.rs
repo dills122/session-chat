@@ -14,7 +14,31 @@ fn path_classes_have_stable_address_free_evidence_labels() {
     assert_eq!(FastPathClass::Custom.as_str(), "custom");
 }
 
+#[test]
+fn public_errors_have_stable_payload_free_messages() {
+    for (error, expected) in [
+        (IrohFastError::InvalidBound, "invalid Fast link bound"),
+        (
+            IrohFastError::EndpointUnavailable,
+            "Fast link endpoint unavailable",
+        ),
+        (
+            IrohFastError::ConnectionUnavailable,
+            "Fast link connection unavailable",
+        ),
+        (IrohFastError::PeerRejected, "Fast link peer rejected"),
+        (IrohFastError::FrameRejected, "Fast link frame rejected"),
+        (
+            IrohFastError::DeadlineExceeded,
+            "Fast link operation deadline exceeded",
+        ),
+    ] {
+        assert_eq!(error.to_string(), expected);
+    }
+}
+
 #[tokio::test]
+#[ignore = "operator-only: initializes public N0 relay, lookup, DNS, and discovery services"]
 async fn public_profile_endpoint_modes_bind_without_waiting_for_a_remote_service() {
     let (auto, relay_only) = tokio::time::timeout(Duration::from_secs(10), async {
         tokio::join!(

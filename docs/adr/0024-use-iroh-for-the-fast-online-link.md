@@ -65,6 +65,10 @@ versioned Session Chat IPC frames:
 - keep the endpoint key ephemeral for the headless proof; and
 - expose the N0 preset only through an explicit Fast network command.
 
+Tests that construct an N0 endpoint are operator-invoked and ignored by
+default because endpoint binding can itself contact relay, lookup, DNS, and
+address-discovery services. Deterministic default tests use the local preset.
+
 The first Task 10 increment registers a connected `EnvelopeDelivery` adapter on
 top of this link. It implements deposit, poll, and acknowledgement with
 separate operation capabilities, versioned canonical CBOR frames, a volatile
@@ -74,11 +78,12 @@ in-process execution, coordinator-owned retry, and exact envelope, batch,
 count, and cursor limits. The shared connected-delivery case runs against both
 the memory adapter and the direct-loopback Iroh adapter.
 
-The next Task 10 increment adds an explicit common-adapter evidence harness.
+A Task 10 increment adds an explicit common-adapter evidence harness.
 The service issues a short-lived mailbox, writes one bounded canonical
-operator-only handoff containing all three rights, and serves exactly the
-shared conformance request count. The joiner decodes that file before public
-network work, authenticates the embedded service endpoint, and runs the shared
+operator-only v2 handoff containing the selected path policy and all three
+rights, and serves exactly the shared conformance request count. The joiner
+decodes that file and rejects a CLI mode mismatch before public network work,
+authenticates the embedded service endpoint, and runs the shared
 case. The all-rights format is limited to this test harness and is not a
 product invitation, sender endpoint, or mailbox provisioning contract.
 
@@ -87,7 +92,8 @@ relay paths. `relay-only` removes direct IP transports while retaining N0
 relay and address lookup. Both expose address-free initial and final path
 classes from Iroh's public connection path API. A stable UI fixture discloses
 the direct-peer, relay, lookup, DNS, NAT, online-only, and non-anonymous FastV1
-properties.
+properties. Both public commands render that complete fixture before endpoint
+creation.
 
 This connected adapter does not implement offline mailbox storage, durable
 cursor or acknowledgement persistence, mailbox lifecycle rotation,

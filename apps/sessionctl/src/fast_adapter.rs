@@ -1,20 +1,24 @@
 //! Explicit two-computer evidence harness for the connected Iroh Fast adapter.
 
 use std::{
+    fmt,
     fs::{self, File, OpenOptions},
-    io::{Read, Write},
+    io::{self, Read, Write},
     path::{Path, PathBuf},
+    str::FromStr,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-use session_transport::{DispatchControl, OperationBudget};
+use same_file::Handle;
+use session_transport::{DispatchControl, OperationBudget, fast_profile_disclosure_v1};
 use transport_conformance::{
     CONNECTED_DELIVERY_CONFORMANCE_REQUESTS_V1, run_connected_delivery_conformance_v1,
 };
 use transport_iroh::{
-    FastMailboxAuthorities, FastMailboxPolicy, FastPathClass, FastPathSnapshot, IrohFastDelivery,
-    IrohFastEndpoint, IrohFastMailboxService, MAX_FAST_ENVELOPES_PER_MAILBOX, MAX_FAST_FRAME_BYTES,
-    MAX_FAST_LIVE_MAILBOXES, MAX_FAST_MAILBOX_LIFETIME_SECONDS, MAX_FAST_OPERATOR_HANDOFF_BYTES,
+    FastMailboxAuthorities, FastMailboxPolicy, FastOperatorPathModeV1, FastPathClass,
+    FastPathSnapshot, IrohFastDelivery, IrohFastEndpoint, IrohFastMailboxService,
+    MAX_FAST_ENVELOPES_PER_MAILBOX, MAX_FAST_FRAME_BYTES, MAX_FAST_LIVE_MAILBOXES,
+    MAX_FAST_MAILBOX_LIFETIME_SECONDS, MAX_FAST_OPERATOR_HANDOFF_BYTES,
     MAX_FAST_RETAINED_BYTES_PER_MAILBOX,
 };
 use zeroize::Zeroizing;
@@ -54,6 +58,19 @@ impl FastAdapterPathMode {
         }
     }
 
+    /// Reports whether this mode permits direct IP application paths.
+    #[must_use]
+    pub const fn permits_direct_paths(self) -> bool {
+        matches!(self, Self::Auto)
+    }
+
+    const fn handoff_mode(self) -> FastOperatorPathModeV1 {
+        match self {
+            Self::Auto => FastOperatorPathModeV1::Auto,
+            Self::RelayOnly => FastOperatorPathModeV1::RelayOnly,
+        }
+    }
+
     async fn bind(self) -> Result<IrohFastEndpoint, SessionCtlError> {
         map_stage(
             match self {
@@ -64,8 +81,13 @@ impl FastAdapterPathMode {
         )
     }
 
-    fn require(self, snapshot: FastPathSnapshot) -> Result<(), SessionCtlError> {
-        if self.accepts(snapshot.selected(), snapshot.direct_available()) {
+    /// Validates one address-free path observation against this requested mode.
+    pub fn validate_observation(
+        self,
+        selected: FastPathClass,
+        direct_available: bool,
+    ) -> Result<(), SessionCtlError> {
+        if self.accepts(selected, direct_available) {
             Ok(())
         } else {
             Err(stage("Fast adapter selected path"))
@@ -73,10 +95,25 @@ impl FastAdapterPathMode {
     }
 
     fn accepts(self, selected: FastPathClass, direct_available: bool) -> bool {
-        match self {
-            Self::Auto => matches!(selected, FastPathClass::Direct | FastPathClass::Relay),
-            Self::RelayOnly => selected == FastPathClass::Relay && !direct_available,
+        if self.permits_direct_paths() {
+            matches!(selected, FastPathClass::Direct | FastPathClass::Relay)
+        } else {
+            selected == FastPathClass::Relay && !direct_available
         }
+    }
+}
+
+impl fmt::Display for FastAdapterPathMode {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+impl FromStr for FastAdapterPathMode {
+    type Err = SessionCtlError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        Self::parse(value)
     }
 }
 
@@ -119,13 +156,25 @@ impl DispatchControl for LiveDispatchControl {
     }
 }
 
-struct AuthorityFileGuard {
-    published: Option<PathBuf>,
-    temporary: Option<PathBuf>,
+/// Owns one atomically published Fast operator handoff and removes it only
+/// while the pathname still identifies the published file.
+#[doc(hidden)]
+pub struct FastAdapterAuthorityFileGuard {
+    published: Option<GuardedAuthorityPath>,
+    temporary: Option<GuardedAuthorityPath>,
 }
 
-impl AuthorityFileGuard {
-    fn create(path: PathBuf, bytes: &[u8]) -> Result<Self, SessionCtlError> {
+struct GuardedAuthorityPath {
+    path: PathBuf,
+    identity: Handle,
+}
+
+impl FastAdapterAuthorityFileGuard {
+    /// Publishes a new bounded handoff file without replacing an existing path.
+    pub fn create(path: PathBuf, bytes: &[u8]) -> Result<Self, SessionCtlError> {
+        if bytes.is_empty() || bytes.len() > MAX_FAST_OPERATOR_HANDOFF_BYTES {
+            return Err(stage("Fast adapter handoff bound"));
+        }
         validate_new_handoff_path(&path)?;
         let temporary = path.with_extension("partial");
         validate_new_handoff_path(&temporary)?;
@@ -136,32 +185,50 @@ impl AuthorityFileGuard {
             use std::os::unix::fs::OpenOptionsExt as _;
             options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
         }
-        let mut file = map_stage(options.open(&temporary), "Fast adapter handoff create")?;
+        let file = map_stage(options.open(&temporary), "Fast adapter handoff create")?;
+        let temporary_identity =
+            map_stage(Handle::from_file(file), "Fast adapter handoff identity")?;
         let mut guard = Self {
             published: None,
-            temporary: Some(temporary.clone()),
+            temporary: Some(GuardedAuthorityPath {
+                path: temporary.clone(),
+                identity: temporary_identity,
+            }),
         };
-        map_stage(file.write_all(bytes), "Fast adapter handoff write")?;
-        map_stage(file.sync_all(), "Fast adapter handoff sync")?;
-        drop(file);
+        let temporary_file = guard
+            .temporary
+            .as_mut()
+            .expect("temporary authority exists while it is written")
+            .identity
+            .as_file_mut();
+        map_stage(
+            temporary_file.write_all(bytes),
+            "Fast adapter handoff write",
+        )?;
+        map_stage(temporary_file.sync_all(), "Fast adapter handoff sync")?;
         map_stage(
             fs::hard_link(&temporary, &path),
             "Fast adapter handoff publish",
         )?;
-        guard.published = Some(path);
-        map_stage(fs::remove_file(&temporary), "Fast adapter handoff finalize")?;
-        guard.temporary = None;
+        let published_identity =
+            map_stage(Handle::from_path(&path), "Fast adapter handoff identity")?;
+        guard.published = Some(GuardedAuthorityPath {
+            path,
+            identity: published_identity,
+        });
+        remove_guarded_path(&mut guard.temporary)?;
         Ok(guard)
     }
 
-    fn remove(&mut self) -> Result<(), SessionCtlError> {
+    /// Removes the owned paths when their retained identities still match.
+    pub fn remove(&mut self) -> Result<(), SessionCtlError> {
         remove_guarded_path(&mut self.published)?;
         remove_guarded_path(&mut self.temporary)?;
         Ok(())
     }
 }
 
-impl Drop for AuthorityFileGuard {
+impl Drop for FastAdapterAuthorityFileGuard {
     fn drop(&mut self) {
         let _ = remove_guarded_path(&mut self.published);
         let _ = remove_guarded_path(&mut self.temporary);
@@ -173,7 +240,9 @@ pub async fn run_fast_adapter_host(
     mode: FastAdapterPathMode,
     authority_path: PathBuf,
 ) -> Result<(), SessionCtlError> {
-    validate_new_handoff_path(&authority_path)?;
+    let mut stdout = io::stdout().lock();
+    prepare_fast_adapter_host_v1(&mut stdout, mode, &authority_path)?;
+    drop(stdout);
     let endpoint = mode.bind().await?;
     map_stage(
         endpoint.wait_online(NETWORK_OPERATION_WAIT).await,
@@ -197,14 +266,15 @@ async fn run_fast_adapter_host_with_endpoint(
         "Fast adapter mailbox issue",
     )?;
     let encoded = map_stage(
-        authorities.encode_operator_handoff_v1(),
+        authorities.encode_operator_handoff_v2(mode.handoff_mode()),
         "Fast adapter handoff encode",
     )?;
-    let mut authority_file = AuthorityFileGuard::create(authority_path.clone(), &encoded)?;
+    let mut authority_file =
+        FastAdapterAuthorityFileGuard::create(authority_path.clone(), &encoded)?;
     drop(authorities);
     println!(
         "mode=fast-adapter-host\nprofile=fast-v1\nrequested_path={}\nmetadata=peer-or-relay-addresses-timing-volume\nendpoint={}\nauthority_handoff=ready",
-        mode.as_str(),
+        mode,
         endpoint.id().as_text()
     );
 
@@ -215,7 +285,7 @@ async fn run_fast_adapter_host_with_endpoint(
         "Fast adapter host accept",
     )?;
     let initial = link.path_snapshot();
-    mode.require(initial)?;
+    mode.validate_observation(initial.selected(), initial.direct_available())?;
     print_path("initial", initial);
     map_stage(
         service
@@ -238,7 +308,9 @@ pub async fn run_fast_adapter_join(
     authority_path: PathBuf,
 ) -> Result<FastAdapterRunReport, SessionCtlError> {
     let now = unix_now()?;
-    let authorities = load_authorities(&authority_path, now)?;
+    let mut stdout = io::stdout().lock();
+    let authorities = prepare_fast_adapter_join_v1(&mut stdout, mode, &authority_path, now)?;
+    drop(stdout);
     let server = authorities.server_id();
     let endpoint = mode.bind().await?;
     map_stage(
@@ -261,7 +333,7 @@ async fn run_fast_adapter_client_with_link(
     now: u64,
 ) -> Result<FastAdapterRunReport, SessionCtlError> {
     let initial_path = link.path_snapshot();
-    mode.require(initial_path)?;
+    mode.validate_observation(initial_path.selected(), initial_path.direct_available())?;
     print_path("initial", initial_path);
     let mut delivery = map_stage(IrohFastDelivery::new(link), "Fast adapter binding")?;
     let (deposit, receive, acknowledgement) = authorities.into_dispatch_parts();
@@ -282,7 +354,7 @@ async fn run_fast_adapter_client_with_link(
         "Fast adapter common contract",
     )?;
     let final_path = delivery.path_snapshot();
-    mode.require(final_path)?;
+    mode.validate_observation(final_path.selected(), final_path.direct_available())?;
     print_path("final", final_path);
     map_stage(
         delivery.close(NETWORK_OPERATION_WAIT).await,
@@ -313,7 +385,7 @@ pub async fn run_fast_adapter_loopback_demo() -> Result<FastAdapterRunReport, Se
             .await
     });
     wait_for_handoff(&authority_path).await?;
-    let authorities = load_authorities(&authority_path, now)?;
+    let authorities = load_authorities(&authority_path, now, FastAdapterPathMode::Auto)?;
     let client = map_stage(
         IrohFastEndpoint::bind_loopback().await,
         "Fast adapter loopback client",
@@ -373,6 +445,64 @@ fn print_path(point: &str, snapshot: FastPathSnapshot) {
     );
 }
 
+/// Validates a prospective host handoff path and completes the public profile
+/// disclosure before the caller creates a public endpoint.
+#[doc(hidden)]
+pub fn prepare_fast_adapter_host_v1(
+    output: &mut impl Write,
+    mode: FastAdapterPathMode,
+    authority_path: &Path,
+) -> Result<(), SessionCtlError> {
+    validate_new_handoff_path(authority_path)?;
+    write_fast_adapter_profile_disclosure_v1(output, mode)
+}
+
+/// Loads and validates a join handoff and completes the public profile
+/// disclosure before the caller creates a public endpoint.
+#[doc(hidden)]
+pub fn prepare_fast_adapter_join_v1(
+    output: &mut impl Write,
+    mode: FastAdapterPathMode,
+    authority_path: &Path,
+    now_unix_seconds: u64,
+) -> Result<FastMailboxAuthorities, SessionCtlError> {
+    let authorities = load_authorities(authority_path, now_unix_seconds, mode)?;
+    write_fast_adapter_profile_disclosure_v1(output, mode)?;
+    Ok(authorities)
+}
+
+/// Writes and flushes the complete stable disclosure shown before public Fast
+/// endpoint creation.
+pub fn write_fast_adapter_profile_disclosure_v1(
+    output: &mut impl Write,
+    mode: FastAdapterPathMode,
+) -> Result<(), SessionCtlError> {
+    map_stage(
+        writeln!(output, "{}", fast_adapter_profile_disclosure_v1(mode)),
+        "Fast adapter disclosure write",
+    )?;
+    map_stage(output.flush(), "Fast adapter disclosure flush")
+}
+
+/// Returns the complete stable disclosure for one requested Fast path policy.
+#[must_use]
+pub fn fast_adapter_profile_disclosure_v1(mode: FastAdapterPathMode) -> String {
+    let disclosure = fast_profile_disclosure_v1();
+    format!(
+        "requested_path={}\ntransport_disclosure={}\ncontent_security={}\nroute_behavior={}\ndirect_exposure={}\nrelay_exposure={}\ndiscovery_exposure={}\navailability={}\nanonymous={}\noffline_delivery={}",
+        mode.as_str(),
+        disclosure.title(),
+        disclosure.content_security(),
+        disclosure.route_behavior(),
+        disclosure.direct_exposure(),
+        disclosure.relay_exposure(),
+        disclosure.discovery_exposure(),
+        disclosure.availability(),
+        disclosure.anonymous(),
+        disclosure.offline_delivery(),
+    )
+}
+
 fn validate_new_handoff_path(path: &Path) -> Result<(), SessionCtlError> {
     if !path.is_absolute()
         || path.as_os_str().len() > 4_096
@@ -420,10 +550,15 @@ fn read_handoff(path: &Path) -> Result<Zeroizing<Vec<u8>>, SessionCtlError> {
 fn load_authorities(
     path: &Path,
     now_unix_seconds: u64,
+    expected_path_mode: FastAdapterPathMode,
 ) -> Result<FastMailboxAuthorities, SessionCtlError> {
     let encoded = read_handoff(path)?;
     map_stage(
-        FastMailboxAuthorities::decode_operator_handoff_v1(&encoded, now_unix_seconds),
+        FastMailboxAuthorities::decode_operator_handoff_v2(
+            &encoded,
+            now_unix_seconds,
+            expected_path_mode.handoff_mode(),
+        ),
         "Fast adapter handoff decode",
     )
 }
@@ -450,7 +585,7 @@ fn fresh_handoff_path() -> Result<PathBuf, SessionCtlError> {
     )?
     .as_nanos();
     Ok(std::env::temp_dir().join(format!(
-        "session-chat-fast-{}-{nonce}.v1",
+        "session-chat-fast-{}-{nonce}.v2",
         std::process::id()
     )))
 }
@@ -475,28 +610,45 @@ fn map_stage<T, E>(result: Result<T, E>, name: &'static str) -> Result<T, Sessio
     }
 }
 
-fn remove_guarded_path(path: &mut Option<PathBuf>) -> Result<(), SessionCtlError> {
-    let Some(owned) = path.as_deref() else {
+fn remove_guarded_path(path: &mut Option<GuardedAuthorityPath>) -> Result<(), SessionCtlError> {
+    let Some(owned) = path.take() else {
         return Ok(());
     };
-    map_stage(fs::remove_file(owned), "Fast adapter handoff removal")?;
-    *path = None;
+    let current = match Handle::from_path(&owned.path) {
+        Ok(current) => current,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(_) => return Err(stage("Fast adapter handoff identity")),
+    };
+    if current != owned.identity {
+        return Ok(());
+    }
+    drop(current);
+    drop(owned.identity);
+    map_stage(fs::remove_file(owned.path), "Fast adapter handoff removal")?;
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
+    use std::{
+        fs, io,
+        sync::atomic::{AtomicU64, Ordering},
+    };
 
     use super::*;
 
     struct TestDirectory(PathBuf);
 
+    static NEXT_TEST_DIRECTORY: AtomicU64 = AtomicU64::new(0);
+
     impl TestDirectory {
         fn new() -> Self {
             let path = fresh_handoff_path()
                 .expect("fresh path")
-                .with_extension("tests");
+                .with_extension(format!(
+                    "tests-{}",
+                    NEXT_TEST_DIRECTORY.fetch_add(1, Ordering::Relaxed)
+                ));
             fs::create_dir(&path).expect("create test directory");
             Self(path)
         }
@@ -530,7 +682,7 @@ mod tests {
     fn authority_file_guard_round_trips_and_removes_sensitive_bytes() {
         let directory = TestDirectory::new();
         let path = directory.join("authority.v1");
-        let mut guard = AuthorityFileGuard::create(path.clone(), b"bounded-authority")
+        let mut guard = FastAdapterAuthorityFileGuard::create(path.clone(), b"bounded-authority")
             .expect("create authority file");
 
         assert_eq!(
@@ -551,10 +703,123 @@ mod tests {
         assert!(!path.exists());
 
         let dropped_path = directory.join("dropped.v1");
-        let dropped_guard = AuthorityFileGuard::create(dropped_path.clone(), b"drop-secret")
-            .expect("create dropped authority file");
+        let dropped_guard =
+            FastAdapterAuthorityFileGuard::create(dropped_path.clone(), b"drop-secret")
+                .expect("create dropped authority file");
         drop(dropped_guard);
         assert!(!dropped_path.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn authority_file_guard_leaves_a_replacement_path_untouched() {
+        let directory = TestDirectory::new();
+        let path = directory.join("authority.v2");
+        let displaced = directory.join("displaced.v2");
+        let mut guard = FastAdapterAuthorityFileGuard::create(path.clone(), b"original-authority")
+            .expect("create authority file");
+
+        fs::rename(&path, &displaced).expect("move guarded authority");
+        fs::write(&path, b"replacement").expect("write replacement");
+        guard.remove().expect("guard handles replacement");
+
+        assert_eq!(fs::read(&path).expect("read replacement"), b"replacement");
+        assert_eq!(
+            fs::read(&displaced).expect("read displaced authority"),
+            b"original-authority"
+        );
+    }
+
+    #[test]
+    fn authority_file_guard_tolerates_external_removal() {
+        let directory = TestDirectory::new();
+        let path = directory.join("authority.v2");
+        let mut guard = FastAdapterAuthorityFileGuard::create(path.clone(), b"bounded-authority")
+            .expect("create authority file");
+
+        fs::remove_file(&path).expect("external removal");
+        guard.remove().expect("missing guarded path is inert");
+    }
+
+    #[test]
+    fn authority_file_guard_rejects_destination_or_temporary_collisions() {
+        let directory = TestDirectory::new();
+        let destination = directory.join("authority.v2");
+        fs::write(&destination, b"existing").expect("write destination collision");
+        assert!(FastAdapterAuthorityFileGuard::create(destination, b"authority").is_err());
+
+        let destination = directory.join("other.v2");
+        fs::write(destination.with_extension("partial"), b"existing")
+            .expect("write temporary collision");
+        assert!(FastAdapterAuthorityFileGuard::create(destination, b"authority").is_err());
+    }
+
+    #[test]
+    fn operator_disclosure_renders_the_complete_stable_fixture() {
+        let rendered = fast_adapter_profile_disclosure_v1(FastAdapterPathMode::RelayOnly);
+        let disclosure = fast_profile_disclosure_v1();
+
+        for expected in [
+            "requested_path=relay-only",
+            disclosure.title(),
+            disclosure.content_security(),
+            disclosure.route_behavior(),
+            disclosure.direct_exposure(),
+            disclosure.relay_exposure(),
+            disclosure.discovery_exposure(),
+            disclosure.availability(),
+            "anonymous=false",
+            "offline_delivery=false",
+        ] {
+            assert!(rendered.contains(expected));
+        }
+
+        let mut output = Vec::new();
+        write_fast_adapter_profile_disclosure_v1(&mut output, FastAdapterPathMode::RelayOnly)
+            .expect("write disclosure");
+        assert_eq!(output, format!("{rendered}\n").as_bytes());
+    }
+
+    struct DisclosureWriter {
+        fail_write: bool,
+        fail_flush: bool,
+    }
+
+    impl Write for DisclosureWriter {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            if self.fail_write {
+                Err(io::Error::new(io::ErrorKind::BrokenPipe, "write failed"))
+            } else {
+                Ok(bytes.len())
+            }
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            if self.fail_flush {
+                Err(io::Error::new(io::ErrorKind::BrokenPipe, "flush failed"))
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    #[test]
+    fn operator_disclosure_failure_stops_before_network_work() {
+        for mut writer in [
+            DisclosureWriter {
+                fail_write: true,
+                fail_flush: false,
+            },
+            DisclosureWriter {
+                fail_write: false,
+                fail_flush: true,
+            },
+        ] {
+            assert!(
+                write_fast_adapter_profile_disclosure_v1(&mut writer, FastAdapterPathMode::Auto)
+                    .is_err()
+            );
+        }
     }
 
     #[test]
@@ -581,7 +846,7 @@ mod tests {
 
         let malformed = directory.join("malformed.v1");
         fs::write(&malformed, b"not-canonical-cbor").expect("write malformed fixture");
-        assert!(load_authorities(&malformed, 1).is_err());
+        assert!(load_authorities(&malformed, 1, FastAdapterPathMode::Auto).is_err());
 
         #[cfg(unix)]
         {

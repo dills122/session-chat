@@ -23,7 +23,7 @@ mod adapter;
 
 pub use adapter::{
     FastAcknowledgementCapability, FastDepositEndpoint, FastMailboxAuthorities, FastMailboxPolicy,
-    FastReceiveCapability, IrohFastDelivery, IrohFastMailboxService,
+    FastOperatorPathModeV1, FastReceiveCapability, IrohFastDelivery, IrohFastMailboxService,
     MAX_FAST_BATCH_CANONICAL_BYTES, MAX_FAST_ENVELOPES_PER_MAILBOX, MAX_FAST_LIVE_MAILBOXES,
     MAX_FAST_MAILBOX_LIFETIME_SECONDS, MAX_FAST_OPERATOR_HANDOFF_BYTES,
     MAX_FAST_REQUESTS_PER_CONNECTION, MAX_FAST_RETAINED_BYTES_PER_MAILBOX,

@@ -10,8 +10,10 @@ mod l1_process;
 pub mod l2_process;
 
 pub use fast_adapter::{
-    FastAdapterPathMode, FastAdapterRunReport, run_fast_adapter_host, run_fast_adapter_join,
-    run_fast_adapter_loopback_demo,
+    FastAdapterAuthorityFileGuard, FastAdapterPathMode, FastAdapterRunReport,
+    fast_adapter_profile_disclosure_v1, prepare_fast_adapter_host_v1, prepare_fast_adapter_join_v1,
+    run_fast_adapter_host, run_fast_adapter_join, run_fast_adapter_loopback_demo,
+    write_fast_adapter_profile_disclosure_v1,
 };
 pub use l1_process::{
     L1ProcessReport, resolve_l1_process_git_commit, run_l1_process_demo,
