@@ -104,6 +104,12 @@ Expected privacy properties:
 The UI must disclose these properties. "End-to-end encrypted" must not be
 presented as "anonymous."
 
+The retained FastV1 UI fixture says that content is end-to-end encrypted, both
+participants must be online, direct peers can learn network addresses, relays
+can observe endpoint identifiers, network addresses, timing, and volume, and
+address lookup, DNS, and NAT traversal add observers. It explicitly marks Fast
+as neither anonymous nor offline-capable.
+
 ADR 0024 selects pinned Iroh 1.1.0 for the first explicit FastV1 online-link
 experiment. The headless cross-computer path uses authenticated Iroh endpoint
 IDs in one canonical text form and bounded Session Chat frames. Its operations
@@ -118,6 +124,12 @@ retrieve admission authority. The public N0 preset may use direct paths, relay f
 lookup, DNS, NAT discovery, and port mapping. This selection does not turn the
 relay into an offline mailbox or make Iroh endpoint identity an admission
 credential.
+
+The reusable-adapter evidence harness can remove Iroh's direct IP transports
+for a relay-only run. It records address-free initial and final selected-path
+classes from Iroh's connection path API. Its separately transferred canonical
+test file contains all three mailbox rights and is therefore an operator-only
+conformance artifact, not a product invitation or sender endpoint.
 
 ## Mixnet transport
 

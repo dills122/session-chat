@@ -13,6 +13,83 @@ const FAST_MAX_CURSOR_BYTES: u16 = 40;
 const CONFIGURATION_FINGERPRINT_BYTES: usize = 32;
 const MAX_ADAPTER_VERSION_BYTES: usize = 64;
 
+/// Stable non-secret FastV1 copy fixture for transport-selection UI tests.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct FastProfileDisclosureV1 {
+    title: &'static str,
+    content_security: &'static str,
+    route_behavior: &'static str,
+    direct_exposure: &'static str,
+    relay_exposure: &'static str,
+    discovery_exposure: &'static str,
+    availability: &'static str,
+    anonymous: bool,
+    offline_delivery: bool,
+}
+
+impl FastProfileDisclosureV1 {
+    #[must_use]
+    pub const fn title(self) -> &'static str {
+        self.title
+    }
+
+    #[must_use]
+    pub const fn content_security(self) -> &'static str {
+        self.content_security
+    }
+
+    #[must_use]
+    pub const fn route_behavior(self) -> &'static str {
+        self.route_behavior
+    }
+
+    #[must_use]
+    pub const fn direct_exposure(self) -> &'static str {
+        self.direct_exposure
+    }
+
+    #[must_use]
+    pub const fn relay_exposure(self) -> &'static str {
+        self.relay_exposure
+    }
+
+    #[must_use]
+    pub const fn discovery_exposure(self) -> &'static str {
+        self.discovery_exposure
+    }
+
+    #[must_use]
+    pub const fn availability(self) -> &'static str {
+        self.availability
+    }
+
+    #[must_use]
+    pub const fn anonymous(self) -> bool {
+        self.anonymous
+    }
+
+    #[must_use]
+    pub const fn offline_delivery(self) -> bool {
+        self.offline_delivery
+    }
+}
+
+/// Returns the exact FastV1 transport disclosure fixture.
+#[must_use]
+pub const fn fast_profile_disclosure_v1() -> FastProfileDisclosureV1 {
+    FastProfileDisclosureV1 {
+        title: "Fast",
+        content_security: "End-to-end encrypted content",
+        route_behavior: "Uses a direct connection when available and an Iroh relay otherwise.",
+        direct_exposure: "A direct peer can learn your network address.",
+        relay_exposure: "An Iroh relay can observe endpoint identifiers, network addresses, timing, and traffic volume.",
+        discovery_exposure: "Iroh address lookup, DNS, and NAT traversal services can observe connection metadata.",
+        availability: "Both participants must be online for this experimental adapter.",
+        anonymous: false,
+        offline_delivery: false,
+    }
+}
+
 /// Validated non-secret implementation version retained in local evidence.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AdapterVersionV1(Box<str>);

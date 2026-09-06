@@ -1,10 +1,36 @@
 use std::{str::FromStr, time::Duration};
 
 use iroh::PublicKey;
-use transport_iroh::{FastEndpointId, IrohFastEndpoint, IrohFastError};
+use transport_iroh::{FastEndpointId, FastPathClass, IrohFastEndpoint, IrohFastError};
 
 const DEADLINE: Duration = Duration::from_secs(5);
 const MAXIMUM_FRAME_BYTES: usize = 4_096;
+
+#[test]
+fn path_classes_have_stable_address_free_evidence_labels() {
+    assert_eq!(FastPathClass::Undetermined.as_str(), "undetermined");
+    assert_eq!(FastPathClass::Direct.as_str(), "direct");
+    assert_eq!(FastPathClass::Relay.as_str(), "relay");
+    assert_eq!(FastPathClass::Custom.as_str(), "custom");
+}
+
+#[tokio::test]
+async fn public_profile_endpoint_modes_bind_without_waiting_for_a_remote_service() {
+    let (auto, relay_only) = tokio::time::timeout(Duration::from_secs(10), async {
+        tokio::join!(
+            IrohFastEndpoint::bind_public(),
+            IrohFastEndpoint::bind_public_relay_only(),
+        )
+    })
+    .await
+    .expect("public endpoint binds remain bounded");
+    let auto = auto.expect("bind automatic public endpoint");
+    let relay_only = relay_only.expect("bind relay-only public endpoint");
+    assert!(auto.id() != relay_only.id());
+    let (auto_close, relay_close) = tokio::join!(auto.close(DEADLINE), relay_only.close(DEADLINE));
+    auto_close.expect("close automatic endpoint");
+    relay_close.expect("close relay-only endpoint");
+}
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn loopback_endpoints_exchange_bounded_frames_with_authenticated_ids() {
@@ -35,6 +61,11 @@ async fn loopback_endpoints_exchange_bounded_frames_with_authenticated_ids() {
         .await
         .expect("connect to exact host address");
     assert!(link.remote_id() == host_id);
+    let path = link.path_snapshot();
+    assert_eq!(path.selected(), FastPathClass::Direct);
+    assert!(path.direct_available());
+    assert!(!path.relay_available());
+    assert!(!path.custom_available());
     link.send_frame(b"join", DEADLINE).await.expect("request");
     assert_eq!(
         link.receive_frame(DEADLINE).await.expect("response"),
@@ -167,6 +198,23 @@ async fn accept_times_out_and_excessive_deadlines_fail_before_network_work() {
         endpoint.close(Duration::MAX).await,
         Err(IrohFastError::InvalidBound)
     );
+}
+
+#[tokio::test]
+async fn peer_offline_connection_attempt_fails_within_the_caller_bound() {
+    let host = IrohFastEndpoint::bind_loopback().await.expect("bind host");
+    let host_address = host.address();
+    host.close(DEADLINE).await.expect("close host");
+    let join = IrohFastEndpoint::bind_loopback().await.expect("bind join");
+    assert!(matches!(
+        join.connect_address(
+            host_address,
+            Duration::from_millis(100),
+            MAXIMUM_FRAME_BYTES,
+        )
+        .await,
+        Err(IrohFastError::ConnectionUnavailable | IrohFastError::DeadlineExceeded)
+    ));
 }
 
 #[tokio::test]

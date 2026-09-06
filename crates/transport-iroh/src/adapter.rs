@@ -15,7 +15,7 @@ use session_transport::{
 };
 use zeroize::{Zeroize, Zeroizing};
 
-use crate::{FastEndpointId, IrohFastError, IrohFastLink};
+use crate::{FastEndpointId, FastPathSnapshot, IrohFastError, IrohFastLink};
 
 const WIRE_VERSION: u16 = 1;
 const OP_DEPOSIT: u8 = 1;
@@ -35,6 +35,8 @@ const RECEIVE_DOMAIN: &[u8] = b"session-chat/iroh-fast/receive/v1\0";
 const ACKNOWLEDGEMENT_DOMAIN: &[u8] = b"session-chat/iroh-fast/acknowledgement/v1\0";
 const CURSOR_DOMAIN: &[u8] = b"session-chat/iroh-fast/cursor/v1\0";
 const ENVELOPE_DOMAIN: &[u8] = b"session-chat/iroh-fast/envelope/v1\0";
+const OPERATOR_HANDOFF_VERSION: u16 = 1;
+const OPERATOR_HANDOFF_FIELDS: u64 = 7;
 
 /// Maximum lifetime accepted by the connected Fast mailbox laboratory.
 pub const MAX_FAST_MAILBOX_LIFETIME_SECONDS: u64 = 24 * 60 * 60;
@@ -48,6 +50,8 @@ pub const MAX_FAST_RETAINED_BYTES_PER_MAILBOX: usize = 4 * 1024 * 1024;
 pub const MAX_FAST_BATCH_CANONICAL_BYTES: u32 = 192 * 1024;
 /// Maximum requests served on one connected Fast stream.
 pub const MAX_FAST_REQUESTS_PER_CONNECTION: usize = 1_024;
+/// Maximum canonical bytes in the all-rights operator test handoff.
+pub const MAX_FAST_OPERATOR_HANDOFF_BYTES: usize = 256;
 
 /// Explicit volatile-mailbox resource bounds for the connected Fast adapter.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -147,6 +151,121 @@ pub struct FastMailboxAuthorities {
 }
 
 impl FastMailboxAuthorities {
+    /// Returns the authenticated service endpoint bound into every right.
+    #[must_use]
+    pub fn server_id(&self) -> FastEndpointId {
+        self.deposit.server
+    }
+
+    /// Encodes the all-rights bundle used only by the explicit two-computer test harness.
+    ///
+    /// The result contains every bearer capability and must be moved through an
+    /// authenticated confidential channel. It is not a product invitation or a
+    /// normal sender-facing deposit endpoint.
+    pub fn encode_operator_handoff_v1(&self) -> Result<Zeroizing<Vec<u8>>, IrohFastError> {
+        let mut encoder = Encoder::new(Vec::with_capacity(MAX_FAST_OPERATOR_HANDOFF_BYTES));
+        encoder
+            .array(OPERATOR_HANDOFF_FIELDS)
+            .and_then(|encoder| encoder.u16(OPERATOR_HANDOFF_VERSION))
+            .and_then(|encoder| encoder.bytes(self.deposit.server.0.as_bytes()))
+            .and_then(|encoder| encoder.bytes(&self.deposit.mailbox_id))
+            .and_then(|encoder| encoder.bytes(&self.deposit.secret))
+            .and_then(|encoder| encoder.bytes(&self.receive.secret))
+            .and_then(|encoder| encoder.bytes(&self.acknowledgement.secret))
+            .and_then(|encoder| encoder.u64(self.deposit.expires_at_unix_seconds))
+            .map_err(|_| IrohFastError::FrameRejected)?;
+        let encoded = Zeroizing::new(encoder.into_writer());
+        if encoded.is_empty() || encoded.len() > MAX_FAST_OPERATOR_HANDOFF_BYTES {
+            return Err(IrohFastError::FrameRejected);
+        }
+        Ok(encoded)
+    }
+
+    /// Decodes and validates the canonical all-rights two-computer test handoff.
+    pub fn decode_operator_handoff_v1(
+        bytes: &[u8],
+        now_unix_seconds: u64,
+    ) -> Result<Self, IrohFastError> {
+        if bytes.is_empty() || bytes.len() > MAX_FAST_OPERATOR_HANDOFF_BYTES {
+            return Err(IrohFastError::FrameRejected);
+        }
+        let mut decoder = Decoder::new(bytes);
+        require_array(&mut decoder, OPERATOR_HANDOFF_FIELDS)?;
+        if decoder.u16().map_err(|_| IrohFastError::FrameRejected)? != OPERATOR_HANDOFF_VERSION {
+            return Err(IrohFastError::FrameRejected);
+        }
+        let server_bytes =
+            fixed_array::<32>(decoder.bytes().map_err(|_| IrohFastError::FrameRejected)?)
+                .ok_or(IrohFastError::FrameRejected)?;
+        let server = FastEndpointId(
+            iroh::PublicKey::from_bytes(&server_bytes).map_err(|_| IrohFastError::FrameRejected)?,
+        );
+        let mailbox_id = fixed_array::<MAILBOX_ID_BYTES>(
+            decoder.bytes().map_err(|_| IrohFastError::FrameRejected)?,
+        )
+        .ok_or(IrohFastError::FrameRejected)?;
+        let deposit = Zeroizing::new(
+            fixed_array::<CAPABILITY_BYTES>(
+                decoder.bytes().map_err(|_| IrohFastError::FrameRejected)?,
+            )
+            .ok_or(IrohFastError::FrameRejected)?,
+        );
+        let receive = Zeroizing::new(
+            fixed_array::<CAPABILITY_BYTES>(
+                decoder.bytes().map_err(|_| IrohFastError::FrameRejected)?,
+            )
+            .ok_or(IrohFastError::FrameRejected)?,
+        );
+        let acknowledgement = Zeroizing::new(
+            fixed_array::<CAPABILITY_BYTES>(
+                decoder.bytes().map_err(|_| IrohFastError::FrameRejected)?,
+            )
+            .ok_or(IrohFastError::FrameRejected)?,
+        );
+        let expires_at_unix_seconds = decoder.u64().map_err(|_| IrohFastError::FrameRejected)?;
+        let maximum_expiry = now_unix_seconds
+            .checked_add(MAX_FAST_MAILBOX_LIFETIME_SECONDS)
+            .ok_or(IrohFastError::FrameRejected)?;
+        if decoder.position() != bytes.len()
+            || mailbox_id == [0; MAILBOX_ID_BYTES]
+            || *deposit == [0; CAPABILITY_BYTES]
+            || *receive == [0; CAPABILITY_BYTES]
+            || *acknowledgement == [0; CAPABILITY_BYTES]
+            || deposit == receive
+            || deposit == acknowledgement
+            || receive == acknowledgement
+            || expires_at_unix_seconds <= now_unix_seconds
+            || expires_at_unix_seconds > maximum_expiry
+        {
+            return Err(IrohFastError::FrameRejected);
+        }
+        let authorities = Self {
+            deposit: FastDepositEndpoint {
+                server,
+                mailbox_id,
+                secret: *deposit,
+                expires_at_unix_seconds,
+            },
+            receive: FastReceiveCapability {
+                server,
+                mailbox_id,
+                secret: *receive,
+                expires_at_unix_seconds,
+            },
+            acknowledgement: FastAcknowledgementCapability {
+                server,
+                mailbox_id,
+                secret: *acknowledgement,
+                expires_at_unix_seconds,
+            },
+        };
+        let canonical = authorities.encode_operator_handoff_v1()?;
+        if canonical.as_slice() != bytes {
+            return Err(IrohFastError::FrameRejected);
+        }
+        Ok(authorities)
+    }
+
     /// Seals the provider material in the provider-neutral right wrappers.
     #[must_use]
     pub fn into_dispatch_parts(
@@ -546,6 +665,12 @@ impl IrohFastDelivery {
     #[must_use]
     pub fn remote_id(&self) -> FastEndpointId {
         self.link.remote_id()
+    }
+
+    /// Returns an address-free snapshot of the connected Iroh paths.
+    #[must_use]
+    pub fn path_snapshot(&self) -> FastPathSnapshot {
+        self.link.path_snapshot()
     }
 
     /// Finishes the connected adapter and verifies clean peer shutdown.

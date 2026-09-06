@@ -46,8 +46,9 @@ pub use lifecycle::{
 pub use outbox_port::{LeasedWelcome, OutboxPortError, WelcomeOutboxPort};
 pub use profile::{
     AdapterExecutionV1, AdapterLimitsV1, AdapterManifestV1, AdapterOperationsV1, AdapterVersionV1,
-    BackgroundWorkV1, BindingErrorV1, EgressDeclarationV1, EnforcementModeV1, InternalRetryV1,
-    TransportBindingRecordV1, bind_fast_transport_v1, bind_transport_v1,
+    BackgroundWorkV1, BindingErrorV1, EgressDeclarationV1, EnforcementModeV1,
+    FastProfileDisclosureV1, InternalRetryV1, TransportBindingRecordV1, bind_fast_transport_v1,
+    bind_transport_v1, fast_profile_disclosure_v1,
 };
 pub use receive_state::{
     AcknowledgementLeaseV1, CommittedReceivePageV1, DeduplicationOutcomeV1,

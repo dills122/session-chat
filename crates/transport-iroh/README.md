@@ -13,6 +13,10 @@ it cannot be reused after a partial prefix or payload. Graceful link close
 succeeds only after the peer acknowledges all stream bytes; a peer reset or
 connection failure is not a receipt.
 
+An explicit abort closes the connection without making a receipt claim. A
+service loss before a response frame maps to retryable `Unavailable` and leaves
+the client adapter poisoned; malformed partial frames remain corruption.
+
 Two modes are intentionally separate:
 
 - `bind_loopback` uses Iroh's minimal preset with one exact loopback address,
@@ -20,6 +24,14 @@ Two modes are intentionally separate:
 - `bind_public` uses Iroh's N0 preset. It may use direct connections, relay
   forwarding, address lookup, DNS, NAT discovery, and port mapping. Callers
   must label it Fast and disclose that metadata observer set.
+- `bind_public_relay_only` retains N0 relay and address lookup while removing
+  direct IP transports. It exists for explicit relay-path evidence and does
+  not remove relay, lookup, or DNS observers.
+
+Connected links expose an address-free path snapshot derived from Iroh's public
+connection path API. It reports the selected `direct`, `relay`, `custom`, or
+`undetermined` class plus the open path families without logging peer or relay
+addresses.
 
 The connected adapter uses a versioned canonical CBOR request/response schema
 with independent deposit, receive, and acknowledgement capabilities. The
@@ -31,6 +43,13 @@ shared connected-delivery conformance case proves byte-identical canonical
 envelopes, exact deposit retry identity, conflicting same-ID rejection,
 polling, exact-set acknowledgement, acknowledgement retry, and final absence
 over a direct loopback Iroh connection.
+
+The explicit two-computer evidence harness serializes one canonical bounded
+all-rights operator handoff. Its bytes contain every mailbox bearer capability,
+are zeroized in temporary buffers, and must cross an authenticated confidential
+channel outside Iroh. The decoder rejects malformed, expired, excessive,
+trailing, and noncanonical files. This test-only bundle is not a product
+invitation or normal deposit-endpoint format.
 
 This crate does not provide offline storage, durable mailbox state, cursor or
 acknowledgement persistence across service loss, lifecycle rotation,

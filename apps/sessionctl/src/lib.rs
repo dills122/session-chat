@@ -2,12 +2,17 @@
 
 //! Headless Phase 1 composition and conformance flow.
 
+mod fast_adapter;
 mod l1_process;
 
 #[cfg(session_chat_storage_fault_testing)]
 #[doc(hidden)]
 pub mod l2_process;
 
+pub use fast_adapter::{
+    FastAdapterPathMode, FastAdapterRunReport, run_fast_adapter_host, run_fast_adapter_join,
+    run_fast_adapter_loopback_demo,
+};
 pub use l1_process::{
     L1ProcessReport, resolve_l1_process_git_commit, run_l1_process_demo,
     run_l1_process_internal_role, run_network_host, run_network_join, run_network_loopback_demo,

@@ -2,6 +2,7 @@ use session_transport::{
     AdapterExecutionV1, AdapterId, AdapterLimitsV1, AdapterManifestV1, AdapterOperationsV1,
     AdapterVersionV1, BackgroundWorkV1, BindingErrorV1, EgressDeclarationV1, EnforcementModeV1,
     InternalRetryV1, TransportProfileId, bind_fast_transport_v1, bind_transport_v1,
+    fast_profile_disclosure_v1,
 };
 
 const SELECTED_AT: u64 = 1_700_000_000;
@@ -88,6 +89,22 @@ fn fast_manifest_records_ambient_network_enforcement_without_fallback() {
         EnforcementModeV1::InProcessAmbientNetwork
     );
     assert_eq!(record.configuration_fingerprint(), &[0xb6; 32]);
+}
+
+#[test]
+fn fast_ui_fixture_discloses_route_observers_and_online_only_behavior() {
+    let fixture = fast_profile_disclosure_v1();
+    assert_eq!(fixture.title(), "Fast");
+    assert_eq!(fixture.content_security(), "End-to-end encrypted content");
+    assert!(fixture.route_behavior().contains("direct connection"));
+    assert!(fixture.route_behavior().contains("Iroh relay"));
+    assert!(fixture.direct_exposure().contains("network address"));
+    assert!(fixture.relay_exposure().contains("endpoint identifiers"));
+    assert!(fixture.relay_exposure().contains("timing"));
+    assert!(fixture.discovery_exposure().contains("DNS"));
+    assert!(fixture.availability().contains("must be online"));
+    assert!(!fixture.anonymous());
+    assert!(!fixture.offline_delivery());
 }
 
 #[test]
