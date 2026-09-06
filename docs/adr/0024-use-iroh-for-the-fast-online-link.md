@@ -74,6 +74,21 @@ in-process execution, coordinator-owned retry, and exact envelope, batch,
 count, and cursor limits. The shared connected-delivery case runs against both
 the memory adapter and the direct-loopback Iroh adapter.
 
+The next Task 10 increment adds an explicit common-adapter evidence harness.
+The service issues a short-lived mailbox, writes one bounded canonical
+operator-only handoff containing all three rights, and serves exactly the
+shared conformance request count. The joiner decodes that file before public
+network work, authenticates the embedded service endpoint, and runs the shared
+case. The all-rights format is limited to this test harness and is not a
+product invitation, sender endpoint, or mailbox provisioning contract.
+
+Public evidence has two closed modes. `auto` permits Iroh to choose direct or
+relay paths. `relay-only` removes direct IP transports while retaining N0
+relay and address lookup. Both expose address-free initial and final path
+classes from Iroh's public connection path API. A stable UI fixture discloses
+the direct-peer, relay, lookup, DNS, NAT, online-only, and non-anonymous FastV1
+properties.
+
 This connected adapter does not implement offline mailbox storage, durable
 cursor or acknowledgement persistence, mailbox lifecycle rotation,
 reconnection, or service-loss recovery. Those omissions remain explicit even
@@ -105,6 +120,12 @@ automatic profile fallback.
   declarations, and reset-before-receipt fail closed with payload-free errors.
 - Ephemeral endpoint keys make this a demonstration path, not durable peer
   identity, recovery, or rollback-resistant endpoint state.
+- Anyone holding the operator handoff can deposit, receive, and acknowledge
+  its test mailbox until expiry. The file therefore requires the same
+  authenticated confidential transfer as other bearer authority, and product
+  code must never expose it as a normal sender handoff.
+- Relay-only mode prevents direct IP application paths but still exposes the
+  endpoint to N0 relay, address-lookup, and DNS infrastructure.
 
 ## Dependency-policy review
 

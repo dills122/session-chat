@@ -278,6 +278,16 @@ Assumptions:
   than raw capabilities; a capability cannot be substituted for another
   operation. Its versioned CBOR request/response frames reject malformed,
   trailing, noncanonical, wrong-version, and oversized input before use.
+- The two-computer adapter harness transfers a short-lived canonical all-rights
+  mailbox bundle outside Iroh. Anyone who obtains that file can deposit, read,
+  and acknowledge the test mailbox until expiry, so it must use an
+  authenticated confidential handoff and must never become a product
+  sender-facing format. Its parser rejects special files, malformed or
+  noncanonical bytes, excessive size, and expiry before public network work.
+- Address-free path evidence distinguishes Iroh's selected direct and relay
+  paths without logging socket or relay addresses. Relay-only evidence removes
+  direct IP transports but still contacts address lookup, DNS, and relay
+  infrastructure.
 - The service bounds live mailboxes, mailbox lifetime, logical envelope count,
   retained canonical bytes, poll size, requests per connection, and one
   absolute deadline per request/response exchange. Its 40-byte continuation

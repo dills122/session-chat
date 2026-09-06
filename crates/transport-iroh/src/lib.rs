@@ -14,7 +14,7 @@ use std::{str::FromStr, time::Duration};
 
 use iroh::{
     Endpoint, EndpointAddr, PublicKey,
-    endpoint::{Connection, RecvStream, SendStream, presets},
+    endpoint::{Connection, ReadExactError, RecvStream, SendStream, presets},
 };
 use thiserror::Error;
 use tokio::time::{Instant, timeout_at};
@@ -25,8 +25,8 @@ pub use adapter::{
     FastAcknowledgementCapability, FastDepositEndpoint, FastMailboxAuthorities, FastMailboxPolicy,
     FastReceiveCapability, IrohFastDelivery, IrohFastMailboxService,
     MAX_FAST_BATCH_CANONICAL_BYTES, MAX_FAST_ENVELOPES_PER_MAILBOX, MAX_FAST_LIVE_MAILBOXES,
-    MAX_FAST_MAILBOX_LIFETIME_SECONDS, MAX_FAST_REQUESTS_PER_CONNECTION,
-    MAX_FAST_RETAINED_BYTES_PER_MAILBOX,
+    MAX_FAST_MAILBOX_LIFETIME_SECONDS, MAX_FAST_OPERATOR_HANDOFF_BYTES,
+    MAX_FAST_REQUESTS_PER_CONNECTION, MAX_FAST_RETAINED_BYTES_PER_MAILBOX,
 };
 
 /// ALPN dedicated to the first version of Session Chat's Fast online link.
@@ -91,6 +91,67 @@ impl FastEndpointId {
 #[derive(Clone)]
 pub struct FastEndpointAddress(EndpointAddr);
 
+/// Coarse selected Iroh path class with no address or endpoint material.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FastPathClass {
+    /// Iroh has not selected an open path at the observation point.
+    Undetermined,
+    /// The selected path is a direct IP path.
+    Direct,
+    /// The selected path crosses an Iroh relay.
+    Relay,
+    /// The selected path uses a custom Iroh transport.
+    Custom,
+}
+
+impl FastPathClass {
+    /// Returns the stable evidence label.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Undetermined => "undetermined",
+            Self::Direct => "direct",
+            Self::Relay => "relay",
+            Self::Custom => "custom",
+        }
+    }
+}
+
+/// Address-free snapshot of the selected and available Iroh connection paths.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct FastPathSnapshot {
+    selected: FastPathClass,
+    direct_available: bool,
+    relay_available: bool,
+    custom_available: bool,
+}
+
+impl FastPathSnapshot {
+    /// Returns the selected path class at this observation point.
+    #[must_use]
+    pub const fn selected(self) -> FastPathClass {
+        self.selected
+    }
+
+    /// Reports whether an open direct path was available.
+    #[must_use]
+    pub const fn direct_available(self) -> bool {
+        self.direct_available
+    }
+
+    /// Reports whether an open relay path was available.
+    #[must_use]
+    pub const fn relay_available(self) -> bool {
+        self.relay_available
+    }
+
+    /// Reports whether an open custom-transport path was available.
+    #[must_use]
+    pub const fn custom_available(self) -> bool {
+        self.custom_available
+    }
+}
+
 /// Bound Iroh endpoint before one connection is accepted or initiated.
 pub struct IrohFastEndpoint {
     endpoint: Endpoint,
@@ -103,6 +164,20 @@ impl IrohFastEndpoint {
     /// and port mapping. Callers must disclose that observer set.
     pub async fn bind_public() -> Result<Self, IrohFastError> {
         let endpoint = Endpoint::builder(presets::N0)
+            .alpns(vec![SESSION_CHAT_FAST_ALPN_V1.to_vec()])
+            .bind()
+            .await
+            .map_err(|_| IrohFastError::EndpointUnavailable)?;
+        Ok(Self { endpoint })
+    }
+
+    /// Binds an explicit public Fast endpoint with only N0 relay transport.
+    ///
+    /// Address lookup and DNS remain enabled, while direct IP sockets, NAT
+    /// discovery, hole punching, and port mapping cannot carry application data.
+    pub async fn bind_public_relay_only() -> Result<Self, IrohFastError> {
+        let endpoint = Endpoint::builder(presets::N0)
+            .clear_ip_transports()
             .alpns(vec![SESSION_CHAT_FAST_ALPN_V1.to_vec()])
             .bind()
             .await
@@ -267,6 +342,34 @@ impl IrohFastLink {
         FastEndpointId(self.connection.remote_id())
     }
 
+    /// Returns an address-free snapshot of open and selected Iroh paths.
+    #[must_use]
+    pub fn path_snapshot(&self) -> FastPathSnapshot {
+        let paths = self.connection.paths();
+        let mut snapshot = FastPathSnapshot {
+            selected: FastPathClass::Undetermined,
+            direct_available: false,
+            relay_available: false,
+            custom_available: false,
+        };
+        for path in paths.iter() {
+            let class = if path.is_ip() {
+                snapshot.direct_available = true;
+                FastPathClass::Direct
+            } else if path.is_relay() {
+                snapshot.relay_available = true;
+                FastPathClass::Relay
+            } else {
+                snapshot.custom_available = true;
+                FastPathClass::Custom
+            };
+            if path.is_selected() {
+                snapshot.selected = class;
+            }
+        }
+        snapshot
+    }
+
     /// Returns the immutable link-wide frame ceiling.
     #[must_use]
     pub const fn maximum_frame_bytes(&self) -> usize {
@@ -330,7 +433,12 @@ impl IrohFastLink {
             self.receive
                 .read_exact(&mut length)
                 .await
-                .map_err(|_| IrohFastError::FrameRejected)?;
+                .map_err(|error| match error {
+                    ReadExactError::FinishedEarly(0) | ReadExactError::ReadError(_) => {
+                        IrohFastError::ConnectionUnavailable
+                    }
+                    ReadExactError::FinishedEarly(_) => IrohFastError::FrameRejected,
+                })?;
             let length = usize::try_from(u32::from_be_bytes(length))
                 .map_err(|_| IrohFastError::FrameRejected)?;
             if length == 0 || length > maximum_bytes {
@@ -385,6 +493,16 @@ impl IrohFastLink {
             .await
             .map_err(|_| IrohFastError::DeadlineExceeded)?;
         Ok(())
+    }
+
+    /// Aborts the connection without claiming delivery or graceful receipt.
+    pub async fn abort(mut self, deadline: Duration) -> Result<(), IrohFastError> {
+        let deadline = checked_deadline(deadline)?;
+        self.usable = false;
+        self.connection.close(1_u8.into(), b"aborted");
+        timeout_at(deadline, self.endpoint.close())
+            .await
+            .map_err(|_| IrohFastError::DeadlineExceeded)
     }
 
     fn require_usable(&self) -> Result<(), IrohFastError> {

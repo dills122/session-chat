@@ -3365,6 +3365,7 @@ dependencies = [
  "storage-sqlcipher-fault-vfs",
  "thiserror 2.0.20",
  "tokio",
+ "transport-conformance",
  "transport-iroh",
  "transport-memory",
  "zeroize",

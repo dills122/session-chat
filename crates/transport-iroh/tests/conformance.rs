@@ -12,8 +12,9 @@ use transport_conformance::{
     CONNECTED_DELIVERY_CONFORMANCE_REQUESTS_V1, run_connected_delivery_conformance_v1,
 };
 use transport_iroh::{
-    FastMailboxPolicy, IrohFastDelivery, IrohFastEndpoint, IrohFastMailboxService,
-    MAX_FAST_ENVELOPES_PER_MAILBOX, MAX_FAST_LIVE_MAILBOXES, MAX_FAST_MAILBOX_LIFETIME_SECONDS,
+    FastMailboxAuthorities, FastMailboxPolicy, IrohFastDelivery, IrohFastEndpoint,
+    IrohFastMailboxService, MAX_FAST_ENVELOPES_PER_MAILBOX, MAX_FAST_LIVE_MAILBOXES,
+    MAX_FAST_MAILBOX_LIFETIME_SECONDS, MAX_FAST_REQUESTS_PER_CONNECTION,
     MAX_FAST_RETAINED_BYTES_PER_MAILBOX,
 };
 
@@ -78,6 +79,27 @@ fn wire_response(operation: u8, status: u16, payload: &[u8]) -> Vec<u8> {
         .and_then(|encoder| encoder.u16(status))
         .and_then(|encoder| encoder.bytes(payload))
         .expect("encode response");
+    encoder.into_writer()
+}
+
+fn operator_handoff_fixture(
+    header: (u64, u16),
+    authority: [&[u8]; 5],
+    expires_at_unix_seconds: u64,
+) -> Vec<u8> {
+    let (fields, version) = header;
+    let [server, mailbox, deposit, receive, acknowledgement] = authority;
+    let mut encoder = Encoder::new(Vec::new());
+    encoder
+        .array(fields)
+        .and_then(|encoder| encoder.u16(version))
+        .and_then(|encoder| encoder.bytes(server))
+        .and_then(|encoder| encoder.bytes(mailbox))
+        .and_then(|encoder| encoder.bytes(deposit))
+        .and_then(|encoder| encoder.bytes(receive))
+        .and_then(|encoder| encoder.bytes(acknowledgement))
+        .and_then(|encoder| encoder.u64(expires_at_unix_seconds))
+        .expect("encode handoff fixture");
     encoder.into_writer()
 }
 
@@ -333,10 +355,16 @@ async fn direct_loopback_uses_the_common_delivery_contract() {
     let host_id = host.id();
     let host_address = host.address();
     let mut service = IrohFastMailboxService::new(policy());
-    let (deposit, receive, acknowledgement) = service
+    let authorities = service
         .issue_mailbox(host_id, now + 300, now)
-        .expect("issue online mailbox")
-        .into_dispatch_parts();
+        .expect("issue online mailbox");
+    let handoff = authorities
+        .encode_operator_handoff_v1()
+        .expect("encode canonical operator handoff");
+    let authorities = FastMailboxAuthorities::decode_operator_handoff_v1(&handoff, now)
+        .expect("decode canonical operator handoff");
+    assert!(authorities.server_id() == host_id);
+    let (deposit, receive, acknowledgement) = authorities.into_dispatch_parts();
 
     let service_task = tokio::spawn(async move {
         let server_link = host
@@ -389,6 +417,266 @@ async fn direct_loopback_uses_the_common_delivery_contract() {
     server_result
         .expect("service task completes")
         .expect("service closes cleanly");
+}
+
+#[tokio::test]
+async fn operator_handoff_rejects_expired_malformed_and_noncanonical_input() {
+    let now = unix_now();
+    let endpoint = IrohFastEndpoint::bind_loopback()
+        .await
+        .expect("bind endpoint");
+    let mut service = IrohFastMailboxService::new(policy());
+    let authorities = service
+        .issue_mailbox(endpoint.id(), now + 300, now)
+        .expect("issue mailbox");
+    let encoded = authorities
+        .encode_operator_handoff_v1()
+        .expect("encode handoff");
+
+    assert!(FastMailboxAuthorities::decode_operator_handoff_v1(&encoded, now).is_ok());
+    assert!(FastMailboxAuthorities::decode_operator_handoff_v1(&encoded, now + 300).is_err());
+    assert!(FastMailboxAuthorities::decode_operator_handoff_v1(&encoded[..4], now).is_err());
+
+    let mut trailing = encoded.to_vec();
+    trailing.push(0);
+    assert!(FastMailboxAuthorities::decode_operator_handoff_v1(&trailing, now).is_err());
+
+    assert_eq!(encoded[1], 1);
+    let mut noncanonical = Vec::with_capacity(encoded.len() + 1);
+    noncanonical.push(encoded[0]);
+    noncanonical.extend_from_slice(&[0x18, encoded[1]]);
+    noncanonical.extend_from_slice(&encoded[2..]);
+    assert!(FastMailboxAuthorities::decode_operator_handoff_v1(&noncanonical, now).is_err());
+
+    let mut decoder = minicbor::Decoder::new(&encoded);
+    assert_eq!(decoder.array().expect("array"), Some(7));
+    assert_eq!(decoder.u16().expect("version"), 1);
+    let server = decoder.bytes().expect("server").to_vec();
+    let mailbox = decoder.bytes().expect("mailbox").to_vec();
+    let deposit = decoder.bytes().expect("deposit").to_vec();
+    let receive = decoder.bytes().expect("receive").to_vec();
+    let acknowledgement = decoder.bytes().expect("acknowledgement").to_vec();
+    let expiry = decoder.u64().expect("expiry");
+    let valid = |header, authority, expiry| operator_handoff_fixture(header, authority, expiry);
+
+    assert!(FastMailboxAuthorities::decode_operator_handoff_v1(&[], now).is_err());
+    assert!(
+        FastMailboxAuthorities::decode_operator_handoff_v1(
+            &vec![0_u8; transport_iroh::MAX_FAST_OPERATOR_HANDOFF_BYTES + 1],
+            now,
+        )
+        .is_err()
+    );
+    let all = [&server[..], &mailbox, &deposit, &receive, &acknowledgement];
+    for hostile in [
+        valid((6, 1), all, expiry),
+        valid((7, 2), all, expiry),
+        valid(
+            (7, 1),
+            [
+                &server[..31],
+                &mailbox,
+                &deposit,
+                &receive,
+                &acknowledgement,
+            ],
+            expiry,
+        ),
+        valid(
+            (7, 1),
+            [
+                &server,
+                &mailbox[..15],
+                &deposit,
+                &receive,
+                &acknowledgement,
+            ],
+            expiry,
+        ),
+        valid(
+            (7, 1),
+            [
+                &server,
+                &mailbox,
+                &deposit[..31],
+                &receive,
+                &acknowledgement,
+            ],
+            expiry,
+        ),
+        valid(
+            (7, 1),
+            [
+                &server,
+                &mailbox,
+                &deposit,
+                &receive[..31],
+                &acknowledgement,
+            ],
+            expiry,
+        ),
+        valid(
+            (7, 1),
+            [
+                &server,
+                &mailbox,
+                &deposit,
+                &receive,
+                &acknowledgement[..31],
+            ],
+            expiry,
+        ),
+        valid(
+            (7, 1),
+            [&server, &[0; 16], &deposit, &receive, &acknowledgement],
+            expiry,
+        ),
+        valid(
+            (7, 1),
+            [&server, &mailbox, &[0; 32], &receive, &acknowledgement],
+            expiry,
+        ),
+        valid(
+            (7, 1),
+            [&server, &mailbox, &deposit, &[0; 32], &acknowledgement],
+            expiry,
+        ),
+        valid(
+            (7, 1),
+            [&server, &mailbox, &deposit, &receive, &[0; 32]],
+            expiry,
+        ),
+        valid(
+            (7, 1),
+            [&server, &mailbox, &deposit, &deposit, &acknowledgement],
+            expiry,
+        ),
+        valid(
+            (7, 1),
+            [&server, &mailbox, &deposit, &receive, &deposit],
+            expiry,
+        ),
+        valid(
+            (7, 1),
+            [&server, &mailbox, &deposit, &receive, &receive],
+            expiry,
+        ),
+        valid((7, 1), all, now + MAX_FAST_MAILBOX_LIFETIME_SECONDS + 1),
+    ] {
+        assert!(FastMailboxAuthorities::decode_operator_handoff_v1(&hostile, now).is_err());
+    }
+    assert!(FastMailboxAuthorities::decode_operator_handoff_v1(&encoded, u64::MAX - 1).is_err());
+
+    endpoint
+        .close(OPERATION_DURATION)
+        .await
+        .expect("close endpoint");
+}
+
+#[tokio::test]
+async fn service_rejects_invalid_request_or_duration_bounds_before_reading() {
+    for (maximum_requests, operation_duration) in [
+        (0, OPERATION_DURATION),
+        (MAX_FAST_REQUESTS_PER_CONNECTION + 1, OPERATION_DURATION),
+        (1, Duration::MAX),
+    ] {
+        let host = IrohFastEndpoint::bind_loopback().await.expect("bind host");
+        let host_address = host.address();
+        let join = IrohFastEndpoint::bind_loopback().await.expect("bind join");
+        let host_task = tokio::spawn(async move {
+            host.accept(
+                None,
+                OPERATION_DURATION,
+                transport_iroh::MAX_FAST_FRAME_BYTES,
+            )
+            .await
+            .expect("accept joiner")
+        });
+        let mut join_link = join
+            .connect_address(
+                host_address,
+                OPERATION_DURATION,
+                transport_iroh::MAX_FAST_FRAME_BYTES,
+            )
+            .await
+            .expect("connect joiner");
+        join_link
+            .send_frame(&[1], OPERATION_DURATION)
+            .await
+            .expect("open request stream");
+        let host_link = host_task.await.expect("host task");
+        assert!(matches!(
+            IrohFastMailboxService::new(policy())
+                .serve_requests(host_link, maximum_requests, operation_duration)
+                .await,
+            Err(transport_iroh::IrohFastError::InvalidBound)
+        ));
+        let _ = join_link.abort(Duration::from_secs(1)).await;
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn service_outage_is_retryable_and_poisons_the_connected_adapter() {
+    let now = unix_now();
+    let host = IrohFastEndpoint::bind_loopback().await.expect("bind host");
+    let host_id = host.id();
+    let host_address = host.address();
+    let mut service = IrohFastMailboxService::new(policy());
+    let (deposit, _, _) = service
+        .issue_mailbox(host_id, now + 300, now)
+        .expect("issue mailbox")
+        .into_dispatch_parts();
+    let server_task = tokio::spawn(async move {
+        let mut link = host
+            .accept(
+                None,
+                OPERATION_DURATION,
+                transport_iroh::MAX_FAST_FRAME_BYTES,
+            )
+            .await
+            .expect("accept client");
+        let _request = link
+            .receive_frame(OPERATION_DURATION)
+            .await
+            .expect("receive request before outage");
+        link.abort(OPERATION_DURATION)
+            .await
+            .expect("abort service connection");
+    });
+    let client = IrohFastEndpoint::bind_loopback()
+        .await
+        .expect("bind client");
+    let link = client
+        .connect_address(
+            host_address,
+            OPERATION_DURATION,
+            transport_iroh::MAX_FAST_FRAME_BYTES,
+        )
+        .await
+        .expect("connect client");
+    let mut delivery = IrohFastDelivery::new(link).expect("bind adapter");
+    let control = LiveControl {
+        wall_now_unix_seconds: now,
+    };
+    let canonical = canonical(0x81, 0x91, now);
+
+    let first = delivery
+        .deposit(&deposit, deposit_request(&canonical), &control)
+        .await;
+    let Err(first) = first else {
+        panic!("service outage must fail");
+    };
+    assert_eq!(first.code(), TransportFailureCode::Unavailable);
+    assert_eq!(first.retry_advice(), RetryAdvice::Backoff);
+    server_task.await.expect("server task");
+
+    let second = delivery
+        .deposit(&deposit, deposit_request(&canonical), &control)
+        .await;
+    let Err(second) = second else {
+        panic!("poisoned adapter must fail");
+    };
+    assert_eq!(second.code(), TransportFailureCode::Unavailable);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

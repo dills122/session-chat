@@ -1,6 +1,6 @@
 # Iroh Fast adapter evidence
 
-Status: Task 10 in progress; connected direct-loopback slice retained
+Status: Task 10 in progress; two-computer common-adapter harness ready for external runs
 
 Date: 2026-09-05
 
@@ -36,6 +36,55 @@ reconnection, or production readiness.
 - The FastV1 binder accepts only the adapter's exact limits and operations and
   records `InProcessAmbientNetwork` enforcement. No Private or offline property
   is inferred from the manifest.
+- A stable FastV1 UI fixture describes direct-peer, relay, address-lookup, DNS,
+  NAT, online-only, and non-anonymous behavior. It makes no offline claim.
+- Public auto and relay-only endpoint modes expose only an address-free selected
+  path class and open path-family booleans. Relay-only mode removes direct IP
+  transports and fails if an open direct path or non-relay selected path is
+  observed.
+- The operator handoff is canonical versioned CBOR bounded to 256 bytes. It
+  contains all three short-lived test capabilities, uses zeroizing buffers,
+  publishes atomically without replacing an existing path, and rejects
+  malformed, expired, excessive, trailing, noncanonical, and aliased
+  special-file input.
+
+## FastV1 observer matrix
+
+This matrix is conservative: an observer that participates during connection
+setup remains listed even when Iroh later migrates application traffic to a
+direct path.
+
+| Observer | Direct selected | Relay selected | Excluded by the Session Chat boundary |
+| --- | --- | --- | --- |
+| Remote Fast peer/mailbox service | Authenticated endpoint ID, peer network address, timing, volume, mailbox capabilities presented to that service, and opaque envelope bytes | Authenticated endpoint ID, timing, volume, mailbox capabilities presented to that service, and opaque envelope bytes; discovery may still expose advertised or probed peer addresses even while a relay carries application traffic | MLS plaintext and group keys |
+| N0 relay | Endpoint ID, client network address, online/control traffic, and any earlier relayed traffic with timing and volume | Both connection endpoints, their network addresses, timing, volume, and encrypted QUIC traffic | QUIC plaintext, mailbox capabilities, opaque-envelope framing, MLS plaintext, and group keys |
+| N0 Pkarr publisher/resolver | Publisher or requester network address, endpoint-derived publication or lookup key, published route data, and timing | Same, including published relay route data | MLS plaintext, group keys, and mailbox capabilities |
+| DNS resolver | N0/`iroh.link` lookup names, requester network address under the resolver's transport policy, and timing | Same | QUIC plaintext, MLS plaintext, group keys, and mailbox capabilities |
+| NAT discovery service or local gateway port mapper | Public mapping, client network address, and timing; the gateway also sees the requested local mapping | Relay-only mode removes IP application transports; capture evidence must still determine whether the configured stack emitted discovery or mapping control traffic | Application plaintext, group keys, and mailbox capabilities |
+| Local network or transit observer | Source/destination network addresses, timing, and volume of direct, relay, lookup, and DNS traffic visible at that position | Source/destination network addresses, timing, and volume of relay, lookup, and DNS traffic visible at that position | Encrypted application content, subject to endpoint compromise rather than passive observation |
+| Out-of-band handoff service | Account/contact metadata, attachment timing and size, and any content its own encryption boundary exposes | Same | This channel is outside Iroh and outside the Session Chat transport claim |
+
+The path snapshot proves only Iroh's address family and selected path at one
+instant. It does not prove what every external observer retained, that an
+earlier path was unused, anonymity, or non-collusion.
+
+## Packet-capture reconciliation contract
+
+Raw captures contain network identifiers and remain outside the repository.
+For each external run, retain a redacted report with the exact revision,
+platform, Iroh version, requested mode, initial and final path classes, capture
+tool/version, interface category, start/end UTC, packet and byte totals grouped
+by peer/relay/lookup/DNS role, and the SHA-256 digest of the restricted raw
+capture. Never retain raw capabilities, plaintext, group keys, stable external
+identity, or unrestricted local addresses in the report.
+
+An auto/direct result must show encrypted peer-path traffic and may also show
+relay, lookup, DNS, NAT-discovery, and port-mapping traffic. A relay-only result
+must show relay/lookup/DNS traffic and no direct peer application path. Packet
+payloads must not contain the seeded canonical envelope ciphertext bytes or any
+test plaintext as a visible application record. A capture cannot establish
+content security by visual inspection alone; the protocol and crypto tests
+remain authoritative.
 
 ## Retained automated evidence
 
@@ -58,9 +107,29 @@ Connected adverse-path cases retain queue saturation, authenticated cursor
 pagination, unknown-mailbox and foreign-acknowledgement rejection, exact
 remote-status mapping, local authority/lifetime/budget preflight, and semantic
 link poisoning for malformed, truncated, trailing, and noncanonical requests
-and responses. The production coverage gate records 93.96% line coverage for
-`transport-iroh` and workspace totals of 92.79% lines, 88.01% regions, and
-89.13% functions for this revision.
+and responses. The production coverage gate records 94.78% line coverage for
+`transport-iroh` and workspace totals of 92.76% lines, 88.01% regions, and
+89.46% functions for this increment.
+
+`sessionctl-fast-adapter` now composes that shared case as explicit host and
+join commands suitable for two computers. The retained local test proves the
+harness completes over a classified direct loopback path. External public N0
+runs remain required before recording direct or relay two-computer evidence.
+
+An operator-driven single-computer public N0 check on implementation revision
+`79e6605566f709fd27053ffee4b52956c800e799` exercised the same host and join
+commands in both modes. The auto run connected initially through a relay,
+migrated to a direct path while retaining the byte-identical contract result,
+and completed cleanly. The relay-only run selected a relay at both observations,
+reported no open direct path, retained byte identity, and completed cleanly.
+Both runs removed the all-rights handoff file after service completion. These
+checks validate the public harness and route classification but do not satisfy
+the two-computer or NAT evidence gate.
+
+Deterministic loopback cases also retain a bounded peer-offline connection
+failure and a service outage after request receipt. The latter maps to retryable
+`Unavailable`, poisons the ordered adapter, and prevents reuse after ambiguous
+partial work.
 
 GitHub CI on implementation revision
 `ba83404c27e485af38dbf7141dca8e7a2f93fcc9` passed the Rust and L2 evidence
@@ -82,9 +151,10 @@ case remains ignored unless an operator explicitly runs it with network access.
 
 ## Open Task 10 evidence
 
-- a real two-computer run through the common adapter contract;
-- direct and relay path classification with byte-identical envelope evidence;
-- NAT, forced relay-only, route-change, peer-offline, and service-outage cases;
+- real two-computer direct and relay runs through the prepared common-adapter
+  harness;
+- real NAT evidence and two-computer repetition of the retained relay-only,
+  route-change, peer-offline, and service-outage cases;
 - packet captures reconciled with the Fast observer matrix;
 - durable mailbox-service and client receive-state integration if offline
   delivery is later selected; and

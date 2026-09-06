@@ -799,6 +799,21 @@ passes against the memory adapter. Direct-loopback evidence covers
 byte-identical envelopes, exact deposit retry identity, conflict rejection,
 poll, exact-set acknowledgement, acknowledgement retry, and clean close.
 
+This retained slice adds a separate two-computer common-adapter harness,
+canonical bounded all-rights operator handoff, public auto and relay-only
+endpoint modes, and address-free selected-path snapshots. Its loopback test
+passes the shared contract on a classified direct path. The exact FastV1 UI
+fixture now discloses direct-peer, relay, lookup, DNS, NAT, online-only, and
+non-anonymous behavior. A real two-computer direct and relay run remains an
+external evidence gate.
+
+A single-computer public N0 operator check passed in both modes: auto migrated
+from relay to direct during the byte-identical common contract, while
+relay-only stayed on relay with no direct path. Deterministic peer-offline and
+mid-operation service-outage cases now fail within bounds; an outage maps to a
+retryable unavailable result and poisons the connection. These do not replace
+the real two-computer NAT and outage matrix.
+
 The adapter remains online and volatile. Relay-path two-peer evidence,
 route-change/NAT/offline/outage cases, packet captures, durable service state,
 mailbox lifecycle/rotation composition, and the external-network adverse matrix
@@ -814,7 +829,7 @@ every discovery, relay, direct-peer, and DNS observer.
 
 - [ ] Direct and relay paths carry byte-identical envelopes through the common
   contract.
-- [ ] Direct-peer and relay metadata exposure is represented accurately in the
+- [x] Direct-peer and relay metadata exposure is represented accurately in the
   profile and UI fixture.
 - [x] No adapter behavior is reused as an offline-mailbox claim.
 

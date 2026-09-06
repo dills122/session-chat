@@ -22,6 +22,7 @@ storage-sqlcipher = { version = "=0.1.0", path = "../../crates/storage-sqlcipher
 thiserror.workspace = true
 tokio.workspace = true
 transport-iroh = { version = "=0.1.0", path = "../../crates/transport-iroh" }
+transport-conformance = { version = "=0.1.0", path = "../../crates/transport-conformance" }
 transport-memory = { version = "=0.1.0", path = "../../crates/transport-memory" }
 zeroize.workspace = true
 
