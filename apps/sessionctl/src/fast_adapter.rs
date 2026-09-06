@@ -156,8 +156,9 @@ impl DispatchControl for LiveDispatchControl {
     }
 }
 
-/// Owns one atomically published Fast operator handoff and removes it only
-/// while the pathname still identifies the published file.
+/// Owns one atomically published Fast operator handoff and, before best-effort
+/// removal, confirms that the pathname still identifies the published file.
+/// A concurrent pathname swap after that comparison remains possible.
 #[doc(hidden)]
 pub struct FastAdapterAuthorityFileGuard {
     published: Option<GuardedAuthorityPath>,
@@ -518,7 +519,9 @@ fn validate_new_handoff_path(path: &Path) -> Result<(), SessionCtlError> {
 
 fn validate_new_handoff_paths(path: &Path) -> Result<PathBuf, SessionCtlError> {
     validate_new_handoff_path(path)?;
-    let temporary = path.with_extension("partial");
+    let mut temporary = path.as_os_str().to_owned();
+    temporary.push(".partial");
+    let temporary = PathBuf::from(temporary);
     if temporary == path {
         return Err(stage("Fast adapter handoff path"));
     }
@@ -765,8 +768,9 @@ mod tests {
         assert!(FastAdapterAuthorityFileGuard::create(destination, b"authority").is_err());
 
         let destination = directory.join("other.v2");
-        fs::write(destination.with_extension("partial"), b"existing")
-            .expect("write temporary collision");
+        let mut temporary = destination.as_os_str().to_owned();
+        temporary.push(".partial");
+        fs::write(temporary, b"existing").expect("write temporary collision");
         assert!(FastAdapterAuthorityFileGuard::create(destination, b"authority").is_err());
     }
 

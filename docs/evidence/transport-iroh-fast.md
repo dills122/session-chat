@@ -49,7 +49,9 @@ reconnection, or production readiness.
   malformed, expired, excessive, trailing, noncanonical, and aliased
   special-file input. A joiner mode mismatch is rejected before public network
   work. Cleanup retains ownership after a transient lookup or removal failure
-  so it can be retried, and leaves a replacement pathname untouched.
+  so it can be retried, and leaves a replacement already present at comparison
+  time untouched. The portable compare-then-remove sequence retains a
+  concurrent pathname-swap race.
 - Both public roles render the complete stable FastV1 disclosure before endpoint
   creation. Tests that construct public N0 endpoints are ignored operator checks.
 

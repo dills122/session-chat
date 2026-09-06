@@ -286,7 +286,9 @@ Assumptions:
   confidential handoff and must never become a product sender-facing format.
   Its parser rejects special files, malformed or noncanonical bytes, excessive
   size, and expiry before public network work. Cleanup compares the retained
-  file identity and leaves a replacement path untouched.
+  file identity and leaves a replacement already present at comparison time
+  untouched. The portable compare-then-remove sequence has a residual
+  concurrent pathname-swap race and remains laboratory behavior.
 - Address-free path evidence distinguishes Iroh's selected direct and relay
   paths without logging socket or relay addresses. Relay-only evidence removes
   direct IP transports but still contacts address lookup, DNS, and relay

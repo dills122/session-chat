@@ -125,8 +125,10 @@ executes the shared seven-operation adapter conformance case. It reports
 acknowledgement, acknowledgement retry, and final-empty checks pass. Both sides
 print only address-free `direct`, `relay`, `custom`, or `undetermined` path
 classes and booleans for open path families. The host removes its authority
-file on completion only if that path still names the file it published; remove
-the transferred copy separately.
+file on completion after checking that the path still names the file it
+published. This protects a replacement already present at comparison time; the
+portable compare-then-remove sequence cannot exclude a concurrent pathname
+swap. Remove the transferred copy separately.
 
 For an explicit relay-only evidence run, replace `auto` with `relay-only` on
 both computers. This removes Iroh's direct IP transports and fails unless the

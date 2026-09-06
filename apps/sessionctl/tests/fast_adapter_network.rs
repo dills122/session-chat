@@ -298,7 +298,7 @@ fn authority_file_guard_rejects_path_collisions_and_tolerates_external_removal()
     assert!(FastAdapterAuthorityFileGuard::create(destination, b"authority").is_err());
 
     let destination = root.join("other.v2");
-    fs::write(destination.with_extension("partial"), b"existing")
+    fs::write(temporary_handoff_path(&destination), b"existing")
         .expect("write temporary collision");
     assert!(FastAdapterAuthorityFileGuard::create(destination, b"authority").is_err());
 
@@ -348,10 +348,10 @@ fn authority_file_guard_fails_closed_on_a_dangling_destination_symlink() {
         fs::read_link(&path).expect("read preserved symlink"),
         missing_target
     );
-    assert!(!path.with_extension("partial").exists());
+    assert!(!temporary_handoff_path(&path).exists());
 
     let second_path = root.join("second-authority.v2");
-    let second_partial = second_path.with_extension("partial");
+    let second_partial = temporary_handoff_path(&second_path);
     symlink(&missing_target, &second_partial).expect("create dangling temporary symlink");
     assert!(FastAdapterAuthorityFileGuard::create(second_path.clone(), b"authority").is_err());
     assert!(!second_path.exists());
@@ -425,7 +425,7 @@ fn host_preflight_rejects_dangling_destination_and_temporary_symlinks() {
     assert!(output.is_empty());
 
     let destination = root.join("temporary.v2");
-    let temporary = destination.with_extension("partial");
+    let temporary = temporary_handoff_path(&destination);
     symlink(&missing_target, &temporary).expect("create dangling temporary symlink");
     let mut output = Vec::new();
     assert!(
@@ -437,18 +437,21 @@ fn host_preflight_rejects_dangling_destination_and_temporary_symlinks() {
 }
 
 #[test]
-fn host_preflight_rejects_destination_temporary_aliasing() {
+fn destination_named_partial_still_uses_a_distinct_temporary_path() {
     let root = temporary_directory();
+    let destination = root.join("authority.PARTIAL");
     let mut output = Vec::new();
-    assert!(
-        prepare_fast_adapter_host_v1(
-            &mut output,
-            FastAdapterPathMode::RelayOnly,
-            &root.join("authority.partial"),
-        )
-        .is_err()
+    prepare_fast_adapter_host_v1(&mut output, FastAdapterPathMode::RelayOnly, &destination)
+        .expect("preflight destination whose extension differs only by case");
+    assert!(!output.is_empty());
+
+    let mut guard = FastAdapterAuthorityFileGuard::create(destination.clone(), b"authority")
+        .expect("publish with a distinct appended temporary path");
+    assert_eq!(
+        fs::read(&destination).expect("read authority"),
+        b"authority"
     );
-    assert!(output.is_empty());
+    guard.remove().expect("remove authority");
     fs::remove_dir_all(root).expect("remove fixtures");
 }
 
@@ -689,4 +692,10 @@ fn temporary_directory() -> PathBuf {
     ));
     fs::create_dir(&path).expect("temporary directory");
     path
+}
+
+fn temporary_handoff_path(path: &Path) -> PathBuf {
+    let mut temporary = path.as_os_str().to_owned();
+    temporary.push(".partial");
+    PathBuf::from(temporary)
 }
