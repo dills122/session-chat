@@ -173,6 +173,16 @@ struct GuardedAuthorityPath {
 impl FastAdapterAuthorityFileGuard {
     /// Publishes a new bounded handoff file without replacing an existing path.
     pub fn create(path: PathBuf, bytes: &[u8]) -> Result<Self, SessionCtlError> {
+        Self::create_with_identity(path, bytes, |file| {
+            file.try_clone().and_then(Handle::from_file)
+        })
+    }
+
+    fn create_with_identity(
+        path: PathBuf,
+        bytes: &[u8],
+        retain_published_identity: impl FnOnce(&File) -> std::io::Result<Handle>,
+    ) -> Result<Self, SessionCtlError> {
         if bytes.is_empty() || bytes.len() > MAX_FAST_OPERATOR_HANDOFF_BYTES {
             return Err(stage("Fast adapter handoff bound"));
         }
@@ -205,12 +215,14 @@ impl FastAdapterAuthorityFileGuard {
             "Fast adapter handoff write",
         )?;
         map_stage(temporary_file.sync_all(), "Fast adapter handoff sync")?;
+        let published_identity = map_stage(
+            retain_published_identity(temporary_file),
+            "Fast adapter handoff identity",
+        )?;
         map_stage(
             fs::hard_link(&temporary, &path),
             "Fast adapter handoff publish",
         )?;
-        let published_identity =
-            map_stage(Handle::from_path(&path), "Fast adapter handoff identity")?;
         guard.published = Some(GuardedAuthorityPath {
             path,
             identity: published_identity,
@@ -772,6 +784,22 @@ mod tests {
         temporary.push(".partial");
         fs::write(temporary, b"existing").expect("write temporary collision");
         assert!(FastAdapterAuthorityFileGuard::create(destination, b"authority").is_err());
+    }
+
+    #[test]
+    fn authority_identity_failure_happens_before_publication() {
+        let directory = TestDirectory::new();
+        let path = directory.join("authority.v2");
+        let temporary = validate_new_handoff_paths(&path).expect("valid handoff paths");
+
+        let result =
+            FastAdapterAuthorityFileGuard::create_with_identity(path.clone(), b"authority", |_| {
+                Err(io::Error::other("injected identity failure"))
+            });
+
+        assert!(result.is_err());
+        assert!(fs::symlink_metadata(path).is_err());
+        assert!(fs::symlink_metadata(temporary).is_err());
     }
 
     #[test]
