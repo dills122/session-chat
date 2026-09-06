@@ -51,7 +51,10 @@ The host prints a public `endpoint=` value, then creates the bearer invitation
 at `/tmp/session-chat-network-host/direct/invitation.v2` and reports
 `invitation=ready`. Transfer that invitation file to the second computer over
 an authenticated, confidential channel independent of Iroh. The endpoint ID is
-public; the invitation file is admission authority and must remain secret. The
+public; the invitation file is admission authority and must remain secret.
+The scripted host automatically approves a valid capability request; it has no
+human confirmation or intended-person identity check. A copied invitation can
+therefore admit the copier before the intended recipient. The
 host permits up to five minutes for this operator handoff and connection.
 
 For this alpha, use an existing end-to-end encrypted messenger conversation

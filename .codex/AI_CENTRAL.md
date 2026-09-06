@@ -4,8 +4,8 @@ Status: refreshed on 2026-08-24
 
 Session Chat commits its repository-specific instructions, selected steering,
 AI Central revision pin, and link-management script. The large skill catalog is
-not committed. It is recreated as local symlinks from a developer-owned AI
-Central checkout.
+not committed. It is recreated as local symlinks into a verified snapshot of a developer-owned
+AI Central checkout.
 
 This matches the repository-managed link pattern used by the other projects:
 Git stores the reproducible setup and reviewed revision, while each machine owns
@@ -44,7 +44,18 @@ Set `AI_CENTRAL_HOME` to either the AI Central repository root or its `templates
 directory. When it is unset, the setup script defaults to `~/.ai-central`.
 
 The script refuses to create links unless the checkout commit matches
-`.codex/ai-central-pin.json`. After deliberately reviewing a new AI Central
+`.codex/ai-central-pin.json` and every tracked regular file matches its Git blob.
+It rejects dirty installer, helper, catalog or skill bytes (including changes
+hidden by assume-unchanged), staged differences, source symlinks and unsupported
+Git tree types. Untracked and ignored files never enter the snapshot. It copies
+only the verified buffers into a fresh ignored `.agents/ai-central-snapshots/`
+directory and executes the installer there. Applied snapshots remain available
+as skill-link targets; dry-run snapshots are removed. Existing managed links
+into the source checkout or older snapshots are refreshed to the new snapshot.
+User-owned files and unrelated links are preserved. Pin recording performs the
+same tracked-content checks. These controls isolate setup from mutable source
+content; they do not sandbox a malicious process running under the same account
+or authenticate the human review of the selected commit. After deliberately reviewing a new AI Central
 revision, record it with:
 
 ```sh
@@ -69,7 +80,10 @@ node scripts/setup-codex-links.mjs
 
 The wrapper invokes AI Central's maintained non-overwriting installer with the
 profiles and full skill bundle recorded above. It preserves repository-owned
-steering and creates only missing local skill links.
+steering, refreshes existing managed skill links, and creates missing links.
+Keep snapshots while any installed link references them. Snapshot files are
+read-only to reduce accidental modification; same-account tampering remains
+outside this guarantee.
 
 ## Verification
 

@@ -35,6 +35,9 @@ fn separate_host_and_join_commands_complete_the_phase_one_flow() {
 
     let host_stdout = output(&host.stdout);
     assert!(host_stdout.contains("mode=host\nstatus=ready\n"));
+    assert!(host_stdout.contains("invitation_handling=authenticated-confidential-only\n"));
+    assert!(host_stdout.contains("approval=simulated-automatic\n"));
+    assert!(host_stdout.contains("recipient_identity=not-verified\n"));
     assert!(host_stdout.contains("role=alice-init\nresult=pass\n"));
     assert!(host_stdout.contains("removal=enforced\n"));
     assert!(host_stdout.ends_with("mode=host\nstatus=complete\n"));

@@ -63,11 +63,17 @@ impl TryFrom<u16> for WireObjectType {
 }
 
 /// A bounded transport object containing no identity or message-type metadata.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct OpaqueEnvelope {
     envelope_id: [u8; ENVELOPE_ID_BYTES],
     expires_at_unix_seconds: u64,
     ciphertext: Vec<u8>,
+}
+
+impl std::fmt::Debug for OpaqueEnvelope {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("OpaqueEnvelope([REDACTED])")
+    }
 }
 
 impl OpaqueEnvelope {

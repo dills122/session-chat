@@ -59,6 +59,9 @@ versioned Session Chat IPC frames:
   operator to transfer it over a separate authenticated confidential channel,
   and begin the Iroh stream with the HPKE-protected join request rather than
   sending the invitation to the first connector;
+- disclose that the scripted laboratory automatically approves valid capability
+  requests, so the bearer invitation must never be publicly posted; endpoint
+  identity does not identify the intended human;
 - allow a separately bounded five-minute operator handoff before the host's
   initial protected-join wait expires, and accept only bounded regular
   invitation files rather than blocking-capable special filesystem objects;

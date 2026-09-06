@@ -315,3 +315,19 @@ fn lifecycle_failure_diagnostics_exclude_seeded_scope_and_rotation_authority() {
         );
     }
 }
+
+#[test]
+fn received_envelope_debug_redacts_delivery_and_envelope_identifiers() {
+    let envelope =
+        OpaqueEnvelope::new([0xa7; 16], 1_987_654_321, b"ciphertext-canary".to_vec()).unwrap();
+    let delivery_id = DeliveryId::from_provider_bytes([0xb8; 16]).unwrap();
+    let received = session_transport::ReceivedEnvelope::new(delivery_id, envelope.clone());
+    assert_eq!(format!("{received:?}"), "ReceivedEnvelope([REDACTED])");
+    assert_eq!(format!("{received:#?}"), "ReceivedEnvelope([REDACTED])");
+    assert_eq!(
+        format!("{:?}", vec![received.clone()]),
+        "[ReceivedEnvelope([REDACTED])]"
+    );
+    assert_eq!(received.envelope(), &envelope);
+    assert_eq!(received.delivery_id(), &delivery_id);
+}

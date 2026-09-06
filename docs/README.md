@@ -238,6 +238,10 @@ checkpoint is distinct from that immutable tested code revision.
 - [Client vault and portable realm hardening review](spikes/client-vault-portable-hosting/hardening.md)
   compares sealed client-state and replaceable self-hosting designs without
   selecting a desktop store or deployment dependency.
+- [AI Central content verification](adr/0026-verify-ai-central-content-before-setup.md)
+  records verified snapshot execution and managed skill-link migration.
+- [Security secret-boundary tranche evidence](evidence/security-secret-boundaries-2026-09-06.md)
+  records local verification of five scan fixes and the remaining portable CI gate.
 - [Architecture decision records](adr/) record the foundational decisions that
   other documents rely on.
 

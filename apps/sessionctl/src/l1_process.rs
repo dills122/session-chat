@@ -9,7 +9,7 @@ use std::{
     ffi::OsStr,
     fs::{self, File, OpenOptions},
     future::{Future, ready},
-    io::{Read, Write},
+    io::{PipeReader, Read, Write},
     path::{Path, PathBuf},
     process::{Child, Command, ExitStatus, Stdio},
     thread,
@@ -49,7 +49,7 @@ use transport_iroh::{
     FastEndpointAddress, FastEndpointId, IrohFastEndpoint, IrohFastError, IrohFastLink,
     MAX_FAST_FRAME_BYTES,
 };
-use zeroize::{Zeroize, Zeroizing};
+use zeroize::Zeroizing;
 
 use super::{
     INVITATION_EXPIRES_AT, MAILBOX_EXPIRES_AT, NOW, REQUEST_EXPIRES_AT, SessionCtlError,
@@ -78,6 +78,7 @@ const MAX_GIT_PATH_BYTES: usize = 4_096;
 const MAX_GIT_REF_BYTES: usize = 512;
 const METADATA_COMMAND_WAIT: Duration = Duration::from_secs(5);
 const TWO_TERMINAL_DONE: &[u8] = b"sessionctl-two-terminal-complete-v1\n";
+const CAPABILITY_HANDOFF_DISCLOSURE: &str = "invitation_handling=authenticated-confidential-only\napproval=simulated-automatic\nrecipient_identity=not-verified\n";
 const NETWORK_OPERATION_WAIT: Duration = Duration::from_secs(30);
 const OPERATOR_HANDOFF_WAIT: Duration = Duration::from_secs(5 * 60);
 
@@ -195,12 +196,13 @@ pub fn run_two_terminal_host(root: PathBuf) -> Result<(), SessionCtlError> {
     let mut root = ProcessRoot::create_at(root)?;
     let service_root = root.path().to_path_buf();
     println!("mode=host\nstatus=ready\nroot={}", root.path().display());
+    print!("{CAPABILITY_HANDOFF_DISCLOSURE}");
 
     let service =
         thread::spawn(move || run_service_with_initial_wait(&service_root, OPERATOR_HANDOFF_WAIT));
     let scenario_result = (|| {
-        run_alice_init_with_wait(root.path(), OPERATOR_HANDOFF_WAIT)?;
-        run_alice_resume(root.path())?;
+        let state = run_alice_init_with_wait(root.path(), OPERATOR_HANDOFF_WAIT)?;
+        run_alice_resume(root.path(), state)?;
         let completion = read_bounded_wait(
             &two_terminal_done_path(root.path()),
             TWO_TERMINAL_DONE.len(),
@@ -342,8 +344,8 @@ async fn run_network_host_with_endpoint(
 ) -> Result<(), SessionCtlError> {
     let alice_root = root.path().to_path_buf();
     let alice = tokio::task::spawn_blocking(move || {
-        run_alice_init_with_wait(&alice_root, OPERATOR_HANDOFF_WAIT)?;
-        run_alice_resume(&alice_root)
+        let state = run_alice_init_with_wait(&alice_root, OPERATOR_HANDOFF_WAIT)?;
+        run_alice_resume(&alice_root, state)
     });
     let scenario_result = async {
         let invitation = Zeroizing::new(
@@ -357,7 +359,7 @@ async fn run_network_host_with_endpoint(
         SignedCapabilityInvitationV2::decode_and_verify(&invitation)
             .at_stage("network invitation")?;
         println!(
-            "mode=network-host\ninvitation=ready\ninvitation_file={}",
+            "mode=network-host\n{CAPABILITY_HANDOFF_DISCLOSURE}invitation=ready\ninvitation_file={}",
             direct_invitation_path(root.path()).display()
         );
         let link = endpoint
@@ -522,11 +524,17 @@ fn run_l1_process_children(root: &Path, children: &mut ChildSet) -> Result<(), S
     let executable = std::env::current_exe().at_stage("process executable")?;
     children.spawn(&executable, "service", root)?;
     children.spawn(&executable, "bob", root)?;
-    children.spawn(&executable, "alice-init", root)?;
+    let state = children.spawn_private_writer(&executable, "alice-init", root)?;
 
     let alice_init = children.wait_role("alice-init", CHILD_WAIT)?;
     require_child_output(&alice_init, b"role=alice-init\nresult=pass\n")?;
-    children.spawn(&executable, "alice-resume", root)?;
+    children.spawn_with_io(
+        &executable,
+        "alice-resume",
+        root,
+        state.into(),
+        Stdio::piped(),
+    )?;
 
     let alice_resume = children.wait_role("alice-resume", CHILD_WAIT)?;
     require_child_output(
@@ -554,17 +562,17 @@ pub fn run_l1_process_internal_role(role: &str, root: PathBuf) -> Result<(), Ses
     validate_root(&root)?;
     match role {
         "service" => run_service(&root),
-        "alice-init" => run_alice_init(&root),
-        "alice-resume" => run_alice_resume(&root),
+        "alice-init" => run_alice_init(&root)?.write_to(std::io::stderr()),
+        "alice-resume" => run_alice_resume(&root, PrivateState::read_from(std::io::stdin())?),
         "bob" => run_bob(&root),
         "hostile-replay-controller" => run_hostile_replay_controller(&root),
         "hostile-replay-service" => run_hostile_replay_service(&root),
-        "hostile-replay-alice" => run_hostile_replay_alice(&root),
+        "hostile-replay-alice" => run_hostile_replay_alice(&root)?.write_to(std::io::stderr()),
         "hostile-replay-bob" => run_hostile_replay_bob(&root),
         "hostile-replay-inspector" => run_hostile_replay_inspector(&root),
         "hostile-matrix-controller" => run_hostile_matrix_controller(&root),
         "hostile-matrix-service" => run_hostile_matrix_service(&root),
-        "hostile-matrix-alice" => run_hostile_matrix_alice(&root),
+        "hostile-matrix-alice" => run_hostile_matrix_alice(&root)?.write_to(std::io::stderr()),
         "hostile-matrix-bob" => run_hostile_matrix_bob(&root),
         "hostile-matrix-inspector" => run_hostile_matrix_inspector(&root),
         _ => Err(stage("process role")),
@@ -799,14 +807,20 @@ fn run_hostile_replay_controller(root: &Path) -> Result<(), SessionCtlError> {
     let scenario_result = (|| {
         children.spawn(&executable, "hostile-replay-service", root)?;
         children.spawn(&executable, "hostile-replay-bob", root)?;
-        children.spawn(&executable, "hostile-replay-alice", root)?;
+        let state = children.spawn_private_writer(&executable, "hostile-replay-alice", root)?;
 
         let alice = children.wait_role("hostile-replay-alice", CHILD_WAIT)?;
         require_child_output(
             &alice,
             b"role=alice\nresult=pass\nreplay=rejected\nmembership=unchanged\n",
         )?;
-        children.spawn(&executable, "hostile-replay-inspector", root)?;
+        children.spawn_with_io(
+            &executable,
+            "hostile-replay-inspector",
+            root,
+            state.into(),
+            Stdio::piped(),
+        )?;
         let inspector = children.wait_role("hostile-replay-inspector", CHILD_WAIT)?;
         require_child_output(
             &inspector,
@@ -849,7 +863,7 @@ fn run_hostile_replay_service(root: &Path) -> Result<(), SessionCtlError> {
     Ok(())
 }
 
-fn run_hostile_replay_alice(root: &Path) -> Result<(), SessionCtlError> {
+fn run_hostile_replay_alice(root: &Path) -> Result<PrivateState, SessionCtlError> {
     let database_key = Zeroizing::new(random_nonzero::<32>()?);
     let storage = SqlCipherStorage::create(
         &database_path(root),
@@ -964,9 +978,11 @@ fn run_hostile_replay_alice(root: &Path) -> Result<(), SessionCtlError> {
     drop(group);
     drop(alice);
     drop(storage);
-    write_private_state(root, &database_key, group_id)?;
     print!("role=alice\nresult=pass\nreplay=rejected\nmembership=unchanged\n");
-    Ok(())
+    Ok(PrivateState {
+        database_key,
+        group_id,
+    })
 }
 
 fn run_hostile_replay_bob(root: &Path) -> Result<(), SessionCtlError> {
@@ -1035,7 +1051,10 @@ fn run_hostile_replay_bob(root: &Path) -> Result<(), SessionCtlError> {
 }
 
 fn run_hostile_replay_inspector(root: &Path) -> Result<(), SessionCtlError> {
-    let (database_key, group_id) = read_private_state(root)?;
+    let PrivateState {
+        database_key,
+        group_id,
+    } = PrivateState::read_from(std::io::stdin())?;
     let storage = SqlCipherStorage::open(
         &database_path(root),
         VaultKey::new(*database_key).at_stage("hostile process reopen key")?,
@@ -1093,7 +1112,11 @@ fn run_hostile_matrix_controller(root: &Path) -> Result<(), SessionCtlError> {
         let scenario_result = (|| {
             children.spawn(&executable, "hostile-matrix-service", case_root.path())?;
             children.spawn(&executable, "hostile-matrix-bob", case_root.path())?;
-            children.spawn(&executable, "hostile-matrix-alice", case_root.path())?;
+            let state = children.spawn_private_writer(
+                &executable,
+                "hostile-matrix-alice",
+                case_root.path(),
+            )?;
 
             let alice = children.wait_role("hostile-matrix-alice", CHILD_WAIT)?;
             let admission_boundary = if matches!(case, HostileJoinCase::WrongVerifier) {
@@ -1109,7 +1132,13 @@ fn run_hostile_matrix_controller(root: &Path) -> Result<(), SessionCtlError> {
                 )
                 .as_bytes(),
             )?;
-            children.spawn(&executable, "hostile-matrix-inspector", case_root.path())?;
+            children.spawn_with_io(
+                &executable,
+                "hostile-matrix-inspector",
+                case_root.path(),
+                state.into(),
+                Stdio::piped(),
+            )?;
             let inspector = children.wait_role("hostile-matrix-inspector", CHILD_WAIT)?;
             require_child_output(
                 &inspector,
@@ -1215,7 +1244,7 @@ fn run_hostile_matrix_service(root: &Path) -> Result<(), SessionCtlError> {
     Ok(())
 }
 
-fn run_hostile_matrix_alice(root: &Path) -> Result<(), SessionCtlError> {
+fn run_hostile_matrix_alice(root: &Path) -> Result<PrivateState, SessionCtlError> {
     let case = read_hostile_case(root)?;
     let database_key = Zeroizing::new(random_nonzero::<32>()?);
     let storage = SqlCipherStorage::create(
@@ -1277,7 +1306,6 @@ fn run_hostile_matrix_alice(root: &Path) -> Result<(), SessionCtlError> {
             .at_stage("hostile matrix foreign invitation encoding")?,
         MAX_WIRE_OBJECT_BYTES,
     )?;
-    write_private_state(root, &database_key, group_id)?;
 
     match case {
         HostileJoinCase::Reordered => {
@@ -1356,7 +1384,10 @@ fn run_hostile_matrix_alice(root: &Path) -> Result<(), SessionCtlError> {
         "role=alice\nresult=pass\ncase={}\n{admission_boundary}approval=not-reached\nmls_add=not-reached\nmembership=unchanged\n",
         case.label(),
     );
-    Ok(())
+    Ok(PrivateState {
+        database_key,
+        group_id,
+    })
 }
 
 fn run_hostile_matrix_bob(root: &Path) -> Result<(), SessionCtlError> {
@@ -1480,7 +1511,10 @@ fn build_hostile_join_request(
 
 fn run_hostile_matrix_inspector(root: &Path) -> Result<(), SessionCtlError> {
     let _case = read_hostile_case(root)?;
-    let (database_key, group_id) = read_private_state(root)?;
+    let PrivateState {
+        database_key,
+        group_id,
+    } = PrivateState::read_from(std::io::stdin())?;
     let storage = SqlCipherStorage::open(
         &database_path(root),
         VaultKey::new(*database_key).at_stage("hostile matrix reopen key")?,
@@ -1539,14 +1573,14 @@ fn receive_protected_join(root: &Path, sequence: u8) -> Result<Vec<u8>, SessionC
         .ok_or_else(|| stage("hostile process protected join"))
 }
 
-fn run_alice_init(root: &Path) -> Result<(), SessionCtlError> {
+fn run_alice_init(root: &Path) -> Result<PrivateState, SessionCtlError> {
     run_alice_init_with_wait(root, FRAME_WAIT)
 }
 
 fn run_alice_init_with_wait(
     root: &Path,
     protected_join_wait: Duration,
-) -> Result<(), SessionCtlError> {
+) -> Result<PrivateState, SessionCtlError> {
     let database_key = Zeroizing::new(random_nonzero::<32>()?);
     let storage = SqlCipherStorage::create(
         &database_path(root),
@@ -1741,13 +1775,18 @@ fn run_alice_init_with_wait(
     drop(alice);
     drop(storage);
 
-    write_private_state(root, &database_key, group_id)?;
     print!("role=alice-init\nresult=pass\n");
-    Ok(())
+    Ok(PrivateState {
+        database_key,
+        group_id,
+    })
 }
 
-fn run_alice_resume(root: &Path) -> Result<(), SessionCtlError> {
-    let (database_key, group_id) = read_private_state(root)?;
+fn run_alice_resume(root: &Path, state: PrivateState) -> Result<(), SessionCtlError> {
+    let PrivateState {
+        database_key,
+        group_id,
+    } = state;
     let mut storage = SqlCipherStorage::open(
         &database_path(root),
         VaultKey::new(*database_key).at_stage("process reopen key")?,
@@ -2152,44 +2191,59 @@ fn read_bounded_regular_file(path: &Path, maximum: usize) -> Result<Vec<u8>, Ses
     read_bounded(file, maximum)
 }
 
-fn write_private_state(
-    root: &Path,
-    database_key: &[u8; 32],
+// This value is never persisted or formatted. Only an Alice child receives the
+// inherited anonymous pipe; same-process compositions move it directly.
+struct PrivateState {
+    database_key: Zeroizing<[u8; 32]>,
     group_id: SessionGroupId,
-) -> Result<(), SessionCtlError> {
-    let mut state = Zeroizing::new(Vec::with_capacity(PRIVATE_STATE_BYTES));
-    state.extend_from_slice(PRIVATE_STATE_MAGIC);
-    state.extend_from_slice(database_key);
-    state.extend_from_slice(group_id.as_bytes());
-    atomic_write(
-        &private_state_path(root),
-        state.as_slice(),
-        PRIVATE_STATE_BYTES,
-    )
 }
 
-fn read_private_state(
-    root: &Path,
-) -> Result<(Zeroizing<[u8; 32]>, SessionGroupId), SessionCtlError> {
-    let path = private_state_path(root);
-    let mut encoded = Zeroizing::new(read_bounded_wait(&path, PRIVATE_STATE_BYTES, FRAME_WAIT)?);
-    fs::remove_file(&path).at_stage("process private state removal")?;
-    if encoded.len() != PRIVATE_STATE_BYTES || &encoded[..8] != PRIVATE_STATE_MAGIC {
-        return Err(stage("process private state"));
+impl PrivateState {
+    fn write_to(self, mut writer: impl Write) -> Result<(), SessionCtlError> {
+        let mut state = Zeroizing::new(Vec::with_capacity(PRIVATE_STATE_BYTES));
+        state.extend_from_slice(PRIVATE_STATE_MAGIC);
+        state.extend_from_slice(self.database_key.as_ref());
+        state.extend_from_slice(self.group_id.as_bytes());
+        writer
+            .write_all(&state)
+            .at_stage("process private state write")
     }
-    let database_key = Zeroizing::new(
-        encoded[8..40]
-            .try_into()
-            .map_err(|_| stage("process private state"))?,
-    );
-    let group_id = SessionGroupId::new(
-        encoded[40..]
-            .try_into()
-            .map_err(|_| stage("process private state"))?,
-    )
-    .at_stage("process private state")?;
-    encoded.zeroize();
-    Ok((database_key, group_id))
+
+    fn read_from(mut reader: impl Read) -> Result<Self, SessionCtlError> {
+        // Exact fixed frame plus EOF: no ignored suffix or file fallback. The
+        // controller enforces the child lifetime if a writer fails to close.
+        let mut encoded = Zeroizing::new([0_u8; PRIVATE_STATE_BYTES]);
+        reader
+            .read_exact(encoded.as_mut())
+            .at_stage("process private state read")?;
+        let mut trailing = [0_u8; 1];
+        if reader
+            .read(&mut trailing)
+            .at_stage("process private state read")?
+            != 0
+            || &encoded[..8] != PRIVATE_STATE_MAGIC
+        {
+            return Err(stage("process private state"));
+        }
+        let database_key: Zeroizing<[u8; 32]> = Zeroizing::new(
+            encoded[8..40]
+                .try_into()
+                .map_err(|_| stage("process private state"))?,
+        );
+        if database_key.iter().all(|byte| *byte == 0) {
+            return Err(stage("process private state"));
+        }
+        let group_id = SessionGroupId::new(
+            encoded[40..]
+                .try_into()
+                .map_err(|_| stage("process private state"))?,
+        )
+        .at_stage("process private state")?;
+        Ok(Self {
+            database_key,
+            group_id,
+        })
+    }
 }
 
 struct ProcessRoot(Option<PathBuf>);
@@ -2337,13 +2391,37 @@ impl ChildSet {
         role: &'static str,
         root: &Path,
     ) -> Result<(), SessionCtlError> {
+        self.spawn_with_io(executable, role, root, Stdio::null(), Stdio::piped())
+    }
+
+    fn spawn_private_writer(
+        &mut self,
+        executable: &Path,
+        role: &'static str,
+        root: &Path,
+    ) -> Result<PipeReader, SessionCtlError> {
+        let (reader, writer) = std::io::pipe().at_stage("process private pipe")?;
+        // stderr is a dedicated secret channel for this role, never collected
+        // as diagnostics. The service and Bob receive neither pipe endpoint.
+        self.spawn_with_io(executable, role, root, Stdio::null(), writer.into())?;
+        Ok(reader)
+    }
+
+    fn spawn_with_io(
+        &mut self,
+        executable: &Path,
+        role: &'static str,
+        root: &Path,
+        input: Stdio,
+        error_output: Stdio,
+    ) -> Result<(), SessionCtlError> {
         let child = Command::new(executable)
             .arg("--internal-role")
             .arg(role)
             .arg(root)
-            .stdin(Stdio::null())
+            .stdin(input)
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stderr(error_output)
             .spawn()
             .at_stage("process spawn")?;
         self.0.push(ManagedChild::new(role, child));
@@ -2472,10 +2550,6 @@ fn foreign_invitation_path(root: &Path) -> PathBuf {
 
 fn hostile_case_path(root: &Path) -> PathBuf {
     root.join("direct/hostile.case")
-}
-
-fn private_state_path(root: &Path) -> PathBuf {
-    root.join("alice/resume.state")
 }
 
 fn database_path(root: &Path) -> PathBuf {
@@ -2697,6 +2771,35 @@ mod tests {
         Arc,
         atomic::{AtomicBool, Ordering},
     };
+
+    #[test]
+    fn private_state_pipe_roundtrip_rejects_malformed_and_has_no_file_fallback() {
+        let key = [0xa9; 32];
+        let group_id = SessionGroupId::new([0xb8; SESSION_GROUP_ID_BYTES]).unwrap();
+        let state = PrivateState {
+            database_key: Zeroizing::new(key),
+            group_id,
+        };
+        let (reader, writer) = std::io::pipe().unwrap();
+        state.write_to(writer).unwrap();
+        let restored = PrivateState::read_from(reader).unwrap();
+        assert_eq!(*restored.database_key, key);
+        assert!(restored.group_id == group_id);
+
+        let mut encoded = Vec::new();
+        restored.write_to(&mut encoded).unwrap();
+        for length in [0, 7, PRIVATE_STATE_BYTES - 1] {
+            assert!(PrivateState::read_from(&encoded[..length]).is_err());
+        }
+        let mut trailing = encoded.clone();
+        trailing.push(0);
+        assert!(PrivateState::read_from(trailing.as_slice()).is_err());
+        encoded[0] ^= 1;
+        assert!(PrivateState::read_from(encoded.as_slice()).is_err());
+        encoded[0] ^= 1;
+        encoded[8..40].fill(0);
+        assert!(PrivateState::read_from(encoded.as_slice()).is_err());
+    }
 
     #[tokio::test]
     async fn invalid_process_root_fails_before_public_endpoint_binding() {

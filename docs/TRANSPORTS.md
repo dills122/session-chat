@@ -76,13 +76,24 @@ See the proposed
 
 ## Invitation publication is separate
 
-An invitation is an out-of-band object. It can be:
+Publication depends on the invitation mode. Only a future targeted or verified-
+request descriptor whose admission policy does not rely on a secret in the
+link may be posted to GitHub or a public website. That public invitation mode
+is not implemented in the current laboratory.
 
-- Posted to GitHub
-- Copied through an existing messenger
-- Shown as a QR code
-- Exchanged in person
-- Published on a website
+Current signed capability invitation v1/v2 objects contain a bearer secret.
+Transfer the complete invitation only to the intended recipient over an
+**authenticated confidential channel**, including a private messenger file
+attachment or an in-person handoff. A signature authenticates the object; it
+does not hide the capability. Never publish these invitations on GitHub, a
+website, a public QR code, or an unauthenticated download endpoint.
+
+The L1 and network demonstrations use **simulated automatic approval** after
+capability verification. Anyone who copies the complete invitation can submit
+their own KeyPackage and win the single-use admission race. There is no human
+confirmation or intended-person identity check in those scripted runs. The
+public Iroh endpoint ID is a locator and may be shared publicly; the invitation
+file is separate admission authority.
 
 The transport begins when a client sends an encrypted join request to an opaque
 rendezvous location. This keeps "GitHub-based product workflow" from becoming

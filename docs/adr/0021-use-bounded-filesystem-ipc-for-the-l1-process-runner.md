@@ -38,12 +38,26 @@ publish. The relay accepts only these existing public wire objects:
 - `OpaqueEnvelope`.
 
 The bearer invitation uses a separate direct client channel. The raw 32-byte
-SQLCipher key and exact group identifier use a mode-`0600` file where Unix
-supports it. Only the fresh Alice process reads that file in the defined role
-flow, and it deletes the file on load; another process running as the same OS
-account could still access it. This is disposable conformance state, not a
-vault, process-isolation boundary, portable key-custody design, or product
-credential handoff.
+SQLCipher key and exact group identifier never enter the filesystem. The
+controller creates an anonymous pipe, attaches its write end only to Alice
+initialization's dedicated stderr channel, and transfers its unread read end
+to fresh Alice's stdin after initialization exits successfully. Ordinary child
+summaries stay on stdout. The service and Bob receive neither pipe endpoint;
+the controller does not read or log the pipe. Hostile-test Alice and fresh
+inspector roles use the same handoff. The fixed `SCL1STAT` frame retains its
+version-1 layout and rejects wrong magic, length, zero key/group, or trailing
+bytes; there is no legacy file fallback. Existing controller deadlines bound
+child failure, including a pipe read that does not complete.
+
+Two-terminal and network compositions move a non-debuggable, zeroizing key
+owner directly in memory across SQLCipher close/reopen. This replaces the
+previous mode-0600 `alice/resume.state` file, which a same-account forwarding
+process could read. The runner still does not sandbox same-account processes:
+process-memory/handle inspection and the filesystem bearer-invitation channel
+remain structural blockers to claiming hostile local-process isolation. An
+OS-enforced sandbox or separate security principal on every supported platform
+is required before executing genuinely untrusted service code alongside client
+state. This is disposable conformance plumbing, not platform key custody.
 
 The controller accepts only fixed, bounded, secret-free child summaries and
 emits a version-1 manifest under 2 KiB. It records coarse outcomes,
@@ -64,8 +78,8 @@ separately.
 
 - Process exit and exact Alice close/reopen are now ordinary offline L1 merge
   evidence on every supported CI family.
-- The forwarding process never receives the invitation, plaintext, database
-  key, raw MLS state, or receive/acknowledgement authority.
+- The forwarding role receives no key pipe or secret message through its
+  protocol interface. Same-account OS isolation is not established.
 - Filesystem IPC is not a transport profile, network adapter, privacy property,
   hosted service, or deployable client architecture.
 - Graceful process exit does not prove abrupt kill, disk-full, power-loss,
