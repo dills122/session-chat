@@ -48,7 +48,8 @@ reconnection, or production readiness.
   publishes atomically without replacing an existing path, and rejects
   malformed, expired, excessive, trailing, noncanonical, and aliased
   special-file input. A joiner mode mismatch is rejected before public network
-  work, and cleanup leaves a replacement pathname untouched.
+  work. Cleanup retains ownership after a transient lookup or removal failure
+  so it can be retried, and leaves a replacement pathname untouched.
 - Both public roles render the complete stable FastV1 disclosure before endpoint
   creation. Tests that construct public N0 endpoints are ignored operator checks.
 
@@ -112,8 +113,8 @@ pagination, unknown-mailbox and foreign-acknowledgement rejection, exact
 remote-status mapping, local authority/lifetime/budget preflight, and semantic
 link poisoning for malformed, truncated, trailing, and noncanonical requests
 and responses. The production coverage gate records 93.61% line coverage for
-`transport-iroh` and workspace totals of 92.72% lines, 88.00% regions, and
-89.31% functions for this increment.
+`transport-iroh` and workspace totals of 92.78% lines, 88.03% regions, and
+89.37% functions for this increment.
 
 `sessionctl-fast-adapter` now composes that shared case as explicit host and
 join commands suitable for two computers. The retained local test proves the
@@ -134,12 +135,13 @@ failure and a service outage after request receipt. The latter maps to retryable
 `Unavailable`, poisons the ordered adapter, and prevents reuse after ambiguous
 partial work.
 
-GitHub CI on predecessor implementation revision
-`ba83404c27e485af38dbf7141dca8e7a2f93fcc9` passed the Rust and L2 evidence
+GitHub CI on exact implementation revision
+`d2045b4744776dd256e580a8b4aed83b99ea9802` passed the Rust and L2 evidence
 jobs on Linux x64, macOS arm64, and Windows x64, along with production
 coverage, dependency policy and review, repository policy, retained Node tools,
-the project site, CodeQL, and the aggregate gate. Exact-revision CI for the v2
-handoff and review fixes must be recorded after this increment is published.
+the project site, CodeQL, and the aggregate gate. The retained workflow runs
+are [CI 34009153652](https://github.com/dills122/session-chat/actions/runs/34009153652)
+and [CodeQL 34009151480](https://github.com/dills122/session-chat/actions/runs/34009151480).
 
 Commands for this increment:
 
