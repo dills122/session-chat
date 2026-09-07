@@ -24,6 +24,11 @@ resolver = "3"
 edition = "2024"
 license = "MIT"
 
+# Keep the checked L2 test executable within the evidence reader's 256 MiB
+# bound on Linux, retaining file/line information for failure backtraces.
+[profile.test.package.sessionctl]
+debug = 1
+
 [workspace.dependencies]
 argon2 = { version = "=0.5.3", default-features = false, features = ["zeroize"] }
 ed25519-dalek = { version = "=3.0.0", default-features = false, features = ["fast", "zeroize"] }

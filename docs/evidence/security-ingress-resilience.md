@@ -66,6 +66,17 @@ transport-iroh 93.52%).
 node scripts/check-rust-coverage.mjs
 ```
 
+## CI follow-up
+
+PR #315's first portable run caught Unix-only directory-builder mutability in
+the Windows lint gate; mutability is now scoped to the Unix configuration.
+Linux completed the Welcome recovery sweep but could not promote its evidence:
+the checked test executable was 268,753,432 bytes, above the retained 256 MiB
+binary-reader bound. The `sessionctl` test profile now uses limited debug
+information, retaining file/line backtraces while reducing executable size.
+The reader bound and recovery checks are unchanged. A failing engine promotion
+now reports the non-secret test-binary byte count for diagnosis.
+
 ## Independent review and limits
 
 A fresh read-only boundary investigator revalidated all six paths. A separate
