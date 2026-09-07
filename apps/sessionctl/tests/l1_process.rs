@@ -522,7 +522,7 @@ fn app_storage_owner_recovers_abandonment_joiner_consumption_and_welcome_retry()
         VaultKey::new([0x41; 32]).expect("nonzero storage key"),
     )
     .expect("create app owner store");
-    assert_eq!(storage.schema_version().expect("schema version"), 5);
+    assert_eq!(storage.schema_version().expect("schema version"), 6);
     assert!(!storage.cipher_version().expect("cipher version").is_empty());
     assert!(storage.integrity_check().expect("integrity check"));
 
