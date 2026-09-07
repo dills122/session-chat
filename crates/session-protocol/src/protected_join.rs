@@ -349,6 +349,11 @@ impl LocalWelcomeDepositEndpoint {
         self.expires_at_unix_seconds
     }
 
+    /// Deliberately serializes the deposit capability for transfer.
+    ///
+    /// The returned buffer is a plain `Vec<u8>` holding bearer authority. Callers
+    /// take responsibility for its cleanup; move it into a zeroizing owner rather
+    /// than letting it drop unscrubbed.
     pub fn encode_canonical(&self) -> Result<Vec<u8>, WireError> {
         let mut encoder = Encoder::new(Vec::with_capacity(96));
         self.encode_into(&mut encoder)?;
@@ -367,7 +372,10 @@ impl LocalWelcomeDepositEndpoint {
         let mut decoder = Decoder::new(bytes);
         let endpoint = Self::decode_from(&mut decoder)?;
         reject_trailing(&decoder, bytes)?;
-        if endpoint.encode_canonical()?.as_slice() != bytes {
+        // The re-encoding repeats the deposit capability, so the comparison
+        // buffer takes zeroizing ownership on both the accept and reject path.
+        let reencoded = Zeroizing::new(endpoint.encode_canonical()?);
+        if reencoded.as_slice() != bytes {
             return Err(WireError::NonDeterministicEncoding);
         }
         Ok(endpoint)
@@ -663,6 +671,12 @@ impl CapabilityJoinRequest {
         self.response_endpoint
     }
 
+    /// Deliberately serializes the request, including its nested deposit
+    /// capability, for HPKE sealing.
+    ///
+    /// The returned buffer is a plain `Vec<u8>` holding bearer authority. Callers
+    /// take responsibility for its cleanup; move it into a zeroizing owner rather
+    /// than letting it drop unscrubbed.
     pub fn encode_canonical(&self) -> Result<Vec<u8>, WireError> {
         let mut encoder = Encoder::new(Vec::with_capacity(self.mls.key_package.len() + 320));
         encoder
@@ -782,7 +796,10 @@ impl CapabilityJoinRequest {
             leaf_signature_key,
         )?;
         let decoded = Self::new(invitation, request, mls, response_endpoint)?;
-        if decoded.encode_canonical()?.as_slice() != bytes {
+        // The re-encoding repeats the nested deposit capability, so the
+        // comparison buffer takes zeroizing ownership on both paths.
+        let reencoded = Zeroizing::new(decoded.encode_canonical()?);
+        if reencoded.as_slice() != bytes {
             return Err(WireError::NonDeterministicEncoding);
         }
         Ok(decoded)
