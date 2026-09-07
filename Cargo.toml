@@ -25,9 +25,10 @@ resolver = "3"
 edition = "2024"
 license = "MIT"
 
-# Keep the checked L2 test executable within the evidence reader's 256 MiB
-# bound on Linux, retaining file/line information for failure backtraces.
-[profile.test.package.sessionctl]
+# Keep all checked L2 executables, including the library test controller,
+# within the evidence reader's 256 MiB bound on Linux. Dependencies also
+# retain file/line information rather than full debug data.
+[profile.test]
 debug = 1
 
 [workspace.dependencies]
