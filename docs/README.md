@@ -242,11 +242,13 @@ checkpoint is distinct from that immutable tested code revision.
   records verified snapshot execution and managed skill-link migration.
 - [Security secret-boundary tranche evidence](evidence/security-secret-boundaries-2026-09-06.md)
   records local verification of five scan fixes and the remaining portable CI gate.
-- [Authenticated L2 evidence and private test artifacts](adr/0027-authenticate-l2-evidence-and-own-test-artifacts.md)
+- [Authenticated L2 evidence and private test artifacts](adr/0028-authenticate-l2-evidence-and-own-test-artifacts.md)
   records candidate v2, external attestation verification, executable identity,
   immutable workflow references, and private SQLCipher fixtures.
 - [Architecture decision records](adr/) record the foundational decisions that
   other documents rely on.
+
+- [Experimental ingress hardening](adr/0027-bound-experimental-ingress-before-session-ownership.md) records bounded candidate acceptance, complete-exchange poisoning, closed Node objects and regular-file L1 IPC; the [tranche evidence](evidence/security-ingress-resilience.md) records local verification and its limits.
 
 ## Decision labels
 
@@ -354,7 +356,7 @@ fresh reopen that accepts only exact I0/I1 or J0/J1 state and unchanged exact
 retry. Raw case records remain non-public. The retained L2-8 gate lets only
 sealed complete aggregates emit self-reported candidate v2 bundles with
 execution-time binary/artifact identities and bounded secret/canary scans.
-ADR 0027 requires external GitHub attestation verification before those bytes
+ADR 0028 requires external GitHub attestation verification before those bytes
 can authenticate a hosted run. A portable passing claim is
 per-revision CI evidence; power-loss, filesystem-durability,
 rollback-resistance, and production evidence remain open.

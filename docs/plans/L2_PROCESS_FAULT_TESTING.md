@@ -380,7 +380,7 @@ The controller must:
 
 The local evidence output is a canonical bundle containing one bounded
 `l2-evidence-candidate-v2` record per validated case. Unsigned v1 promotion is
-retired under ADR 0027; candidates require external attestation verification. The bundle can be constructed
+retired under ADR 0028; candidates require external attestation verification. The bundle can be constructed
 only from a sealed complete aggregate; the raw textual validator and metadata
 constructors are private. Every record contains only:
 
@@ -406,7 +406,7 @@ unknown internal claim fails before any public record is created. The evidence
 record treats all `GITHUB_*`/`RUNNER_*` variables and compiler/Git outputs as
 self-reported diagnostics. Consumers verify the exact candidate subject digest
 and repository/source/workflow/run identity through an external GitHub artifact
-attestation under ADR 0027. An unsigned copied log cannot authenticate provenance.
+attestation under ADR 0028. An unsigned copied log cannot authenticate provenance.
 
 It omits raw paths, usernames, database keys, identity records, invitation
 generations, bearer capabilities, approval records, request fingerprints, MLS
@@ -733,7 +733,7 @@ every public case manifest, and retained encrypted artifacts for the closed
 synthetic canary and actual-case catalogs. Complete checkpoint, SQLite
 return-code, and commit-window kill aggregates alone can emit canonical,
 key-framed per-case `l2-evidence-candidate-v2` bundles. These are explicitly
-self-reported; the external attestation gate is specified by ADR 0027. The dedicated CI matrix runs
+self-reported; the external attestation gate is specified by ADR 0028. The dedicated CI matrix runs
 the failure-sensitive smoke subset on pull requests and the complete suites on
 non-PR runs for `ubuntu-24.04`, `macos-15`, and `windows-2025`. A portable
 passing claim remains conditional on that required job being green for the

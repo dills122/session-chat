@@ -75,7 +75,7 @@ profile. Iroh feasibility remains separate from the reusable Fast adapter.
 
 ## Provenance correction
 
-[ADR 0027](0027-authenticate-l2-evidence-and-own-test-artifacts.md) supersedes
+[ADR 0027](0028-authenticate-l2-evidence-and-own-test-artifacts.md) supersedes
 the unsigned `l2-evidence-v1` promotion claim above. Only self-reported candidate
 v2 records can be collected locally; hosted provenance requires external
 attestation verification. Existing historical process-recovery evidence does

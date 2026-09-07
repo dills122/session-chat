@@ -7,7 +7,7 @@
 
 use std::{
     ffi::OsStr,
-    fs::{self, File, OpenOptions},
+    fs::{self, OpenOptions},
     future::{Future, ready},
     io::{PipeReader, Read, Write},
     path::{Path, PathBuf},
@@ -343,8 +343,25 @@ async fn run_network_host_with_endpoint(
     endpoint: IrohFastEndpoint,
 ) -> Result<(), SessionCtlError> {
     let alice_root = root.path().to_path_buf();
+    let (candidates, receiver) =
+        std::sync::mpsc::sync_channel::<(Vec<u8>, tokio::sync::oneshot::Sender<bool>)>(1);
     let alice = tokio::task::spawn_blocking(move || {
-        let state = run_alice_init_with_wait(&alice_root, OPERATOR_HANDOFF_WAIT)?;
+        let state = run_alice_init_with_receiver(&alice_root, |validate| {
+            let deadline = Instant::now() + OPERATOR_HANDOFF_WAIT;
+            for _ in 0..32 {
+                let (bytes, reply) = receiver
+                    .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+                    .map_err(|_| stage("network admission wait"))?;
+                let accepted = validate(&bytes);
+                if reply.send(accepted).is_err() {
+                    continue;
+                }
+                if accepted {
+                    return Ok(bytes);
+                }
+            }
+            Err(stage("network admission attempts"))
+        })?;
         run_alice_resume(&alice_root, state)
     });
     let scenario_result = async {
@@ -362,13 +379,26 @@ async fn run_network_host_with_endpoint(
             "mode=network-host\n{CAPABILITY_HANDOFF_DISCLOSURE}invitation=ready\ninvitation_file={}",
             direct_invitation_path(root.path()).display()
         );
-        let link = endpoint
-            .accept(None, OPERATOR_HANDOFF_WAIT, MAX_IPC_FRAME_BYTES)
-            .await
-            .at_stage("network accept")?;
-        network_host_bridge(root.path(), link).await
+        let deadline = tokio::time::Instant::now() + OPERATOR_HANDOFF_WAIT;
+        for _ in 0..32 {
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() { break; }
+            let Ok(mut link) = endpoint.accept_candidate(None, remaining, Duration::from_secs(2), MAX_IPC_FRAME_BYTES).await else { continue; };
+            let candidate_deadline = deadline.min(tokio::time::Instant::now() + Duration::from_secs(2));
+            let Ok(Ok(bytes)) = tokio::time::timeout_at(candidate_deadline, link.receive_frame(Duration::from_secs(2))).await else {
+                link.reject(); continue;
+            };
+            let (reply, accepted) = tokio::sync::oneshot::channel();
+            candidates.try_send((bytes, reply)).map_err(|_| stage("network admission queue"))?;
+            if !matches!(tokio::time::timeout_at(candidate_deadline, accepted).await, Ok(Ok(true))) {
+                link.reject(); continue;
+            }
+            return network_host_bridge_after_join(root.path(), link).await;
+        }
+        Err(stage("network admission unavailable"))
     }
     .await;
+    drop(candidates);
     let alice_result = alice.await.map_err(|_| stage("network Alice task"))?;
     let cleanup_result = root.cleanup();
     scenario_result?;
@@ -399,8 +429,16 @@ async fn run_network_join_with_link(
     Ok(())
 }
 
+#[cfg(test)]
 async fn network_host_bridge(root: &Path, mut link: IrohFastLink) -> Result<(), SessionCtlError> {
     receive_network_frame(root, &mut link, 1, FrameKind::ProtectedJoin).await?;
+    network_host_bridge_after_join(root, link).await
+}
+
+async fn network_host_bridge_after_join(
+    root: &Path,
+    mut link: IrohFastLink,
+) -> Result<(), SessionCtlError> {
     for sequence in [2_u8, 3] {
         send_network_frame(root, &mut link, sequence).await?;
     }
@@ -1581,6 +1619,19 @@ fn run_alice_init_with_wait(
     root: &Path,
     protected_join_wait: Duration,
 ) -> Result<PrivateState, SessionCtlError> {
+    run_alice_init_with_receiver(root, |_| {
+        read_bounded_wait(
+            &relay_out(root, 1),
+            MAX_IPC_FRAME_BYTES,
+            protected_join_wait,
+        )
+    })
+}
+
+fn run_alice_init_with_receiver(
+    root: &Path,
+    receive: impl FnOnce(&dyn Fn(&[u8]) -> bool) -> Result<Vec<u8>, SessionCtlError>,
+) -> Result<PrivateState, SessionCtlError> {
     let database_key = Zeroizing::new(random_nonzero::<32>()?);
     let storage = SqlCipherStorage::create(
         &database_path(root),
@@ -1609,11 +1660,24 @@ fn run_alice_init_with_wait(
         MAX_WIRE_OBJECT_BYTES,
     )?;
 
-    let protected_frame = IpcFrame::decode(&read_bounded_wait(
-        &relay_out(root, 1),
-        MAX_IPC_FRAME_BYTES,
-        protected_join_wait,
-    )?)?;
+    let encoded_join = receive(&|bytes| {
+        let Ok(frame) = IpcFrame::decode(bytes) else {
+            return false;
+        };
+        let Ok(mut parts) = frame.require(FrameKind::ProtectedJoin, 1) else {
+            return false;
+        };
+        let Some(bytes) = parts.pop() else {
+            return false;
+        };
+        let Ok(protected) = ProtectedJoinRequest::decode_canonical(&bytes) else {
+            return false;
+        };
+        protector
+            .open_capability_request(issued.private_key(), issued.invitation(), &protected)
+            .is_ok()
+    })?;
+    let protected_frame = IpcFrame::decode(&encoded_join)?;
     let mut parts = protected_frame.require(FrameKind::ProtectedJoin, 1)?;
     let protected_bytes = parts.pop().ok_or_else(|| stage("process protected join"))?;
     let protected = ProtectedJoinRequest::decode_canonical(&protected_bytes)
@@ -2128,8 +2192,17 @@ fn read_bounded_wait(
         .checked_add(timeout)
         .ok_or_else(|| stage("process channel deadline"))?;
     loop {
-        match File::open(path) {
-            Ok(file) => return read_bounded(file, maximum),
+        if Instant::now() >= deadline {
+            return Err(stage("process channel timeout"));
+        }
+        match fs::symlink_metadata(path) {
+            Ok(_) => {
+                let bytes = read_bounded_regular_file(path, maximum)?;
+                if Instant::now() >= deadline {
+                    return Err(stage("process channel timeout"));
+                }
+                return Ok(bytes);
+            }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 if Instant::now() >= deadline {
                     return Err(stage("process channel timeout"));
@@ -2172,6 +2245,11 @@ fn read_bounded_regular_file(path: &Path, maximum: usize) -> Result<Vec<u8>, Ses
         use std::os::unix::fs::OpenOptionsExt as _;
         options.custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW);
     }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt as _;
+        options.custom_flags(0x0020_0000); // FILE_FLAG_OPEN_REPARSE_POINT
+    }
     let file = options.open(path).at_stage("network invitation read")?;
     let after = file.metadata().at_stage("network invitation metadata")?;
     if !after.file_type().is_file()
@@ -2185,6 +2263,13 @@ fn read_bounded_regular_file(path: &Path, maximum: usize) -> Result<Vec<u8>, Ses
     {
         use std::os::unix::fs::MetadataExt as _;
         if before.dev() != after.dev() || before.ino() != after.ino() {
+            return Err(stage("network invitation file"));
+        }
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt as _;
+        if before.file_attributes() & 0x400 != 0 || after.file_attributes() & 0x400 != 0 {
             return Err(stage("network invitation file"));
         }
     }
@@ -2246,6 +2331,18 @@ impl PrivateState {
     }
 }
 
+fn create_private_directory(path: &Path) -> Result<(), SessionCtlError> {
+    let builder = fs::DirBuilder::new();
+    #[cfg(unix)]
+    let builder = {
+        use std::os::unix::fs::DirBuilderExt as _;
+        let mut builder = builder;
+        builder.mode(0o700);
+        builder
+    };
+    builder.create(path).at_stage("process root")
+}
+
 struct ProcessRoot(Option<PathBuf>);
 
 impl ProcessRoot {
@@ -2257,7 +2354,7 @@ impl ProcessRoot {
         if !root.is_absolute() || root.as_os_str().len() > 4_096 || root.exists() {
             return Err(stage("process root"));
         }
-        fs::create_dir(&root).at_stage("process root")?;
+        create_private_directory(&root)?;
         let process_root = Self(Some(root));
         atomic_write(
             &process_root.path().join(".sessionctl-l1-root"),
@@ -2271,7 +2368,7 @@ impl ProcessRoot {
             process_root.path().join("relay/out"),
             process_root.path().join("alice"),
         ] {
-            fs::create_dir(&directory).at_stage("process root")?;
+            create_private_directory(&directory)?;
         }
         Ok(process_root)
     }
@@ -2319,6 +2416,26 @@ fn fresh_process_root_path(label: &str) -> Result<PathBuf, SessionCtlError> {
 }
 
 fn validate_root(root: &Path) -> Result<(), SessionCtlError> {
+    for directory in ["", "direct", "relay", "relay/in", "relay/out", "alice"] {
+        let metadata = match fs::symlink_metadata(root.join(directory)) {
+            Ok(metadata) => metadata,
+            // Creation failures still need to clean a partially built marked root.
+            Err(error) if !directory.is_empty() && error.kind() == std::io::ErrorKind::NotFound => {
+                continue;
+            }
+            Err(_) => return Err(stage("process root validation")),
+        };
+        if !metadata.file_type().is_dir() {
+            return Err(stage("process root validation"));
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            if metadata.permissions().mode() & 0o077 != 0 {
+                return Err(stage("process root permissions"));
+            }
+        }
+    }
     if !root.is_absolute()
         || root.as_os_str().len() > 4_096
         || read_bounded_file(&root.join(".sessionctl-l1-root"), ROOT_MARKER.len()).as_deref()
@@ -2652,16 +2769,7 @@ fn pinned_toolchain_at(repository_root: &Path) -> String {
 }
 
 fn read_bounded_file(path: &Path, maximum: usize) -> Option<Vec<u8>> {
-    let mut file = File::open(path).ok()?;
-    if file.metadata().ok()?.len() > u64::try_from(maximum).ok()? {
-        return None;
-    }
-    let mut bytes = Vec::with_capacity(maximum.min(4_096));
-    Read::by_ref(&mut file)
-        .take(u64::try_from(maximum).ok()?.saturating_add(1))
-        .read_to_end(&mut bytes)
-        .ok()?;
-    (bytes.len() <= maximum).then_some(bytes)
+    read_bounded_regular_file(path, maximum).ok()
 }
 
 fn resolve_git_commit(repository_root: &Path) -> Option<String> {
@@ -2767,10 +2875,210 @@ fn hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs::File;
     use std::sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
     };
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn network_host_rejects_strays_before_accepting_the_legitimate_joiner() {
+        let host_root = ProcessRoot::new().unwrap();
+        let invitation_path = direct_invitation_path(host_root.path());
+        let host = IrohFastEndpoint::bind_loopback().await.unwrap();
+        let address = host.address();
+        let task = tokio::spawn(run_network_host_with_endpoint(host_root, host));
+        read_bounded_wait_async(invitation_path.clone(), MAX_WIRE_OBJECT_BYTES, FRAME_WAIT)
+            .await
+            .unwrap();
+        let invitation = read_network_invitation(&invitation_path).unwrap();
+        let invitation = SignedCapabilityInvitationV2::decode_and_verify(&invitation).unwrap();
+        let protected = build_hostile_join_request(&invitation, HostileJoinCase::Copied).unwrap();
+        let mut tampered = protected.encode_canonical().unwrap();
+        *tampered.last_mut().unwrap() ^= 1;
+        let wrong_hpke = IpcFrame::new(FrameKind::ProtectedJoin, 1, vec![tampered])
+            .unwrap()
+            .encode()
+            .unwrap();
+        let reordered = IpcFrame::new(
+            FrameKind::ProtectedJoin,
+            2,
+            vec![protected.encode_canonical().unwrap()],
+        )
+        .unwrap()
+        .encode()
+        .unwrap();
+        for payload in [None, Some(vec![0x80]), Some(wrong_hpke), Some(reordered)] {
+            let peer = IrohFastEndpoint::bind_loopback().await.unwrap();
+            let mut link = peer
+                .connect_address(address.clone(), NETWORK_OPERATION_WAIT, MAX_IPC_FRAME_BYTES)
+                .await
+                .unwrap();
+            if let Some(payload) = payload {
+                link.send_frame(&payload, NETWORK_OPERATION_WAIT)
+                    .await
+                    .unwrap();
+            }
+            // A peer that never sends a stream, or sends malformed input, is
+            // rejected without consuming Alice's one-shot join channel.
+            assert!(link.receive_frame(Duration::from_secs(4)).await.is_err());
+            link.reject();
+            assert!(!task.is_finished());
+        }
+        let join = IrohFastEndpoint::bind_loopback().await.unwrap();
+        connect_network_loopback_join(ProcessRoot::new().unwrap(), join, address, invitation_path)
+            .await
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(10), task)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn network_host_candidate_exhaustion_fails_closed() {
+        let root = ProcessRoot::new().unwrap();
+        let path = root.path().to_path_buf();
+        let invitation = direct_invitation_path(&path);
+        let host = IrohFastEndpoint::bind_loopback().await.unwrap();
+        let address = host.address();
+        let task = tokio::spawn(run_network_host_with_endpoint(root, host));
+        read_bounded_wait_async(invitation, MAX_WIRE_OBJECT_BYTES, FRAME_WAIT)
+            .await
+            .unwrap();
+        for _ in 0..32 {
+            let peer = IrohFastEndpoint::bind_loopback().await.unwrap();
+            let mut link = peer
+                .connect_address(address.clone(), NETWORK_OPERATION_WAIT, MAX_IPC_FRAME_BYTES)
+                .await
+                .unwrap();
+            link.send_frame(&[0x80], NETWORK_OPERATION_WAIT)
+                .await
+                .unwrap();
+            assert!(link.receive_frame(Duration::from_secs(4)).await.is_err());
+            link.reject();
+        }
+        assert!(
+            tokio::time::timeout(Duration::from_secs(10), task)
+                .await
+                .unwrap()
+                .unwrap()
+                .is_err()
+        );
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn ipc_file_boundaries_under_permissive_umask() {
+        const CHILD: &str = "SESSION_INGRESS_IPC_TEST_CHILD";
+        if std::env::var_os(CHILD).is_none() {
+            let executable = std::env::current_exe().unwrap();
+            #[cfg(unix)]
+            let mut command = {
+                let mut command = Command::new("sh");
+                command
+                    .args(["-c", "umask 000; exec \"$@\"", "sh"])
+                    .arg(&executable);
+                command
+            };
+            #[cfg(not(unix))]
+            let mut command = Command::new(&executable);
+            let child = command
+                .args([
+                    "--exact",
+                    "l1_process::tests::ipc_file_boundaries_under_permissive_umask",
+                    "--nocapture",
+                ])
+                .env(CHILD, "1")
+                .spawn()
+                .unwrap();
+            let mut child = ManagedChild::new("IPC boundary test", child);
+            let deadline = Instant::now() + Duration::from_secs(10);
+            loop {
+                if let Some(status) = child.child_mut().unwrap().try_wait().unwrap() {
+                    assert!(status.success());
+                    break;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "special file blocked a bounded IPC read"
+                );
+                thread::sleep(Duration::from_millis(10));
+            }
+            return;
+        }
+        let root = ProcessRoot::new().unwrap();
+        validate_root(root.path()).unwrap();
+        let regular = root.path().join("direct/regular");
+        atomic_write(&regular, b"valid", 8).unwrap();
+        assert_eq!(
+            read_bounded_wait(&regular, 8, Duration::from_secs(1)).unwrap(),
+            b"valid"
+        );
+        assert!(read_bounded_wait(&regular, 4, Duration::from_secs(1)).is_err());
+        assert!(read_bounded_wait(root.path(), 8, Duration::from_secs(1)).is_err());
+        let missing = root.path().join("direct/missing");
+        assert!(read_bounded_wait(&missing, 8, Duration::from_millis(20)).is_err());
+        let delayed = missing.clone();
+        let writer = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(20));
+            atomic_write(&delayed, b"later", 8).unwrap();
+        });
+        assert_eq!(
+            read_bounded_wait(&missing, 8, Duration::from_secs(1)).unwrap(),
+            b"later"
+        );
+        writer.join().unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _, symlink};
+            for path in [
+                root.path().to_path_buf(),
+                root.path().join("direct"),
+                root.path().join("relay/in"),
+                root.path().join("alice"),
+            ] {
+                assert_eq!(
+                    fs::metadata(path).unwrap().permissions().mode() & 0o777,
+                    0o700
+                );
+            }
+            assert_eq!(
+                fs::metadata(&regular).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+            let fifo = root.path().join("direct/fifo");
+            assert!(
+                Command::new("mkfifo")
+                    .arg(&fifo)
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+            assert!(read_bounded_wait(&fifo, 8, Duration::from_secs(1)).is_err());
+            // Keep both ends open: a blocking read would wait forever for EOF.
+            let _fifo_owner = OpenOptions::new()
+                .read(true)
+                .write(true)
+                .custom_flags(libc::O_NONBLOCK)
+                .open(&fifo)
+                .unwrap();
+            assert!(read_bounded_wait(&fifo, 8, Duration::from_secs(1)).is_err());
+            for (name, target) in [("fifo-link", &fifo), ("regular-link", &regular)] {
+                let path = root.path().join("direct").join(name);
+                symlink(target, &path).unwrap();
+                assert!(read_bounded_wait(&path, 8, Duration::from_secs(1)).is_err());
+                assert!(read_bounded_file(&path, 8).is_none());
+            }
+            let marker = root.path().join(".sessionctl-l1-root");
+            fs::remove_file(&marker).unwrap();
+            symlink(&fifo, &marker).unwrap();
+            assert!(validate_root(root.path()).is_err());
+            fs::remove_file(&marker).unwrap();
+            atomic_write(&marker, ROOT_MARKER, ROOT_MARKER.len()).unwrap();
+        }
+    }
 
     #[test]
     fn private_state_pipe_roundtrip_rejects_malformed_and_has_no_file_fallback() {

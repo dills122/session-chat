@@ -128,7 +128,12 @@ use checked absolute deadlines no longer than five minutes, and graceful close
 rejects peer reset or connection failure instead of treating either as a
 receipt. Its caller-selected frame bound has a 256 KiB crate-wide ceiling, and
 a failed, timed-out, or cancelled partial frame poisons the ordered link rather
-than permitting desynchronized reuse. The bearer invitation is transferred
+than permitting desynchronized reuse. ADR 0027 extends this to the whole delivery
+request/response exchange, including a dropped future after a complete send.
+Both host harnesses retain the listener across rejected peers under one
+32-candidate/five-minute bound, check invitation or mailbox authority before
+session ownership, and never count denied requests as completion. This bounds
+work; it does not guarantee availability under sustained attack. The bearer invitation is transferred
 over an authenticated confidential channel outside Iroh; the first Iroh frame
 is the HPKE-protected join request, so an unauthorised first connector cannot
 retrieve admission authority. The public N0 preset may use direct paths, relay forwarding, address
@@ -344,7 +349,7 @@ Neither establishes power-loss safety,
 rollback resistance, platform key custody, or production transport behavior.
 Its raw observations remain non-public; the retained L2-8 gate lets only sealed
 complete aggregates emit self-reported candidate v2 bundles with execution-time
-binary/artifact binding and secret/canary scans. ADR 0027 requires external
+binary/artifact binding and secret/canary scans. ADR 0028 requires external
 attestation verification before hosted provenance is accepted,
 and portable passage remains conditional on the exact revision's required
 three-OS CI result.

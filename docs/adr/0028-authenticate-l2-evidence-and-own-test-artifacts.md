@@ -1,4 +1,4 @@
-# ADR 0027: Authenticate L2 evidence and own test artifacts
+# ADR 0028: Authenticate L2 evidence and own test artifacts
 
 Status: accepted
 

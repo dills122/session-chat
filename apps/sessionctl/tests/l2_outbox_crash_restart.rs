@@ -227,7 +227,12 @@ mod checked {
             .unwrap();
             let bundle = report
                 .candidate_v2(&std::env::current_exe().unwrap(), &image, &channels)
-                .expect("Welcome engine promotion");
+                .unwrap_or_else(|error| {
+                    let binary_bytes = std::fs::metadata(std::env::current_exe().unwrap())
+                        .expect("Welcome engine test binary metadata")
+                        .len();
+                    panic!("Welcome engine candidate: {error}; test binary bytes={binary_bytes}");
+                });
             for manifest in bundle.manifests() {
                 println!(
                     "L2_CANDIDATE_BEGIN\n{}L2_CANDIDATE_END",

@@ -461,6 +461,72 @@ impl IrohFastMailboxService {
         link.close(operation_duration).await
     }
 
+    /// Serves a bounded authenticated run. Denied requests never count toward
+    /// completion. Rejection closes only this peer, preserving the listener.
+    pub async fn serve_authorized_requests(
+        &mut self,
+        mut link: IrohFastLink,
+        maximum_requests: usize,
+        first_request_duration: Duration,
+        operation_duration: Duration,
+    ) -> Result<(), IrohFastError> {
+        let result = async {
+            if maximum_requests == 0 || maximum_requests > MAX_FAST_REQUESTS_PER_CONNECTION {
+                return Err(IrohFastError::InvalidBound);
+            }
+            for index in 0..maximum_requests {
+                let duration = if index == 0 {
+                    first_request_duration
+                } else {
+                    operation_duration
+                };
+                let deadline = Instant::now()
+                    .checked_add(duration)
+                    .ok_or(IrohFastError::InvalidBound)?;
+                let bytes = Zeroizing::new(
+                    link.receive_frame(remaining_service_duration(deadline)?)
+                        .await?,
+                );
+                let request = WireRequest::decode(&bytes)?;
+                let now = unix_now()?;
+                match request.operation {
+                    OP_DEPOSIT => self.authorize(
+                        &request,
+                        now,
+                        |record| &record.deposit_digest,
+                        DEPOSIT_DOMAIN,
+                    ),
+                    OP_POLL => self.authorize(
+                        &request,
+                        now,
+                        |record| &record.receive_digest,
+                        RECEIVE_DOMAIN,
+                    ),
+                    OP_ACKNOWLEDGE => self.authorize(
+                        &request,
+                        now,
+                        |record| &record.acknowledgement_digest,
+                        ACKNOWLEDGEMENT_DOMAIN,
+                    ),
+                    _ => return Err(IrohFastError::FrameRejected),
+                }
+                .map_err(|_| IrohFastError::PeerRejected)?;
+                let response = self.process_request(&bytes, now)?;
+                link.send_frame(&response, remaining_service_duration(deadline)?)
+                    .await?;
+            }
+            Ok(())
+        }
+        .await;
+        match result {
+            Ok(()) => link.close(operation_duration).await,
+            Err(error) => {
+                link.reject();
+                Err(error)
+            }
+        }
+    }
+
     fn process_request(
         &mut self,
         bytes: &[u8],
@@ -662,6 +728,7 @@ impl IrohFastMailboxService {
 /// Connected client-side implementation of the common delivery contract.
 pub struct IrohFastDelivery {
     link: IrohFastLink,
+    synchronized: bool,
 }
 
 impl IrohFastDelivery {
@@ -697,7 +764,10 @@ impl IrohFastDelivery {
         if link.maximum_frame_bytes() != crate::MAX_FAST_FRAME_BYTES {
             return Err(IrohFastError::InvalidBound);
         }
-        Ok(Self { link })
+        Ok(Self {
+            link,
+            synchronized: true,
+        })
     }
 
     /// Returns the authenticated service endpoint for local policy checks.
@@ -713,7 +783,10 @@ impl IrohFastDelivery {
     }
 
     /// Finishes the connected adapter and verifies clean peer shutdown.
-    pub async fn close(self, duration: Duration) -> Result<(), IrohFastError> {
+    pub async fn close(mut self, duration: Duration) -> Result<(), IrohFastError> {
+        if !self.synchronized {
+            self.link.poison();
+        }
         self.link.close(duration).await
     }
 
@@ -723,6 +796,10 @@ impl IrohFastDelivery {
         budget: session_transport::OperationBudget,
         control: &dyn DispatchControl,
     ) -> Result<WireResponse, TransportFailure> {
+        if !self.synchronized {
+            self.link.poison();
+            return Err(map_link_failure(IrohFastError::ConnectionUnavailable));
+        }
         let first = control.checkpoint(budget)?;
         let request_network_bytes = request
             .len()
@@ -733,8 +810,12 @@ impl IrohFastDelivery {
         if request_network_bytes >= budget.max_network_bytes() {
             return Err(failure(TransportFailureCode::EnvelopeTooLarge));
         }
+        let send_duration = remaining_duration(first.monotonic_now(), budget)?;
+        // Remains false on every error and when the future is dropped, even
+        // between complete frames. Only a consumed response permits reuse.
+        self.synchronized = false;
         self.link
-            .send_frame(&request, remaining_duration(first.monotonic_now(), budget)?)
+            .send_frame(&request, send_duration)
             .await
             .map_err(map_link_failure)?;
         let second = control.checkpoint(budget)?;
@@ -758,9 +839,11 @@ impl IrohFastDelivery {
             .await
             .map_err(map_link_failure)?;
         control.checkpoint(budget)?;
-        WireResponse::decode(&response).inspect_err(|_| {
+        let response = WireResponse::decode(&response).inspect_err(|_| {
             self.link.poison();
-        })
+        })?;
+        self.synchronized = true;
+        Ok(response)
     }
 
     fn validate_scope(

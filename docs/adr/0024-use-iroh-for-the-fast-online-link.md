@@ -5,7 +5,7 @@ delivery-adapter slice implemented; Task 10 external-network evidence open
 
 Date: 2026-09-04
 
-Last reviewed: 2026-09-05
+Last reviewed: 2026-09-06
 
 ## Context
 
@@ -84,7 +84,9 @@ the memory adapter and the direct-loopback Iroh adapter.
 A Task 10 increment adds an explicit common-adapter evidence harness.
 The service issues a short-lived mailbox, writes one bounded canonical
 operator-only v2 handoff containing the selected path policy and all three
-rights, and serves exactly the shared conformance request count. The joiner
+rights, and serves exactly the shared conformance request count after right-specific
+authorization of every counted operation. ADR 0027 adds bounded candidate
+acceptance before session ownership and whole-exchange client poisoning. The joiner
 decodes that file and rejects a CLI mode mismatch before public network work,
 authenticates the embedded service endpoint, and runs the shared
 case. The all-rights format is limited to this test harness and is not a
@@ -122,9 +124,12 @@ automatic profile fallback.
 - A malicious peer, relay, or network can still drop, delay, duplicate, replay,
   reorder across reconnections, or refuse traffic. Existing protocol checks
   remain authoritative.
-- An unauthorised first connector can deny service to this one-connection
-  experiment, but it cannot retrieve the bearer invitation from the host or
-  construct a valid protected join without independently obtaining that file.
+- ADR 0027 rejects stray first connectors under a 32-candidate/five-minute
+  ceiling before committing to a peer. The network host requires an HPKE open
+  against its exact invitation; the mailbox host requires exact operation
+  authority. Exhausting that ceiling or holding genuine bearer authority can
+  still deny service. Neither endpoint authentication nor this ingress check
+  grants MLS membership.
 - Deadlines, peer mismatch, noncanonical endpoint text, oversized remote frame
   declarations, and reset-before-receipt fail closed with payload-free errors.
 - Ephemeral endpoint keys make this a demonstration path, not durable peer

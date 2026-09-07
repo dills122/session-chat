@@ -31,7 +31,10 @@ post-removal rejection.
 Use a test-only filesystem IPC v1 frame with fixed magic/version, a closed
 message kind, a seven-step sequence, at most two parts, a 64 KiB bound per
 part, canonical revalidation, a 30-second per-frame deadline, and atomic
-publish. The relay accepts only these existing public wire objects:
+publish. ADR 0027 additionally requires atomically owner-only Unix directories
+and bounded regular-file channel/marker reads that reject links and special
+files before potentially blocking I/O. Windows retains inherited ACLs and
+rejects reparse-point files; this is not an OS sandbox. The relay accepts only these existing public wire objects:
 
 - `ProtectedJoinRequest`;
 - `LocalWelcomeDepositEndpoint` only when exercising that deposit authority;

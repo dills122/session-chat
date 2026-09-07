@@ -216,7 +216,7 @@ before fresh-process verification. Incomplete return-code or pause matrices
 cannot emit complete matrix coverage. Raw case observations remain non-public.
 The retained L2-8 gate lets sealed complete aggregates emit explicitly unsigned
 `l2-evidence-candidate-v2` bundles with execution-time binary identities and
-bounded synthetic-canary/actual-secret scans. ADR 0027 requires external
+bounded synthetic-canary/actual-secret scans. ADR 0028 requires external
 attestation verification before accepting hosted provenance. Portable
 passage remains per-revision three-OS evidence, so this adds no power-loss,
 filesystem, rollback-resistance, or production-durability claim.

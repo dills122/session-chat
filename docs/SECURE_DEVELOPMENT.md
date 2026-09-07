@@ -25,7 +25,7 @@ credentials, workflow permissions default to read-only. The L2 evidence job addi
 needs OIDC and attestation write permissions for non-PR artifact signing. Remote
 actions/reusable workflows use full commit pins; Docker actions use full SHA-256
 image digests. The repository checker walks decoded keys in its documented
-YAML subset (ADR 0027), including flow and quoted forms, and rejects aliases,
+YAML subset (ADR 0028), including flow and quoted forms, and rejects aliases,
 tags, complex keys, expressions and multiline action references. The Rust matrix restores an OS-, toolchain-, and locked-
 graph-specific dependency build cache; it does not cache workspace crates,
 credentials, or installed binaries, and a cache miss never skips compilation.
