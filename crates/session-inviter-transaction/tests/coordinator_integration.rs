@@ -12,8 +12,8 @@ use session_inviter_transaction::{
 use session_protocol::{LocalWelcomeDepositEndpoint, OpaqueEnvelope};
 use session_transport::{
     CoordinatorError, CoordinatorOutcome, CoordinatorPolicy, EnvelopeTransport, LocalMailboxPolicy,
-    LocalMemoryWelcomeTransport, LocalV1DepositEndpointResolver, TransportFailureCode,
-    WelcomeDeliveryCoordinator,
+    LocalMemoryWelcomeTransport, LocalV1DepositEndpointResolver, OutboxPortError,
+    TransportFailureCode, WelcomeDeliveryCoordinator, WelcomeOutboxPort,
 };
 
 const NOW: u64 = 1_700_000_000;
@@ -197,6 +197,59 @@ fn ambiguous_remote_acceptance_retries_exact_identity_without_repeating_commit()
         store.complete_delivery(&stale, NOW + 2),
         Err(TransactionError::LeaseMismatch)
     );
+}
+
+#[test]
+fn expired_final_lease_terminalizes_before_coordinator_reports_idle() {
+    let (mut adapter, endpoint, _receive) = local_composition();
+    let one_attempt = TransactionPolicy::new(4, 255, 4_096, 2_097_152, 65_536, 4_096, 1, 60)
+        .expect("one-attempt transaction policy");
+    let mut store = InMemoryInviterJoinStore::new(one_attempt);
+    seeded_commit(&mut store, &endpoint);
+    let _lost_result = store
+        .lease_delivery([10; 16], NOW, 1)
+        .expect("final owner lease becomes ambiguous");
+    let start = Instant::now();
+    let control = TestControl {
+        monotonic_now: start,
+        wall_now_unix_seconds: NOW + 1,
+    };
+    let mut resolver = LocalV1DepositEndpointResolver;
+
+    assert_eq!(
+        ready(coordinator().run_once(&mut store, &mut resolver, &mut adapter, &control))
+            .expect("terminal housekeeping succeeds"),
+        CoordinatorOutcome::Idle
+    );
+    let view = store.recover(&[10; 16]).expect("transaction retained");
+    assert_eq!(view.outbox_state, OutboxState::AttemptsExhausted);
+    assert_eq!(view.delivery_attempts, 1);
+    assert_eq!(view.epoch_after, 8);
+    assert_eq!(store.committed_count(), 1);
+    assert_eq!(
+        store.invitation_state(&[1; 16]),
+        Some(InvitationState::Consumed)
+    );
+}
+
+#[test]
+fn invalid_lease_request_cannot_terminalize_expired_work() {
+    let (_adapter, endpoint, _receive) = local_composition();
+    let one_attempt = TransactionPolicy::new(4, 255, 4_096, 2_097_152, 65_536, 4_096, 1, 60)
+        .expect("one-attempt transaction policy");
+    let mut store = InMemoryInviterJoinStore::new(one_attempt);
+    seeded_commit(&mut store, &endpoint);
+    let _lost_result = store
+        .lease_delivery([10; 16], NOW, 1)
+        .expect("final owner lease becomes ambiguous");
+
+    assert!(matches!(
+        WelcomeOutboxPort::lease_next(&mut store, NOW + 1, 0),
+        Err(OutboxPortError::Internal)
+    ));
+    let view = store.recover(&[10; 16]).expect("transaction retained");
+    assert_eq!(view.outbox_state, OutboxState::Leased);
+    assert_eq!(view.delivery_attempts, 1);
 }
 
 #[test]

@@ -878,6 +878,29 @@ impl WelcomeOutboxPort for InMemoryInviterJoinStore {
         now_unix_seconds: u64,
         lease_seconds: u64,
     ) -> Result<Option<LeasedWelcome<Self::Lease>>, OutboxPortError> {
+        if lease_seconds == 0
+            || lease_seconds > self.policy.maximum_lease_seconds
+            || now_unix_seconds.checked_add(lease_seconds).is_none()
+        {
+            return Err(map_outbox_port_error(TransactionError::InvalidInput));
+        }
+        for record in self.commits.values_mut() {
+            let attempts_exhausted = record.outbox_expires_at_unix_seconds > now_unix_seconds
+                && record.delivery_attempts >= self.policy.maximum_delivery_attempts
+                && match record.outbox {
+                    StoredOutboxState::Pending => true,
+                    StoredOutboxState::Leased {
+                        expires_at_unix_seconds,
+                        ..
+                    } => expires_at_unix_seconds <= now_unix_seconds,
+                    StoredOutboxState::Delivered { .. } | StoredOutboxState::AttemptsExhausted => {
+                        false
+                    }
+                };
+            if attempts_exhausted {
+                record.outbox = StoredOutboxState::AttemptsExhausted;
+            }
+        }
         let Some(transaction_id) = self
             .pending_transaction_ids(now_unix_seconds)
             .into_iter()
