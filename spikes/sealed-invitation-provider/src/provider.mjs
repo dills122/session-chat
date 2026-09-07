@@ -1,6 +1,6 @@
 import { closedObject, boundedString, isCanonicalBase64url, normalizeEnvelope, boundedJsonSnapshot } from './validation.mjs';
 import { createHash, generateKeyPairSync, randomBytes, sign, timingSafeEqual, verify } from 'node:crypto';
-import { capabilityDigest, PADDED_PLAINTEXT_BYTES, randomCapability } from './crypto.mjs';
+import { capabilityDigest, PADDED_PLAINTEXT_BYTES, PROTOCOL, randomCapability } from './crypto.mjs';
 
 const DEFAULT_MAILBOX_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_MAX_QUEUE_DEPTH = 16;
@@ -8,6 +8,28 @@ const DEFAULT_MAX_LIFETIME_DEPOSITS = 64;
 const MAX_SERIALIZED_OVERHEAD_BYTES = 2048;
 const X25519_SPKI_BYTES = 44;
 const DELIVERY_ID_BYTES = 16;
+const DIRECTORY_RECORD_VERSION = 1;
+const DIRECTORY_RECORD_FIELDS = [
+  'version',
+  'directoryKey',
+  'bundle',
+  'addressAttestation',
+  'continuitySignature',
+  'issuedAt',
+  'expiresAt',
+  'signature'
+];
+const ENVELOPE_DIGEST_FIELDS = [
+  'version',
+  'mailboxId',
+  'envelopeId',
+  'expiresAt',
+  'ephemeralPublicKey',
+  'salt',
+  'nonce',
+  'ciphertext',
+  'authenticationTag'
+];
 const RECEIVE_BUNDLE_FIELDS = [
   'version',
   'generation',
@@ -50,6 +72,64 @@ function canonicalBundle(directoryKey, bundle) {
       bundle.expiresAt
     ])
   );
+}
+
+// Deterministic encoding for the bounded snapshots this spike signs. Object
+// keys are sorted so a re-encoded record produces the same claim bytes.
+function canonicalJson(value) {
+  if (value === null || typeof value === 'boolean' || typeof value === 'string') {
+    return JSON.stringify(value);
+  }
+  if (typeof value === 'number') {
+    if (!Number.isSafeInteger(value)) throw new Error('invalid canonical claim');
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalJson).join(',')}]`;
+  }
+  if (!value || typeof value !== 'object') throw new Error('invalid canonical claim');
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) throw new Error('invalid canonical claim');
+  const keys = Object.keys(value).sort();
+  return `{${keys.map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
+}
+
+// One closed DirectoryRecordV1 claims projection. Everything the directory
+// stores or returns is signed here, including the complete address attestation
+// and any continuity signature, so no field can be swapped after issuance.
+function canonicalRecordClaims(claims) {
+  return Buffer.from(
+    canonicalJson([
+      `${PROTOCOL}/directory-record-claims`,
+      claims.version,
+      claims.directoryKey,
+      [
+        claims.bundle.version,
+        claims.bundle.generation,
+        claims.bundle.previousBundleDigest,
+        claims.bundle.mailboxId,
+        claims.bundle.recipientPublicKey,
+        claims.bundle.expiresAt
+      ],
+      claims.addressAttestation,
+      claims.continuitySignature,
+      claims.issuedAt,
+      claims.expiresAt
+    ])
+  );
+}
+
+function envelopeDigest(envelope) {
+  return createHash('sha256')
+    .update(
+      Buffer.from(
+        JSON.stringify([
+          `${PROTOCOL}/envelope-idempotency`,
+          ...ENVELOPE_DIGEST_FIELDS.map((field) => envelope[field])
+        ])
+      )
+    )
+    .digest('base64url');
 }
 
 export function bundleDigest(bundle) {
@@ -103,7 +183,7 @@ export class InvitationDirectory {
     this.#now = now;
   }
 
-  async register({ directoryKey, bundle, registrationProof }) {
+  async register({ directoryKey, bundle, registrationProof, continuitySignature = null }) {
     const bundleSnapshot = normalizeReceiveBundle(bundle);
     if (
       typeof directoryKey !== 'string' ||
@@ -111,7 +191,8 @@ export class InvitationDirectory {
       directoryKey.length > 256 ||
       !bundleSnapshot ||
       bundleSnapshot.expiresAt <= this.#now() ||
-      !registrationProof || typeof registrationProof !== 'object' || Array.isArray(registrationProof)
+      !registrationProof || typeof registrationProof !== 'object' || Array.isArray(registrationProof) ||
+      !(continuitySignature === null || isCanonicalBase64url(continuitySignature, 64))
     ) {
       throw new Error('invalid directory registration');
     }
@@ -143,17 +224,17 @@ export class InvitationDirectory {
       throw new Error('directory rotation chain mismatch');
     }
 
-    const signature = sign(
-      null,
-      canonicalBundle(directoryKey, bundleSnapshot),
-      this.#signingKey
-    ).toString('base64url');
-    const record = {
+    const claims = {
+      version: DIRECTORY_RECORD_VERSION,
       directoryKey,
       bundle: bundleSnapshot,
       addressAttestation: registrationProofSnapshot,
-      signature
+      continuitySignature,
+      issuedAt: this.#now(),
+      expiresAt: bundleSnapshot.expiresAt
     };
+    const signature = sign(null, canonicalRecordClaims(claims), this.#signingKey).toString('base64url');
+    const record = { ...claims, signature };
     this.#records.set(directoryKey, record);
     return structuredClone(record);
   }
@@ -161,28 +242,72 @@ export class InvitationDirectory {
   lookup(directoryKey) {
     if (!boundedString(directoryKey, 256)) return undefined;
     const record = this.#records.get(directoryKey);
-    if (!record || record.bundle.expiresAt <= this.#now()) {
+    if (!record || !this.#live(record)) {
       return undefined;
     }
     return structuredClone(record);
   }
 
+  // Authenticity and freshness together. A record whose mailbox has expired is
+  // no longer accepted routing material even though its signature still checks.
   verifyRecord(record) {
     try {
-      record = closedObject(record, ['directoryKey', 'bundle', 'addressAttestation', 'signature']);
-      if (!record || !boundedString(record.directoryKey, 256) || !isCanonicalBase64url(record.signature, 64)) return false;
-      boundedJsonSnapshot(record.addressAttestation);
-      const normalizedBundle = normalizeReceiveBundle(record.bundle);
-      if (!normalizedBundle) return false;
+      const claims = this.#normalizeRecord(record);
+      if (!claims || !this.#live(claims)) return false;
       return verify(
         null,
-        canonicalBundle(record.directoryKey, normalizedBundle),
+        canonicalRecordClaims(claims),
         this.#verificationKey,
-        Buffer.from(record.signature, 'base64url')
+        Buffer.from(claims.signature, 'base64url')
       );
     } catch {
       return false;
     }
+  }
+
+  // Single record-acceptance API: closed shape, signature, expected lookup key
+  // and freshness. Returns the normalized record, or undefined on any failure.
+  acceptRecord({ record, expectedDirectoryKey } = {}) {
+    if (!boundedString(expectedDirectoryKey, 256)) return undefined;
+    let claims;
+    try {
+      claims = this.#normalizeRecord(record);
+    } catch {
+      return undefined;
+    }
+    if (!claims || claims.directoryKey !== expectedDirectoryKey) return undefined;
+    if (!this.verifyRecord(record)) return undefined;
+    return structuredClone(claims);
+  }
+
+  #live(claims) {
+    const now = this.#now();
+    return claims.expiresAt > now && claims.bundle.expiresAt > now;
+  }
+
+  #normalizeRecord(record) {
+    const normalized = closedObject(record, DIRECTORY_RECORD_FIELDS);
+    if (
+      !normalized ||
+      normalized.version !== DIRECTORY_RECORD_VERSION ||
+      !boundedString(normalized.directoryKey, 256) ||
+      !isCanonicalBase64url(normalized.signature, 64) ||
+      !Number.isSafeInteger(normalized.issuedAt) ||
+      !Number.isSafeInteger(normalized.expiresAt) ||
+      normalized.issuedAt > normalized.expiresAt ||
+      !(normalized.continuitySignature === null || isCanonicalBase64url(normalized.continuitySignature, 64))
+    ) {
+      return undefined;
+    }
+    const bundle = normalizeReceiveBundle(normalized.bundle);
+    if (!bundle || normalized.expiresAt > bundle.expiresAt) return undefined;
+    let addressAttestation;
+    try {
+      addressAttestation = boundedJsonSnapshot(normalized.addressAttestation);
+    } catch {
+      return undefined;
+    }
+    return { ...normalized, bundle, addressAttestation };
   }
 
   inspectRecordForSpike(directoryKey) {
@@ -260,9 +385,18 @@ export class InvitationMailboxService {
       throw new Error('envelope exceeds mailbox size limit');
     }
 
+    // Idempotency is per immutable delivery request, not per identifier. A retry
+    // that changes any authenticated field is a conflict, never a silent success
+    // for bytes the recipient will never receive.
+    const digest = envelopeDigest(envelope);
     const priorDelivery = mailbox.deliveriesByEnvelopeId.get(envelope.envelopeId);
     if (priorDelivery) {
-      return { deliveryId: priorDelivery, duplicate: true };
+      const expected = Buffer.from(priorDelivery.digest, 'base64url');
+      const actual = Buffer.from(digest, 'base64url');
+      if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
+        throw new Error('envelope idempotency conflict');
+      }
+      return { deliveryId: priorDelivery.deliveryId, duplicate: true };
     }
 
     this.#purgeExpiredEnvelopes(mailbox);
@@ -278,7 +412,7 @@ export class InvitationMailboxService {
       deliveryId,
       envelope: structuredClone(envelope)
     });
-    mailbox.deliveriesByEnvelopeId.set(envelope.envelopeId, deliveryId);
+    mailbox.deliveriesByEnvelopeId.set(envelope.envelopeId, { deliveryId, digest });
     mailbox.acceptedEnvelopeCount += 1;
     return { deliveryId, duplicate: false };
   }

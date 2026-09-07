@@ -9,7 +9,8 @@ import {
   generateKeyPairSync,
   hkdfSync,
   randomBytes,
-  randomUUID
+  randomUUID,
+  timingSafeEqual
 } from 'node:crypto';
 
 export const PROTOCOL = 'session-chat-sealed-invitation-spike-v1';
@@ -19,6 +20,8 @@ const KEY_BYTES = 32;
 const NONCE_BYTES = 12;
 const SALT_BYTES = 32;
 const LENGTH_PREFIX_BYTES = 4;
+const SHARED_SECRET_BYTES = 32;
+const ZERO_SHARED_SECRET = Buffer.alloc(SHARED_SECRET_BYTES);
 
 function encode(value) {
   return Buffer.from(value).toString('base64url');
@@ -48,6 +51,30 @@ function importPrivateKey(value) {
   });
   if (key.asymmetricKeyType !== 'x25519') throw new Error('invalid private key');
   return key;
+}
+
+// RFC 7748 6.1 requires rejecting an all-zero X25519 output. Low-order peer
+// points force that constant regardless of our private key, so a caller-supplied
+// public key alone would fix the AEAD key. OpenSSL already fails such a
+// derivation; this check keeps the contract explicit and provider-independent.
+function contributorySharedSecret(sharedSecret) {
+  if (
+    sharedSecret.length !== SHARED_SECRET_BYTES ||
+    timingSafeEqual(sharedSecret, ZERO_SHARED_SECRET)
+  ) {
+    throw new Error('non-contributory X25519 shared secret');
+  }
+  return sharedSecret;
+}
+
+function deriveSharedSecret(privateKey, publicKey) {
+  let sharedSecret;
+  try {
+    sharedSecret = diffieHellman({ privateKey, publicKey });
+  } catch {
+    throw new Error('non-contributory X25519 shared secret');
+  }
+  return contributorySharedSecret(sharedSecret);
 }
 
 function associatedData(envelope) {
@@ -125,10 +152,10 @@ export function sealInvitation({ recipientPublicKey, mailboxId, invitation, expi
 
   const padded = paddedPlaintext(invitation);
   const ephemeral = generateKeyPairSync('x25519');
-  const sharedSecret = diffieHellman({
-    privateKey: ephemeral.privateKey,
-    publicKey: importPublicKey(recipientPublicKey)
-  });
+  const sharedSecret = deriveSharedSecret(
+    ephemeral.privateKey,
+    importPublicKey(recipientPublicKey)
+  );
   const salt = randomBytes(SALT_BYTES);
   const key = Buffer.from(hkdfSync('sha256', sharedSecret, salt, Buffer.from(PROTOCOL), KEY_BYTES));
   const nonce = randomBytes(NONCE_BYTES);
@@ -162,10 +189,10 @@ export function openInvitation({ recipientPrivateKey, envelope, expectedMailboxI
     throw new Error('invitation envelope expired');
   }
 
-  const sharedSecret = diffieHellman({
-    privateKey: importPrivateKey(recipientPrivateKey),
-    publicKey: importPublicKey(envelope.ephemeralPublicKey)
-  });
+  const sharedSecret = deriveSharedSecret(
+    importPrivateKey(recipientPrivateKey),
+    importPublicKey(envelope.ephemeralPublicKey)
+  );
   const key = Buffer.from(
     hkdfSync('sha256', sharedSecret, decode(envelope.salt), Buffer.from(PROTOCOL), KEY_BYTES)
   );

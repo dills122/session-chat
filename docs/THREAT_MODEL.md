@@ -610,6 +610,16 @@ before serialization or clone. This is an object-API boundary, not protection
 for an unbounded upstream JSON parser or arbitrary JavaScript proxies. Own-key
 introspection still scales with an already materialized object's property count.
 
+The simulator signs one closed `DirectoryRecordV1` claims projection covering
+the lookup key, complete bundle, complete address attestation, any continuity
+signature, issuance and expiry, so no stored or returned field is authenticated
+by proxy. Verification and a single expected-lookup-key acceptance API both
+reject a record whose mailbox has expired. Deposit idempotency is bound to the
+accepted envelope digest, so a reused envelope ID carrying different bytes is a
+conflict rather than a success for invitation bytes the recipient never
+receives. Both X25519 derivations reject a non-contributory shared secret before
+key derivation. None of this makes the spike production cryptography.
+
 Attacker story: Mallory registers their receive key under Bob's GitHub subject
 or rebinds Bob's signed bundle under Mallory's directory entry. Registration
 authorization and the directory signature must bind the lookup address, key,

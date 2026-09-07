@@ -887,3 +887,215 @@ test('bounded Unicode directory keys verify their own issued records', async () 
   assert.equal(state.directory.lookup('x'.repeat(100_000)), undefined);
   assert.throws(() => state.mailboxService.fetch({ mailboxId: 'x'.repeat(100_000), readCapability: state.mailbox.readCapability }), /unavailable/);
 });
+
+// RFC 7748 6.1 small-order u-coordinates. Every one of them drives the X25519
+// output to the all-zero constant regardless of the local private key.
+const X25519_SPKI_PREFIX = Buffer.from('302a300506032b656e032100', 'hex');
+const LOW_ORDER_PUBLIC_KEYS = [
+  '0000000000000000000000000000000000000000000000000000000000000000',
+  '0100000000000000000000000000000000000000000000000000000000000000',
+  'e0eb7a7c3b41b8ae1656e3faf19fc46ada098deb9c32b1fd866205165f49b800',
+  '5f9c95bca3508c24b1d0b1559c83ef5b04445cc4581c8e86d8224eddd09f1157',
+  'ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f',
+  'edffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f',
+  'eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f'
+].map((coordinate) =>
+  Buffer.concat([X25519_SPKI_PREFIX, Buffer.from(coordinate, 'hex')]).toString('base64url')
+);
+
+test('rejects low-order X25519 public keys instead of deriving a known shared secret', () => {
+  const state = setup();
+  const envelope = sealInvitation({
+    recipientPublicKey: state.recipient.publicKey,
+    mailboxId: state.mailbox.bundle.mailboxId,
+    invitation: { invitationId: 'contributory' },
+    expiresAt: state.now() + 30_000,
+    now: state.now()
+  });
+
+  for (const publicKey of LOW_ORDER_PUBLIC_KEYS) {
+    assert.equal(publicKey.length, state.recipient.publicKey.length);
+    assert.throws(
+      () =>
+        sealInvitation({
+          recipientPublicKey: publicKey,
+          mailboxId: state.mailbox.bundle.mailboxId,
+          invitation: { invitationId: 'contributory' },
+          expiresAt: state.now() + 30_000,
+          now: state.now()
+        }),
+      /non-contributory X25519 shared secret/
+    );
+    assert.throws(
+      () =>
+        openInvitation({
+          recipientPrivateKey: state.recipient.privateKey,
+          expectedMailboxId: envelope.mailboxId,
+          envelope: { ...envelope, ephemeralPublicKey: publicKey },
+          now: state.now()
+        }),
+      /non-contributory X25519 shared secret/
+    );
+  }
+
+  assert.deepEqual(
+    openInvitation({
+      recipientPrivateKey: state.recipient.privateKey,
+      expectedMailboxId: envelope.mailboxId,
+      envelope,
+      now: state.now()
+    }),
+    { invitationId: 'contributory' }
+  );
+});
+
+test('rejects deposit retries that change the envelope under a reused envelope identifier', () => {
+  const state = setup();
+  const mailboxId = state.mailbox.bundle.mailboxId;
+  const seal = (invitationId) =>
+    sealInvitation({
+      recipientPublicKey: state.mailbox.bundle.recipientPublicKey,
+      mailboxId,
+      invitation: { invitationId },
+      expiresAt: state.now() + 30_000,
+      now: state.now()
+    });
+  const envelope = seal('original');
+  const other = seal('substituted');
+  const deposit = (candidate) => state.mailboxService.deposit({ mailboxId, envelope: candidate });
+  const fetched = () =>
+    state.mailboxService.fetch({ mailboxId, readCapability: state.mailbox.readCapability });
+
+  const first = deposit(envelope);
+  assert.equal(deposit(envelope).duplicate, true);
+
+  const conflicts = [
+    { ciphertext: other.ciphertext, authenticationTag: other.authenticationTag },
+    { authenticationTag: other.authenticationTag },
+    { ephemeralPublicKey: other.ephemeralPublicKey },
+    { salt: other.salt },
+    { nonce: other.nonce },
+    { expiresAt: envelope.expiresAt - 1 }
+  ];
+  for (const conflict of conflicts) {
+    assert.throws(() => deposit({ ...envelope, ...conflict }), /envelope idempotency conflict/);
+  }
+
+  assert.equal(fetched().length, 1);
+  assert.deepEqual(fetched()[0].envelope, envelope);
+  assert.equal(
+    state.mailboxService.inspectMailboxForSpike(mailboxId).acceptedEnvelopeCount,
+    1
+  );
+  assert.equal(deposit(envelope).deliveryId, first.deliveryId);
+
+  state.mailboxService.acknowledge({
+    mailboxId,
+    acknowledgementCapability: state.mailbox.acknowledgementCapability,
+    deliveryIds: [first.deliveryId]
+  });
+  assert.throws(
+    () => deposit({ ...envelope, ciphertext: other.ciphertext, authenticationTag: other.authenticationTag }),
+    /envelope idempotency conflict/
+  );
+  assert.equal(deposit(envelope).duplicate, true);
+  assert.deepEqual(fetched(), []);
+});
+
+test('signs every stored directory-record claim, not just the lookup key and bundle', async () => {
+  const state = setup();
+  const directoryKey = 'github:user:closed-record';
+  const continuitySignature = Buffer.alloc(64, 7).toString('base64url');
+  const record = await state.directory.register({
+    directoryKey,
+    bundle: state.mailbox.bundle,
+    registrationProof: await attest(state, directoryKey, state.mailbox.bundle),
+    continuitySignature
+  });
+
+  assert.equal(state.directory.verifyRecord(record), true);
+  assert.equal(state.directory.verifyRecord(JSON.parse(JSON.stringify(record))), true);
+
+  for (const field of Object.keys(record.addressAttestation)) {
+    const mutated = structuredClone(record);
+    const value = mutated.addressAttestation[field];
+    mutated.addressAttestation[field] = typeof value === 'number' ? value + 1 : `${value}-tampered`;
+    assert.equal(state.directory.verifyRecord(mutated), false);
+
+    const removed = structuredClone(record);
+    delete removed.addressAttestation[field];
+    assert.equal(state.directory.verifyRecord(removed), false);
+  }
+
+  const substitutedAttestation = await attest(
+    state,
+    directoryKey,
+    state.mailboxService.createMailbox({ recipientPublicKey: state.recipient.publicKey }).bundle
+  );
+  assert.equal(
+    state.directory.verifyRecord({ ...record, addressAttestation: substitutedAttestation }),
+    false
+  );
+
+  const wrapperMutations = [
+    { addressAttestation: { unrelated: 'metadata' } },
+    { continuitySignature: null },
+    { continuitySignature: Buffer.alloc(64, 8).toString('base64url') },
+    { issuedAt: record.issuedAt - 1 },
+    { expiresAt: record.expiresAt - 1 },
+    { version: 2 },
+    { extra: 'unintended metadata' }
+  ];
+  for (const mutation of wrapperMutations) {
+    assert.equal(state.directory.verifyRecord({ ...record, ...mutation }), false);
+  }
+
+  const withoutContinuity = { ...record };
+  delete withoutContinuity.continuitySignature;
+  assert.equal(state.directory.verifyRecord(withoutContinuity), false);
+  assert.equal(state.directory.verifyRecord(record), true);
+});
+
+test('rejects expired directory records and binds an expected lookup key on acceptance', async () => {
+  const state = setup({ mailboxTtlMs: 60_000 });
+  const directoryKey = 'github:user:freshness';
+  const record = await state.directory.register({
+    directoryKey,
+    bundle: state.mailbox.bundle,
+    registrationProof: await attest(state, directoryKey, state.mailbox.bundle)
+  });
+
+  assert.equal(state.directory.verifyRecord(record), true);
+  assert.deepEqual(
+    state.directory.acceptRecord({ record, expectedDirectoryKey: directoryKey }),
+    record
+  );
+  assert.equal(
+    state.directory.acceptRecord({ record, expectedDirectoryKey: 'github:user:substituted' }),
+    undefined
+  );
+  assert.equal(state.directory.acceptRecord({ record }), undefined);
+  assert.equal(state.directory.acceptRecord(), undefined);
+  assert.equal(
+    state.directory.acceptRecord({
+      record: { ...record, extra: 'unintended metadata' },
+      expectedDirectoryKey: directoryKey
+    }),
+    undefined
+  );
+  assert.equal(
+    state.directory.acceptRecord({
+      record: { ...record, directoryKey: 'github:user:substituted' },
+      expectedDirectoryKey: 'github:user:substituted'
+    }),
+    undefined
+  );
+
+  state.advance(60_001);
+  assert.equal(state.directory.lookup(directoryKey), undefined);
+  assert.equal(state.directory.verifyRecord(record), false);
+  assert.equal(
+    state.directory.acceptRecord({ record, expectedDirectoryKey: directoryKey }),
+    undefined
+  );
+});
