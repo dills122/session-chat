@@ -497,3 +497,68 @@ fn corrupt_poll_fault_is_cleared_when_mailbox_expiry_prunes_its_target() {
 
     assert!(!transport.conformance_snapshot().corrupt_poll_armed());
 }
+
+#[test]
+fn stale_replay_capacity_is_scoped_to_its_own_mailbox() {
+    let start = Instant::now();
+    let control = LiveControl { now: start };
+    let mut transport = DeterministicMemoryTransport::new(
+        MemoryMailboxPolicy::new(300, 2, 1, 1).expect("bounded two-mailbox policy"),
+    )
+    .expect("memory transport");
+    // maximum_scheduled_deliveries_per_mailbox = envelopes * attempts * 2.
+    let per_mailbox_replays = 2;
+
+    let mut saturate = |envelope_id: u8, ciphertext: u8, fill: usize| {
+        let (deposit, receive, acknowledgement) = transport
+            .create_mailbox(NOW + 180, NOW)
+            .expect("mailbox")
+            .into_dispatch_parts();
+        let original = envelope(envelope_id, ciphertext);
+        let receipt = ready(EnvelopeDelivery::deposit(
+            &mut transport,
+            &deposit,
+            deposit_request(original.clone(), start),
+            &control,
+        ))
+        .expect("deposit");
+        ready(EnvelopeDelivery::poll(
+            &mut transport,
+            &receive,
+            poll_request(start),
+            &control,
+        ))
+        .expect("poll");
+        let ids = BoundedDeliveryIds::new(vec![*receipt.delivery_id()]).expect("exact set");
+        ready(EnvelopeDelivery::acknowledge(
+            &mut transport,
+            &acknowledgement,
+            AcknowledgementRequest::new(ids, budget(start)),
+            &control,
+        ))
+        .expect("acknowledge");
+        for _ in 0..fill {
+            transport
+                .replay_stale(&receive, *receipt.delivery_id(), original.clone())
+                .expect("bounded stale replay slot");
+        }
+        (receive, *receipt.delivery_id(), original)
+    };
+
+    let (first_receive, first_delivery_id, first_envelope) =
+        saturate(0x91, b'A', per_mailbox_replays);
+    let (second_receive, second_delivery_id, second_envelope) = saturate(0x92, b'B', 0);
+
+    assert_eq!(
+        transport.replay_stale(&first_receive, first_delivery_id, first_envelope),
+        Err(MemoryTransportError::CapacityExceeded),
+        "a mailbox at its own replay bound must be rejected"
+    );
+    transport
+        .replay_stale(&second_receive, second_delivery_id, second_envelope)
+        .expect("another mailbox's saturated replay queue must not consume this mailbox's bound");
+    assert_eq!(
+        transport.conformance_snapshot().queued_stale_replays(),
+        per_mailbox_replays + 1
+    );
+}

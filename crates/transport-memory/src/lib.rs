@@ -418,12 +418,17 @@ impl DeterministicMemoryTransport {
                 constant_time::verify_slices_are_equal(&accepted.envelope_digest, &digest).is_ok()
             })
             .ok_or(MemoryTransportError::Rejected)?;
-        if self.stale_replays.len() >= self.policy.maximum_scheduled_deliveries_per_mailbox {
+        // Both bounds are per-mailbox, as their names say. Summing across every
+        // mailbox would let one mailbox's retained replays reject another's.
+        let retained_replays = || {
+            self.stale_replays
+                .iter()
+                .filter(|replay| replay.mailbox_id == authority.mailbox_id)
+        };
+        if retained_replays().count() >= self.policy.maximum_scheduled_deliveries_per_mailbox {
             return Err(MemoryTransportError::CapacityExceeded);
         }
-        let retained_bytes = self
-            .stale_replays
-            .iter()
+        let retained_bytes = retained_replays()
             .try_fold(0_usize, |total, replay| {
                 total.checked_add(replay.encoded_len)
             })
@@ -701,6 +706,21 @@ impl EnvelopeTransport for DeterministicMemoryTransport {
             DeliveryAction::Duplicate => 2,
             DeliveryAction::Drop => 0,
         };
+        // Authenticate before reporting capacity. Otherwise a caller holding a
+        // mailbox ID but no valid deposit secret learns whether that mailbox is
+        // full: `CapacityExceeded` and `Rejected` are distinguishable. The async
+        // dispatch path already verifies the secret first.
+        {
+            let record = self
+                .mailboxes
+                .get(&endpoint.mailbox_id)
+                .ok_or(MemoryTransportError::Rejected)?;
+            if record.expires_at_unix_seconds != endpoint.expires_at_unix_seconds
+                || !secret_matches(DEPOSIT_DOMAIN, &record.deposit_digest, &endpoint.secret)
+            {
+                return Err(MemoryTransportError::Rejected);
+            }
+        }
         if self
             .scheduled_count(&endpoint.mailbox_id)
             .saturating_add(required_slots)
@@ -714,11 +734,6 @@ impl EnvelopeTransport for DeterministicMemoryTransport {
                 .mailboxes
                 .get_mut(&endpoint.mailbox_id)
                 .ok_or(MemoryTransportError::Rejected)?;
-            if record.expires_at_unix_seconds != endpoint.expires_at_unix_seconds
-                || !secret_matches(DEPOSIT_DOMAIN, &record.deposit_digest, &endpoint.secret)
-            {
-                return Err(MemoryTransportError::Rejected);
-            }
             if let Some(accepted) = record.accepted.get_mut(&envelope_id) {
                 if constant_time::verify_slices_are_equal(
                     &accepted.envelope_digest,
@@ -1238,4 +1253,59 @@ fn domain_digest(domain: &[u8], value: &[u8]) -> [u8; DIGEST_BYTES] {
 fn secret_matches(domain: &[u8], expected_digest: &[u8; DIGEST_BYTES], secret: &[u8]) -> bool {
     let candidate = domain_digest(domain, secret);
     constant_time::verify_slices_are_equal(expected_digest, &candidate).is_ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const NOW: u64 = 1_700_000_000;
+
+    // `MemoryDepositEndpoint` has private fields and no public constructor, so a
+    // valid-mailbox/invalid-secret endpoint can only be built inside this crate.
+    // That is exactly the shape needed to observe the pre-authentication oracle.
+    #[test]
+    fn saturated_mailbox_rejects_an_invalid_deposit_secret_before_reporting_capacity() {
+        let mut transport = DeterministicMemoryTransport::new(
+            MemoryMailboxPolicy::new(300, 1, 2, 1).expect("bounded policy"),
+        )
+        .expect("memory transport");
+        let (deposit, _receive, _acknowledgement) = transport
+            .create_mailbox(NOW + 180, NOW)
+            .expect("bounded mailbox")
+            .into_parts();
+
+        // maximum_scheduled_deliveries_per_mailbox = envelopes * attempts * 2 = 4.
+        // Two duplicated deliveries fill all four scheduled slots, so the next
+        // deposit fails the scheduling-capacity check rather than any inner bound.
+        for id in 0..2_u8 {
+            transport
+                .queue_action(DeliveryAction::Duplicate)
+                .expect("bounded action queue");
+            let envelope =
+                OpaqueEnvelope::new([id + 1; 16], NOW + 120, vec![0x41; 32]).expect("envelope");
+            EnvelopeTransport::deposit(&mut transport, &deposit, envelope, NOW)
+                .expect("bounded deposit");
+        }
+        assert_eq!(transport.scheduled_count(&deposit.mailbox_id), 4);
+        let saturating = OpaqueEnvelope::new([0x33; 16], NOW + 120, vec![0x41; 32])
+            .expect("saturating envelope");
+        assert_eq!(
+            EnvelopeTransport::deposit(&mut transport, &deposit, saturating.clone(), NOW),
+            Err(MemoryTransportError::CapacityExceeded),
+            "the fixture must actually saturate the mailbox for the authorized caller"
+        );
+
+        let forged = MemoryDepositEndpoint {
+            transport_instance_id: deposit.transport_instance_id,
+            mailbox_id: deposit.mailbox_id,
+            secret: [0xff; CAPABILITY_BYTES],
+            expires_at_unix_seconds: deposit.expires_at_unix_seconds,
+        };
+        assert_eq!(
+            EnvelopeTransport::deposit(&mut transport, &forged, saturating, NOW),
+            Err(MemoryTransportError::Rejected),
+            "an unauthenticated caller must not learn that the mailbox is full"
+        );
+    }
 }
