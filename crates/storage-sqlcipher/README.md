@@ -16,11 +16,18 @@ required Linux, macOS, and Windows CI runners and prove that:
   and pending encrypted Welcome commit or roll back together;
 - the joiner's joined MLS state and deletion of its exact one-time KeyPackage
   commit or roll back together across the two upstream storage calls;
+- cloned handles reject every other read or write while that split upstream
+  callback leaves the joiner SQL transaction open;
 - ambiguous post-commit results recover idempotently without repeating MLS;
 - committed inviter and joiner results survive close and reopen;
 - a wrong key is rejected and the closed database omits fixture plaintext and
   the normal SQLite header; and
 - SQLCipher's page-HMAC integrity check succeeds for retained fixtures.
+
+The exact KeyPackage-deletion callback is the sole operation allowed through
+that open transaction. Current upstream traits cannot distinguish which clone
+invoked it, so same-open-scope callers remain trusted not to call `delete`
+directly with the pending reference or an aborting foreign reference.
 
 Schema version 3 retains the version-2 sole Welcome-outbox owner and adds one
 opaque versioned MLS client-identity record. Version 4 binds that record to one

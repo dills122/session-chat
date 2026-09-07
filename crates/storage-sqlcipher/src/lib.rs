@@ -1726,6 +1726,14 @@ impl SqlCipherStorage {
     }
 
     fn lock(&self) -> Result<MutexGuard<'_, StorageInner>, StoreError> {
+        let inner = self.inner.lock().map_err(|_| StoreError::Rejected)?;
+        if inner.pending_joiner.is_some() {
+            return Err(StoreError::Rejected);
+        }
+        Ok(inner)
+    }
+
+    fn lock_for_joiner_completion(&self) -> Result<MutexGuard<'_, StorageInner>, StoreError> {
         self.inner.lock().map_err(|_| StoreError::Rejected)
     }
 
@@ -2291,7 +2299,7 @@ impl KeyPackageStorage for SqlCipherStorage {
         if id.len() != 32 {
             return Err(StoreError::Rejected);
         }
-        let mut inner = self.lock()?;
+        let mut inner = self.lock_for_joiner_completion()?;
         #[cfg(session_chat_storage_fault_testing)]
         let fault_observer = inner.fault_observer.clone();
         let pending = inner.pending_joiner.take().ok_or(StoreError::Rejected)?;

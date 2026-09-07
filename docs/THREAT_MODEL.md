@@ -931,8 +931,14 @@ remains out of scope.
 ADR 0017's `storage-sqlcipher` adapter adds keyed, encrypted file-backed
 evidence for both real owner-local MLS transactions. The inviter snapshot and
 join/outbox state share one SQL commit; the joiner snapshot and exact one-time
-KeyPackage deletion share another. Wrong-key, pre-commit rollback,
-ambiguous-result recovery, close/reopen, and closed-file checks are retained on
+KeyPackage deletion share another. All cloned storage handles reject reads and
+unrelated writes while the split joiner callback transaction is open; only the
+KeyPackage-deletion callback can reacquire it. The exact pending reference may
+finish the transaction, while any foreign 32-byte reference rolls it back. The
+upstream deletion trait cannot prove which same-process clone called it, so
+same-open-scope callers remain trusted not to invoke that callback directly.
+Wrong-key, pre-commit rollback, ambiguous-result recovery,
+close/reopen, and closed-file checks are retained on
 the required Linux, macOS, and Windows CI runners. Schema version 2 also makes
 that inviter row the sole Welcome-delivery ledger with persistent store
 identity, exact canonical material, bounded attempts, generation/identity-bound

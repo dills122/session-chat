@@ -44,6 +44,13 @@ libraries across the three required CI operating systems.
   acceptance, and failure transition uses one immediate SQL transaction;
   restart reconstructs work from this ledger, and old-open-scope, stale, or
   foreign lease results fail closed.
+- The joiner transaction spans the provider's group-write and exact
+  KeyPackage-delete callbacks. While that transaction is pending, every cloned
+  handle rejects all other reads and writes; only the deletion callback may
+  reacquire the connection. The exact pending reference may finish, while a
+  foreign 32-byte reference rolls back. The upstream trait does not authenticate
+  which same-process clone invokes `delete`, so callers sharing an open scope
+  remain trusted not to invoke that callback directly.
 - Schema version 3 retains those semantics and adds one exact 141-byte,
   versioned MLS client-identity record. Version 4 adds one exact nonzero 32-byte
   group binding. The public storage boundary carries the record only in an opaque

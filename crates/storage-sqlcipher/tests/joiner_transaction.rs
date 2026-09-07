@@ -1,12 +1,65 @@
-use mls_rs_core::group::GroupStateStorage;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
+
+use mls_rs_core::group::{EpochRecord, GroupState, GroupStateStorage};
 use session_crypto_mls::{
     SessionGroupId, create_client, create_client_with_storage, create_key_package_validator,
 };
 use storage_sqlcipher::{JoinerTransaction, PersistenceFault, SqlCipherStorage, VaultKey};
+use zeroize::Zeroizing;
 
 const NOW: u64 = 1_900_000_000;
 
 use test_private_dir::TestDatabase;
+
+#[derive(Clone)]
+struct ProbingGroupStorage {
+    storage: SqlCipherStorage,
+    interleaved_access_rejected: Arc<AtomicBool>,
+}
+
+impl GroupStateStorage for ProbingGroupStorage {
+    type Error = storage_sqlcipher::StoreError;
+
+    fn state(&self, group_id: &[u8]) -> Result<Option<Zeroizing<Vec<u8>>>, Self::Error> {
+        self.storage.state(group_id)
+    }
+
+    fn epoch(
+        &self,
+        group_id: &[u8],
+        epoch_id: u64,
+    ) -> Result<Option<Zeroizing<Vec<u8>>>, Self::Error> {
+        self.storage.epoch(group_id, epoch_id)
+    }
+
+    fn write(
+        &mut self,
+        state: GroupState,
+        epoch_inserts: Vec<EpochRecord>,
+        epoch_updates: Vec<EpochRecord>,
+    ) -> Result<(), Self::Error> {
+        let group_id = state.id.clone();
+        self.storage.write(state, epoch_inserts, epoch_updates)?;
+        let probe = self.storage.clone();
+        self.interleaved_access_rejected.store(
+            probe.state(&group_id).is_err()
+                && probe.max_epoch_id(&group_id).is_err()
+                && probe.schema_version().is_err()
+                && probe
+                    .seed_reservation([0x51; 16], [0x52; 64], [0x53; 16], NOW + 300, NOW)
+                    .is_err(),
+            Ordering::SeqCst,
+        );
+        Ok(())
+    }
+
+    fn max_epoch_id(&self, group_id: &[u8]) -> Result<Option<u64>, Self::Error> {
+        self.storage.max_epoch_id(group_id)
+    }
+}
 
 #[test]
 fn actual_joiner_write_atomically_persists_group_and_deletes_one_time_key_package() {
@@ -16,7 +69,15 @@ fn actual_joiner_write_atomically_persists_group_and_deletes_one_time_key_packag
         VaultKey::new([21; 32]).expect("nonzero test key"),
     )
     .expect("storage created");
-    let bob = create_client_with_storage(storage.clone(), storage.clone()).expect("Bob client");
+    let interleaved_access_rejected = Arc::new(AtomicBool::new(false));
+    let bob = create_client_with_storage(
+        ProbingGroupStorage {
+            storage: storage.clone(),
+            interleaved_access_rejected: Arc::clone(&interleaved_access_rejected),
+        },
+        storage.clone(),
+    )
+    .expect("Bob client");
     let bob_key_package = bob.generate_key_package(NOW).expect("Bob KeyPackage");
     let validated = create_key_package_validator()
         .validate_key_package(bob_key_package.as_bytes(), NOW)
@@ -46,6 +107,7 @@ fn actual_joiner_write_atomically_persists_group_and_deletes_one_time_key_packag
         .stage_joiner(failed, PersistenceFault::BeforeCommit)
         .expect("joiner transaction staged");
     assert!(bob_group.write_to_storage().is_err());
+    assert!(interleaved_access_rejected.load(Ordering::SeqCst));
     assert!(
         storage
             .state(bob_group.group_id())
