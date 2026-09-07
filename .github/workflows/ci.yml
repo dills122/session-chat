@@ -224,7 +224,7 @@ jobs:
           node-version-file: .node-version
 
       - name: Install pinned source-coverage driver
-        uses: taiki-e/install-action@67729d5c413db75907f0ad1e39bb04b9c868ff60 # v2.85.7
+        uses: taiki-e/install-action@5bf6ce016fd2e72eefc647cbca1e4213f65955b8 # v2.87.5
         with:
           tool: cargo-llvm-cov@0.9.0
 
