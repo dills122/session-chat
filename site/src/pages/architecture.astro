@@ -6,6 +6,8 @@ import BaseLayout from '../layouts/BaseLayout.astro';
   title="Architecture · Session Chat"
   description="How Session Chat keeps conversation keys, access decisions, mailboxes, and message delivery under separate authorities."
 >
+  <span hidden data-current-claim="current-claim:durable_authorization=implemented_laboratory"></span>
+  <span hidden data-current-claim="current-claim:fast_v1_delivery=implemented_experimental"></span>
   <div class="page-shell">
     <header class="route-hero">
       <div class="route-title">
@@ -13,7 +15,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         <h1>The clients keep the keys. Each support service gets one narrow job.</h1>
       </div>
       <p class="lede">
-        Clients own the session keys and decide membership. Identity providers supply evidence, mailboxes hold bounded ciphertext, and transports carry encrypted envelopes. Replacing one service should not change the authority of another.
+        Clients own the session keys and decide membership. Identity providers supply evidence, mailboxes hold bounded ciphertext, and transports carry opaque envelopes. Opaque framing is content-agnostic; it does not itself prove encryption. Replacing one service should not change the authority of another.
       </p>
     </header>
   </div>
@@ -47,7 +49,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
           <article class="map-branch">
             <span class="map-owner">Network edge</span>
             <h3>Envelope delivery</h3>
-            <p>Moves opaque encrypted envelopes. The current adapter is local; real Fast and Private network profiles come later.</p>
+            <p>Moves opaque envelopes. The memory adapter supports deterministic adverse tests, while the Iroh adapter provides experimental connected FastV1 delivery. Offline, durable, Private, and production profiles come later.</p>
             <code>may move opaque bytes</code>
           </article>
         </div>
@@ -85,8 +87,8 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         </li>
         <li class="workflow-stage">
           <span class="stage-number">5.0 · deliver</span>
-          <div class="stage-copy"><h3>Retry delivery without adding the device twice.</h3><p>The accepted design commits the MLS snapshot, replay state, consumed invitation, decision, and encrypted Welcome outbox as one transaction. The product path does not implement that durable transaction yet.</p></div>
-          <div class="stage-proof"><span class="proof-label">State</span><code>accepted contract</code></div>
+          <div class="stage-copy"><h3>Retry delivery without adding the device twice.</h3><p>The SQLCipher laboratory commits the MLS snapshot, replay state, consumed invitation, decision, and encrypted Welcome outbox as one transaction, then reloads that authorization state after restart. Production key custody and stale-snapshot rollback resistance remain open.</p></div>
+          <div class="stage-proof"><span class="proof-label">State</span><code>implemented laboratory</code></div>
         </li>
       </ol>
     </div>
@@ -118,8 +120,8 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         <div class="crate-row"><dt>Wire + lifecycle</dt><dd><code>session-protocol</code> · <code>session-core</code></dd><dd class="crate-state">implemented in memory</dd></div>
         <div class="crate-row"><dt>Admission</dt><dd><code>session-admission</code> · <code>admission-capability</code> · <code>session-crypto-hpke</code></dd><dd class="crate-state">capability profile only</dd></div>
         <div class="crate-row"><dt>Group security</dt><dd><code>session-crypto</code> · <code>session-crypto-mls</code></dd><dd class="crate-state">two-party lifecycle</dd></div>
-        <div class="crate-row"><dt>Delivery</dt><dd><code>session-transport</code> · <code>transport-memory</code></dd><dd class="crate-state">no network adapter</dd></div>
-        <div class="crate-row"><dt>Transactions + storage</dt><dd><code>session-inviter-transaction</code> · <code>session-storage</code> · <code>storage-sqlcipher</code></dd><dd class="crate-state">separate laboratories</dd></div>
+        <div class="crate-row"><dt>Delivery</dt><dd><code>session-transport</code> · <code>transport-memory</code> · <code>transport-iroh</code></dd><dd class="crate-state">experimental connected FastV1</dd></div>
+        <div class="crate-row"><dt>Transactions + storage</dt><dd><code>session-inviter-transaction</code> · <code>session-storage</code> · <code>storage-sqlcipher</code></dd><dd class="crate-state">durable authorization laboratory</dd></div>
         <div class="crate-row"><dt>Headless composition</dt><dd><code>sessionctl</code></dd><dd class="crate-state">retained integration evidence</dd></div>
       </dl>
       <div class="trust-line">

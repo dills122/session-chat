@@ -34,6 +34,10 @@ Method names such as `reserve_after_admission` and `consume_after_membership`
 state caller preconditions; the current crate does not verify admission or
 perform MLS membership changes.
 
+<!-- current-claim:hpke_join=implemented_laboratory -->
+<!-- current-claim:durable_authorization=implemented_laboratory -->
+<!-- current-claim:fast_v1_delivery=implemented_experimental -->
+
 ## Current system in one page
 
 The checked-in runtime consists of:
@@ -77,6 +81,10 @@ The checked-in runtime consists of:
   alias-only adverse trace v1 fixtures and run one normalized trace twice
   against fresh memory adapters with exact-byte and quiescence checks; its
   reusable adapter verdict suite is not complete;
+- `transport-iroh`: an experimental authenticated connected FastV1
+  `EnvelopeDelivery` adapter with bounded frames and retained two-endpoint
+  evidence; it is not offline delivery, a durable mailbox, an anonymity
+  mechanism, or production-ready transport;
 - `session-storage`: a deterministic in-memory sealed-session lifecycle and
   bounded canonical opaque-inbox conformance model with generation-bound local
   import plus bounded external unlock preparation, one-shot credentials, and
@@ -112,18 +120,19 @@ The checked-in runtime consists of:
   rotation, and capacity limits.
 
 There is no human approval UX, portable/public all-checkpoint abrupt-kill or
-power-loss recovery, independently
-restartable durable product, network or production transport, production
-client vault, desktop shell, or hosted realm. The
+power-loss recovery, independently restartable durable product, offline or
+production transport, production client vault, desktop shell, or hosted realm.
+The connected Iroh FastV1 adapter remains an experimental online transport
+slice, not an offline mailbox or production network profile. The
 HPKE adapter proves PSK possession only for its exact typed context; the
 capability adapter performs automated verification, explicit simulated
 approval, exact v2/replay reservation, and MLS coordination. The isolated MLS
 adapter uses exact `mls-rs` 0.56.0 and AWS-LC 0.25.0 dependencies. The headless
 path uses its storage and group-bound identity-reload boundaries through
-SQLCipher. The L1 process runner crosses graceful Alice exit, but hands its
+SQLCipher. The L1 process runner crosses graceful Alice exit and reloads the
+durable approval and replay records with Alice's MLS state, but hands its
 disposable raw database key through an Alice-only inherited pipe rather than a
-platform vault and retains approval/replay shadows only in the initialization
-process. The superseded OpenMLS selection remains
+platform vault. The superseded OpenMLS selection remains
 blocked by repository dependency policy. The Node simulator's custom
 composition of platform crypto and placeholder address control is explicitly
 non-production.
@@ -135,9 +144,10 @@ single-process replay-aware capability verification and approval-gated
 invitation/MLS sequencing. The right-specific local mailbox is also runtime
 inventory, and the committed approved-join result carries only its authenticated
 deposit endpoint beside the exact MLS outputs. A retained test deposits the
-encrypted Welcome. Human approval UX, durable replay loading, platform key
-custody and durable approval/replay reload remain accepted-but-unimplemented
-contracts. The checked L2 laboratory locally covers its named SQLite-visible
+encrypted Welcome. Durable approval and replay reload are implemented within
+the SQLCipher laboratory. Human approval UX, platform key custody, stale
+snapshot rollback resistance, secure deletion, and production readiness remain
+unimplemented. The checked L2 laboratory locally covers its named SQLite-visible
 fault cases, engine commit-window kills, and every baseline-observed inviter
 and joiner application checkpoint, while portable/public evidence remains open.
 
@@ -297,9 +307,10 @@ provider update. Pre-correction KeyPackages and persisted laboratory groups
 advertise the former broad provider list; they fail closed and require
 regeneration or recreation rather than an unproven migration.
 
-HPKE, encrypted storage, OS key protectors, realm signing, and signed updates
-have not been selected. Citations in the reference ledger are research inputs,
-not dependency decisions.
+The HPKE join adapter and SQLCipher encrypted-storage adapter are selected and
+tested for their bounded laboratory roles. Production OS key protectors, realm
+signing, and signed updates have not been selected. Citations in the reference
+ledger are research inputs, not dependency decisions.
 
 ## Conditional target guarantees
 
@@ -390,9 +401,9 @@ The headless composition crosses a real SQLCipher transaction: it resolves
 rollback or ambiguous commit, reloads the exact group-bound client identity and
 group after close/reopen, and resumes Welcome delivery from the sole-owner
 outbox. ADR 0021 repeats the positive lifecycle across graceful Alice process
-exit, Bob, and an untrusted forwarder. The approval/replay shadows are still
-process memory, and the raw database key uses a disposable Alice-only inherited pipe
-rather than a platform vault.
+exit, Bob, and an untrusted forwarder. The durable approval/replay records
+reload with the owner state, while the raw database key uses a disposable
+Alice-only inherited pipe rather than a platform vault.
 
 The next evidence-producing research or implementation tasks are:
 
@@ -400,8 +411,8 @@ The next evidence-producing research or implementation tasks are:
    observations through the three-OS provenance/canary gate, then extend
    process-kill evidence to outbox delivery and migration/restore without
    weakening the exact identity/group recovery contract.
-2. Make approval/result, replay, and invitation state reloadable with the MLS
-   and Welcome-outbox transaction, including rollback-anchor research.
+2. Extend the reloadable approval, replay, invitation, MLS, and Welcome-outbox
+   state with stale-snapshot rollback resistance and production key custody.
 3. Select a common platform key-custody baseline before connecting SQLCipher to
    a desktop credential path.
 4. Retain parser fuzzing, state-machine properties, and explicit RNG/clock

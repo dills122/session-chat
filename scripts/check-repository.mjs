@@ -9,6 +9,94 @@ const MARKDOWN_LINK = /!?\[[^\]]*\]\(([^)]+)\)/g;
 import { workflowUses } from './workflow-uses.mjs';
 const FULL_COMMIT = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_./-]+)?@[0-9a-f]{40}$/;
 const EVIDENCE_ROOTS = new Set(['apps', 'crates', 'docs', 'scripts', 'spikes']);
+const CURRENT_CLAIM_POLICY = Object.freeze({
+  hpke_join: Object.freeze({
+    state: 'implemented_laboratory',
+    evidence: Object.freeze([
+      'crates/session-crypto-hpke/tests/capability_join_protection.rs',
+    ]),
+    limitations: Object.freeze(['no_human_approval_ux', 'no_production_readiness']),
+    surfaces: Object.freeze([
+      'docs/INDEPENDENT_AUDIT_BRIEF.md',
+      'site/src/pages/security.astro',
+      'site/CONTENT_DUMP.md',
+    ]),
+    contradictions: Object.freeze([/\bhpke\b.{0,120}\b(?:has|have) not been selected\b/is]),
+  }),
+  durable_authorization: Object.freeze({
+    state: 'implemented_laboratory',
+    evidence: Object.freeze([
+      'apps/sessionctl/tests/l1_process.rs',
+      'crates/storage-sqlcipher/tests/durable_authorization.rs',
+    ]),
+    limitations: Object.freeze([
+      'no_platform_key_custody',
+      'no_stale_snapshot_rollback_resistance',
+      'no_secure_deletion',
+      'no_production_readiness',
+    ]),
+    surfaces: Object.freeze([
+      'docs/INDEPENDENT_AUDIT_BRIEF.md',
+      'site/src/pages/security.astro',
+      'site/src/pages/architecture.astro',
+      'site/src/pages/project.astro',
+      'site/CONTENT_DUMP.md',
+    ]),
+    contradictions: Object.freeze([
+      /approval\/replay shadows (?:only in the initialization process|are still process memory)/i,
+      /durable approval\/replay reload remain accepted-but-unimplemented/i,
+      /durable product join transaction.{0,320}required, not integrated/is,
+    ]),
+  }),
+  fast_v1_delivery: Object.freeze({
+    state: 'implemented_experimental',
+    evidence: Object.freeze([
+      'crates/transport-iroh/tests/conformance.rs',
+      'docs/evidence/transport-iroh-fast.md',
+    ]),
+    limitations: Object.freeze([
+      'no_offline_delivery',
+      'no_durable_mailbox',
+      'no_anonymity',
+      'no_production_readiness',
+    ]),
+    surfaces: Object.freeze([
+      'docs/INDEPENDENT_AUDIT_BRIEF.md',
+      'docs/ROADMAP_V2.md',
+      'site/src/pages/index.astro',
+      'site/src/pages/security.astro',
+      'site/src/pages/architecture.astro',
+      'site/src/pages/project.astro',
+      'site/CONTENT_DUMP.md',
+    ]),
+    contradictions: Object.freeze([
+      /not an `?EnvelopeDelivery`? provider/i,
+      /\bno network adapter\b/i,
+      /\bno network transport\b/i,
+      /\bnot networked\b/i,
+    ]),
+    implementation: Object.freeze([
+      Object.freeze({
+        path: 'crates/transport-iroh/src/adapter.rs',
+        pattern: /impl\s+EnvelopeDelivery\s+for\s+IrohFastDelivery\b/u,
+      }),
+      Object.freeze({
+        path: 'crates/transport-iroh/src/lib.rs',
+        pattern: /pub\s+async\s+fn\s+bind_public\s*\(/u,
+      }),
+      Object.freeze({
+        path: 'apps/sessionctl/src/fast_adapter.rs',
+        pattern: /IrohFastEndpoint::bind_public\s*\(\s*\)/u,
+      }),
+      Object.freeze({
+        path: 'apps/sessionctl/Cargo.toml',
+        pattern: /^transport-iroh\s*=\s*\{[^}\n]*path\s*=\s*"\.\.\/\.\.\/crates\/transport-iroh"[^}\n]*\}/mu,
+      }),
+    ]),
+  }),
+});
+
+const HISTORICAL_REVISION_SENTENCE = /(?:^|\n)\s*Historical(?:ly)?\s+(?:at\s+)?(?:revision|commit)\s+`?[0-9a-f]{40}`?\s*:[^.\n]*(?:\.|$)/gimu;
 
 function normalize(relativePath) {
   return relativePath.split(sep).join('/');
@@ -244,6 +332,161 @@ function retainedRepositoryFile(root, sourcePath, evidence) {
   return normalize(relativeTarget);
 }
 
+function canonicalRepositoryFile(root, repositoryPath) {
+  if (
+    typeof repositoryPath !== 'string'
+    || isAbsolute(repositoryPath)
+    || repositoryPath.includes('\\')
+    || repositoryPath.split('/').some((part) => !part || part === '.' || part === '..')
+  ) {
+    return false;
+  }
+  const resolved = resolve(root, repositoryPath);
+  let metadata;
+  let canonicalRoot;
+  let canonicalTarget;
+  try {
+    metadata = lstatSync(resolved);
+    canonicalRoot = realpathSync(root);
+    canonicalTarget = realpathSync(resolved);
+  } catch {
+    return false;
+  }
+  const relativeTarget = relative(canonicalRoot, canonicalTarget);
+  return metadata.isFile()
+    && !metadata.isSymbolicLink()
+    && !isAbsolute(relativeTarget)
+    && relativeTarget !== '..'
+    && !relativeTarget.startsWith(`..${sep}`);
+}
+
+function exactStringSet(actual, expected) {
+  return Array.isArray(actual)
+    && actual.every((value) => typeof value === 'string')
+    && new Set(actual).size === actual.length
+    && [...actual].sort().join('\n') === [...expected].sort().join('\n');
+}
+
+function checkCurrentImplementationClaims(root, failures) {
+  const projectDetected = existsSync(join(root, 'Cargo.toml'))
+    && existsSync(join(root, 'apps', 'sessionctl'));
+  if (!projectDetected) return;
+  const ledgerPath = join(root, 'docs', 'current-implementation.json');
+  if (!existsSync(ledgerPath)) {
+    failures.push('docs/current-implementation.json: missing current implementation ledger');
+    return;
+  }
+  let ledger;
+  try {
+    ledger = JSON.parse(readFileSync(ledgerPath, 'utf8'));
+  } catch {
+    return;
+  }
+  if (
+    ledger?.schemaVersion !== 1
+    || !Array.isArray(ledger.claims)
+    || Object.keys(ledger).sort().join(',') !== 'claims,schemaVersion'
+  ) {
+    failures.push('docs/current-implementation.json: invalid closed schema v1');
+    return;
+  }
+
+  const claims = new Map();
+  for (const claim of ledger.claims) {
+    if (
+      claim === null
+      || typeof claim !== 'object'
+      || Object.keys(claim).sort().join(',') !== 'evidence,id,limitations,state,surfaces'
+      || typeof claim.id !== 'string'
+      || typeof claim.state !== 'string'
+      || !Array.isArray(claim.evidence)
+      || claim.evidence.length === 0
+    ) {
+      failures.push('docs/current-implementation.json: malformed claim record');
+      continue;
+    }
+    if (claims.has(claim.id)) {
+      failures.push(`docs/current-implementation.json: duplicate claim ${claim.id}`);
+      continue;
+    }
+    claims.set(claim.id, claim);
+  }
+
+  const claimSurfaces = new Set(
+    Object.values(CURRENT_CLAIM_POLICY).flatMap((policy) => policy.surfaces),
+  );
+  for (const surface of claimSurfaces) {
+    const surfacePath = join(root, surface);
+    if (!existsSync(surfacePath)) continue;
+    const expected = new Map(
+      Object.entries(CURRENT_CLAIM_POLICY)
+        .filter(([, policy]) => policy.surfaces.includes(surface))
+        .map(([id, policy]) => [id, policy.state]),
+    );
+    const markers = [...readFileSync(surfacePath, 'utf8').matchAll(/current-claim:([a-z0-9_]+)=([a-z0-9_]+)/gu)];
+    const valid = markers.length === expected.size
+      && markers.every((match) => expected.get(match[1]) === match[2])
+      && new Set(markers.map((match) => match[1])).size === markers.length;
+    if (!valid) failures.push(`${surface}: invalid current-claim markers`);
+  }
+
+  for (const [id, policy] of Object.entries(CURRENT_CLAIM_POLICY)) {
+    const claim = claims.get(id);
+    if (!claim) {
+      failures.push(`docs/current-implementation.json: missing claim ${id}`);
+      continue;
+    }
+    if (claim.state !== policy.state) {
+      failures.push(`docs/current-implementation.json: ${id} has unsupported state ${claim.state}`);
+    }
+    if (!exactStringSet(claim.limitations, policy.limitations)) {
+      failures.push(`docs/current-implementation.json: ${id} has incorrect limitation set`);
+    }
+    if (!exactStringSet(claim.surfaces, policy.surfaces)) {
+      failures.push(`docs/current-implementation.json: ${id} has incorrect surface set`);
+    }
+    if (!exactStringSet(claim.evidence, policy.evidence)) {
+      failures.push(`docs/current-implementation.json: ${id} has incorrect evidence set`);
+    } else if (!claim.evidence.every((path) => canonicalRepositoryFile(root, path))) {
+      failures.push(`docs/current-implementation.json: ${id} has invalid evidence paths`);
+    }
+    for (const implementation of policy.implementation ?? []) {
+      const implementationPath = join(root, implementation.path);
+      if (
+        !existsSync(implementationPath)
+        || !implementation.pattern.test(readFileSync(implementationPath, 'utf8'))
+      ) {
+        failures.push(`${implementation.path}: missing connected FastV1 implementation`);
+      }
+    }
+
+    for (const surface of policy.surfaces) {
+      const surfacePath = join(root, surface);
+      if (!existsSync(surfacePath)) continue;
+      const contents = readFileSync(surfacePath, 'utf8');
+      for (const paragraph of contents.split(/\r?\n\s*\r?\n/)) {
+        const currentText = paragraph.replace(HISTORICAL_REVISION_SENTENCE, '');
+        if (policy.contradictions.some((pattern) => pattern.test(currentText))) {
+          failures.push(`${surface}: ${id} contradicts ${policy.state}`);
+          break;
+        }
+      }
+    }
+  }
+  for (const id of claims.keys()) {
+    if (!Object.hasOwn(CURRENT_CLAIM_POLICY, id)) {
+      failures.push(`docs/current-implementation.json: unknown claim ${id}`);
+    }
+  }
+
+  for (const surface of ['site/src/pages/architecture.astro', 'site/src/pages/project.astro']) {
+    const surfacePath = join(root, surface);
+    if (!existsSync(surfacePath) || !/transport-iroh.{0,120}experimental/is.test(readFileSync(surfacePath, 'utf8'))) {
+      failures.push(`${surface}: missing experimental transport-iroh inventory`);
+    }
+  }
+}
+
 function checkPhaseOneAcceptance(root, failures) {
   const adrRoot = join(root, 'docs', 'adr');
   const closeoutPath = join(root, 'docs', 'evidence', 'phase1-closeout.md');
@@ -380,6 +623,7 @@ export function checkRepository(root) {
   }
 
   checkPhaseOneAcceptance(root, failures);
+  checkCurrentImplementationClaims(root, failures);
 
   const steeringRoot = join(root, '.codex', 'steering');
   if (existsSync(steeringRoot)) {

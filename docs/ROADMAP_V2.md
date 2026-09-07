@@ -2,6 +2,8 @@
 
 Status: proposed sequencing, not a delivery commitment
 
+<!-- current-claim:fast_v1_delivery=implemented_experimental -->
+
 ## Guiding approach
 
 Build a new protocol core without carrying the retired application as active
@@ -85,8 +87,9 @@ now crosses the SQLCipher transaction through an explicit durability-pending
 one-shot value, recovers an ambiguous commit, finalizes invitation state once,
 reopens the owner store, and delivers the exact Welcome to the original joiner.
 Human approval UX and reusable/product network transport remain later-phase
-work. The bounded authenticated Iroh frame-link experiment is not an
-`EnvelopeDelivery` provider, offline mailbox, or completed network profile.
+work. The bounded authenticated Iroh frame-link is an experimental connected
+FastV1 `EnvelopeDelivery` adapter; it is not offline delivery, a durable
+mailbox, an anonymity mechanism, or a completed production network profile.
 The complete Phase 1 hostile first-contact matrix is now retained by the
 independent-process runner: malformed, expired, copied, wrong-invitation,
 wrong-KeyPackage, wrong-verifier, reordered, and exact-replay inputs reject
@@ -160,7 +163,8 @@ Welcome-delivery application and SQLite commit-window kill recovery are now
 implemented in the checked closeout suites. The [evidence matrix](evidence/phase1-closeout.md)
 records their exact tests, independent review and passing merged-revision full
 three-platform gate. Power-loss evidence, human
-approval UX, and a network profile remain later gates.
+approval UX, and offline, durable production network profiles remain later
+gates.
 
 The Rust source-coverage gate now measures production code through integration
 targets without counting inline test helpers. The clean-master baseline was

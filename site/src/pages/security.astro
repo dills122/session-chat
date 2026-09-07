@@ -7,6 +7,9 @@ import { sitePath } from '../lib/paths';
   title="Security model · Session Chat"
   description="A plain-language ledger of what Session Chat proves today, what remains unimplemented, and which risks encryption cannot remove."
 >
+  <span hidden data-current-claim="current-claim:hpke_join=implemented_laboratory"></span>
+  <span hidden data-current-claim="current-claim:durable_authorization=implemented_laboratory"></span>
+  <span hidden data-current-claim="current-claim:fast_v1_delivery=implemented_experimental"></span>
   <div class="page-shell">
     <header class="route-hero">
       <div class="route-title">
@@ -14,7 +17,7 @@ import { sitePath } from '../lib/paths';
         <h1>What is proven today—and what is still only a design.</h1>
       </div>
       <p class="lede">
-        The repository is ready for architecture and protocol review. It is not ready to protect real conversations because it has no production client, integrated durable state, network service, or hosted realm.
+        The repository is ready for architecture and protocol review. It is not ready to protect real conversations: durable authorization exists only in the SQLCipher laboratory, connected FastV1 delivery is experimental, and there is no production client, offline mailbox, or hosted realm.
       </p>
     </header>
   </div>
@@ -31,9 +34,9 @@ import { sitePath } from '../lib/paths';
         <div class="claim-row"><dt>Private invitation proof bound to one device</dt><dd>A one-shot HPKE check ties the exact signed invitation to one exact MLS KeyPackage, reserves replay values, and records a simulated approval decision.</dd><dd class="claim-state implemented">Implemented + tested</dd></div>
         <div class="claim-row"><dt>Two-device MLS lifecycle</dt><dd>The in-memory adapter adds a device, exchanges protected messages in both directions, updates the group, removes the device, and tests replay and reordering.</dd><dd class="claim-state implemented">Implemented + tested</dd></div>
         <div class="claim-row"><dt>Local delivery under faults</dt><dd>Separate deposit, receive, and acknowledgement rights are tested under deterministic loss, duplication, delay, reordering, retry, expiry, and bounds.</dd><dd class="claim-state implemented">Implemented + tested</dd></div>
-        <div class="claim-row"><dt>Durable product join transaction</dt><dd>Approval, replay, invitation consumption, MLS state, and encrypted Welcome outbox must commit as one recoverable owner-local transaction.</dd><dd class="claim-state required">Required, not integrated</dd></div>
+        <div class="claim-row"><dt>Durable authorization transaction</dt><dd>The SQLCipher laboratory atomically commits and reloads approval, replay, invitation consumption, MLS state, and the Welcome outbox. Platform key custody, stale-snapshot resistance, secure deletion, and production integration remain open.</dd><dd class="claim-state implemented">Implemented laboratory</dd></div>
         <div class="claim-row"><dt>Production vault and desktop client</dt><dd>The common macOS, Windows, and Linux baseline needs reviewed key protection, a selected shell, safe deep links, updates, and packaging.</dd><dd class="claim-state required">Required, unimplemented</dd></div>
-        <div class="claim-row"><dt>Network and metadata-private delivery</dt><dd>Fast and Private profiles need real adapters, egress isolation, packet captures, operational evidence, and explicit unavailability behavior.</dd><dd class="claim-state deferred">Later roadmap phases</dd></div>
+        <div class="claim-row"><dt>Connected FastV1 delivery</dt><dd>The authenticated Iroh adapter implements experimental connected delivery. Offline delivery, a durable mailbox, anonymity, egress isolation, and production operations remain open.</dd><dd class="claim-state implemented">Experimental</dd></div>
         <div class="claim-row"><dt>GitHub and portable credential admission</dt><dd>Designed behind the same exact KeyPackage binding, but intentionally kept out of the Phase 1 capability-only laboratory.</dd><dd class="claim-state deferred">Later roadmap phases</dd></div>
       </dl>
     </div>

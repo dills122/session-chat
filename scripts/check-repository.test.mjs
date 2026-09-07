@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, sep } from 'node:path';
 import test from 'node:test';
@@ -140,6 +140,267 @@ test('rejects duplicate Phase 1 acceptance marker blocks', (context) => {
     checkRepository(root).failures.join('\n'),
     /missing Phase 1 acceptance ledger block/,
   );
+});
+
+const CURRENT_CLAIMS = [
+  {
+    id: 'hpke_join',
+    state: 'implemented_laboratory',
+    evidence: ['crates/session-crypto-hpke/tests/capability_join_protection.rs'],
+    limitations: ['no_human_approval_ux', 'no_production_readiness'],
+    surfaces: [
+      'docs/INDEPENDENT_AUDIT_BRIEF.md',
+      'site/src/pages/security.astro',
+      'site/CONTENT_DUMP.md',
+    ],
+  },
+  {
+    id: 'durable_authorization',
+    state: 'implemented_laboratory',
+    evidence: [
+      'apps/sessionctl/tests/l1_process.rs',
+      'crates/storage-sqlcipher/tests/durable_authorization.rs',
+    ],
+    limitations: [
+      'no_platform_key_custody',
+      'no_stale_snapshot_rollback_resistance',
+      'no_secure_deletion',
+      'no_production_readiness',
+    ],
+    surfaces: [
+      'docs/INDEPENDENT_AUDIT_BRIEF.md',
+      'site/src/pages/security.astro',
+      'site/src/pages/architecture.astro',
+      'site/src/pages/project.astro',
+      'site/CONTENT_DUMP.md',
+    ],
+  },
+  {
+    id: 'fast_v1_delivery',
+    state: 'implemented_experimental',
+    evidence: [
+      'crates/transport-iroh/tests/conformance.rs',
+      'docs/evidence/transport-iroh-fast.md',
+    ],
+    limitations: [
+      'no_offline_delivery',
+      'no_durable_mailbox',
+      'no_anonymity',
+      'no_production_readiness',
+    ],
+    surfaces: [
+      'docs/INDEPENDENT_AUDIT_BRIEF.md',
+      'docs/ROADMAP_V2.md',
+      'site/src/pages/index.astro',
+      'site/src/pages/security.astro',
+      'site/src/pages/architecture.astro',
+      'site/src/pages/project.astro',
+      'site/CONTENT_DUMP.md',
+    ],
+  },
+];
+
+function currentClaimMarkers(claims = CURRENT_CLAIMS) {
+  return claims.map((claim) => `current-claim:${claim.id}=${claim.state}`).join('\n');
+}
+
+function writeCurrentImplementationFixture(root) {
+  mkdirSync(join(root, 'apps', 'sessionctl'), { recursive: true });
+  writeFileSync(join(root, 'Cargo.toml'), '[workspace]\nmembers = ["apps/sessionctl"]\n');
+  writeFileSync(
+    join(root, 'apps', 'sessionctl', 'Cargo.toml'),
+    '[package]\nname = "sessionctl"\n[dependencies]\ntransport-iroh = { path = "../../crates/transport-iroh" }\n',
+  );
+  mkdirSync(join(root, 'apps', 'sessionctl', 'src'), { recursive: true });
+  writeFileSync(
+    join(root, 'apps', 'sessionctl', 'src', 'fast_adapter.rs'),
+    'IrohFastEndpoint::bind_public().await;\n',
+  );
+  mkdirSync(join(root, 'crates', 'transport-iroh', 'src'), { recursive: true });
+  writeFileSync(
+    join(root, 'crates', 'transport-iroh', 'src', 'adapter.rs'),
+    'impl EnvelopeDelivery for IrohFastDelivery {}\n',
+  );
+  writeFileSync(
+    join(root, 'crates', 'transport-iroh', 'src', 'lib.rs'),
+    'pub async fn bind_public() {}\n',
+  );
+  for (const claim of CURRENT_CLAIMS) {
+    for (const evidence of claim.evidence) {
+      const path = join(root, evidence);
+      mkdirSync(join(path, '..'), { recursive: true });
+      writeFileSync(path, '# Evidence\n');
+    }
+  }
+  writeFileSync(
+    join(root, 'docs', 'current-implementation.json'),
+    `${JSON.stringify({ schemaVersion: 1, claims: CURRENT_CLAIMS }, null, 2)}\n`,
+  );
+
+  const surfaces = new Set(CURRENT_CLAIMS.flatMap((claim) => claim.surfaces));
+  for (const surface of surfaces) {
+    const path = join(root, surface);
+    mkdirSync(join(path, '..'), { recursive: true });
+    const claims = CURRENT_CLAIMS.filter((claim) => claim.surfaces.includes(surface));
+    writeFileSync(
+      path,
+      `${currentClaimMarkers(claims)}\ntransport-iroh experimental connected FastV1. Not production; not an offline or durable mailbox; not anonymous; no platform key custody, rollback resistance, or secure deletion.\n`,
+    );
+  }
+}
+
+test('accepts one bounded current-implementation claim ledger', (context) => {
+  const root = fixture();
+  context.after(() => rmSync(root, { force: true, recursive: true }));
+  writeCurrentImplementationFixture(root);
+
+  assert.deepEqual(checkRepository(root).failures, []);
+});
+
+test('rejects contradictory current implementation claims and stale projections', () => {
+  const cases = [
+    ['HPKE has not been selected.', /hpke_join contradicts implemented_laboratory/],
+    [
+      'Approval/replay shadows are still process memory.',
+      /durable_authorization contradicts implemented_laboratory/,
+    ],
+    [
+      'The adapter is not an EnvelopeDelivery provider.',
+      /fast_v1_delivery contradicts implemented_experimental/,
+    ],
+    ['There is no network adapter.', /fast_v1_delivery contradicts implemented_experimental/],
+  ];
+
+  for (const [contradiction, expected] of cases) {
+    const root = fixture();
+    try {
+      writeCurrentImplementationFixture(root);
+      writeFileSync(
+        join(root, 'docs', 'INDEPENDENT_AUDIT_BRIEF.md'),
+        `${currentClaimMarkers()}\n${contradiction}\n`,
+      );
+      assert.match(checkRepository(root).failures.join('\n'), expected);
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  }
+});
+
+test('requires immutable revision qualification for historical contrary claims', (context) => {
+  const root = fixture();
+  context.after(() => rmSync(root, { force: true, recursive: true }));
+  writeCurrentImplementationFixture(root);
+  const auditBrief = join(root, 'docs', 'INDEPENDENT_AUDIT_BRIEF.md');
+  writeFileSync(auditBrief, `${currentClaimMarkers()}\nHistorical: no network transport.\n`);
+  assert.match(
+    checkRepository(root).failures.join('\n'),
+    /fast_v1_delivery contradicts implemented_experimental/,
+  );
+
+  writeFileSync(
+    auditBrief,
+    `${currentClaimMarkers()}\nHistorical at revision ${'a'.repeat(40)}: no network transport. Current implementation has no network transport.\n`,
+  );
+  assert.match(
+    checkRepository(root).failures.join('\n'),
+    /fast_v1_delivery contradicts implemented_experimental/,
+  );
+
+  writeFileSync(
+    auditBrief,
+    `${currentClaimMarkers()}\nEvidence digest ${'a'.repeat(40)}. There is no network transport.\n`,
+  );
+  assert.match(
+    checkRepository(root).failures.join('\n'),
+    /fast_v1_delivery contradicts implemented_experimental/,
+  );
+
+  writeFileSync(
+    auditBrief,
+    `${currentClaimMarkers()}\nHistorical at revision ${'a'.repeat(40)}: no network transport.\n`,
+  );
+  assert.deepEqual(checkRepository(root).failures, []);
+});
+
+test('binds current claims to exact evidence and connected implementation', () => {
+  const cases = [
+    ['evidence', 'docs/INDEPENDENT_AUDIT_BRIEF.md'],
+    ['implementation', 'crates/transport-iroh/src/adapter.rs'],
+    ['implementation', 'crates/transport-iroh/src/lib.rs'],
+    ['implementation', 'apps/sessionctl/src/fast_adapter.rs'],
+    ['implementation', 'apps/sessionctl/Cargo.toml'],
+  ];
+
+  for (const [kind, target] of cases) {
+    const root = fixture();
+    try {
+      writeCurrentImplementationFixture(root);
+      if (kind === 'evidence') {
+        const ledgerPath = join(root, 'docs', 'current-implementation.json');
+        const ledger = JSON.parse(readFileSync(ledgerPath, 'utf8'));
+        ledger.claims[0].evidence = [target];
+        writeFileSync(ledgerPath, `${JSON.stringify(ledger, null, 2)}\n`);
+      } else {
+        writeFileSync(join(root, target), 'removed\n');
+      }
+      assert.match(
+        checkRepository(root).failures.join('\n'),
+        /incorrect evidence set|missing connected FastV1 implementation/,
+      );
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  }
+});
+
+test('requires one exact current-claim marker per declared surface', () => {
+  const fastMarker = 'current-claim:fast_v1_delivery=implemented_experimental';
+  const cases = [
+    `${fastMarker}\n${fastMarker}\n`,
+    `${fastMarker}\ncurrent-claim:fast_v1_delivery=implemented_laboratory\n`,
+    `${fastMarker}\ncurrent-claim:unknown=implemented_experimental\n`,
+  ];
+
+  for (const markers of cases) {
+    const root = fixture();
+    try {
+      writeCurrentImplementationFixture(root);
+      writeFileSync(
+        join(root, 'docs', 'ROADMAP_V2.md'),
+        `${markers}transport-iroh experimental connected FastV1.\n`,
+      );
+      assert.match(
+        checkRepository(root).failures.join('\n'),
+        /invalid current-claim markers/,
+      );
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  }
+});
+
+test('requires generated claims and experimental transport inventory', () => {
+  const root = fixture();
+  try {
+    writeCurrentImplementationFixture(root);
+    writeFileSync(
+      join(root, 'site', 'CONTENT_DUMP.md'),
+      currentClaimMarkers().replace('current-claim:fast_v1_delivery=implemented_experimental', ''),
+    );
+    assert.match(
+      checkRepository(root).failures.join('\n'),
+      /site\/CONTENT_DUMP\.md: invalid current-claim markers/,
+    );
+
+    writeCurrentImplementationFixture(root);
+    writeFileSync(join(root, 'site', 'src', 'pages', 'architecture.astro'), currentClaimMarkers());
+    assert.match(
+      checkRepository(root).failures.join('\n'),
+      /site\/src\/pages\/architecture\.astro: missing experimental transport-iroh inventory/,
+    );
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
 });
 
 test('accepts valid local links, JSON, evidence, and immutable actions', (context) => {

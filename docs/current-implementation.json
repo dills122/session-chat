@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "claims": [
+    {
+      "id": "hpke_join",
+      "state": "implemented_laboratory",
+      "evidence": [
+        "crates/session-crypto-hpke/tests/capability_join_protection.rs"
+      ],
+      "limitations": [
+        "no_human_approval_ux",
+        "no_production_readiness"
+      ],
+      "surfaces": [
+        "docs/INDEPENDENT_AUDIT_BRIEF.md",
+        "site/src/pages/security.astro",
+        "site/CONTENT_DUMP.md"
+      ]
+    },
+    {
+      "id": "durable_authorization",
+      "state": "implemented_laboratory",
+      "evidence": [
+        "apps/sessionctl/tests/l1_process.rs",
+        "crates/storage-sqlcipher/tests/durable_authorization.rs"
+      ],
+      "limitations": [
+        "no_platform_key_custody",
+        "no_stale_snapshot_rollback_resistance",
+        "no_secure_deletion",
+        "no_production_readiness"
+      ],
+      "surfaces": [
+        "docs/INDEPENDENT_AUDIT_BRIEF.md",
+        "site/src/pages/security.astro",
+        "site/src/pages/architecture.astro",
+        "site/src/pages/project.astro",
+        "site/CONTENT_DUMP.md"
+      ]
+    },
+    {
+      "id": "fast_v1_delivery",
+      "state": "implemented_experimental",
+      "evidence": [
+        "crates/transport-iroh/tests/conformance.rs",
+        "docs/evidence/transport-iroh-fast.md"
+      ],
+      "limitations": [
+        "no_offline_delivery",
+        "no_durable_mailbox",
+        "no_anonymity",
+        "no_production_readiness"
+      ],
+      "surfaces": [
+        "docs/INDEPENDENT_AUDIT_BRIEF.md",
+        "docs/ROADMAP_V2.md",
+        "site/src/pages/index.astro",
+        "site/src/pages/security.astro",
+        "site/src/pages/architecture.astro",
+        "site/src/pages/project.astro",
+        "site/CONTENT_DUMP.md"
+      ]
+    }
+  ]
+}

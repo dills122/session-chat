@@ -2,6 +2,12 @@
 
 Generated from the production Astro build by `npm run dump:copy`. Edit the Astro source, not this file.
 
+## Current implementation claims
+
+<!-- current-claim:durable_authorization=implemented_laboratory -->
+<!-- current-claim:fast_v1_delivery=implemented_experimental -->
+<!-- current-claim:hpke_join=implemented_laboratory -->
+
 ## Global navigation
 
 SC Session Chat Private chat research
@@ -58,7 +64,7 @@ Participants — 2 devices
 Access — private invitation + approval
 Encryption — MLS 1.0
 Join proof — one-shot HPKE
-Delivery — local test adapter
+Delivery — local test + experimental Iroh
 Interface — command-line demo
 ## How one conversation moves through the system.
 Creating an invitation, approving a device, adding it to the encrypted group, delivering messages, and ending the session are separate actions. A copied link or compromised service should not gain all of those powers at once.
@@ -79,9 +85,9 @@ Authority `ApprovalContext ≠ membership`
 Messaging Layer Security (MLS) consumes the approved KeyPackage once, adds that device, and creates its encrypted Welcome message. The invitation protects first contact; MLS protects group membership and later messages.
 Current evidence `Add → Commit → Welcome`
 - 5.0 · talk
-### Transport carries encrypted envelopes, not chat text.
-A transport can move data but cannot approve a person or add a device. The current adapter only runs in memory and tests loss, duplication, delay, reordering, retry, expiry, and separate mailbox rights.
-Current limit `no network transport`
+### Transport carries opaque envelopes, not chat text.
+A transport can move data but cannot approve a person or add a device. The memory adapter tests loss, duplication, delay, reordering, retry, expiry, and separate mailbox rights; the authenticated Iroh adapter adds experimental connected FastV1 delivery.
+Current limit `no offline or durable network profile`
 - 6.0 · end
 ### Removing a device blocks it from future messages.
 The in-memory MLS test proves that a removed device cannot derive later message keys. A future app may delete its own keys and stored copies, but it cannot erase plaintext that another participant saved.
@@ -114,7 +120,7 @@ Meta description: How Session Chat keeps conversation keys, access decisions, ma
 
 Architecture
 # The clients keep the keys. Each support service gets one narrow job.
-Clients own the session keys and decide membership. Identity providers supply evidence, mailboxes hold bounded ciphertext, and transports carry encrypted envelopes. Replacing one service should not change the authority of another.
+Clients own the session keys and decide membership. Identity providers supply evidence, mailboxes hold bounded ciphertext, and transports carry opaque envelopes. Opaque framing is content-agnostic; it does not itself prove encryption. Replacing one service should not change the authority of another.
 ## Three services support the conversation without owning it.
 Each boundary exposes only the authority needed for one job, even when a provider or transport changes.
 Client-owned authority
@@ -130,7 +136,7 @@ Temporarily stores bounded ciphertext in mailboxes addressed by separate secret 
 `may retain ciphertext`
 Network edge
 ### Envelope delivery
-Moves opaque encrypted envelopes. The current adapter is local; real Fast and Private network profiles come later.
+Moves opaque envelopes. The memory adapter supports deterministic adverse tests, while the Iroh adapter provides experimental connected FastV1 delivery. Offline, durable, Private, and production profiles come later.
 `may move opaque bytes`
 ## A join request passes through five guarded steps.
 Each step owns the exact value it checked. A later caller cannot swap the device key or treat successful delivery as proof of membership.
@@ -152,8 +158,8 @@ The MLS adapter consumes the approved value, creates Add and Welcome, advances t
 Owner `session-crypto-mls`
 - 5.0 · deliver
 ### Retry delivery without adding the device twice.
-The accepted design commits the MLS snapshot, replay state, consumed invitation, decision, and encrypted Welcome outbox as one transaction. The product path does not implement that durable transaction yet.
-State `accepted contract`
+The SQLCipher laboratory commits the MLS snapshot, replay state, consumed invitation, decision, and encrypted Welcome outbox as one transaction, then reloads that authorization state after restart. Production key custody and stale-snapshot rollback resistance remain open.
+State `implemented laboratory`
 ## Each mailbox key grants one action.
 Deposit, receive, acknowledge, and rotate use separate capabilities. Knowing a delivery identifier never grants permission to delete it.
 Deposit — Place one bounded opaque envelope into the addressed mailbox.
@@ -172,10 +178,10 @@ Admission — `session-admission` · `admission-capability` · `session-crypto-h
 capability profile only
 Group security — `session-crypto` · `session-crypto-mls`
 two-party lifecycle
-Delivery — `session-transport` · `transport-memory`
-no network adapter
+Delivery — `session-transport` · `transport-memory` · `transport-iroh`
+experimental connected FastV1
 Transactions + storage — `session-inviter-transaction` · `session-storage` · `storage-sqlcipher`
-separate laboratories
+durable authorization laboratory
 Headless composition — `sessionctl`
 retained integration evidence
 Use the architecture document for exact contracts.
@@ -192,7 +198,7 @@ Meta description: A plain-language ledger of what Session Chat proves today, wha
 
 Security model
 # What is proven today—and what is still only a design.
-The repository is ready for architecture and protocol review. It is not ready to protect real conversations because it has no production client, integrated durable state, network service, or hosted realm.
+The repository is ready for architecture and protocol review. It is not ready to protect real conversations: durable authorization exists only in the SQLCipher laboratory, connected FastV1 delivery is experimental, and there is no production client, offline mailbox, or hosted realm.
 ## Read every security claim with its evidence status.
 “Implemented and tested” describes a bounded laboratory result. It does not mean the complete product or deployment is secure.
 Invitation and join formats — Versioned, size-bounded formats reject malformed, expired, unknown, and context-mismatched input before state changes.
@@ -203,12 +209,12 @@ Two-device MLS lifecycle — The in-memory adapter adds a device, exchanges prot
 Implemented + tested
 Local delivery under faults — Separate deposit, receive, and acknowledgement rights are tested under deterministic loss, duplication, delay, reordering, retry, expiry, and bounds.
 Implemented + tested
-Durable product join transaction — Approval, replay, invitation consumption, MLS state, and encrypted Welcome outbox must commit as one recoverable owner-local transaction.
-Required, not integrated
+Durable authorization transaction — The SQLCipher laboratory atomically commits and reloads approval, replay, invitation consumption, MLS state, and the Welcome outbox. Platform key custody, stale-snapshot resistance, secure deletion, and production integration remain open.
+Implemented laboratory
 Production vault and desktop client — The common macOS, Windows, and Linux baseline needs reviewed key protection, a selected shell, safe deep links, updates, and packaging.
 Required, unimplemented
-Network and metadata-private delivery — Fast and Private profiles need real adapters, egress isolation, packet captures, operational evidence, and explicit unavailability behavior.
-Later roadmap phases
+Connected FastV1 delivery — The authenticated Iroh adapter implements experimental connected delivery. Offline delivery, a durable mailbox, anonymity, egress isolation, and production operations remain open.
+Experimental
 GitHub and portable credential admission — Designed behind the same exact KeyPackage binding, but intentionally kept out of the Phase 1 capability-only laboratory.
 Later roadmap phases
 ## Assume every input and supporting service can be hostile.
@@ -246,7 +252,7 @@ Meta description: What can be run in Session Chat today, what is still missing, 
 
 Current project status
 # Today: a command-line protocol demo, not a chat app.
-Phase 1 laboratory work is complete: the headless two-person flow, hostile inputs, deterministic delivery faults, and encrypted SQLCipher recovery passed the Linux, macOS, and Windows gate. Product key custody, a human approval screen, desktop packaging, and reusable network transports remain later work.
+Phase 1 laboratory work is complete: the headless two-person flow, hostile inputs, deterministic delivery faults, and encrypted SQLCipher authorization recovery passed the Linux, macOS, and Windows gate. Connected Iroh FastV1 delivery is experimental. Product key custody, a human approval screen, desktop packaging, offline delivery, and production network transports remain later work.
 ## What you can run today.
 The `sessionctl` command runs an Alice-and-Bob flow through the composed laboratory components and deterministic local transport.
 Create → protect → approve → join → message → update → remove.
@@ -260,8 +266,8 @@ Admission path — HPKE provenance, exact KeyPackage ownership, durable laborato
 laboratory composition
 MLS path — Two-member Add/Welcome, protected messages, update, removal, replay, and reordering behavior.
 isolated adapter
-Delivery path — Right-specific local Welcome mailbox and a deterministic adverse memory transport.
-not networked
+Delivery path — Right-specific local Welcome mailbox, deterministic adverse memory transport, and the authenticated `transport-iroh` adapter.
+experimental online FastV1
 Storage evidence — Composed SQLCipher transaction and process-recovery evidence; separate sealed-vault and passphrase-wrapper laboratories.
 laboratory only
 Platform baseline — Workspace build, lint, and test matrix on Linux, macOS, and Windows CI.
