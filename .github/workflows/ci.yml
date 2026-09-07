@@ -143,7 +143,7 @@ jobs:
         run: cargo test -p sessionctl --test l2_public_evidence --locked --offline
 
       - name: Verify evidence provenance and redaction
-        run: cargo test -p sessionctl --lib l2_process:: --locked --offline -- --test-threads=1
+        run: cargo test -p sessionctl --lib l2_process --locked --offline -- --test-threads=1
 
       - name: Reject defective persistent fault coverage in pull-request smoke
         if: github.event_name == 'pull_request'
@@ -186,7 +186,6 @@ jobs:
           path: target/l2-candidates/*.json
           if-no-files-found: error
           retention-days: 14
-
 
   node:
     name: Retained Node tools
