@@ -60,3 +60,10 @@ unexpected_cfgs = { level = "deny", check-cfg = ['cfg(session_chat_storage_fault
 dbg_macro = "deny"
 todo = "deny"
 unimplemented = "deny"
+
+# The v2 documents claim fail-closed behavior for malformed, duplicate,
+# oversized and replayed inputs. A silently wrapped counter, length or epoch
+# would turn a bound comparison into a wrong security decision, so release
+# builds keep arithmetic overflow a panic rather than a wrap.
+[profile.release]
+overflow-checks = true
