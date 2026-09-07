@@ -29,6 +29,18 @@ that open transaction. Current upstream traits cannot distinguish which clone
 invoked it, so same-open-scope callers remain trusted not to call `delete`
 directly with the pending reference or an aborting foreign reference.
 
+On Unix, creation atomically reserves the main database as an owner-only `0600`
+regular file before SQLCipher opens it. Existing main files and recognized
+rollback/WAL sidecars are tightened through already-open no-follow handles;
+SQLite subsequently inherits the main-file mode for new sidecars. Writable
+ancestry must be current-user or root owned and provide sticky-directory
+protection where group or world writable; SQLite receives the canonical path
+with no-follow enabled. Untrusted ancestry rejects the open.
+Retained tests cover a permissive umask, a live rollback journal, existing-file
+hardening, and main/sidecar symlink collisions. Windows continues to rely on inherited DACLs
+from a protected parent; arbitrary caller-supplied ACL validation remains a
+production blocker.
+
 Schema version 3 retains the version-2 sole Welcome-outbox owner and adds one
 opaque versioned MLS client-identity record. Version 4 binds that record to one
 exact nonzero 32-byte group identifier. The MLS adapter creates it once through a secret
@@ -128,6 +140,5 @@ cargo test -p storage-sqlcipher --all-features --locked --offline
 cargo clippy -p storage-sqlcipher --all-targets --all-features --locked --offline -- -D warnings
 ```
 
-Test databases and SQLite sidecars now use the shared private-directory fixture
+Test databases and SQLite sidecars use the shared private-directory fixture
 owner in `scripts/test-private-dir`; new tamper copies use exclusive creation.
-This test-only change does not harden arbitrary product caller-supplied paths.

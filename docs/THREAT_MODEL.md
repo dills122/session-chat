@@ -945,6 +945,13 @@ identity, exact canonical material, bounded attempts, generation/identity-bound
 leases, a persisted attempt ceiling, and delivered/exhausted/expired terminal
 states. The schema version is paired with SQLite's application `user_version`,
 migration is exclusive, and retained configuration is read back on open.
+Unix creation atomically reserves the main database at owner-only `0600`; open
+tightens recognized existing database and sidecar handles, rejects unsafe
+foreign-owned or non-sticky writable ancestry, passes SQLite a canonical
+no-follow path, and relies on SQLite sidecar mode inheritance. Permissive-umask
+and main/sidecar symlink-collision tests retain that evidence. Windows
+arbitrary-path ACL validation remains unimplemented; supported compositions
+must supply a protected parent with inherited DACLs.
 Retained tests reject old-open-scope, stale, and foreign results and reconcile
 an ambiguous prior adapter acceptance byte-identically after reopen. Schema
 version 3 adds one opaque, versioned client-identity record; version 4 adds the

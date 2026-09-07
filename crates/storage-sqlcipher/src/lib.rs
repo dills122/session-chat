@@ -11,10 +11,18 @@ compile_error!("session_chat_storage_fault_testing requires debug assertions");
 pub mod fault_testing;
 
 use std::{
-    path::Path,
+    ffi::OsString,
+    fs::{File, OpenOptions},
+    io::ErrorKind,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex, MutexGuard},
     time::Instant,
 };
+
+#[cfg(unix)]
+use std::fs;
+#[cfg(unix)]
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 
 use mls_rs_core::{
     crypto::HpkeSecretKey,
@@ -605,6 +613,72 @@ impl InvitationOpeningContextSink for SqlCipherInvitationOpeningSink<'_> {
             Ok(())
         })
     }
+}
+
+fn open_private_file(path: &Path, create: bool) -> Result<File, std::io::Error> {
+    let mut options = OpenOptions::new();
+    options.read(true).write(true);
+    if create {
+        options.create_new(true);
+    }
+    #[cfg(unix)]
+    options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
+    let file = options.open(path)?;
+    if !file.metadata()?.is_file() {
+        return Err(std::io::Error::new(
+            ErrorKind::InvalidInput,
+            "database path is not a regular file",
+        ));
+    }
+    #[cfg(unix)]
+    file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+    Ok(file)
+}
+
+#[cfg(unix)]
+fn validate_database_parent(path: &Path) -> Result<PathBuf, StoreError> {
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let canonical_parent = fs::canonicalize(parent).map_err(|_| StoreError::Rejected)?;
+    let effective_user = rustix::process::geteuid().as_raw();
+    for ancestor in canonical_parent.ancestors() {
+        let metadata = fs::symlink_metadata(ancestor).map_err(|_| StoreError::Rejected)?;
+        let mode = metadata.permissions().mode();
+        let owner = metadata.uid();
+        let trusted_owner = owner == effective_user || owner == 0;
+        let protected_writable_directory =
+            mode & 0o022 == 0 || (mode & 0o1000 != 0 && trusted_owner);
+        if !metadata.is_dir() || !trusted_owner || !protected_writable_directory {
+            return Err(StoreError::Rejected);
+        }
+    }
+    let file_name = path.file_name().ok_or(StoreError::Rejected)?;
+    Ok(canonical_parent.join(file_name))
+}
+
+#[cfg(not(unix))]
+fn validate_database_parent(path: &Path) -> Result<PathBuf, StoreError> {
+    Ok(path.to_path_buf())
+}
+
+fn open_private_database_file(path: &Path, create: bool) -> Result<File, StoreError> {
+    open_private_file(path, create).map_err(|_| StoreError::Rejected)
+}
+
+fn open_existing_private_sidecars(path: &Path) -> Result<Vec<File>, StoreError> {
+    let mut files = Vec::with_capacity(3);
+    for suffix in ["-journal", "-wal", "-shm"] {
+        let mut sidecar = OsString::from(path.as_os_str());
+        sidecar.push(suffix);
+        match open_private_file(Path::new(&sidecar), false) {
+            Ok(file) => files.push(file),
+            Err(error) if error.kind() == ErrorKind::NotFound => {}
+            Err(_) => return Err(StoreError::Rejected),
+        }
+    }
+    Ok(files)
 }
 
 impl SqlCipherStorage {
@@ -1744,19 +1818,25 @@ impl SqlCipherStorage {
         mode: OpenMode,
         authorization_policy: AuthorizationPolicy,
     ) -> Result<Self, StoreError> {
-        let mut flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX;
-        if create {
-            flags |= OpenFlags::SQLITE_OPEN_CREATE;
-        }
+        let database_path = validate_database_parent(path)?;
+        let database_file = open_private_database_file(&database_path, create)?;
+        let sidecar_files = open_existing_private_sidecars(&database_path)?;
+        let flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX;
+        #[cfg(unix)]
+        let flags = flags | OpenFlags::SQLITE_OPEN_NOFOLLOW;
         let connection = match &mode {
-            OpenMode::Default => Connection::open_with_flags(path, flags)?,
+            OpenMode::Default => Connection::open_with_flags(&database_path, flags)?,
             #[cfg(session_chat_storage_fault_testing)]
-            OpenMode::ObservedDefault(_) => Connection::open_with_flags(path, flags)?,
+            OpenMode::ObservedDefault(_) => Connection::open_with_flags(&database_path, flags)?,
             #[cfg(session_chat_storage_fault_testing)]
-            OpenMode::ObservedFaultVfs(_) => {
-                Connection::open_with_flags_and_vfs(path, flags, fault_testing::FAULT_VFS_NAME)?
-            }
+            OpenMode::ObservedFaultVfs(_) => Connection::open_with_flags_and_vfs(
+                &database_path,
+                flags,
+                fault_testing::FAULT_VFS_NAME,
+            )?,
         };
+        drop(sidecar_files);
+        drop(database_file);
         #[cfg(session_chat_storage_fault_testing)]
         let fault_observer = match mode {
             OpenMode::Default => None,

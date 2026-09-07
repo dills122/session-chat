@@ -80,6 +80,13 @@ libraries across the three required CI operating systems.
 - The adapter retains SQLCipher's default memory policy, which locks and
   sanitizes its internal cryptographic allocations without enabling the
   optional process-wide wiping of every SQLite allocation.
+- On Unix, the adapter atomically precreates a new main database at `0600`,
+  tightens existing database and recognized sidecar handles before SQLCipher
+  access, and rejects foreign-owned or non-sticky group- or world-writable
+  ancestry. SQLite opens the canonical database path with no-follow enabled and
+  inherits the main-file mode for new rollback/WAL sidecars. Main and sidecar
+  symlink collisions fail closed. Windows retains protected-parent DACL inheritance as baseline;
+  validation of arbitrary caller-selected ACLs remains outside this laboratory.
 
 The headless `sessionctl` laboratory now opens this adapter with a disposable
 random raw key and proves exact identity/group reload after a real close/reopen
