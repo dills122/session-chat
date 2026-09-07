@@ -13,6 +13,62 @@ const FAST_MAX_CURSOR_BYTES: u16 = 40;
 const CONFIGURATION_FINGERPRINT_BYTES: usize = 32;
 const MAX_ADAPTER_VERSION_BYTES: usize = 64;
 
+/// Unforgeable evidence that a producer sealed the content a transport carries.
+///
+/// A transport profile cannot assert end-to-end encryption without one. The
+/// only way to obtain it is a protocol object that is sealed by construction,
+/// so a profile fixture cannot claim confidentiality the producer never
+/// provided. No FastV1 producer mints one today.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct EncryptedContentEvidenceV1(());
+
+impl EncryptedContentEvidenceV1 {
+    /// Derives evidence from an HPKE-sealed protected join request.
+    ///
+    /// The request's ciphertext is produced by the sealing path, so its
+    /// existence is what makes the encrypted claim true.
+    #[must_use]
+    pub const fn from_protected_join_request(
+        _request: &session_protocol::ProtectedJoinRequest,
+    ) -> Self {
+        Self(())
+    }
+}
+
+/// What a transport profile may truthfully disclose about carried content.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ContentSecurityClaimV1 {
+    /// The transport carries bounded opaque bytes and has no proof the producer
+    /// encrypted them. `OpaqueEnvelope` ciphertext may be literal plaintext.
+    UnverifiedProducerContent,
+    /// A typed producer contract established that the content is sealed.
+    EndToEndEncrypted,
+}
+
+impl ContentSecurityClaimV1 {
+    /// The only claim available without producer evidence.
+    #[must_use]
+    pub const fn unverified_producer_content() -> Self {
+        Self::UnverifiedProducerContent
+    }
+
+    /// Enables the encrypted claim, and only against producer evidence.
+    #[must_use]
+    pub const fn end_to_end_encrypted(_evidence: &EncryptedContentEvidenceV1) -> Self {
+        Self::EndToEndEncrypted
+    }
+
+    #[must_use]
+    pub const fn disclosure(self) -> &'static str {
+        match self {
+            Self::UnverifiedProducerContent => {
+                "Opaque content this transport does not verify as encrypted"
+            }
+            Self::EndToEndEncrypted => "End-to-end encrypted content",
+        }
+    }
+}
+
 /// Stable non-secret FastV1 copy fixture for transport-selection UI tests.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct FastProfileDisclosureV1 {
@@ -74,12 +130,17 @@ impl FastProfileDisclosureV1 {
     }
 }
 
-/// Returns the exact FastV1 transport disclosure fixture.
+/// Returns the exact FastV1 transport disclosure fixture for one content claim.
+///
+/// FastV1 accepts arbitrary bounded opaque bytes, so the caller must state which
+/// claim its producer actually supports rather than inheriting a fixed one.
 #[must_use]
-pub const fn fast_profile_disclosure_v1() -> FastProfileDisclosureV1 {
+pub const fn fast_profile_disclosure_v1(
+    content_security: ContentSecurityClaimV1,
+) -> FastProfileDisclosureV1 {
     FastProfileDisclosureV1 {
         title: "Fast",
-        content_security: "End-to-end encrypted content",
+        content_security: content_security.disclosure(),
         route_behavior: "Uses a direct connection when available and an Iroh relay otherwise.",
         direct_exposure: "A direct peer can learn your network address.",
         relay_exposure: "An Iroh relay can observe endpoint identifiers, network addresses, timing, and traffic volume.",

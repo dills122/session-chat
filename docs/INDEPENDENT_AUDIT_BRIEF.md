@@ -174,7 +174,7 @@ flowchart LR
 | Property | State | Evidence or condition |
 | --- | --- | --- |
 | Opaque envelope has a versioned canonical encoding and an input-size bound | Implemented and tested | `session-protocol` fixtures and malformed/oversized negative tests |
-| Opaque envelope bytes are encrypted | Accepted contract, unimplemented | Current fixture can contain literal plaintext bytes; future HPKE/MLS producers must establish confidentiality |
+| Opaque envelope bytes are encrypted | Accepted contract, unimplemented | Current fixture can contain literal plaintext bytes; future HPKE/MLS producers must establish confidentiality. The FastV1 operator disclosure now states unverified producer content and reserves the end-to-end-encrypted claim for a typed producer contract |
 | Secret-capability invitation is canonical, strictly Ed25519-verified, time-bounded, and signed over all accepted fields | Implemented and tested | ADRs 0005/0007, signed-invitation fixtures and negative tests |
 | Invitation v2 and protected outer/inner/AAD/deposit-endpoint layouts are canonical and bounded | Implemented and tested | ADR 0014 protocol fixtures, closed-code-point tests, malformed/non-preferred/trailing rejection, and exact size-boundary tests |
 | Invitation v1/v2 reservation is tied to the schema and exact record instance, including expiry/reissue with reused invitation and request IDs | Implemented and tested | Shared bounded registry, provider-only local v2 issuance, `InvitationReservation.record_signature`, and stale release/consume regression tests |

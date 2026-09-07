@@ -102,7 +102,7 @@ fn public_disclosure_renderer_is_complete_and_fails_closed() {
     for expected in [
         "requested_path=relay-only",
         "transport_disclosure=Fast",
-        "content_security=End-to-end encrypted content",
+        "content_security=Opaque content this transport does not verify as encrypted",
         "direct_exposure=A direct peer can learn your network address.",
         "relay_exposure=An Iroh relay can observe endpoint identifiers, network addresses, timing, and traffic volume.",
         "discovery_exposure=Iroh address lookup, DNS, and NAT traversal services can observe connection metadata.",
