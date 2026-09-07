@@ -110,6 +110,29 @@ fn exact_validated_key_package_reaches_add_welcome_and_two_party_messages()
 }
 
 #[test]
+fn newly_admitted_member_rejects_application_ciphertext_from_an_earlier_epoch()
+-> Result<(), MlsAdapterError> {
+    let alice = create_client()?;
+    let bob = create_client()?;
+    let validator = create_key_package_validator();
+    let mut alice_group = alice.create_group(group_id(), NOW)?;
+    let before_join = alice_group.encrypt_application_message(b"before Bob joined")?;
+
+    let bob_key_package = bob.generate_key_package(NOW)?;
+    let bob_admission = validator.validate_key_package(bob_key_package.as_bytes(), NOW)?;
+    let addition = alice_group.prepare_add(bob_admission, NOW)?.apply()?;
+    let mut bob_group = bob.join_group(addition.into_welcome(), NOW)?;
+
+    assert_eq!(bob_group.epoch(), 1);
+    assert_eq!(
+        bob_group.process_message(before_join),
+        Err(MlsAdapterError::ProtocolRejected)
+    );
+
+    Ok(())
+}
+
+#[test]
 fn application_messages_use_the_provider_neutral_session_interface()
 -> Result<(), Box<dyn std::error::Error>> {
     let alice = create_client()?;

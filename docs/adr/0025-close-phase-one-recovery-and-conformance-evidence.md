@@ -63,6 +63,9 @@ schema 1 is rejected rather than silently reinterpreted.
 ## Consequences and limits
 
 The [Phase 1 evidence matrix](../evidence/phase1-closeout.md) is the claim index.
+[ADR 0029](0029-split-phase-one-crash-atomicity-from-rollback-resistance.md)
+later makes its acceptance ledger normative and explicitly splits passed
+application-crash atomicity from deferred stale-snapshot rollback resistance.
 Phase 1 completed its full three-platform non-PR gate on
 `5a220bd9376d51b9b3943e997fc5c93ddcfa91ca`. The later metadata-only checkpoint
 cites that immutable code revision and does not claim the same gate for its own

@@ -608,6 +608,13 @@ every baseline-observed inviter/joiner application checkpoint. Raw observations
 remain non-public; only complete, secret-free aggregate manifests may enter the
 portable CI evidence record.
 
+[ADR 0029](adr/0029-split-phase-one-crash-atomicity-from-rollback-resistance.md)
+separates these claims in the normative Phase 1 ledger: application-crash
+atomic restore passed; rejection of valid older snapshots was superseded as a
+Phase 1 completion blocker and remains unproved. Phase 3 retains rollback
+resistance as an exit criterion requiring an independently anchored highest
+accepted generation across restart.
+
 Attacker story: Mallory captures a protected request and resubmits it after the
 invitation expires and is reissued with the same invitation and request IDs.
 The fresh challenge, signing key, HPKE key/key ID, exact local record, and replay

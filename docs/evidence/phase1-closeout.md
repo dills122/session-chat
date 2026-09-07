@@ -37,6 +37,29 @@ Every row below is required on Linux x64 (`ubuntu-24.04`), macOS arm64
 [the CI workflow](../../.github/workflows/ci.yml). A local pass or a PR smoke
 alone does not fill the portable completion cell.
 
+## Normative acceptance ledger
+
+This is the one Phase 1 completion matrix for ADR 0004's stable acceptance IDs.
+`passed` binds retained evidence; `superseded` requires the ADR that re-scoped
+the criterion. A complete ledger cannot contain an `incomplete` row.
+
+<!-- phase1-acceptance-ledger:start -->
+| Criterion ID | Disposition | Evidence or superseding ADR |
+| --- | --- | --- |
+| `P1-INVITATION-PUBLIC-SECRECY` | passed | [hostile first-contact process evidence](../../apps/sessionctl/tests/l1_process.rs) |
+| `P1-INVITATION-FAIL-CLOSED` | passed | [hostile first-contact process evidence](../../apps/sessionctl/tests/l1_process.rs) |
+| `P1-JOIN-PROOF-BINDING` | passed | [hostile wrong-invitation and wrong-KeyPackage evidence](../../apps/sessionctl/tests/l1_process.rs) |
+| `P1-TRANSPORT-OPAQUE` | passed | [transport redaction evidence](../../crates/session-transport/tests/redaction.rs) |
+| `P1-MLS-CONVERGENCE` | passed | [two-client Phase 1 flow](../../apps/sessionctl/tests/phase_one.rs) |
+| `P1-CAPTURE-SECRECY` | passed | [bounded independent-process evidence](../../apps/sessionctl/tests/l1_process.rs) |
+| `P1-DELIVERY-ADVERSE` | passed | [common adverse-delivery verdicts](../../crates/transport-conformance/tests/memory.rs) |
+| `P1-MLS-PAST-SECRECY` | passed | [MLS lifecycle evidence](../../crates/session-crypto-mls/tests/lifecycle.rs) |
+| `P1-MLS-FUTURE-SECRECY` | passed | [MLS lifecycle evidence](../../crates/session-crypto-mls/tests/lifecycle.rs) |
+| `P1-STATE-CRASH-ATOMICITY` | passed | [inviter crash/restart evidence](../../apps/sessionctl/tests/l2_crash_restart_inviter.rs) |
+| `P1-STATE-STALE-SNAPSHOT` | superseded | [ADR 0029](../adr/0029-split-phase-one-crash-atomicity-from-rollback-resistance.md) |
+| `P1-DIAGNOSTIC-SECRECY` | passed | [bounded independent-process evidence](../../apps/sessionctl/tests/l1_process.rs) |
+<!-- phase1-acceptance-ledger:end -->
+
 ## Exact portable completion evidence
 
 All rows below passed in push run **33981196485, attempt 1**, with clean source

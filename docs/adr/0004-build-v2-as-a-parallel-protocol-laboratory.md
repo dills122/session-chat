@@ -1,6 +1,6 @@
 # ADR 0004: Build v2 as a parallel capability-first protocol laboratory
 
-Status: accepted for Phase 1 scope; source-tree coexistence superseded by ADR 0006
+Status: accepted for Phase 1 scope; source-tree coexistence superseded by ADR 0006; persistence acceptance split by ADR 0029
 
 Date: 2026-08-16
 
@@ -27,7 +27,8 @@ move legacy code until the first encrypted end-to-end milestone passes.
 
 ADR 0006 later superseded the coexistence and cleanup timing in this paragraph.
 The capability-only, two-person, in-memory, headless scope and acceptance
-evidence below remain in force.
+evidence below remain in force as re-scoped by
+[ADR 0029](0029-split-phase-one-crash-atomicity-from-rollback-resistance.md).
 
 The first slice is deliberately capability-only, two-person, in-memory, and
 headless. It has no external service dependency.
@@ -87,19 +88,26 @@ The first milestone must demonstrate one complete story:
 
 ## Milestone acceptance evidence
 
-The slice is not complete until automated tests show all of the following:
+The slice is not complete until every stable criterion below maps to passed
+evidence or an explicit superseding ADR in the canonical Phase 1 closeout
+ledger. ADR 0029 separates application-crash atomicity from stale-snapshot
+rollback resistance; the latter remains required later but is not a Phase 1
+completion claim.
 
-- A copied public invitation does not disclose or derive a session/group key.
-- Invalid, expired, consumed, and replayed invitations fail closed.
-- A join proof cannot be rebound to another invitation or proposed member key.
-- Transport code sees opaque, bounded envelopes rather than plaintext messages.
-- Two independent clients converge on the expected MLS group and epoch state.
-- Captured envelopes contain no plaintext, raw bearer capability, or group key material.
-- Duplicate and reordered delivery is safe and deterministic.
-- A newly admitted member cannot decrypt application messages from an earlier epoch.
-- A removed member cannot decrypt application messages from a later epoch.
-- State can be serialized and restored without accepting stale-state rollback.
-- Logs and errors contain no plaintext, secret capability, or key material.
+<!-- phase1-acceptance-criteria:start -->
+- `P1-INVITATION-PUBLIC-SECRECY` — A copied public invitation does not disclose or derive a session/group key.
+- `P1-INVITATION-FAIL-CLOSED` — Invalid, expired, consumed, and replayed invitations fail closed.
+- `P1-JOIN-PROOF-BINDING` — A join proof cannot be rebound to another invitation or proposed member key.
+- `P1-TRANSPORT-OPAQUE` — Transport code sees opaque, bounded envelopes rather than plaintext messages.
+- `P1-MLS-CONVERGENCE` — Two independent clients converge on the expected MLS group and epoch state.
+- `P1-CAPTURE-SECRECY` — Captured envelopes contain no plaintext, raw bearer capability, or group key material.
+- `P1-DELIVERY-ADVERSE` — Duplicate and reordered delivery is safe and deterministic.
+- `P1-MLS-PAST-SECRECY` — A newly admitted member cannot decrypt application messages from an earlier epoch.
+- `P1-MLS-FUTURE-SECRECY` — A removed member cannot decrypt application messages from a later epoch.
+- `P1-STATE-CRASH-ATOMICITY` — Serialized state restores after application crashes without accepting a partially committed protocol transition.
+- `P1-STATE-STALE-SNAPSHOT` — Restored state rejects a valid but older snapshot through a rollback anchor.
+- `P1-DIAGNOSTIC-SECRECY` — Logs and errors contain no plaintext, secret capability, or key material.
+<!-- phase1-acceptance-criteria:end -->
 
 Where feasible, parsers and state machines should add property tests or fuzz
 targets in addition to example-based tests.

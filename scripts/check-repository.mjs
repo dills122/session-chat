@@ -196,6 +196,167 @@ function checkWorkflow(root, path, failures) {
   }
 }
 
+function markedBlock(contents, startMarker, endMarker) {
+  if (contents.split(startMarker).length !== 2 || contents.split(endMarker).length !== 2) {
+    return undefined;
+  }
+  const start = contents.indexOf(startMarker);
+  const end = contents.indexOf(endMarker);
+  if (start === -1 || end === -1 || end <= start) return undefined;
+  return contents.slice(start + startMarker.length, end);
+}
+
+function retainedRepositoryFile(root, sourcePath, evidence) {
+  const match = evidence.match(/\[[^\]]+\]\(([^)]+)\)/);
+  if (!match) return undefined;
+  const target = linkTarget(match[1]);
+  if (!target || target.startsWith('#') || /^[A-Za-z][A-Za-z0-9+.-]*:/.test(target)) {
+    return undefined;
+  }
+  const withoutFragment = target.split('#', 1)[0].split('?', 1)[0];
+  let decoded;
+  try {
+    decoded = decodeURIComponent(withoutFragment);
+  } catch {
+    return undefined;
+  }
+  if (!decoded || isAbsolute(decoded)) return undefined;
+  const resolved = resolve(dirname(sourcePath), decoded);
+  const canonicalRoot = realpathSync(root);
+  let metadata;
+  let canonicalTarget;
+  try {
+    metadata = lstatSync(resolved);
+    canonicalTarget = realpathSync(resolved);
+  } catch {
+    return undefined;
+  }
+  const relativeTarget = relative(canonicalRoot, canonicalTarget);
+  if (
+    metadata.isSymbolicLink()
+    || !metadata.isFile()
+    || isAbsolute(relativeTarget)
+    || relativeTarget === '..'
+    || relativeTarget.startsWith(`..${sep}`)
+  ) {
+    return undefined;
+  }
+  return normalize(relativeTarget);
+}
+
+function checkPhaseOneAcceptance(root, failures) {
+  const adrRoot = join(root, 'docs', 'adr');
+  const closeoutPath = join(root, 'docs', 'evidence', 'phase1-closeout.md');
+  const adrCandidates = existsSync(adrRoot)
+    ? readdirSync(adrRoot).filter((name) => /^0004-.*\.md$/.test(name))
+    : [];
+  if (adrCandidates.length === 0 && !existsSync(closeoutPath)) return;
+  if (adrCandidates.length !== 1) {
+    failures.push('docs/adr: Phase 1 acceptance policy requires exactly one ADR 0004 file');
+    return;
+  }
+  if (!existsSync(closeoutPath)) {
+    failures.push('docs/evidence/phase1-closeout.md: missing Phase 1 acceptance ledger');
+    return;
+  }
+
+  const adrPath = join(adrRoot, adrCandidates[0]);
+  const criteriaBlock = markedBlock(
+    readFileSync(adrPath, 'utf8'),
+    '<!-- phase1-acceptance-criteria:start -->',
+    '<!-- phase1-acceptance-criteria:end -->',
+  );
+  if (criteriaBlock === undefined) {
+    failures.push(`${normalize(relative(root, adrPath))}: missing Phase 1 acceptance criteria block`);
+    return;
+  }
+  const criteria = new Set();
+  for (const line of criteriaBlock.split(/\r?\n/).filter(Boolean)) {
+    const match = line.match(/^- `([A-Z][A-Z0-9-]+)` — .+$/);
+    if (!match) {
+      failures.push(`${normalize(relative(root, adrPath))}: malformed Phase 1 criterion ${line}`);
+      continue;
+    }
+    if (criteria.has(match[1])) {
+      failures.push(`${normalize(relative(root, adrPath))}: duplicate criterion ${match[1]}`);
+    }
+    criteria.add(match[1]);
+  }
+
+  const closeout = readFileSync(closeoutPath, 'utf8');
+  const ledgerBlock = markedBlock(
+    closeout,
+    '<!-- phase1-acceptance-ledger:start -->',
+    '<!-- phase1-acceptance-ledger:end -->',
+  );
+  if (ledgerBlock === undefined) {
+    failures.push('docs/evidence/phase1-closeout.md: missing Phase 1 acceptance ledger block');
+    return;
+  }
+  const status = closeout.match(/^Status: (.+)$/m)?.[1] ?? '';
+  const complete = /\bcomplete\b/.test(status);
+  const ledger = new Map();
+  const lines = ledgerBlock.split(/\r?\n/).filter(Boolean);
+  const rows = [];
+  for (const line of lines) {
+    if (
+      line === '| Criterion ID | Disposition | Evidence or superseding ADR |'
+      || line === '| --- | --- | --- |'
+    ) {
+      continue;
+    }
+    if (!line.startsWith('| `')) {
+      failures.push(`docs/evidence/phase1-closeout.md: malformed acceptance row ${line}`);
+      continue;
+    }
+    rows.push(line);
+  }
+  for (const row of rows) {
+    const match = row.match(
+      /^\| `([A-Z][A-Z0-9-]+)` \| (passed|superseded|incomplete) \| (.+) \|$/,
+    );
+    if (!match) {
+      failures.push(`docs/evidence/phase1-closeout.md: malformed acceptance row ${row}`);
+      continue;
+    }
+    const [, criterion, disposition, evidence] = match;
+    if (ledger.has(criterion)) {
+      failures.push(`docs/evidence/phase1-closeout.md: duplicate criterion ${criterion}`);
+      continue;
+    }
+    ledger.set(criterion, disposition);
+    const evidencePath = retainedRepositoryFile(root, closeoutPath, evidence);
+    if (disposition === 'passed' && evidencePath === undefined) {
+      failures.push(
+        `docs/evidence/phase1-closeout.md: passed criterion ${criterion} requires retained evidence link`,
+      );
+    }
+    if (
+      disposition === 'superseded'
+      && (evidencePath === undefined || !/^docs\/adr\/\d{4}-[^/]+\.md$/.test(evidencePath))
+    ) {
+      failures.push(
+        `docs/evidence/phase1-closeout.md: superseded criterion ${criterion} requires ADR link`,
+      );
+    }
+    if (complete && disposition === 'incomplete') {
+      failures.push(
+        `docs/evidence/phase1-closeout.md: complete ledger contains incomplete criterion ${criterion}`,
+      );
+    }
+  }
+  for (const criterion of criteria) {
+    if (!ledger.has(criterion)) {
+      failures.push(`docs/evidence/phase1-closeout.md: missing criterion ${criterion}`);
+    }
+  }
+  for (const criterion of ledger.keys()) {
+    if (!criteria.has(criterion)) {
+      failures.push(`docs/evidence/phase1-closeout.md: unknown criterion ${criterion}`);
+    }
+  }
+}
+
 export function checkRepository(root) {
   const failures = [];
   const files = collectFiles(root);
@@ -217,6 +378,8 @@ export function checkRepository(root) {
       checkWorkflow(root, path, failures);
     }
   }
+
+  checkPhaseOneAcceptance(root, failures);
 
   const steeringRoot = join(root, '.codex', 'steering');
   if (existsSync(steeringRoot)) {

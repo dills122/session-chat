@@ -62,6 +62,7 @@ checkpoint is distinct from that immutable tested code revision.
   supervision baseline to the inviter-owned outbox while preserving the
   remaining product-storage, delivery-fault, and UI-runtime gaps.
 - [Recovery and conformance closeout decision](adr/0025-close-phase-one-recovery-and-conformance-evidence.md) records checked Welcome kills and exact deterministic owner authority.
+- [Phase 1 crash-atomicity and rollback-resistance split](adr/0029-split-phase-one-crash-atomicity-from-rollback-resistance.md) makes the acceptance ledger normative and keeps stale-snapshot rejection as an explicit later gate.
 - [Phase 1 protocol laboratory closeout plan](plans/PHASE1_PROTOCOL_CLOSEOUT.md)
   is historical and complete; it records durable-admission composition,
   transport conformance, independent-process recovery and the exact-revision

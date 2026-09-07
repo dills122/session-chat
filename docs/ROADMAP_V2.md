@@ -383,6 +383,11 @@ Exit criteria:
 - Concurrent competing successors across multiple service instances cannot both commit.
 - Rotation history, draining mailboxes, and continuity-reset state recover consistently.
 
+[ADR 0029](adr/0029-split-phase-one-crash-atomicity-from-rollback-resistance.md)
+maps the original Phase 1 stale-snapshot criterion here. Phase 1 proves only
+application-crash atomic restore; this Phase 3 rollback-resistance gate remains
+open.
+
 ## Phase 4: desktop client
 
 Create the desktop shell selected by its dedicated ADR around the Rust core.

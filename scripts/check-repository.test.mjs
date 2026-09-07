@@ -16,6 +16,132 @@ function portable(path) {
   return path.split(sep).join('/');
 }
 
+const PHASE_ONE_CRITERIA = `# ADR 0004
+
+<!-- phase1-acceptance-criteria:start -->
+- \`P1-STATE-CRASH-ATOMICITY\` — crash-atomic restore
+- \`P1-STATE-STALE-SNAPSHOT\` — stale-snapshot rollback resistance
+<!-- phase1-acceptance-criteria:end -->
+`;
+
+function phaseOneLedger(rows, status = 'complete') {
+  return `# Phase 1 closeout
+
+Status: ${status}
+
+<!-- phase1-acceptance-ledger:start -->
+| Criterion ID | Disposition | Evidence or superseding ADR |
+| --- | --- | --- |
+${rows.join('\n')}
+<!-- phase1-acceptance-ledger:end -->
+`;
+}
+
+function writePhaseOneAcceptance(root, rows, status) {
+  mkdirSync(join(root, 'docs', 'adr'), { recursive: true });
+  mkdirSync(join(root, 'docs', 'evidence'), { recursive: true });
+  writeFileSync(join(root, 'docs', 'adr', '0004-phase-one.md'), PHASE_ONE_CRITERIA);
+  writeFileSync(join(root, 'docs', 'adr', '0029-split.md'), '# ADR 0029\n');
+  writeFileSync(join(root, 'docs', 'evidence', 'retained.md'), '# Retained evidence\n');
+  writeFileSync(
+    join(root, 'docs', 'evidence', 'phase1-closeout.md'),
+    phaseOneLedger(rows, status),
+  );
+}
+
+const CRASH_PASSED =
+  '| `P1-STATE-CRASH-ATOMICITY` | passed | [evidence](retained.md) |';
+const STALE_SUPERSEDED =
+  '| `P1-STATE-STALE-SNAPSHOT` | superseded | [ADR 0029](../adr/0029-split.md) |';
+
+test('accepts an exact complete Phase 1 acceptance ledger', (context) => {
+  const root = fixture();
+  context.after(() => rmSync(root, { force: true, recursive: true }));
+  writePhaseOneAcceptance(root, [CRASH_PASSED, STALE_SUPERSEDED]);
+
+  assert.deepEqual(checkRepository(root).failures, []);
+});
+
+test('rejects invalid Phase 1 acceptance-ledger mappings', () => {
+  const cases = [
+    {
+      name: 'missing criterion',
+      rows: [CRASH_PASSED],
+      expected: /missing criterion P1-STATE-STALE-SNAPSHOT/,
+    },
+    {
+      name: 'duplicate criterion',
+      rows: [CRASH_PASSED, CRASH_PASSED, STALE_SUPERSEDED],
+      expected: /duplicate criterion P1-STATE-CRASH-ATOMICITY/,
+    },
+    {
+      name: 'passed without evidence',
+      rows: ['| `P1-STATE-CRASH-ATOMICITY` | passed | none |', STALE_SUPERSEDED],
+      expected: /passed criterion P1-STATE-CRASH-ATOMICITY requires retained evidence link/,
+    },
+    {
+      name: 'passed with anchor instead of retained file',
+      rows: ['| `P1-STATE-CRASH-ATOMICITY` | passed | [anchor](#only) |', STALE_SUPERSEDED],
+      expected: /passed criterion P1-STATE-CRASH-ATOMICITY requires retained evidence link/,
+    },
+    {
+      name: 'passed with external URL instead of retained file',
+      rows: [
+        '| `P1-STATE-CRASH-ATOMICITY` | passed | [external](https://example.com) |',
+        STALE_SUPERSEDED,
+      ],
+      expected: /passed criterion P1-STATE-CRASH-ATOMICITY requires retained evidence link/,
+    },
+    {
+      name: 'superseded without ADR',
+      rows: [CRASH_PASSED, '| `P1-STATE-STALE-SNAPSHOT` | superseded | none |'],
+      expected: /superseded criterion P1-STATE-STALE-SNAPSHOT requires ADR link/,
+    },
+    {
+      name: 'complete with incomplete criterion',
+      rows: [
+        CRASH_PASSED,
+        '| `P1-STATE-STALE-SNAPSHOT` | incomplete | [backlog](retained.md) |',
+      ],
+      expected: /complete ledger contains incomplete criterion P1-STATE-STALE-SNAPSHOT/,
+    },
+    {
+      name: 'unrecognized visual table row',
+      rows: [CRASH_PASSED, STALE_SUPERSEDED, '| P1-UNKNOWN | passed | [evidence](retained.md) |'],
+      expected: /malformed acceptance row \| P1-UNKNOWN/,
+    },
+  ];
+
+  for (const fixtureCase of cases) {
+    const root = fixture();
+    try {
+      writePhaseOneAcceptance(root, fixtureCase.rows);
+      assert.match(
+        checkRepository(root).failures.join('\n'),
+        fixtureCase.expected,
+        fixtureCase.name,
+      );
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  }
+});
+
+test('rejects duplicate Phase 1 acceptance marker blocks', (context) => {
+  const root = fixture();
+  context.after(() => rmSync(root, { force: true, recursive: true }));
+  writePhaseOneAcceptance(root, [CRASH_PASSED, STALE_SUPERSEDED]);
+  writeFileSync(
+    join(root, 'docs', 'evidence', 'phase1-closeout.md'),
+    `${phaseOneLedger([CRASH_PASSED, STALE_SUPERSEDED])}\n<!-- phase1-acceptance-ledger:start -->\n<!-- phase1-acceptance-ledger:end -->\n`,
+  );
+
+  assert.match(
+    checkRepository(root).failures.join('\n'),
+    /missing Phase 1 acceptance ledger block/,
+  );
+});
+
 test('accepts valid local links, JSON, evidence, and immutable actions', (context) => {
   const root = fixture();
   context.after(() => rmSync(root, { force: true, recursive: true }));
