@@ -1,6 +1,5 @@
 use std::{
     future::Future,
-    path::PathBuf,
     pin::pin,
     task::{Context, Poll, Waker},
     time::{Duration, Instant},
@@ -35,23 +34,7 @@ const NOW: u64 = 1_900_000_000;
 const REQUEST_ID: [u8; 16] = [0x31; 16];
 const TRANSACTION_ID: [u8; 16] = [0x41; 16];
 
-struct TestDatabase(PathBuf);
-
-impl TestDatabase {
-    fn new(name: &str) -> Self {
-        Self(std::env::temp_dir().join(format!(
-            "session-chat-storage-sqlcipher-capability-composition-{name}-{}.sqlite3",
-            std::process::id(),
-        )))
-    }
-}
-
-impl Drop for TestDatabase {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.0);
-        let _ = std::fs::remove_file(self.0.with_extension("sqlite3-journal"));
-    }
-}
+use test_private_dir::TestDatabase;
 
 struct TestControl {
     monotonic_now: Instant,

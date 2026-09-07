@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use mls_rs_core::group::{EpochRecord, GroupState, GroupStateStorage};
 use rusqlite::{Connection, params};
 use session_crypto_hpke::AwsLcInvitationJoinProtector;
@@ -17,23 +15,7 @@ use zeroize::Zeroizing;
 
 const NOW: u64 = 1_900_000_000;
 
-struct TestDatabase(PathBuf);
-
-impl TestDatabase {
-    fn new(name: &str) -> Self {
-        Self(std::env::temp_dir().join(format!(
-            "session-chat-storage-sqlcipher-authorization-{name}-{}.sqlite3",
-            std::process::id(),
-        )))
-    }
-}
-
-impl Drop for TestDatabase {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.0);
-        let _ = std::fs::remove_file(self.0.with_extension("sqlite3-journal"));
-    }
-}
+use test_private_dir::TestDatabase;
 
 fn vault_key() -> VaultKey {
     VaultKey::new([0x83; 32]).expect("nonzero test key")

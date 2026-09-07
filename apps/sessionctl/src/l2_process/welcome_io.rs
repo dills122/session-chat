@@ -85,6 +85,12 @@ pub fn run_welcome_engine_sweep(
     test_executable: &Path,
     driver: &mut impl L2IoFaultDriver,
 ) -> Result<WelcomeEngineSweepReport, SessionCtlError> {
+    let verifier_snapshot = ExecutableSnapshot::capture(executable)?;
+    let driver_snapshot = ExecutableSnapshot::capture(test_executable)?;
+    let identity =
+        ExecutionIdentity::capture(verifier_snapshot.digest, Some(driver_snapshot.digest))?;
+    let executable = verifier_snapshot.path();
+    let test_executable = driver_snapshot.path();
     let mut cases = Vec::new();
     let mut expected = Vec::new();
     for kind in WelcomeWorkload::ALL {
@@ -118,7 +124,10 @@ pub fn run_welcome_engine_sweep(
         }
         for target in targets {
             for ordinal in 0..target.observed_count {
-                let case = kill_case(executable, test_executable, kind, *target, ordinal)?;
+                let mut case = kill_case(executable, test_executable, kind, *target, ordinal)?;
+                verifier_snapshot.verify_source()?;
+                driver_snapshot.verify_source()?;
+                case.binding.executables = Some(identity.clone());
                 expected.push(case.key.clone());
                 cases.push(case);
                 if cases.len() > 4096 {

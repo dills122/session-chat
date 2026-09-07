@@ -147,3 +147,11 @@ first adapter because they require Session Chat to design record encryption or
 do not protect copied files. The disposable SQLCipher spike remains historical
 compatibility evidence; production code must use the workspace adapter and its
 real MLS integration tests.
+
+## Provenance correction
+
+[ADR 0027](0027-authenticate-l2-evidence-and-own-test-artifacts.md) supersedes
+the unsigned `l2-evidence-v1` promotion claim above. Only self-reported candidate
+v2 records can be collected locally; hosted provenance requires external
+attestation verification. Existing historical process-recovery evidence does
+not become a signed attestation retroactively.

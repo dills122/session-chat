@@ -112,3 +112,7 @@ packaging or broader hardware/OS compatibility claim.
 cargo test -p storage-sqlcipher --all-features --locked --offline
 cargo clippy -p storage-sqlcipher --all-targets --all-features --locked --offline -- -D warnings
 ```
+
+Test databases and SQLite sidecars now use the shared private-directory fixture
+owner in `scripts/test-private-dir`; new tamper copies use exclusive creation.
+This test-only change does not harden arbitrary product caller-supplied paths.

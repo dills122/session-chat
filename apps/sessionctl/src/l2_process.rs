@@ -39,6 +39,8 @@ use self::fault_testing::{
 };
 use super::{SessionCtlError, random_nonzero, resolve_l1_process_git_commit, stage};
 
+mod execution;
+use execution::{ExecutableSnapshot, ExecutionIdentity};
 mod evidence;
 pub mod welcome;
 pub mod welcome_io;
@@ -305,6 +307,7 @@ pub struct L2ProcessReport {
 
 #[derive(Clone, Eq, PartialEq)]
 struct L2EvidenceBinding {
+    executables: Option<ExecutionIdentity>,
     sqlcipher_version: String,
     sqlite_version: String,
     baseline_artifact_digest: [u8; 32],
@@ -429,6 +432,7 @@ impl L2EvidenceCase {
 
 /// Baseline-observed application checkpoints for one real storage transaction.
 pub struct L2ProcessBaseline {
+    executables: Option<ExecutionIdentity>,
     scenario: Scenario,
     cases: Vec<L2ProcessCase>,
 }
@@ -473,6 +477,8 @@ impl L2ProcessSweepReport {
                 .next()
                 .ok_or_else(|| stage("L2 process sweep coverage"))?;
             if matches.next().is_some()
+                || report.evidence_binding.executables != baseline.executables
+                || report.evidence_binding.executables.is_none()
                 || report.probe != L2HarnessProbe::KillWhileBlocked
                 || report.case.scenario() != scenario
                 || report.trace != baseline.cases[..=target_index]
@@ -1283,7 +1289,9 @@ impl L2IoSweepReport {
         let mut empty_states = 0_usize;
         let mut committed_states = 0_usize;
         for case in cases {
-            if case.scenario != scenario
+            if case.evidence_binding.executables != baseline._evidence_binding.executables
+                || case.evidence_binding.executables.is_none()
+                || case.scenario != scenario
                 || !case.fixture_cleanup
                 || !case.handle_cleanup
                 || !case.child_cleanup
@@ -1540,7 +1548,9 @@ impl L2IoPauseSweepReport {
         let mut empty_states = 0_usize;
         let mut committed_states = 0_usize;
         for case in cases {
-            if case.scenario != scenario
+            if case.evidence_binding.executables != baseline._evidence_binding.executables
+                || case.evidence_binding.executables.is_none()
+                || case.scenario != scenario
                 || !case.fixture_cleanup
                 || !case.handle_cleanup
                 || !case.child_cleanup
@@ -1733,6 +1743,9 @@ pub fn run_l2_process_case(
     if !executable.is_absolute() || !executable.is_file() {
         return Err(stage("L2 executable"));
     }
+    let snapshot = ExecutableSnapshot::capture(executable)?;
+    let identity = ExecutionIdentity::capture(snapshot.digest, None)?;
+    let executable = snapshot.path();
     let case_id = CaseId::new(random_nonzero()?).map_err(|_| stage("L2 case"))?;
     let target = ControlFrame::new_checkpoint(case_id, case.checkpoint, case.occurrence)
         .map_err(|_| stage("L2 case"))?;
@@ -1740,7 +1753,9 @@ pub fn run_l2_process_case(
     let mut root = ProcessRoot::new()?;
     let scenario_result = run_controller(executable, root.path(), config);
     let cleanup_result = root.cleanup();
-    let controller = scenario_result?;
+    let mut controller = scenario_result?;
+    snapshot.verify_source()?;
+    controller.evidence_binding.executables = Some(identity);
     cleanup_result?;
     let repository_root = repository_root();
     let report = L2ProcessReport {
@@ -1807,6 +1822,7 @@ pub fn run_l2_process_baseline(
         }
     }
     Ok(L2ProcessBaseline {
+        executables: report.evidence_binding.executables,
         scenario,
         cases: report.trace,
     })
@@ -1821,6 +1837,9 @@ pub fn run_l2_io_fault_case(
     if !executable.is_absolute() || !executable.is_file() {
         return Err(stage("L2 executable"));
     }
+    let snapshot = ExecutableSnapshot::capture(executable)?;
+    let identity = ExecutionIdentity::capture(snapshot.digest, None)?;
+    let executable = snapshot.path();
     let config = l2_io_case_config(scenario)?;
     let mut root = ProcessRoot::new()?;
     let result = run_l2_io_fault_controller(executable, root.path(), config, driver);
@@ -1831,8 +1850,10 @@ pub fn run_l2_io_fault_case(
         fixture_cleanup,
         handle_cleanup,
         child_cleanup,
-        evidence_binding,
+        mut evidence_binding,
     ) = result?;
+    snapshot.verify_source()?;
+    evidence_binding.executables = Some(identity);
     cleanup?;
     let L2IoDriverObservation::Fault(fault) = driver_observation else {
         return Err(stage("L2 I/O fault evidence"));
@@ -1862,6 +1883,9 @@ pub fn run_l2_io_baseline(
     if !executable.is_absolute() || !executable.is_file() {
         return Err(stage("L2 executable"));
     }
+    let snapshot = ExecutableSnapshot::capture(executable)?;
+    let identity = ExecutionIdentity::capture(snapshot.digest, None)?;
+    let executable = snapshot.path();
     let config = l2_io_case_config(scenario)?;
     let mut root = ProcessRoot::new()?;
     let result = run_l2_io_fault_controller(executable, root.path(), config, driver);
@@ -1872,8 +1896,10 @@ pub fn run_l2_io_baseline(
         fixture_cleanup,
         handle_cleanup,
         child_cleanup,
-        evidence_binding,
+        mut evidence_binding,
     ) = result?;
+    snapshot.verify_source()?;
+    evidence_binding.executables = Some(identity);
     cleanup?;
     let L2IoDriverObservation::Baseline(baseline) = driver_observation else {
         return Err(stage("L2 I/O baseline evidence"));
@@ -1896,6 +1922,7 @@ pub fn run_l2_io_baseline(
 
 /// Parent-owned fresh baseline and key for one killable pause child.
 pub struct L2IoPauseKillCase {
+    driver_snapshot: ExecutableSnapshot,
     root: ProcessRoot,
     key: Zeroizing<[u8; KEY_BYTES]>,
     scenario: Scenario,
@@ -1906,6 +1933,11 @@ pub struct L2IoPauseKillCase {
 }
 
 impl L2IoPauseKillCase {
+    /// Exact captured controller binary to launch for the external pause child.
+    pub fn driver_executable(&self) -> &Path {
+        self.driver_snapshot.path()
+    }
+
     /// Absolute marked root passed only to the direct checked test child.
     pub fn root(&self) -> &Path {
         self.root.path()
@@ -1941,6 +1973,13 @@ impl L2IoPauseKillCase {
         if self.welcome_canary.is_none() {
             self.welcome_canary = read_optional_welcome_canary(self.root.path())?;
         }
+        let snapshot = ExecutableSnapshot::capture(executable)?;
+        let identity = ExecutionIdentity::capture(snapshot.digest, None)?;
+        self.driver_snapshot.verify_source()?;
+        if identity.producer != self.driver_snapshot.digest {
+            return Err(stage("L2 producer changed"));
+        }
+        let executable = snapshot.path();
         let result = verify_l2_io_root(
             executable,
             self.root.path(),
@@ -1954,7 +1993,10 @@ impl L2IoPauseKillCase {
             &[pause_stdout, pause_stderr],
         );
         let cleanup = self.root.cleanup();
-        let (observed, fixture_cleanup, handle_cleanup, child_cleanup, evidence_binding) = result?;
+        let (observed, fixture_cleanup, handle_cleanup, child_cleanup, mut evidence_binding) =
+            result?;
+        snapshot.verify_source()?;
+        evidence_binding.executables = Some(identity);
         cleanup?;
         let report = L2IoPauseKillReport {
             scenario: self.scenario,
@@ -2003,6 +2045,9 @@ pub fn prepare_l2_io_pause_kill_case(
     )?;
     write_owned_file(&root.path().join(WRITER_KEY_NAME), key.as_slice(), true)?;
     Ok(L2IoPauseKillCase {
+        driver_snapshot: ExecutableSnapshot::capture(
+            &std::env::current_exe().map_err(|_| stage("L2 producer"))?,
+        )?,
         root,
         key,
         scenario,
@@ -2272,6 +2317,8 @@ fn canonical_evidence_cases(
                     .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
                 || case.binding.sqlcipher_version != first.binding.sqlcipher_version
                 || case.binding.sqlite_version != first.binding.sqlite_version
+                || case.binding.executables.is_none()
+                || case.binding.executables != first.binding.executables
                 || !case.binding.redaction
         })
     {
@@ -3976,6 +4023,7 @@ fn collect_evidence_binding(
     }
     evidence::scan_secret_values(scanned, secrets)?;
     Ok(L2EvidenceBinding {
+        executables: None,
         sqlcipher_version,
         sqlite_version,
         baseline_artifact_digest: baseline.digest,
@@ -4606,6 +4654,7 @@ mod tests {
 
     fn test_evidence_binding() -> L2EvidenceBinding {
         L2EvidenceBinding {
+            executables: Some(ExecutionIdentity::fixture()),
             sqlcipher_version: String::from("4.14.0"),
             sqlite_version: String::from("3.50.4"),
             baseline_artifact_digest: [0x11; 32],
@@ -4638,6 +4687,21 @@ mod tests {
 
         let duplicate = test_evidence_case("checkpoint-a-0", 2);
         assert!(canonical_evidence_cases(vec![forward[0].clone(), duplicate]).is_err());
+    }
+
+    #[test]
+    fn mixed_verifier_producer_or_fault_driver_reports_cannot_form_an_aggregate() {
+        let first = test_evidence_case("checkpoint-a-0", 0);
+        for role in 0..3 {
+            let mut second = test_evidence_case("checkpoint-b-1", 1);
+            let identity = second.binding.executables.as_mut().unwrap();
+            match role {
+                0 => identity.verifier = [1; 32],
+                1 => identity.producer = [2; 32],
+                _ => identity.fault_driver = Some([3; 32]),
+            }
+            assert!(canonical_evidence_cases(vec![first.clone(), second]).is_err());
+        }
     }
 
     #[test]

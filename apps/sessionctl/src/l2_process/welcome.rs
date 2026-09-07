@@ -113,7 +113,9 @@ pub fn run_welcome_sweep(executable: &Path) -> Result<WelcomeSweepReport, Sessio
         }
         for index in 0..baseline.0.len() {
             let (trace, case) = run_case(executable, workload, Some(index), false)?;
-            if trace != baseline.0[..=index] {
+            if trace != baseline.0[..=index]
+                || case.binding.executables != baseline.1.binding.executables
+            {
                 return Err(stage("L2 Welcome prefix coverage"));
             }
             cases.push(case);
@@ -706,6 +708,9 @@ fn run_case(
     target: Option<usize>,
     defect: bool,
 ) -> Result<(Vec<u8>, L2EvidenceCase), SessionCtlError> {
+    let snapshot = ExecutableSnapshot::capture(executable)?;
+    let identity = ExecutionIdentity::capture(snapshot.digest, None)?;
+    let executable = snapshot.path();
     let mut root = ProcessRoot::new()?;
     let path = root.path();
     let key = Zeroizing::new(random_nonzero::<32>()?);
@@ -783,7 +788,7 @@ fn run_case(
     }
     drop(verifier);
     prove_database_handle_cleanup(path)?;
-    let binding = collect_evidence_binding(
+    let mut binding = collect_evidence_binding(
         path,
         &key,
         &fixture,
@@ -791,6 +796,8 @@ fn run_case(
         baseline,
         &[&transcript, &output],
     )?;
+    snapshot.verify_source()?;
+    binding.executables = Some(identity);
     let evidence = L2EvidenceCase {
         key: format!("welcome-{}-{}", workload as u8, target.unwrap_or(255)),
         target: L2EvidenceCaseTarget::ApplicationCheckpoint {
@@ -875,6 +882,7 @@ mod tests {
                         observed: "W1",
                     },
                     binding: L2EvidenceBinding {
+                        executables: Some(ExecutionIdentity::fixture()),
                         sqlcipher_version: "4.0".into(),
                         sqlite_version: "3.0".into(),
                         baseline_artifact_digest: [1; 32],

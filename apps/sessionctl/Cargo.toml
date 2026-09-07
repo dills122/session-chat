@@ -31,7 +31,11 @@ zeroize.workspace = true
 libc.workspace = true
 
 [dev-dependencies]
+test-private-dir = { version = "=0.1.0", path = "../../scripts/test-private-dir" }
 storage-sqlcipher-fault-vfs = { version = "=0.1.0", path = "../../crates/storage-sqlcipher-fault-vfs" }
 
 [lints]
 workspace = true
+
+[target.'cfg(session_chat_storage_fault_testing)'.dependencies]
+test-private-dir = { version = "=0.1.0", path = "../../scripts/test-private-dir" }

@@ -427,7 +427,7 @@ mod checked {
         )
         .expect("fresh pause/kill case");
         let operation = pause_operation_name(target.operation()).expect("commit-window operation");
-        let mut child = Command::new(std::env::current_exe().expect("current test executable"))
+        let mut child = Command::new(prepared.driver_executable())
             .args([
                 "checked::l2_io_pause_child",
                 "--exact",
@@ -577,12 +577,12 @@ mod checked {
                 )
                 .expect("bounded return-code evidence surfaces");
                 let bundle = complete
-                    .promote_v1(&executable(), &runner_image, &channels)
+                    .candidate_v2(&executable(), &runner_image, &channels)
                     .expect("promote complete return-code evidence");
                 for manifest in bundle.manifests() {
                     println!(
-                        "L2_PUBLIC_EVIDENCE_BEGIN\n{}L2_PUBLIC_EVIDENCE_END",
-                        manifest.encode_v1(),
+                        "L2_CANDIDATE_BEGIN\n{}L2_CANDIDATE_END",
+                        manifest.encode_v2(),
                     );
                 }
             }
@@ -651,7 +651,7 @@ mod checked {
         let operation = L2IoOperation::Write;
         let prepared = prepare_l2_io_pause_kill_case(scenario, role, operation, 0)
             .expect("fresh canary pause case");
-        let mut child = Command::new(std::env::current_exe().expect("current test executable"))
+        let mut child = Command::new(prepared.driver_executable())
             .args([
                 "checked::l2_io_pause_child",
                 "--exact",
@@ -739,12 +739,12 @@ mod checked {
                 )
                 .expect("bounded pause evidence surfaces");
                 let bundle = complete
-                    .promote_v1(&executable(), &runner_image, &channels)
+                    .candidate_v2(&executable(), &runner_image, &channels)
                     .expect("promote complete pause evidence");
                 for manifest in bundle.manifests() {
                     println!(
-                        "L2_PUBLIC_EVIDENCE_BEGIN\n{}L2_PUBLIC_EVIDENCE_END",
-                        manifest.encode_v1(),
+                        "L2_CANDIDATE_BEGIN\n{}L2_CANDIDATE_END",
+                        manifest.encode_v2(),
                     );
                 }
             }

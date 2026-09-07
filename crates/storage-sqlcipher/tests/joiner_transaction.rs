@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use mls_rs_core::group::GroupStateStorage;
 use session_crypto_mls::{
     SessionGroupId, create_client, create_client_with_storage, create_key_package_validator,
@@ -8,27 +6,11 @@ use storage_sqlcipher::{JoinerTransaction, PersistenceFault, SqlCipherStorage, V
 
 const NOW: u64 = 1_900_000_000;
 
-struct TestDatabase(PathBuf);
-
-impl TestDatabase {
-    fn new() -> Self {
-        Self(std::env::temp_dir().join(format!(
-            "session-chat-storage-sqlcipher-joiner-{}.sqlite3",
-            std::process::id(),
-        )))
-    }
-}
-
-impl Drop for TestDatabase {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.0);
-        let _ = std::fs::remove_file(self.0.with_extension("sqlite3-journal"));
-    }
-}
+use test_private_dir::TestDatabase;
 
 #[test]
 fn actual_joiner_write_atomically_persists_group_and_deletes_one_time_key_package() {
-    let database = TestDatabase::new();
+    let database = TestDatabase::new("database");
     let storage = SqlCipherStorage::create(
         &database.0,
         VaultKey::new([21; 32]).expect("nonzero test key"),

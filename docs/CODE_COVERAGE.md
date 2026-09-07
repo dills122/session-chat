@@ -170,3 +170,8 @@ the pinned Rust/LLVM toolchain provides reproducible cross-platform evidence.
 Until then, reviews must continue to require explicit negative cases for
 authorization, replay, expiry, rollback, malformed input, and state-transition
 branches even when the numerical gate passes.
+
+The checked-only `l2_process/execution.rs` snapshot helper shares the existing
+L2 cfg exclusion; its checks run in the three-OS L2 job. The publish-disabled
+`scripts/test-private-dir` crate contains fixture infrastructure only, outside
+the production-source measurement (like integration-test helpers).

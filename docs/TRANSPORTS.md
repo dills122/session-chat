@@ -343,8 +343,9 @@ storage evidence is supplemented by ADR 0025 Welcome-delivery recovery.
 Neither establishes power-loss safety,
 rollback resistance, platform key custody, or production transport behavior.
 Its raw observations remain non-public; the retained L2-8 gate lets only sealed
-complete aggregates emit canonical per-case bundles with actual compiler,
-GitHub run/workflow, runner-tuple, and artifact binding plus secret/canary scans,
+complete aggregates emit self-reported candidate v2 bundles with execution-time
+binary/artifact binding and secret/canary scans. ADR 0027 requires external
+attestation verification before hosted provenance is accepted,
 and portable passage remains conditional on the exact revision's required
 three-OS CI result.
 

@@ -33,6 +33,7 @@ export const COVERAGE_POLICY = Object.freeze({
   nonInstrumentedSources: Object.freeze([
     'apps/sessionctl/src/l2_process.rs',
     'apps/sessionctl/src/l2_process/evidence.rs',
+    'apps/sessionctl/src/l2_process/execution.rs',
     'apps/sessionctl/src/l2_process/welcome.rs',
     'apps/sessionctl/src/l2_process/welcome_io.rs',
     'crates/storage-sqlcipher-fault-vfs/src/lib.rs',
