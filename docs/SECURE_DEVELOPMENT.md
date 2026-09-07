@@ -33,6 +33,16 @@ The matrix makes the common local-app foundation an all-platform merge
 requirement; a matrix failure fails the aggregate Rust job and therefore the
 final gate.
 
+Evidence manifests use an explicit dependency-free line grammar: blank lines,
+`#` comments, credential-free `https://` sources, or canonical forward-slash
+repository file paths beneath `apps/`, `crates/`, `docs/`, `scripts/`, or
+`spikes/`. The checker rejects dot segments, backslashes, absolute paths,
+colons/NTFS alternate streams, unknown lines, symlink components, missing
+targets, directories, and targets outside the selected evidence root.
+Repository content remains bound by the
+recorded Git revision; a sibling hardening record's collection digest binds the
+exact inventory text, not mutable external page content.
+
 Run the equivalent local gate with:
 
 ```sh

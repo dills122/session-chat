@@ -66,6 +66,18 @@ explicit/complex keys and multiline action references fail closed. Unsupported
 syntax must be rewritten into the supported subset; it is never skipped.
 This preserves dependency-free Node tooling.
 
+Repository evidence manifests use a second strict dependency-free grammar:
+blank lines, comments, credential-free HTTPS sources, and canonical
+forward-slash paths beneath the declared repository evidence roots. The policy
+checker walks each path component without following links, requires a regular
+file, and verifies canonical containment under both repository and selected
+top-level evidence root. Dot segments, platform-specific separators, NTFS
+alternate streams, absolute paths, unknown prose, missing targets, links, and
+directories reject. Existing inventory headings are comments. The collection
+digest continues to bind exact
+manifest bytes; the recorded Git revision, rather than duplicated per-file
+hashes, binds repository evidence content.
+
 Core and retained spike SQLCipher tests share the publish-disabled
 `scripts/test-private-dir` fixture owner. It uses 256 random bits from the OS,
 exclusive creation, Unix mode 0700 at creation, or a Windows protected owner-only

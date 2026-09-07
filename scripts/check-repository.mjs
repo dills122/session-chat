@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -8,6 +8,7 @@ const LOCAL_MACHINE_PATH = /(?:file:\/\/|\/Users\/|\/home\/[A-Za-z0-9_.-]+\/|[A-
 const MARKDOWN_LINK = /!?\[[^\]]*\]\(([^)]+)\)/g;
 import { workflowUses } from './workflow-uses.mjs';
 const FULL_COMMIT = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_./-]+)?@[0-9a-f]{40}$/;
+const EVIDENCE_ROOTS = new Set(['apps', 'crates', 'docs', 'scripts', 'spikes']);
 
 function normalize(relativePath) {
   return relativePath.split(sep).join('/');
@@ -15,7 +16,8 @@ function normalize(relativePath) {
 
 function shouldSkip(relativePath, entryName) {
   if (SKIPPED_DIRECTORIES.has(entryName)) return true;
-  return normalize(relativePath) === '.codex/skills';
+  const repositoryPath = normalize(relativePath);
+  return repositoryPath === '.codex/skills' || repositoryPath === '.claude/worktrees';
 }
 
 export function collectFiles(root) {
@@ -111,10 +113,66 @@ function checkJson(root, path, failures) {
 
 function checkEvidenceManifest(root, path, failures) {
   const repositoryPath = normalize(relative(root, path));
+  const canonicalRoot = realpathSync(root);
   for (const line of readFileSync(path, 'utf8').split(/\r?\n/)) {
-    if (!/^(?:apps|crates|docs|scripts|spikes)\//.test(line)) continue;
-    if (!existsSync(resolve(root, line))) {
-      failures.push(`${repositoryPath}: missing repository evidence ${line}`);
+    if (line === '' || line === '#' || line.startsWith('# ')) continue;
+    if (line.trim() !== line) {
+      failures.push(`${repositoryPath}: invalid evidence entry ${line}: surrounding whitespace`);
+      continue;
+    }
+    if (line.startsWith('https://')) {
+      try {
+        const source = new URL(line);
+        if (source.protocol === 'https:' && source.hostname && !source.username && !source.password) {
+          continue;
+        }
+      } catch {
+        // Fall through to one stable policy error.
+      }
+      failures.push(`${repositoryPath}: invalid external evidence URL ${line}`);
+      continue;
+    }
+    if (isAbsolute(line) || line.includes('\\') || line.includes(':')) {
+      failures.push(`${repositoryPath}: invalid repository evidence path ${line}`);
+      continue;
+    }
+
+    const parts = line.split('/');
+    if (!EVIDENCE_ROOTS.has(parts[0]) || parts.some(part => !part || part === '.' || part === '..')) {
+      failures.push(`${repositoryPath}: invalid repository evidence path ${line}`);
+      continue;
+    }
+
+    let target = canonicalRoot;
+    let metadata;
+    try {
+      for (const part of parts) {
+        target = join(target, part);
+        metadata = lstatSync(target);
+        if (metadata.isSymbolicLink()) {
+          throw new Error('symbolic link');
+        }
+      }
+    } catch (error) {
+      const reason = error.message === 'symbolic link' ? 'symbolic link' : 'missing path';
+      failures.push(`${repositoryPath}: invalid repository evidence ${line}: ${reason}`);
+      continue;
+    }
+
+    const allowedRoot = join(canonicalRoot, parts[0]);
+    let canonicalTarget;
+    try {
+      canonicalTarget = realpathSync(target);
+    } catch {
+      failures.push(`${repositoryPath}: invalid repository evidence ${line}: unresolved path`);
+      continue;
+    }
+    const allowedRelative = relative(allowedRoot, canonicalTarget);
+    const contained = allowedRelative === ''
+      || (!isAbsolute(allowedRelative) && allowedRelative !== '..' && !allowedRelative.startsWith(`..${sep}`));
+    if (!contained || !metadata.isFile()) {
+      const reason = contained ? 'not a regular file' : 'outside allowed evidence root';
+      failures.push(`${repositoryPath}: invalid repository evidence ${line}: ${reason}`);
     }
   }
 }

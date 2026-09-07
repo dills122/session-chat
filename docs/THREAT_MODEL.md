@@ -416,6 +416,11 @@ Assumptions:
   nearly all protocol guarantees.
 - Release provenance, dependency review, reproducibility, and signed updates
   are part of the product security boundary.
+- Retained evidence inventories are contributor-controlled input. Their gate
+  accepts only explicit comments, HTTPS sources, and canonical regular files
+  contained under declared repository evidence roots; traversal, symlinks,
+  directories, and unknown lines fail closed. Inventory digests bind inventory
+  text, while repository contents remain bound by the recorded Git revision.
 
 ### Attacker-controlled inputs
 

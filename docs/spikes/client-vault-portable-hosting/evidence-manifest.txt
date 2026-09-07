@@ -1,6 +1,6 @@
-Session Chat client-vault and portable-hosting hardening evidence collection v1
+# Session Chat client-vault and portable-hosting hardening evidence collection v1
 
-Repository evidence
+# Repository evidence
 docs/PRODUCT_V2.md
 docs/ARCHITECTURE_V2.md
 docs/IDENTITY_AND_ADMISSION.md
@@ -14,7 +14,7 @@ docs/adr/0008-use-an-inviter-owned-transactional-invitation-lifecycle.md
 docs/adr/0010-use-right-specific-mailbox-capabilities.md
 docs/adr/0011-select-openmls-for-the-phase-1-laboratory.md
 
-Primary external evidence retrieved 2026-08-16
+# Primary external evidence retrieved 2026-08-16
 # The collection digest covers this manifest, not snapshots of these pages.
 # Versioned specifications are preferred; mutable vendor pages must be
 # revalidated when an implementation decision is made.
