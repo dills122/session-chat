@@ -1,3 +1,4 @@
+import { isCanonicalBase64url, normalizeEnvelope, boundedJsonSnapshot } from './validation.mjs';
 import {
   createCipheriv,
   createDecipheriv,
@@ -28,19 +29,25 @@ function decode(value) {
 }
 
 function importPublicKey(value) {
-  return createPublicKey({
+  if (!isCanonicalBase64url(value, 44)) throw new Error('invalid public key');
+  const key = createPublicKey({
     key: decode(value),
     format: 'der',
     type: 'spki'
   });
+  if (key.asymmetricKeyType !== 'x25519') throw new Error('invalid public key');
+  return key;
 }
 
 function importPrivateKey(value) {
-  return createPrivateKey({
+  if (!isCanonicalBase64url(value, 48)) throw new Error('invalid private key');
+  const key = createPrivateKey({
     key: decode(value),
     format: 'der',
     type: 'pkcs8'
   });
+  if (key.asymmetricKeyType !== 'x25519') throw new Error('invalid private key');
+  return key;
 }
 
 function associatedData(envelope) {
@@ -50,6 +57,8 @@ function associatedData(envelope) {
 }
 
 function paddedPlaintext(invitation) {
+  try { invitation = boundedJsonSnapshot(invitation, PADDED_PLAINTEXT_BYTES - LENGTH_PREFIX_BYTES); }
+  catch { throw new Error('invitation exceeds the fixed-size envelope limit'); }
   const content = Buffer.from(
     JSON.stringify({
       type: 'session-chat-invitation',
@@ -107,13 +116,14 @@ export function capabilityDigest(capability) {
 }
 
 export function sealInvitation({ recipientPublicKey, mailboxId, invitation, expiresAt, now = Date.now() }) {
-  if (!mailboxId || !recipientPublicKey) {
+  if (!isCanonicalBase64url(mailboxId, 32) || !isCanonicalBase64url(recipientPublicKey, 44)) {
     throw new Error('mailbox and recipient public key are required');
   }
   if (!Number.isSafeInteger(expiresAt) || expiresAt <= now) {
     throw new Error('invitation expiry must be in the future');
   }
 
+  const padded = paddedPlaintext(invitation);
   const ephemeral = generateKeyPairSync('x25519');
   const sharedSecret = diffieHellman({
     privateKey: ephemeral.privateKey,
@@ -134,7 +144,7 @@ export function sealInvitation({ recipientPublicKey, mailboxId, invitation, expi
 
   const cipher = createCipheriv('aes-256-gcm', key, nonce);
   cipher.setAAD(associatedData(envelope));
-  const ciphertext = Buffer.concat([cipher.update(paddedPlaintext(invitation)), cipher.final()]);
+  const ciphertext = Buffer.concat([cipher.update(padded), cipher.final()]);
 
   return {
     ...envelope,
@@ -144,7 +154,8 @@ export function sealInvitation({ recipientPublicKey, mailboxId, invitation, expi
 }
 
 export function openInvitation({ recipientPrivateKey, envelope, expectedMailboxId, now = Date.now() }) {
-  if (envelope.version !== 1 || envelope.mailboxId !== expectedMailboxId) {
+  envelope = normalizeEnvelope(envelope);
+  if (!envelope || envelope.mailboxId !== expectedMailboxId) {
     throw new Error('invitation envelope context mismatch');
   }
   if (!Number.isSafeInteger(envelope.expiresAt) || envelope.expiresAt <= now) {

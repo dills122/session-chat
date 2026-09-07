@@ -821,3 +821,69 @@ test('authenticates exactly the closed receive-bundle schema', async () => {
     );
   }
 });
+
+test('deposit and recipient share a closed bounded envelope parser without invoking caller code', () => {
+  const state = setup({ maxQueueDepth: 1 });
+  const envelope = sealInvitation({ recipientPublicKey: state.recipient.publicKey,
+    mailboxId: state.mailbox.bundle.mailboxId, invitation: { invitationId: 'legitimate' },
+    expiresAt: state.now() + 30_000, now: state.now() });
+  const hostile = [];
+  for (const field of Object.keys(envelope)) {
+    const missing = { ...envelope }; delete missing[field]; hostile.push(missing);
+    hostile.push({ ...envelope, [field]: 'A'.repeat(100_000) });
+  }
+  for (const field of ['ephemeralPublicKey', 'salt', 'nonce', 'ciphertext', 'authenticationTag']) {
+    hostile.push({ ...envelope, [field]: envelope[field] + '=' });
+  }
+  const cycle = {}; cycle.self = cycle;
+  hostile.push({ ...envelope, extra: cycle }, { ...envelope, extra: { a: { b: {} } } },
+    { ...envelope, [Symbol('extra')]: 1 }, Object.assign(Object.create({}), envelope));
+  const getter = { ...envelope };
+  Object.defineProperty(getter, 'ciphertext', { enumerable: true, get() { throw new Error('getter invoked'); } });
+  hostile.push(getter, { ...envelope, toJSON() { throw new Error('toJSON invoked'); } });
+  for (const candidate of hostile) {
+    assert.throws(() => state.mailboxService.deposit({ mailboxId: envelope.mailboxId, envelope: candidate }), /mailbox unavailable/);
+    assert.throws(() => openInvitation({ recipientPrivateKey: state.recipient.privateKey,
+      expectedMailboxId: envelope.mailboxId, envelope: candidate, now: state.now() }), /context mismatch/);
+  }
+  assert.equal(state.mailboxService.inspectMailboxForSpike(envelope.mailboxId).acceptedEnvelopeCount, 0);
+  state.mailboxService.deposit({ mailboxId: envelope.mailboxId, envelope });
+  assert.deepEqual(openInvitation({ recipientPrivateKey: state.recipient.privateKey,
+    expectedMailboxId: envelope.mailboxId, envelope, now: state.now() }), { invitationId: 'legitimate' });
+});
+
+test('directory and attestor reject oversized, noncanonical and accessor-backed signatures and claims', async () => {
+  const state = setup();
+  const directoryKey = 'github:user:123';
+  const bundle = state.mailbox.bundle;
+  const attestation = await attest(state, directoryKey, bundle);
+  const record = await state.directory.register({ directoryKey, bundle, registrationProof: attestation });
+  for (const signature of ['A'.repeat(100_000), attestation.signature + '=', null]) {
+    assert.equal(state.attestor.verify({ directoryKey, bundle, attestation: { ...attestation, signature } }), false);
+    assert.equal(state.directory.verifyRecord({ ...record, signature }), false);
+  }
+  for (const field of ['issuer', 'directoryKey', 'receiveBundleDigest']) {
+    assert.equal(state.attestor.verify({ directoryKey, bundle,
+      attestation: { ...attestation, [field]: 'x'.repeat(100_000) } }), false);
+  }
+  const getter = { ...attestation };
+  Object.defineProperty(getter, 'signature', { enumerable: true, get() { throw new Error('getter invoked'); } });
+  assert.equal(state.attestor.verify({ directoryKey, bundle, attestation: getter }), false);
+  assert.equal(state.directory.verifyRecord({ ...record, directoryKey: 'x'.repeat(100_000) }), false);
+  assert.equal(state.directory.verifyRecord({ ...record, extra: 'unintended metadata' }), false);
+  assert.equal(state.directory.verifyRecord(record), true);
+  assert.equal(state.attestor.verify({ directoryKey, bundle, attestation }), true);
+});
+
+test('bounded Unicode directory keys verify their own issued records', async () => {
+  const state = setup();
+  const directoryKey = 'é'.repeat(200);
+  const bundle = state.mailbox.bundle;
+  const attestation = await attest(state, directoryKey, bundle);
+  assert.equal(state.attestor.verify({ directoryKey, bundle, attestation }), true);
+  const record = await state.directory.register({ directoryKey, bundle, registrationProof: attestation });
+  assert.equal(state.directory.verifyRecord(record), true);
+  assert.deepEqual(state.directory.lookup(directoryKey), record);
+  assert.equal(state.directory.lookup('x'.repeat(100_000)), undefined);
+  assert.throws(() => state.mailboxService.fetch({ mailboxId: 'x'.repeat(100_000), readCapability: state.mailbox.readCapability }), /unavailable/);
+});

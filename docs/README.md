@@ -245,6 +245,8 @@ checkpoint is distinct from that immutable tested code revision.
 - [Architecture decision records](adr/) record the foundational decisions that
   other documents rely on.
 
+- [Experimental ingress hardening](adr/0027-bound-experimental-ingress-before-session-ownership.md) records bounded candidate acceptance, complete-exchange poisoning, closed Node objects and regular-file L1 IPC; the [tranche evidence](evidence/security-ingress-resilience.md) records local verification and its limits.
+
 ## Decision labels
 
 The documents use the following labels:

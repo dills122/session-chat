@@ -265,7 +265,8 @@ fn independent_process_runner_rejects_public_arguments() {
 fn hostile_replayed_join_is_rejected_before_durable_membership_mutation() {
     let root = marked_root("hostile-replay");
     for directory in ["direct", "relay", "relay/in", "relay/out", "alice"] {
-        fs::create_dir(root.join(directory)).expect("create hostile process directory");
+        private_test_directory(root.join(directory), false)
+            .expect("create hostile process directory");
     }
 
     let output = Command::new(env!("CARGO_BIN_EXE_sessionctl-l1"))
@@ -353,26 +354,27 @@ fn internal_roles_fail_closed_on_missing_or_malformed_scoped_inputs() {
     fs::remove_dir_all(alice_init).expect("remove Alice-init root");
 
     let alice_resume = marked_root("alice-resume");
-    fs::create_dir(alice_resume.join("alice")).expect("create Alice state directory");
+    private_test_directory(alice_resume.join("alice"), false)
+        .expect("create Alice state directory");
     fs::write(alice_resume.join("alice/resume.state"), b"invalid")
         .expect("write malformed Alice state");
     assert_role_rejects_without_private_pipe("alice-resume", &alice_resume);
     fs::remove_dir_all(alice_resume).expect("remove Alice-resume root");
 
     let bob = marked_root("bob");
-    fs::create_dir(bob.join("direct")).expect("create Bob direct directory");
+    private_test_directory(bob.join("direct"), false).expect("create Bob direct directory");
     fs::write(bob.join("direct/invitation.v2"), b"invalid").expect("write malformed invitation");
     assert!(run_l1_process_internal_role("bob", bob.clone()).is_err());
     fs::remove_dir_all(bob).expect("remove Bob root");
 
     let service = marked_root("service");
-    fs::create_dir_all(service.join("relay/in")).expect("create relay input directory");
+    private_test_directory(service.join("relay/in"), true).expect("create relay input directory");
     fs::write(service.join("relay/in/001.frame"), b"invalid").expect("write malformed IPC frame");
     assert!(run_l1_process_internal_role("service", service.clone()).is_err());
     fs::remove_dir_all(service).expect("remove service root");
 
     let hostile_service = marked_root("hostile-service");
-    fs::create_dir_all(hostile_service.join("relay/in"))
+    private_test_directory(hostile_service.join("relay/in"), true)
         .expect("create hostile relay input directory");
     fs::write(hostile_service.join("relay/in/001.frame"), b"invalid")
         .expect("write malformed hostile IPC frame");
@@ -382,14 +384,15 @@ fn internal_roles_fail_closed_on_missing_or_malformed_scoped_inputs() {
     fs::remove_dir_all(hostile_service).expect("remove hostile service root");
 
     let hostile_bob = marked_root("hostile-bob");
-    fs::create_dir(hostile_bob.join("direct")).expect("create hostile Bob direct directory");
+    private_test_directory(hostile_bob.join("direct"), false)
+        .expect("create hostile Bob direct directory");
     fs::write(hostile_bob.join("direct/invitation.v2"), b"invalid")
         .expect("write malformed hostile invitation");
     assert!(run_l1_process_internal_role("hostile-replay-bob", hostile_bob.clone()).is_err());
     fs::remove_dir_all(hostile_bob).expect("remove hostile Bob root");
 
     let hostile_inspector = marked_root("hostile-inspector");
-    fs::create_dir(hostile_inspector.join("alice"))
+    private_test_directory(hostile_inspector.join("alice"), false)
         .expect("create hostile inspector state directory");
     fs::write(hostile_inspector.join("alice/resume.state"), b"invalid")
         .expect("write malformed hostile inspector state");
@@ -705,8 +708,8 @@ fn encode_ipc_frame(kind: u8, sequence: u8, parts: &[Vec<u8>]) -> Vec<u8> {
 
 fn assert_service_rejects_frame(label: &str, frame: &[u8]) {
     let root = marked_root(label);
-    fs::create_dir_all(root.join("relay/in")).expect("create relay input directory");
-    fs::create_dir_all(root.join("relay/out")).expect("create relay output directory");
+    private_test_directory(root.join("relay/in"), true).expect("create relay input directory");
+    private_test_directory(root.join("relay/out"), true).expect("create relay output directory");
     fs::write(root.join("relay/in/001.frame"), frame).expect("write malformed IPC frame");
     assert!(run_l1_process_internal_role("service", root.clone()).is_err());
     fs::remove_dir_all(root).expect("remove malformed IPC root");
@@ -721,7 +724,7 @@ fn marked_root(label: &str) -> std::path::PathBuf {
         "session-chat-l1-{label}-{}-{nonce}",
         std::process::id()
     ));
-    fs::create_dir(&root).expect("create marked test root");
+    private_test_directory(&root, false).expect("create marked test root");
     fs::write(root.join(".sessionctl-l1-root"), b"sessionctl-l1-v1\n").expect("write root marker");
     root
 }
@@ -734,7 +737,7 @@ fn alice_restart_key_is_absent_from_service_visible_files_and_diagnostics() {
     };
     let root = marked_root("pipe-key-handoff");
     for directory in ["alice", "direct", "relay/in", "relay/out"] {
-        fs::create_dir_all(root.join(directory)).unwrap();
+        private_test_directory(root.join(directory), true).unwrap();
     }
     let spawn = |role: &str, input: Stdio, errors: Stdio| {
         Command::new(env!("CARGO_BIN_EXE_sessionctl-l1"))
@@ -808,4 +811,18 @@ fn assert_role_rejects_without_private_pipe(role: &str, root: &std::path::Path) 
         .output()
         .unwrap();
     assert!(!output.status.success());
+}
+
+fn private_test_directory(
+    path: impl AsRef<std::path::Path>,
+    recursive: bool,
+) -> std::io::Result<()> {
+    let mut builder = fs::DirBuilder::new();
+    builder.recursive(recursive);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt as _;
+        builder.mode(0o700);
+    }
+    builder.create(path)
 }

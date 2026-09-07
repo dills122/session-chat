@@ -289,25 +289,52 @@ async fn run_fast_adapter_host_with_endpoint(
         endpoint.id().as_text()
     );
 
-    let link = map_stage(
-        endpoint
-            .accept(None, OPERATOR_HANDOFF_WAIT, MAX_FAST_FRAME_BYTES)
-            .await,
-        "Fast adapter host accept",
-    )?;
-    let initial = link.path_snapshot();
-    mode.validate_observation(initial.selected(), initial.direct_available())?;
-    print_path("initial", initial);
-    map_stage(
-        service
-            .serve_requests(
+    let deadline = tokio::time::Instant::now() + OPERATOR_HANDOFF_WAIT;
+    let mut complete = false;
+    // A fixed overall deadline and attempt ceiling bound unauthenticated work.
+    for _ in 0..32 {
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if remaining.is_zero() {
+            break;
+        }
+        let Ok(link) = endpoint
+            .accept_candidate(
+                None,
+                remaining,
+                Duration::from_secs(2),
+                MAX_FAST_FRAME_BYTES,
+            )
+            .await
+        else {
+            continue;
+        };
+        let initial = link.path_snapshot();
+        if mode
+            .validate_observation(initial.selected(), initial.direct_available())
+            .is_err()
+        {
+            link.reject();
+            continue;
+        }
+        let result = tokio::time::timeout_at(
+            deadline,
+            service.serve_authorized_requests(
                 link,
                 CONNECTED_DELIVERY_CONFORMANCE_REQUESTS_V1,
+                Duration::from_secs(2),
                 NETWORK_OPERATION_WAIT,
-            )
-            .await,
-        "Fast adapter mailbox service",
-    )?;
+            ),
+        )
+        .await;
+        if matches!(result, Ok(Ok(()))) {
+            print_path("initial", initial);
+            complete = true;
+            break;
+        }
+    }
+    if !complete {
+        return Err(stage("Fast adapter authenticated run unavailable"));
+    }
     authority_file.remove()?;
     println!("mode=fast-adapter-host\nstatus=complete");
     Ok(())
@@ -693,6 +720,103 @@ mod tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn fast_host_rejects_unauthorized_runs_and_then_completes_the_common_case() {
+        let now = unix_now().unwrap();
+        let path = fresh_handoff_path().unwrap();
+        let host = IrohFastEndpoint::bind_loopback().await.unwrap();
+        let address = host.address();
+        let task = tokio::spawn(run_fast_adapter_host_with_endpoint(
+            FastAdapterPathMode::Auto,
+            path.clone(),
+            host,
+        ));
+        wait_for_handoff(&path).await.unwrap();
+        // Seven denied peers must not produce seven-operation completion.
+        for index in 0..9 {
+            let peer = IrohFastEndpoint::bind_loopback().await.unwrap();
+            let mut link = peer
+                .connect_address(
+                    address.clone(),
+                    NETWORK_OPERATION_WAIT,
+                    MAX_FAST_FRAME_BYTES,
+                )
+                .await
+                .unwrap();
+            if index != 0 {
+                let payload = if index == 1 {
+                    vec![0xff]
+                } else {
+                    // Canonical v1 poll request for an unknown mailbox/right.
+                    let mut bytes = vec![0x85, 1, 2, 0x50];
+                    bytes.extend_from_slice(&[1; 16]);
+                    bytes.extend_from_slice(&[0x58, 32]);
+                    bytes.extend_from_slice(&[2; 32]);
+                    bytes.push(0x40);
+                    bytes
+                };
+                link.send_frame(&payload, NETWORK_OPERATION_WAIT)
+                    .await
+                    .unwrap();
+            }
+            assert!(link.receive_frame(Duration::from_secs(4)).await.is_err());
+            link.reject();
+            assert!(!task.is_finished());
+        }
+        let authorities = load_authorities(&path, now, FastAdapterPathMode::Auto).unwrap();
+        let peer = IrohFastEndpoint::bind_loopback().await.unwrap();
+        let link = peer
+            .connect_address(address, NETWORK_OPERATION_WAIT, MAX_FAST_FRAME_BYTES)
+            .await
+            .unwrap();
+        run_fast_adapter_client_with_link(FastAdapterPathMode::Auto, authorities, link, now)
+            .await
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(10), task)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert!(!path.exists());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn fast_host_candidate_exhaustion_fails_without_completion() {
+        let path = fresh_handoff_path().unwrap();
+        let host = IrohFastEndpoint::bind_loopback().await.unwrap();
+        let address = host.address();
+        let task = tokio::spawn(run_fast_adapter_host_with_endpoint(
+            FastAdapterPathMode::Auto,
+            path.clone(),
+            host,
+        ));
+        wait_for_handoff(&path).await.unwrap();
+        for _ in 0..32 {
+            let peer = IrohFastEndpoint::bind_loopback().await.unwrap();
+            let mut link = peer
+                .connect_address(
+                    address.clone(),
+                    NETWORK_OPERATION_WAIT,
+                    MAX_FAST_FRAME_BYTES,
+                )
+                .await
+                .unwrap();
+            link.send_frame(&[0x80], NETWORK_OPERATION_WAIT)
+                .await
+                .unwrap();
+            assert!(link.receive_frame(Duration::from_secs(4)).await.is_err());
+            link.reject();
+        }
+        assert!(
+            tokio::time::timeout(Duration::from_secs(10), task)
+                .await
+                .unwrap()
+                .unwrap()
+                .is_err()
+        );
+        assert!(!path.exists());
     }
 
     #[test]
