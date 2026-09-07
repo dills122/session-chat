@@ -9,10 +9,10 @@ on:
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
+# Only the deploy job needs Pages write and OIDC. The build job runs untrusted
+# third-party npm code, so it stays at contents: read.
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages
@@ -21,12 +21,16 @@ concurrency:
 jobs:
   build:
     name: Build Astro site
+    # Manual dispatch can select any ref. The public site publishes master only,
+    # so a non-master run is skipped here and deploy skips with it.
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - name: Check out source without retained credentials
+      - name: Check out master without retained credentials
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: refs/heads/master
           persist-credentials: false
 
       - name: Install, build, and upload the site
@@ -38,6 +42,11 @@ jobs:
   deploy:
     name: Publish GitHub Pages
     needs: build
+    if: github.ref == 'refs/heads/master'
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment:

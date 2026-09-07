@@ -54,6 +54,38 @@ pinned cargo-deny action. Advisory retrieval and GitHub dependency review
 require network access; the compilation and test phases fetch once and then run
 offline.
 
+## Public site publication boundary
+
+The Pages workflow publishes `master` only. Manual dispatch cannot change that:
+both jobs skip unless `github.ref` is `refs/heads/master`, and checkout pins
+`refs/heads/master` rather than the dispatched ref. Pages and OIDC write
+permissions belong to the deploy job alone; the build job, which executes
+untrusted third-party npm code through `npm ci` and the Astro action, holds
+`contents: read` and cannot reach the Pages API or mint an id-token.
+
+Publication is not yet gated on a successful CI result for the exact deployed
+SHA. The Pages push trigger fires alongside CI for the same commit, so an
+in-workflow check of that commit's `Gate` result would race its own CI run; a
+`workflow_run` redesign is the correct fix and is not in this boundary yet.
+Environment branch restrictions and deployment reviewers on `github-pages`
+remain external repository settings.
+
+## Dependency monitoring
+
+Dependabot covers `cargo`, `github-actions`, and the Astro site's `npm` graph
+under `site/`, so a CVE disclosed in an already-merged site dependency raises a
+security update rather than waiting for a human to notice. `cargo deny` runs on
+pull requests, pushes to `master`, and the schedule; `dependency-review-action`
+compares a base against a head and therefore runs on pull requests only.
+
+## Release arithmetic
+
+Both workspaces set `[profile.release] overflow-checks = true`. The v2 documents
+claim fail-closed handling of malformed, duplicate, oversized, and replayed
+inputs; a silently wrapped counter, length, or epoch in a release artifact would
+contradict that. No release artifact exists yet, and CI does not build one, so
+this is a preparedness setting rather than a shipped control.
+
 ## GitHub settings that complete the gate
 
 Repository configuration must require the unique `CI / Gate` status on an
