@@ -1,3 +1,4 @@
+import { closedObject, boundedString, isCanonicalBase64url, normalizeEnvelope, boundedJsonSnapshot } from './validation.mjs';
 import { createHash, generateKeyPairSync, randomBytes, sign, timingSafeEqual, verify } from 'node:crypto';
 import { capabilityDigest, PADDED_PLAINTEXT_BYTES, randomCapability } from './crypto.mjs';
 
@@ -6,14 +7,7 @@ const DEFAULT_MAX_QUEUE_DEPTH = 16;
 const DEFAULT_MAX_LIFETIME_DEPOSITS = 64;
 const MAX_SERIALIZED_OVERHEAD_BYTES = 2048;
 const X25519_SPKI_BYTES = 44;
-const AES_GCM_TAG_BYTES = 16;
-const AES_GCM_NONCE_BYTES = 12;
-const HKDF_SALT_BYTES = 32;
 const DELIVERY_ID_BYTES = 16;
-const MAX_REGISTRATION_PROOF_BYTES = 8192;
-const MAX_REGISTRATION_PROOF_DEPTH = 4;
-const MAX_REGISTRATION_PROOF_ENTRIES = 32;
-const MAX_REGISTRATION_PROOF_STRING_BYTES = 4096;
 const RECEIVE_BUNDLE_FIELDS = [
   'version',
   'generation',
@@ -23,35 +17,9 @@ const RECEIVE_BUNDLE_FIELDS = [
   'expiresAt'
 ];
 
-function isCanonicalBase64url(value, expectedBytes) {
-  if (typeof value !== 'string' || value.length === 0 || !/^[A-Za-z0-9_-]+$/.test(value)) {
-    return false;
-  }
-  const decoded = Buffer.from(value, 'base64url');
-  return decoded.length === expectedBytes && decoded.toString('base64url') === value;
-}
-
 export function normalizeReceiveBundle(bundle) {
-  if (!bundle || typeof bundle !== 'object' || Array.isArray(bundle)) return undefined;
-  const prototype = Object.getPrototypeOf(bundle);
-  if (prototype !== Object.prototype && prototype !== null) return undefined;
-
-  const descriptors = Object.getOwnPropertyDescriptors(bundle);
-  const keys = Reflect.ownKeys(descriptors);
-  if (
-    keys.length !== RECEIVE_BUNDLE_FIELDS.length ||
-    RECEIVE_BUNDLE_FIELDS.some((field) => {
-      const descriptor = descriptors[field];
-      return !descriptor || !descriptor.enumerable || !Object.hasOwn(descriptor, 'value');
-    }) ||
-    keys.some((key) => typeof key !== 'string' || !RECEIVE_BUNDLE_FIELDS.includes(key))
-  ) {
-    return undefined;
-  }
-
-  const normalized = Object.fromEntries(
-    RECEIVE_BUNDLE_FIELDS.map((field) => [field, descriptors[field].value])
-  );
+  const normalized = closedObject(bundle, RECEIVE_BUNDLE_FIELDS);
+  if (!normalized) return undefined;
   if (
     normalized.version !== 1 ||
     !Number.isSafeInteger(normalized.generation) ||
@@ -68,63 +36,6 @@ export function normalizeReceiveBundle(bundle) {
     return undefined;
   }
   return normalized;
-}
-
-function isValidEnvelopeShape(envelope) {
-  return (
-    envelope?.version === 1 &&
-    typeof envelope.envelopeId === 'string' &&
-    envelope.envelopeId.length > 0 &&
-    envelope.envelopeId.length <= 64 &&
-    isCanonicalBase64url(envelope.ephemeralPublicKey, X25519_SPKI_BYTES) &&
-    isCanonicalBase64url(envelope.salt, HKDF_SALT_BYTES) &&
-    isCanonicalBase64url(envelope.nonce, AES_GCM_NONCE_BYTES) &&
-    isCanonicalBase64url(envelope.ciphertext, PADDED_PLAINTEXT_BYTES) &&
-    isCanonicalBase64url(envelope.authenticationTag, AES_GCM_TAG_BYTES)
-  );
-}
-
-function isBoundedRegistrationProof(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return false;
-  }
-
-  const seen = new WeakSet();
-  let entries = 0;
-  const visit = (item, depth) => {
-    if (depth > MAX_REGISTRATION_PROOF_DEPTH) return false;
-    if (item === null || typeof item === 'boolean') return true;
-    if (typeof item === 'number') return Number.isSafeInteger(item);
-    if (typeof item === 'string') {
-      return Buffer.byteLength(item) <= MAX_REGISTRATION_PROOF_STRING_BYTES;
-    }
-    if (typeof item !== 'object' || seen.has(item)) return false;
-
-    const prototype = Object.getPrototypeOf(item);
-    if (!Array.isArray(item) && prototype !== Object.prototype && prototype !== null) {
-      return false;
-    }
-    seen.add(item);
-    const childEntries = Array.isArray(item) ? item.entries() : Object.entries(item);
-    for (const [key, child] of childEntries) {
-      entries += 1;
-      if (
-        entries > MAX_REGISTRATION_PROOF_ENTRIES ||
-        (!Array.isArray(item) && Buffer.byteLength(key) > 64) ||
-        !visit(child, depth + 1)
-      ) {
-        return false;
-      }
-    }
-    return true;
-  };
-
-  if (!visit(value, 0)) return false;
-  try {
-    return Buffer.byteLength(JSON.stringify(value)) <= MAX_REGISTRATION_PROOF_BYTES;
-  } catch {
-    return false;
-  }
 }
 
 function canonicalBundle(directoryKey, bundle) {
@@ -200,11 +111,13 @@ export class InvitationDirectory {
       directoryKey.length > 256 ||
       !bundleSnapshot ||
       bundleSnapshot.expiresAt <= this.#now() ||
-      !isBoundedRegistrationProof(registrationProof)
+      !registrationProof || typeof registrationProof !== 'object' || Array.isArray(registrationProof)
     ) {
       throw new Error('invalid directory registration');
     }
-    const registrationProofSnapshot = structuredClone(registrationProof);
+    let registrationProofSnapshot;
+    try { registrationProofSnapshot = boundedJsonSnapshot(registrationProof); }
+    catch { throw new Error('invalid directory registration'); }
     const current = this.#records.get(directoryKey);
     if (!canAppendBundle(current, bundleSnapshot)) {
       throw new Error('directory rotation chain mismatch');
@@ -246,6 +159,7 @@ export class InvitationDirectory {
   }
 
   lookup(directoryKey) {
+    if (!boundedString(directoryKey, 256)) return undefined;
     const record = this.#records.get(directoryKey);
     if (!record || record.bundle.expiresAt <= this.#now()) {
       return undefined;
@@ -255,6 +169,9 @@ export class InvitationDirectory {
 
   verifyRecord(record) {
     try {
+      record = closedObject(record, ['directoryKey', 'bundle', 'addressAttestation', 'signature']);
+      if (!record || !boundedString(record.directoryKey, 256) || !isCanonicalBase64url(record.signature, 64)) return false;
+      boundedJsonSnapshot(record.addressAttestation);
       const normalizedBundle = normalizeReceiveBundle(record.bundle);
       if (!normalizedBundle) return false;
       return verify(
@@ -293,7 +210,7 @@ export class InvitationMailboxService {
   }
 
   createMailbox({ recipientPublicKey, generation = 1, previousBundleDigest = null }) {
-    if (!recipientPublicKey) {
+    if (!isCanonicalBase64url(recipientPublicKey, X25519_SPKI_BYTES)) {
       throw new Error('recipient public key is required');
     }
 
@@ -325,8 +242,9 @@ export class InvitationMailboxService {
   }
 
   deposit({ mailboxId, envelope }) {
+    envelope = normalizeEnvelope(envelope);
     const mailbox = this.#liveMailbox(mailboxId);
-    if (!mailbox || envelope?.mailboxId !== mailboxId || !isValidEnvelopeShape(envelope)) {
+    if (!mailbox || !envelope || envelope.mailboxId !== mailboxId) {
       throw genericAuthorizationError();
     }
     if (
@@ -405,6 +323,7 @@ export class InvitationMailboxService {
   }
 
   #liveMailbox(mailboxId) {
+    if (!isCanonicalBase64url(mailboxId, 32)) return undefined;
     const mailbox = this.#mailboxes.get(mailboxId);
     if (!mailbox || mailbox.expiresAt <= this.#now()) {
       this.#mailboxes.delete(mailboxId);

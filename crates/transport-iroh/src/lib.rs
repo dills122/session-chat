@@ -228,16 +228,31 @@ impl IrohFastEndpoint {
 
     /// Accepts one connection and optionally requires one authenticated peer ID.
     pub async fn accept(
-        self,
+        &self,
         expected_peer: Option<FastEndpointId>,
         deadline: Duration,
         maximum_frame_bytes: usize,
     ) -> Result<IrohFastLink, IrohFastError> {
-        let deadline = validate_link_bounds(deadline, maximum_frame_bytes)?;
+        self.accept_candidate(expected_peer, deadline, deadline, maximum_frame_bytes)
+            .await
+    }
+
+    /// Waits for a candidate under an overall bound, then separately bounds
+    /// that peer's handshake and stream opening without consuming the listener.
+    pub async fn accept_candidate(
+        &self,
+        expected_peer: Option<FastEndpointId>,
+        wait_duration: Duration,
+        peer_duration: Duration,
+        maximum_frame_bytes: usize,
+    ) -> Result<IrohFastLink, IrohFastError> {
+        let deadline = validate_link_bounds(wait_duration, maximum_frame_bytes)?;
+        checked_deadline(peer_duration)?;
         let incoming = timeout_at(deadline, self.endpoint.accept())
             .await
             .map_err(|_| IrohFastError::DeadlineExceeded)?
             .ok_or(IrohFastError::ConnectionUnavailable)?;
+        let deadline = deadline.min(checked_deadline(peer_duration)?);
         let connection = timeout_at(deadline, incoming)
             .await
             .map_err(|_| IrohFastError::DeadlineExceeded)?
@@ -246,12 +261,19 @@ impl IrohFastEndpoint {
             connection.close(1_u8.into(), b"peer rejected");
             return Err(IrohFastError::PeerRejected);
         }
-        let (send, receive) = timeout_at(deadline, connection.accept_bi())
+        let streams = timeout_at(deadline, connection.accept_bi())
             .await
-            .map_err(|_| IrohFastError::DeadlineExceeded)?
-            .map_err(|_| IrohFastError::ConnectionUnavailable)?;
+            .map_err(|_| IrohFastError::DeadlineExceeded)
+            .and_then(|result| result.map_err(|_| IrohFastError::ConnectionUnavailable));
+        let (send, receive) = match streams {
+            Ok(streams) => streams,
+            Err(error) => {
+                connection.close(1_u8.into(), b"candidate rejected");
+                return Err(error);
+            }
+        };
         Ok(IrohFastLink::new(
-            self.endpoint,
+            self.endpoint.clone(),
             connection,
             send,
             receive,
@@ -503,6 +525,11 @@ impl IrohFastLink {
         timeout_at(deadline, self.endpoint.close())
             .await
             .map_err(|_| IrohFastError::DeadlineExceeded)
+    }
+
+    /// Rejects only this connection, leaving the listening endpoint available.
+    pub fn reject(mut self) {
+        self.poison();
     }
 
     fn require_usable(&self) -> Result<(), IrohFastError> {

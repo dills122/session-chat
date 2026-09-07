@@ -270,7 +270,10 @@ Assumptions:
   endpoint text. Each timed operation rejects zero or greater-than-five-minute
   bounds and uses one checked absolute deadline. Caller frame bounds cannot
   exceed 256 KiB; failed, timed-out, or cancelled partial frame I/O poisons the
-  ordered link. Graceful close requires both acknowledged outbound bytes and a
+  ordered link. The delivery client also marks the whole request/response
+  exchange incomplete before send and rejects reuse after any error or dropped
+  future until a complete response has been decoded; unread responses cannot be
+  attributed to a later operation. Graceful close requires both acknowledged outbound bytes and a
   clean inbound finish; a reset or connection error cannot be reported as
   receipt.
 - The first connected `EnvelopeDelivery` slice authenticates one exact server
@@ -312,9 +315,14 @@ Assumptions:
 - The bearer capability invitation must cross an authenticated confidential
   out-of-band channel. It is never sent to an unauthenticated first Iroh
   connector; the first network frame is the joiner's HPKE-protected request.
-  A first connector can still deny service by occupying or closing the sole
-  experimental connection, but cannot obtain admission authority from it. The
-  operator handoff is bounded to five minutes. The joiner rejects directories,
+  ADR 0027 keeps the listener available across stray peers: at most 32
+  candidates share one five-minute deadline, with two-second candidate handshake
+  and first-frame bounds. Alice opens the exact HPKE request before assigning
+  session ownership; rejected requests never reach her one-shot channel. The
+  Fast mailbox host counts only operations with valid right-specific authority,
+  including authorized semantic errors. Denied requests cannot create false
+  completion. Exhaustion of the fixed ceiling or genuine bearer authority can
+  still deny service. The operator handoff is bounded to five minutes. The joiner rejects directories,
   links, FIFOs, and other non-regular invitation paths before network work.
 
 ### Trust boundary: client to mixnet
@@ -592,6 +600,15 @@ mailbox IDs, separate read capabilities, fixed envelope sizes, queue and
 lifetime deposit limits, generic errors, idempotent envelope IDs, and
 privacy-aware lookup transport. Hashing public usernames is not a privacy
 control.
+
+The Node simulator now shares a closed descriptor-safe envelope normalizer
+between deposit and direct recipient opening. Exact encoded widths precede
+regex, decoding, DER import and cryptography, and only the validated projection
+is retained. Directory and attestor verification bound claims and signature
+widths; bounded JSON snapshots reject accessors, cycles and excessive structure
+before serialization or clone. This is an object-API boundary, not protection
+for an unbounded upstream JSON parser or arbitrary JavaScript proxies. Own-key
+introspection still scales with an already materialized object's property count.
 
 Attacker story: Mallory registers their receive key under Bob's GitHub subject
 or rebinds Bob's signed bundle under Mallory's directory entry. Registration
@@ -965,6 +982,15 @@ separately supplied passphrase credential once per attempt. It provides no
 device binding, fresh user presence, desktop credential UI, recovery, rollback
 resistance, secure deletion, SQLCipher key handoff, or unlocked-endpoint
 protection, and no durable or product path currently uses it.
+
+ADR 0027 also creates L1 Unix directories as 0700 and files as 0600 regardless
+of umask, rejecting permissive or linked channel directories on validation.
+Shared channel, marker and provenance reads reject non-regular files, use
+nonblocking/no-follow Unix opens with identity checks, and reject Windows
+reparse points. A FIFO or symlink cannot enter the blocking frame-read path.
+Windows inherited ACLs and a trusted parent directory remain assumptions;
+same-account mutation, unresponsive filesystems and OS-enforced isolation are
+not covered by these local conformance checks.
 
 The current deterministic `session-storage` model rechecks the unlock deadline
 after a protector returns and remains sealed when completion is late. A shared

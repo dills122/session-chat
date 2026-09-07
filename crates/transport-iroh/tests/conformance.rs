@@ -1480,3 +1480,128 @@ async fn semantic_response_corruption_poisons_the_ordered_link() {
     release_server.send(()).expect("release server task");
     server_task.await.expect("server task completes");
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn interrupted_exchanges_reject_later_same_operation_responses() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    struct FailAfterSend {
+        checkpoints: AtomicUsize,
+        mode: u8,
+        now: u64,
+    }
+    impl DispatchControl for FailAfterSend {
+        fn is_cancelled(&self) -> bool {
+            let count = self.checkpoints.fetch_add(1, Ordering::SeqCst) + 1;
+            self.mode == 0 && count >= 3
+        }
+        fn monotonic_now(&self) -> Instant {
+            if self.mode == 1 && self.checkpoints.load(Ordering::SeqCst) >= 3 {
+                Instant::now() + Duration::from_secs(60)
+            } else {
+                Instant::now()
+            }
+        }
+        fn wall_now_unix_seconds(&self) -> Option<u64> {
+            if self.mode == 2 && self.checkpoints.load(Ordering::SeqCst) >= 3 {
+                None
+            } else {
+                Some(self.now)
+            }
+        }
+    }
+    for mode in 0..5 {
+        let now = unix_now();
+        let host = IrohFastEndpoint::bind_loopback().await.unwrap();
+        let address = host.address();
+        let mut service = IrohFastMailboxService::new(policy());
+        let (deposit, _, _) = service
+            .issue_mailbox(host.id(), now + 300, now)
+            .unwrap()
+            .into_dispatch_parts();
+        let (observed, received) = tokio::sync::oneshot::channel();
+        let (release, wait) = tokio::sync::oneshot::channel();
+        let server = tokio::spawn(async move {
+            let mut link = host
+                .accept(
+                    None,
+                    OPERATION_DURATION,
+                    transport_iroh::MAX_FAST_FRAME_BYTES,
+                )
+                .await
+                .unwrap();
+            link.receive_frame(OPERATION_DURATION).await.unwrap();
+            observed.send(()).unwrap();
+            let _ = wait.await;
+            // This response belongs only to the original request.
+            let _ = link
+                .send_frame(&wire_response(1, 0, &[0x44; 16]), OPERATION_DURATION)
+                .await;
+            link
+        });
+        let endpoint = IrohFastEndpoint::bind_loopback().await.unwrap();
+        let link = endpoint
+            .connect_address(
+                address,
+                OPERATION_DURATION,
+                transport_iroh::MAX_FAST_FRAME_BYTES,
+            )
+            .await
+            .unwrap();
+        let mut delivery = IrohFastDelivery::new(link).unwrap();
+        let control = FailAfterSend {
+            checkpoints: AtomicUsize::new(0),
+            mode,
+            now,
+        };
+        if mode == 3 {
+            let mut pending = Box::pin(delivery.deposit(
+                &deposit,
+                deposit_request(&canonical(1, 2, now)),
+                &control,
+            ));
+            tokio::select! {
+                result = &mut pending => panic!("unexpected completion: {}", result.is_ok()),
+                result = received => result.unwrap(),
+            }
+            drop(pending);
+        } else {
+            let bytes = canonical(1, 2, now);
+            let request = if mode == 4 {
+                let network_bytes =
+                    encoded_wire_request(1, 1, &[1; 16], &[2; 32], &bytes).len() + 5;
+                DepositRequest::new(
+                    CanonicalEnvelope::from_canonical_bytes(bytes).unwrap(),
+                    OperationBudget::new(
+                        Instant::now() + OPERATION_DURATION,
+                        network_bytes as u64,
+                        1,
+                    )
+                    .unwrap(),
+                )
+                .unwrap()
+            } else {
+                deposit_request(&bytes)
+            };
+            let result = delivery.deposit(&deposit, request, &control).await;
+            assert!(result.is_err());
+            received.await.unwrap();
+        }
+        release.send(()).unwrap();
+        let server_link = server.await.unwrap();
+        let retry = delivery
+            .deposit(
+                &deposit,
+                deposit_request(&canonical(3, 4, now)),
+                &LiveControl {
+                    wall_now_unix_seconds: now,
+                },
+            )
+            .await;
+        assert!(
+            retry.is_err(),
+            "stale response was attributed to a later deposit"
+        );
+        server_link.reject();
+        assert!(delivery.close(OPERATION_DURATION).await.is_err());
+    }
+}

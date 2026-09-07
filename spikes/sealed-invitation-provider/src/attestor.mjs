@@ -1,3 +1,4 @@
+import { boundedString, normalizeAttestation } from './validation.mjs';
 import { generateKeyPairSync, sign, verify } from 'node:crypto';
 import { bundleDigest, normalizeReceiveBundle } from './provider.mjs';
 
@@ -31,6 +32,7 @@ export class AddressAttestor {
     now = Date.now,
     attestationTtlMs = DEFAULT_ATTESTATION_TTL_MS
   } = {}) {
+    if (!boundedString(issuer, 256)) throw new Error('invalid issuer');
     const keys = generateKeyPairSync('ed25519');
     this.#issuer = issuer;
     this.#signingKey = keys.privateKey;
@@ -49,6 +51,7 @@ export class AddressAttestor {
       !bundleSnapshot ||
       bundleSnapshot.expiresAt <= this.#now() ||
       typeof addressControlProof !== 'string' ||
+      addressControlProof.length > MAX_ADDRESS_CONTROL_PROOF_BYTES ||
       Buffer.byteLength(addressControlProof) > MAX_ADDRESS_CONTROL_PROOF_BYTES
     ) {
       throw new Error('invalid address attestation request');
@@ -81,13 +84,15 @@ export class AddressAttestor {
 
   verify({ directoryKey, bundle, attestation }) {
     try {
+      attestation = normalizeAttestation(attestation);
+      if (!attestation || !boundedString(directoryKey, 256)) return false;
       const normalizedBundle = normalizeReceiveBundle(bundle);
       if (
         !normalizedBundle ||
         attestation?.version !== 1 ||
         attestation.issuer !== this.#issuer ||
         attestation.directoryKey !== directoryKey ||
-        attestation.receiveBundleDigest !== bundleDigest(bundle) ||
+        attestation.receiveBundleDigest !== bundleDigest(normalizedBundle) ||
         !Number.isSafeInteger(attestation.issuedAt) ||
         !Number.isSafeInteger(attestation.expiresAt) ||
         attestation.issuedAt > this.#now() ||

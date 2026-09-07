@@ -303,6 +303,16 @@ An inviter attestation remains optional and is verified only after decryption.
 The mailbox cannot prioritize senders based on encrypted identity unless a
 separate deposit-stamp class is deliberately exposed.
 
+The simulator's v1 envelope is a closed object containing exactly `version`,
+`mailboxId`, `envelopeId`, `expiresAt`, `ephemeralPublicKey`, `salt`, `nonce`,
+`ciphertext`, and `authenticationTag`. Deposit and direct opening share the
+same descriptor-safe normalizer. Canonical Base64url widths are checked before
+regex/decoding; keys, salt, nonce, ciphertext and tag decode to 44, 32, 12, 1024
+and 16 bytes respectively. Directory and attestor claims are bounded before
+canonicalization and signatures decode to exactly 64 bytes. Unknown fields,
+accessors, symbols, non-plain prototypes and noncanonical encodings reject.
+A future byte transport must bound bytes before JSON parsing. See ADR 0027.
+
 ### `MailboxBatchV1`
 
 ```text
