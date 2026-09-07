@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
 
@@ -63,6 +64,100 @@ const policy = {
   minimumWorkspaceRegions: 85,
   nonInstrumentedSources: [],
 };
+
+const APPROVED_NON_INSTRUMENTED_SOURCES = [
+  'apps/sessionctl/src/l2_process.rs',
+  'apps/sessionctl/src/l2_process/evidence.rs',
+  'apps/sessionctl/src/l2_process/execution.rs',
+  'apps/sessionctl/src/l2_process/welcome.rs',
+  'apps/sessionctl/src/l2_process/welcome_io.rs',
+  'crates/storage-sqlcipher-fault-vfs/src/lib.rs',
+  'crates/storage-sqlcipher/src/fault_testing.rs',
+  'crates/transport-conformance/src/lib.rs',
+];
+
+test('coverage policy and documentation retain one exact threshold and allowance set', () => {
+  assert.deepEqual(
+    {
+      componentLines: COVERAGE_POLICY.minimumComponentLines,
+      workspaceFunctions: COVERAGE_POLICY.minimumWorkspaceFunctions,
+      workspaceLines: COVERAGE_POLICY.minimumWorkspaceLines,
+      workspaceRegions: COVERAGE_POLICY.minimumWorkspaceRegions,
+    },
+    {
+      componentLines: 90,
+      workspaceFunctions: 85.64,
+      workspaceLines: 92.23,
+      workspaceRegions: 88,
+    },
+  );
+  assert.deepEqual(COVERAGE_POLICY.nonInstrumentedSources, APPROVED_NON_INSTRUMENTED_SOURCES);
+
+  const secureDevelopment = readFileSync(
+    new URL('../docs/SECURE_DEVELOPMENT.md', import.meta.url),
+    'utf8',
+  );
+  const coverageRow = secureDevelopment
+    .split('\n')
+    .find((line) => line.startsWith('| Rust production coverage |'));
+  assert.equal(
+    coverageRow,
+    `| Rust production coverage | Pinned source-based driver; integration-target production measurement; ${COVERAGE_POLICY.minimumWorkspaceLines.toFixed(2)}% workspace lines, ${COVERAGE_POLICY.minimumWorkspaceRegions.toFixed(2)}% regions, ${COVERAGE_POLICY.minimumWorkspaceFunctions.toFixed(2)}% functions, and ${COVERAGE_POLICY.minimumComponentLines}% lines for every vital library component |`,
+  );
+
+  const coveragePolicy = readFileSync(new URL('../docs/CODE_COVERAGE.md', import.meta.url), 'utf8');
+  const canonicalThresholdSentence = `CI retains stable floors at ${COVERAGE_POLICY.minimumWorkspaceLines.toFixed(2)}% workspace lines, ${COVERAGE_POLICY.minimumWorkspaceRegions.toFixed(2)}% regions, ${COVERAGE_POLICY.minimumWorkspaceFunctions.toFixed(2)}% functions, and ${COVERAGE_POLICY.minimumComponentLines}% lines for each vital component.`;
+  assert.ok(
+    coveragePolicy.replaceAll(/\s+/g, ' ').includes(canonicalThresholdSentence),
+    'CODE_COVERAGE.md must contain executable threshold tuple',
+  );
+  const allowanceBlock = coveragePolicy.match(
+    /<!-- coverage-policy:non-instrumented-sources:start -->([\s\S]*?)<!-- coverage-policy:non-instrumented-sources:end -->/,
+  );
+  assert.ok(allowanceBlock, 'CODE_COVERAGE.md must delimit canonical allowance set');
+  const documentedAllowances = [...allowanceBlock[1].matchAll(/^- `([^`]+)`$/gm)].map(
+    (match) => match[1],
+  );
+  assert.deepEqual(documentedAllowances, APPROVED_NON_INSTRUMENTED_SOURCES);
+});
+
+test('workspace region floor rejects immediately below and accepts exact or higher reports', () => {
+  const root = '/workspace';
+  const regionPolicy = {
+    ...policy,
+    minimumWorkspaceRegions: COVERAGE_POLICY.minimumWorkspaceRegions,
+  };
+  const exactRegionBasisPoints = Math.round(COVERAGE_POLICY.minimumWorkspaceRegions * 100);
+  const files = [
+    file(root, 'crates/alpha/src/lib.rs', {
+      functions: [1, 1],
+      lines: [100, 100],
+      regions: [88, 100],
+    }),
+    file(root, 'apps/client/src/main.rs', {
+      functions: [1, 1],
+      lines: [100, 100],
+      regions: [88, 100],
+    }),
+  ];
+
+  for (const [covered, accepted] of [
+    [exactRegionBasisPoints - 1, false],
+    [exactRegionBasisPoints, true],
+    [8852, true],
+  ]) {
+    const result = evaluateCoverageReport(
+      report(files, { functions: [100, 100], lines: [100, 100], regions: [covered, 10000] }),
+      root,
+      regionPolicy,
+    );
+    assert.equal(
+      result.failures.some((failure) => failure.startsWith('workspace region coverage')),
+      !accepted,
+      `${covered / 100}% region report`,
+    );
+  }
+});
 
 test('ordinary production coverage explicitly excludes checked-cfg fault modules', () => {
   for (const source of [
