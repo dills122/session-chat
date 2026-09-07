@@ -10,7 +10,9 @@ use std::{
 };
 
 use same_file::Handle;
-use session_transport::{DispatchControl, OperationBudget, fast_profile_disclosure_v1};
+use session_transport::{
+    ContentSecurityClaimV1, DispatchControl, OperationBudget, fast_profile_disclosure_v1,
+};
 use transport_conformance::{
     CONNECTED_DELIVERY_CONFORMANCE_REQUESTS_V1, run_connected_delivery_conformance_v1,
 };
@@ -138,9 +140,7 @@ impl FastAdapterRunReport {
     }
 }
 
-struct LiveDispatchControl {
-    wall_now_unix_seconds: u64,
-}
+struct LiveDispatchControl;
 
 impl DispatchControl for LiveDispatchControl {
     fn monotonic_now(&self) -> Instant {
@@ -148,7 +148,15 @@ impl DispatchControl for LiveDispatchControl {
     }
 
     fn wall_now_unix_seconds(&self) -> Option<u64> {
-        Some(self.wall_now_unix_seconds)
+        // Read the wall clock at every checkpoint, matching the live monotonic
+        // clock above. A snapshot captured once before network setup lets a slow
+        // authenticated peer stretch responses past an envelope's real expiry
+        // while the final expiry comparison still uses the stale timestamp.
+        // `None` fails the operation closed rather than reusing an old value.
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .ok()
+            .map(|elapsed| elapsed.as_secs())
     }
 
     fn is_cancelled(&self) -> bool {
@@ -375,9 +383,7 @@ async fn run_fast_adapter_client_with_link(
     print_path("initial", initial_path);
     let mut delivery = map_stage(IrohFastDelivery::new(link), "Fast adapter binding")?;
     let (deposit, receive, acknowledgement) = authorities.into_dispatch_parts();
-    let control = LiveDispatchControl {
-        wall_now_unix_seconds: now,
-    };
+    let control = LiveDispatchControl;
     map_stage(
         run_connected_delivery_conformance_v1(
             &mut delivery,
@@ -525,7 +531,11 @@ pub fn write_fast_adapter_profile_disclosure_v1(
 /// Returns the complete stable disclosure for one requested Fast path policy.
 #[must_use]
 pub fn fast_adapter_profile_disclosure_v1(mode: FastAdapterPathMode) -> String {
-    let disclosure = fast_profile_disclosure_v1();
+    // FastV1 deposits whatever bounded opaque bytes the caller supplies, and this
+    // evidence harness deposits literal plaintext fixtures. Disclosing end-to-end
+    // encryption here would assert a property no producer has established.
+    let disclosure =
+        fast_profile_disclosure_v1(ContentSecurityClaimV1::unverified_producer_content());
     format!(
         "requested_path={}\ntransport_disclosure={}\ncontent_security={}\nroute_behavior={}\ndirect_exposure={}\nrelay_exposure={}\ndiscovery_exposure={}\navailability={}\nanonymous={}\noffline_delivery={}",
         mode.as_str(),
@@ -540,6 +550,14 @@ pub fn fast_adapter_profile_disclosure_v1(mode: FastAdapterPathMode) -> String {
         disclosure.offline_delivery(),
     )
 }
+
+/// `FILE_FLAG_OPEN_REPARSE_POINT`: open the link itself, never its target.
+#[cfg(windows)]
+const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+
+/// `FILE_ATTRIBUTE_REPARSE_POINT`: the opened name is a link, not the file.
+#[cfg(windows)]
+const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
 
 fn validate_new_handoff_path(path: &Path) -> Result<(), SessionCtlError> {
     if !path.is_absolute() || path.as_os_str().len() > 4_096 {
@@ -586,15 +604,49 @@ fn read_handoff(path: &Path) -> Result<Zeroizing<Vec<u8>>, SessionCtlError> {
         use std::os::unix::fs::OpenOptionsExt as _;
         options.custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW);
     }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt as _;
+        options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+    }
     let file = map_stage(options.open(path), "Fast adapter handoff read")?;
     let after = map_stage(file.metadata(), "Fast adapter handoff metadata")?;
     if !after.file_type().is_file() || after.len() != before.len() {
         return Err(stage("Fast adapter handoff file"));
     }
+    // Equal type and length are not identity. Every parse below reads from this
+    // already opened handle, so the handle must be proven to be the same file
+    // the operator selected, not one swapped in by a directory writer.
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt as _;
         if before.dev() != after.dev() || before.ino() != after.ino() {
+            return Err(stage("Fast adapter handoff file"));
+        }
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt as _;
+        // Reject a link at either observation: the open above keeps the reparse
+        // point itself rather than following it, so a junction or symlink
+        // swapped into the directory cannot redirect the read.
+        if before.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+            || after.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+        {
+            return Err(stage("Fast adapter handoff file"));
+        }
+        // Stable std exposes no volume/index pair (`windows_by_handle` is still
+        // unstable) and no owner or ACL data, so this compares every stable
+        // attribute the handle does expose. A replacement that matches type,
+        // length, attributes, creation time and last-write time to 100ns is not
+        // excluded; true handle identity needs `GetFileInformationByHandle`,
+        // which requires a Windows binding and `unsafe`, and the workspace sets
+        // `unsafe_code = "forbid"`.
+        if before.file_attributes() != after.file_attributes()
+            || before.creation_time() != after.creation_time()
+            || before.last_write_time() != after.last_write_time()
+            || before.file_size() != after.file_size()
+        {
             return Err(stage("Fast adapter handoff file"));
         }
     }
@@ -929,7 +981,9 @@ mod tests {
     #[test]
     fn operator_disclosure_renders_the_complete_stable_fixture() {
         let rendered = fast_adapter_profile_disclosure_v1(FastAdapterPathMode::RelayOnly);
-        let disclosure = fast_profile_disclosure_v1();
+        let disclosure =
+            fast_profile_disclosure_v1(ContentSecurityClaimV1::unverified_producer_content());
+        assert!(!rendered.contains("End-to-end encrypted"));
 
         for expected in [
             "requested_path=relay-only",
