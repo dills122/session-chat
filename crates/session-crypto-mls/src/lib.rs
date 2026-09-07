@@ -366,6 +366,10 @@ fn nonzero<const N: usize>(bytes: [u8; N]) -> Result<[u8; N], MlsAdapterError> {
         .ok_or(MlsAdapterError::InvalidIdentifier)
 }
 
+fn phase_one_crypto_provider() -> AwsLcCryptoProvider {
+    AwsLcCryptoProvider::with_enabled_cipher_suites(vec![CIPHERSUITE])
+}
+
 /// A client whose MLS state is isolated behind configured provider repositories.
 pub struct SessionMlsClient<C: MlsConfig> {
     inner: Client<C>,
@@ -409,7 +413,7 @@ fn create_client_with_credential_identity(
 /// Creates a Phase 1 client with a fresh random session identity, the selected
 /// suite, and a one-hour KeyPackage lifetime.
 pub fn create_client() -> Result<SessionMlsClient<impl MlsConfig>, MlsAdapterError> {
-    let crypto = AwsLcCryptoProvider::default();
+    let crypto = phase_one_crypto_provider();
     let cipher_suite = crypto
         .cipher_suite_provider(CIPHERSUITE)
         .ok_or(MlsAdapterError::UnexpectedProviderOutput)?;
@@ -437,7 +441,7 @@ where
     G: GroupStateStorage + Clone,
     K: KeyPackageStorage + Clone,
 {
-    let crypto = AwsLcCryptoProvider::default();
+    let crypto = phase_one_crypto_provider();
     let cipher_suite = crypto
         .cipher_suite_provider(CIPHERSUITE)
         .ok_or(MlsAdapterError::UnexpectedProviderOutput)?;
@@ -499,7 +503,7 @@ where
     {
         return Err(MlsAdapterError::ProtocolRejected);
     }
-    let crypto = AwsLcCryptoProvider::default();
+    let crypto = phase_one_crypto_provider();
     let durable_identity = DurableClientIdentity::generate(&crypto)?;
     let encoded = durable_identity.encode();
     identity_storage
@@ -530,7 +534,7 @@ where
         .load_client_identity(&group_id)
         .map_err(|_| MlsAdapterError::ProtocolRejected)?
         .ok_or(MlsAdapterError::ProtocolRejected)?;
-    let crypto = AwsLcCryptoProvider::default();
+    let crypto = phase_one_crypto_provider();
     let durable_identity = DurableClientIdentity::decode(encoded.as_secret_bytes(), &crypto)?;
     build_stored_client(
         group_state_storage,
@@ -756,7 +760,7 @@ struct KeyPackagePolicyView {
 /// Creates the external validation boundary used before admission.
 #[must_use]
 pub fn create_key_package_validator() -> KeyPackageValidator<impl ExternalMlsConfig> {
-    let crypto = AwsLcCryptoProvider::default();
+    let crypto = phase_one_crypto_provider();
     let inner = ExternalClient::builder()
         .identity_provider(BasicIdentityProvider)
         .crypto_provider(crypto.clone())
@@ -817,6 +821,7 @@ impl<C: ExternalMlsConfig> KeyPackageValidator<C> {
             || !policy_view.leaf_node.capabilities.extensions().is_empty()
             || !policy_view.leaf_node.capabilities.proposals().is_empty()
             || policy_view.leaf_node.capabilities.protocol_versions() != [ProtocolVersion::MLS_10]
+            || policy_view.leaf_node.capabilities.cipher_suites() != [CIPHERSUITE]
             || policy_view.leaf_node.capabilities.credentials()
                 != [BasicCredential::credential_type()]
         {
@@ -963,7 +968,7 @@ impl<C: MlsConfig> SessionMlsGroup<C> {
                 || member.signing_identity().signature_key.as_ref().len() != 32
                 || !member.extensions().is_empty()
                 || capabilities.protocol_versions() != [ProtocolVersion::MLS_10]
-                || !capabilities.cipher_suites().contains(&CIPHERSUITE)
+                || capabilities.cipher_suites() != [CIPHERSUITE]
                 || !capabilities.extensions().is_empty()
                 || !capabilities.proposals().is_empty()
                 || capabilities.credentials() != [BasicCredential::credential_type()]
@@ -1901,7 +1906,7 @@ mod tests {
         credential_identity: SessionCredentialId,
         storage: RecordingStorage,
     ) -> Result<SessionMlsClient<impl MlsConfig>, MlsAdapterError> {
-        let crypto = AwsLcCryptoProvider::default();
+        let crypto = phase_one_crypto_provider();
         let cipher_suite = crypto
             .cipher_suite_provider(CIPHERSUITE)
             .ok_or(MlsAdapterError::UnexpectedProviderOutput)?;
@@ -1966,11 +1971,11 @@ mod tests {
         let credential_identity = SessionCredentialId([0x11; SESSION_CREDENTIAL_ID_BYTES]);
         let alice = create_client_with_credential_identity(
             credential_identity,
-            AwsLcCryptoProvider::default(),
+            phase_one_crypto_provider(),
         )?;
         let duplicate_alice = create_client_with_credential_identity(
             credential_identity,
-            AwsLcCryptoProvider::default(),
+            phase_one_crypto_provider(),
         )?;
         let validator = create_key_package_validator();
         let key_package = duplicate_alice.generate_key_package(NOW)?;
@@ -1981,6 +1986,24 @@ mod tests {
         assert!(matches!(
             group.prepare_add(validated, NOW),
             Err(MlsAdapterError::RejectedKeyPackage)
+        ));
+
+        Ok(())
+    }
+
+    #[test]
+    fn broad_provider_capabilities_fail_group_creation() -> Result<(), MlsAdapterError> {
+        let client = create_client_with_credential_identity(
+            SessionCredentialId([0x21; SESSION_CREDENTIAL_ID_BYTES]),
+            AwsLcCryptoProvider::default(),
+        )?;
+
+        assert!(matches!(
+            client.create_group(
+                SessionGroupId::new([0x78; SESSION_GROUP_ID_BYTES])?,
+                1_800_000_000,
+            ),
+            Err(MlsAdapterError::UnexpectedProviderOutput)
         ));
 
         Ok(())

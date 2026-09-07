@@ -289,8 +289,13 @@ binding; this is not an authentication or admission claim. Because pinned
 `mls-rs` 0.56.0 exposes no public KeyPackage leaf accessor, the adapter
 re-decodes the already
 provider-validated KeyPackage through a private mirror of that exact TLS layout
-to enforce the closed leaf extension/capability policy. Review that maintenance
-seam and its negative test on every provider update.
+to enforce the closed leaf extension/capability policy, including the exact
+singleton `CURVE25519_AES128` capability list. Adapter clients narrow AWS-LC to
+that same list, and retained negative fixtures reject foreign and duplicate
+ciphersuite claims. Review that maintenance seam and its negative test on every
+provider update. Pre-correction KeyPackages and persisted laboratory groups
+advertise the former broad provider list; they fail closed and require
+regeneration or recreation rather than an unproven migration.
 
 HPKE, encrypted storage, OS key protectors, realm signing, and signed updates
 have not been selected. Citations in the reference ledger are research inputs,

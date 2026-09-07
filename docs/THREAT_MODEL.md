@@ -538,6 +538,13 @@ local deposit endpoint. Deposit, receive, and acknowledgement authority remain
 separate. The mailbox admits one logical bounded envelope and treats only the
 same envelope ID and exact bytes as an idempotent retry.
 
+The isolated MLS adapter also narrows AWS-LC to the sole Phase 1 ciphersuite and
+requires every validated KeyPackage and retained roster leaf to advertise the
+exact singleton `CURVE25519_AES128` capability list. Foreign, extra, or duplicate
+ciphersuite claims fail closed; outstanding KeyPackages from the former broad
+provider default must be regenerated, while persisted laboratory groups made
+under that default fail closed on reload and must be recreated.
+
 The canonical invitation-v2, protected outer/inner, exact outer AAD, local
 deposit-endpoint values, and one-shot HPKE operation are implemented and
 tested. Evidence includes exact fixtures, the official RFC PSK vector,

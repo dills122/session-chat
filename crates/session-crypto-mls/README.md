@@ -50,7 +50,12 @@ Untrusted serialized input is copied only after these outer bounds:
 
 Exact TLS decoding rejects trailing bytes. The Phase 1 policy accepts only
 BasicCredential identities of the required length, no leaf or KeyPackage
-extensions, no custom proposal capabilities, and at most two distinct members.
+extensions, the exact singleton `CURVE25519_AES128` leaf ciphersuite capability,
+no custom proposal capabilities, and at most two distinct members. Adapter
+clients use an AWS-LC provider narrowed to that same singleton list; KeyPackages
+created before this policy correction fail closed and must be regenerated, and
+persisted groups created under the former broad provider fail closed on reload
+and must be recreated during this laboratory phase.
 If an authenticated incoming Commit violates those roster invariants, the
 local group instance fails closed and becomes unusable.
 

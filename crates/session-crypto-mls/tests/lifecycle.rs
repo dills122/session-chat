@@ -347,8 +347,8 @@ fn otherwise_valid_key_package_with_leaf_extension_is_rejected() -> Result<(), M
     };
     use mls_rs_crypto_awslc::AwsLcCryptoProvider;
 
-    let crypto = AwsLcCryptoProvider::default();
     let suite = CipherSuite::CURVE25519_AES128;
+    let crypto = AwsLcCryptoProvider::with_enabled_cipher_suites(vec![suite]);
     let provider = crypto
         .cipher_suite_provider(suite)
         .expect("selected ciphersuite");
@@ -378,6 +378,56 @@ fn otherwise_valid_key_package_with_leaf_extension_is_rejected() -> Result<(), M
         create_key_package_validator().validate_key_package(&bytes, NOW),
         Err(MlsAdapterError::RejectedKeyPackage)
     ));
+
+    Ok(())
+}
+
+#[test]
+fn otherwise_valid_key_packages_with_open_ciphersuite_capabilities_are_rejected()
+-> Result<(), MlsAdapterError> {
+    use mls_rs::{
+        CipherSuite, CipherSuiteProvider, Client, CryptoProvider, ExtensionList, ProtocolVersion,
+        identity::{
+            SigningIdentity,
+            basic::{BasicCredential, BasicIdentityProvider},
+        },
+    };
+    use mls_rs_crypto_awslc::AwsLcCryptoProvider;
+
+    let selected = CipherSuite::CURVE25519_AES128;
+    for advertised in [
+        vec![selected, CipherSuite::CURVE25519_CHACHA],
+        vec![selected, selected],
+    ] {
+        let crypto = AwsLcCryptoProvider::with_enabled_cipher_suites(advertised);
+        let provider = crypto
+            .cipher_suite_provider(selected)
+            .expect("selected ciphersuite");
+        let (secret, public) = provider.signature_key_generate().expect("signature key");
+        let identity = SigningIdentity::new(
+            BasicCredential::new(vec![0x23; 32]).into_credential(),
+            public,
+        );
+        let client = Client::builder()
+            .identity_provider(BasicIdentityProvider)
+            .crypto_provider(crypto)
+            .protocol_version(ProtocolVersion::MLS_10)
+            .signing_identity(identity, secret, selected)
+            .build();
+        let message = client
+            .generate_key_package_message(
+                ExtensionList::new(),
+                ExtensionList::new(),
+                Some(NOW.into()),
+            )
+            .expect("otherwise valid KeyPackage");
+        let bytes = message.to_bytes().expect("serialize KeyPackage");
+
+        assert!(matches!(
+            create_key_package_validator().validate_key_package(&bytes, NOW),
+            Err(MlsAdapterError::RejectedKeyPackage)
+        ));
+    }
 
     Ok(())
 }
