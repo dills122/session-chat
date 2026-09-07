@@ -31,6 +31,36 @@ fn open_fixture_connection(path: &std::path::Path) -> Connection {
     connection
 }
 
+fn downgrade_fixture_to_schema_v5(path: &std::path::Path) {
+    let connection = open_fixture_connection(path);
+    connection
+        .execute_batch(
+            "BEGIN EXCLUSIVE;
+             ALTER TABLE storage_metadata RENAME TO storage_metadata_current;
+             CREATE TABLE storage_metadata (
+                 singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
+                 schema_version INTEGER NOT NULL CHECK(schema_version = 5),
+                 store_id BLOB NOT NULL UNIQUE CHECK(length(store_id) = 16),
+                 maximum_live_invitations INTEGER NOT NULL
+                     CHECK(maximum_live_invitations BETWEEN 1 AND 8),
+                 maximum_retained_attempts INTEGER NOT NULL
+                     CHECK(maximum_retained_attempts BETWEEN 1 AND 8)
+             ) STRICT;
+             INSERT INTO storage_metadata(
+                 singleton, schema_version, store_id,
+                 maximum_live_invitations, maximum_retained_attempts
+             )
+             SELECT singleton, 5, store_id,
+                    maximum_live_invitations,
+                    maximum_live_authorization_attempts
+             FROM storage_metadata_current;
+             DROP TABLE storage_metadata_current;
+             PRAGMA user_version = 5;
+             COMMIT;",
+        )
+        .expect("frozen v5 metadata created");
+}
+
 #[derive(Clone)]
 struct SubstitutingGroupStateStorage(SqlCipherStorage);
 
@@ -1235,6 +1265,52 @@ fn approved_attempt_can_be_explicitly_abandoned_without_losing_replay() {
         storage.reserve_authorization(&protector, shadow(&invitation, 0xe1), NOW + 3),
         Err(StoreError::Replay)
     ));
+}
+
+#[test]
+fn terminal_attempt_quota_is_scoped_to_its_invitation_generation() {
+    let database = TestDatabase::new("terminal-attempt-scope");
+    let protector = AwsLcInvitationJoinProtector::new();
+    let policy = AuthorizationPolicy::new(2, 1).expect("bounded policy");
+    let storage =
+        SqlCipherStorage::create_with_authorization_policy(&database.0, vault_key(), policy)
+            .expect("storage created");
+    let first_invitation = storage
+        .issue_capability_invitation(&protector, NOW, NOW + 300, NOW)
+        .expect("first invitation issued");
+    let second_invitation = storage
+        .issue_capability_invitation(&protector, NOW, NOW + 300, NOW)
+        .expect("second invitation issued");
+    let first = storage
+        .reserve_authorization(&protector, shadow(&first_invitation, 0xe2), NOW)
+        .expect("first authorization reserved");
+    storage
+        .reject_authorization(first, &protector, NOW + 1)
+        .expect("first authorization terminalized");
+    drop(storage);
+    downgrade_fixture_to_schema_v5(&database.0);
+    let storage =
+        SqlCipherStorage::open_with_authorization_policy(&database.0, vault_key(), policy)
+            .expect("v5 store migrates explicitly");
+    assert_eq!(storage.schema_version().expect("schema version"), 6);
+
+    assert!(matches!(
+        storage.reserve_authorization(&protector, shadow(&first_invitation, 0xe2), NOW + 2),
+        Err(StoreError::Replay)
+    ));
+    let second = storage
+        .reserve_authorization(&protector, shadow(&second_invitation, 0xe3), NOW + 2)
+        .expect("unrelated invitation retains admission capacity");
+    storage
+        .abandon_pending_authorization(second, &protector, NOW + 3)
+        .expect("second authorization terminalized");
+    assert!(matches!(
+        storage.reserve_authorization(&protector, shadow(&first_invitation, 0xe4), NOW + 4),
+        Err(StoreError::CapacityExceeded)
+    ));
+    drop(storage);
+    SqlCipherStorage::open_with_authorization_policy(&database.0, vault_key(), policy)
+        .expect("bounded terminal history reopens");
 }
 
 #[test]

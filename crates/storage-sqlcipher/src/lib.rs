@@ -42,7 +42,7 @@ const MAX_MLS_STATE_BYTES: usize = 2 * 1024 * 1024;
 const MAX_EPOCH_WRITES: usize = 64;
 const MAX_KEY_PACKAGE_BYTES: usize = 16 * 1024;
 const MAX_SECRET_KEY_BYTES: usize = 4 * 1024;
-const SCHEMA_VERSION: u32 = 5;
+const SCHEMA_VERSION: u32 = 6;
 const STORE_ID_BYTES: usize = 16;
 const LEASE_ID_BYTES: usize = 16;
 const OUTBOX_PENDING: i64 = 1;
@@ -64,7 +64,7 @@ const AUTHORIZATION_ABANDONED: i64 = 6;
 
 /// Fixed Phase 1 ceiling for simultaneously live invitation opening contexts.
 pub const MAXIMUM_LIVE_INVITATION_OPENING_CONTEXTS: usize = 8;
-/// Maximum retained authorization attempts accepted by the Phase 1 owner.
+/// Maximum simultaneous live attempts and retained attempts per invitation generation.
 pub const MAXIMUM_RETAINED_AUTHORIZATION_ATTEMPTS: usize = 8;
 
 /// Persisted bounds for the Phase 1 durable authorization owner.
@@ -818,12 +818,25 @@ impl SqlCipherStorage {
         if replayed {
             return Err(StoreError::Replay);
         }
-        let retained_attempts: i64 =
-            transaction.query_row("SELECT count(*) FROM authorization_attempts", [], |row| {
-                row.get(0)
-            })?;
-        if retained_attempts < 0
-            || retained_attempts as usize >= self.authorization_policy.maximum_retained_attempts
+        let live_attempts: i64 = transaction.query_row(
+            "SELECT count(*) FROM authorization_attempts WHERE state IN (?1, ?2, ?3)",
+            params![
+                AUTHORIZATION_PENDING_APPROVAL,
+                AUTHORIZATION_APPROVED_PENDING_MEMBERSHIP,
+                AUTHORIZATION_MEMBERSHIP_OUTCOME_UNKNOWN,
+            ],
+            |row| row.get(0),
+        )?;
+        let generation_attempts: i64 = transaction.query_row(
+            "SELECT count(*) FROM authorization_attempts
+             WHERE invitation_id = ?1 AND generation = ?2",
+            params![&input.invitation_id, &input.invitation_generation],
+            |row| row.get(0),
+        )?;
+        if live_attempts < 0
+            || live_attempts as usize >= self.authorization_policy.maximum_retained_attempts
+            || generation_attempts < 0
+            || generation_attempts as usize >= self.authorization_policy.maximum_retained_attempts
         {
             return Err(StoreError::CapacityExceeded);
         }
@@ -1787,11 +1800,15 @@ impl SqlCipherStorage {
                 migrate_schema_v4_to_v5(&connection, authorization_policy)?;
                 versions = schema_versions(&connection)?;
             }
+            if versions == (5, 5) {
+                migrate_schema_v5_to_v6(&connection)?;
+                versions = schema_versions(&connection)?;
+            }
             if versions != (SCHEMA_VERSION, i64::from(SCHEMA_VERSION)) {
                 return Err(StoreError::Rejected);
             }
         }
-        validate_schema_v5(&connection, authorization_policy)?;
+        validate_schema_v6(&connection, authorization_policy)?;
 
         Ok(Self {
             inner: Arc::new(Mutex::new(StorageInner {
@@ -2438,12 +2455,16 @@ fn create_schema(
         "BEGIN IMMEDIATE;
          CREATE TABLE storage_metadata (
              singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
-             schema_version INTEGER NOT NULL CHECK(schema_version = 5),
+             schema_version INTEGER NOT NULL CHECK(schema_version = 6),
              store_id BLOB NOT NULL UNIQUE CHECK(length(store_id) = 16),
              maximum_live_invitations INTEGER NOT NULL
                  CHECK(maximum_live_invitations BETWEEN 1 AND 8),
-             maximum_retained_attempts INTEGER NOT NULL
-                 CHECK(maximum_retained_attempts BETWEEN 1 AND 8)
+             maximum_live_authorization_attempts INTEGER NOT NULL
+                 CHECK(maximum_live_authorization_attempts BETWEEN 1 AND 8),
+             maximum_retained_attempts_per_generation INTEGER NOT NULL
+                 CHECK(maximum_retained_attempts_per_generation BETWEEN 1 AND 8),
+             maximum_total_authorization_attempts INTEGER NOT NULL
+                 CHECK(maximum_total_authorization_attempts BETWEEN 1 AND 64)
          ) STRICT;
 
          CREATE TABLE reservations (
@@ -2558,18 +2579,25 @@ fn create_schema(
              group_id BLOB NOT NULL UNIQUE CHECK(length(group_id) = 32),
              identity_record BLOB NOT NULL CHECK(length(identity_record) = 141)
          ) STRICT;
-         PRAGMA user_version = 5;",
+         PRAGMA user_version = 6;",
     )?;
+    let maximum_total_authorization_attempts = authorization_policy
+        .maximum_live_invitations
+        .checked_mul(authorization_policy.maximum_retained_attempts)
+        .ok_or(StoreError::Rejected)?;
     if connection
         .execute(
             "INSERT INTO storage_metadata(
                  singleton, schema_version, store_id,
-                 maximum_live_invitations, maximum_retained_attempts
-             ) VALUES (1, 5, ?1, ?2, ?3)",
+                 maximum_live_invitations, maximum_live_authorization_attempts,
+                 maximum_retained_attempts_per_generation,
+                 maximum_total_authorization_attempts
+             ) VALUES (1, 6, ?1, ?2, ?3, ?3, ?4)",
             params![
                 store_id,
                 authorization_policy.maximum_live_invitations as i64,
                 authorization_policy.maximum_retained_attempts as i64,
+                maximum_total_authorization_attempts as i64,
             ],
         )
         .is_err()
@@ -2836,13 +2864,57 @@ fn migrate_schema_v4_to_v5(
     migration
 }
 
-fn validate_schema_v5(
+fn migrate_schema_v5_to_v6(connection: &Connection) -> Result<(), StoreError> {
+    let migration = (|| {
+        connection.execute_batch(
+            "BEGIN EXCLUSIVE;
+             ALTER TABLE storage_metadata RENAME TO storage_metadata_v5;
+             CREATE TABLE storage_metadata (
+                 singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
+                 schema_version INTEGER NOT NULL CHECK(schema_version = 6),
+                 store_id BLOB NOT NULL UNIQUE CHECK(length(store_id) = 16),
+                 maximum_live_invitations INTEGER NOT NULL
+                     CHECK(maximum_live_invitations BETWEEN 1 AND 8),
+                 maximum_live_authorization_attempts INTEGER NOT NULL
+                     CHECK(maximum_live_authorization_attempts BETWEEN 1 AND 8),
+                 maximum_retained_attempts_per_generation INTEGER NOT NULL
+                     CHECK(maximum_retained_attempts_per_generation BETWEEN 1 AND 8),
+                 maximum_total_authorization_attempts INTEGER NOT NULL
+                     CHECK(maximum_total_authorization_attempts BETWEEN 1 AND 64)
+             ) STRICT;
+             INSERT INTO storage_metadata(
+                 singleton, schema_version, store_id,
+                 maximum_live_invitations, maximum_live_authorization_attempts,
+                 maximum_retained_attempts_per_generation,
+                 maximum_total_authorization_attempts
+             )
+             SELECT singleton, 6, store_id,
+                    maximum_live_invitations, maximum_retained_attempts,
+                    maximum_retained_attempts,
+                    maximum_live_invitations * maximum_retained_attempts
+             FROM storage_metadata_v5;
+             DROP TABLE storage_metadata_v5;
+             PRAGMA user_version = 6;
+             COMMIT;",
+        )?;
+        Ok(())
+    })();
+    if migration.is_err() {
+        rollback(connection);
+    }
+    migration
+}
+
+fn validate_schema_v6(
     connection: &Connection,
     authorization_policy: AuthorizationPolicy,
 ) -> Result<(), StoreError> {
     let rows = connection.query_row(
         "SELECT count(*), min(schema_version), max(schema_version), min(store_id),
-                min(maximum_live_invitations), min(maximum_retained_attempts)
+                min(maximum_live_invitations),
+                min(maximum_live_authorization_attempts),
+                min(maximum_retained_attempts_per_generation),
+                min(maximum_total_authorization_attempts)
          FROM storage_metadata",
         [],
         |row| {
@@ -2853,6 +2925,8 @@ fn validate_schema_v5(
                 row.get::<_, Option<Vec<u8>>>(3)?,
                 row.get::<_, Option<i64>>(4)?,
                 row.get::<_, Option<i64>>(5)?,
+                row.get::<_, Option<i64>>(6)?,
+                row.get::<_, Option<i64>>(7)?,
             ))
         },
     )?;
@@ -2866,8 +2940,14 @@ fn validate_schema_v5(
     {
         return Err(StoreError::Rejected);
     }
+    let maximum_authorization_rows = authorization_policy
+        .maximum_live_invitations
+        .checked_mul(authorization_policy.maximum_retained_attempts)
+        .ok_or(StoreError::Rejected)?;
     if rows.4 != Some(authorization_policy.maximum_live_invitations as i64)
         || rows.5 != Some(authorization_policy.maximum_retained_attempts as i64)
+        || rows.6 != Some(authorization_policy.maximum_retained_attempts as i64)
+        || rows.7 != Some(maximum_authorization_rows as i64)
     {
         return Err(StoreError::Conflict);
     }
@@ -2906,10 +2986,33 @@ fn validate_schema_v5(
         connection.query_row("SELECT count(*) FROM authorization_attempts", [], |row| {
             row.get(0)
         })?;
+    let live_authorization_rows: i64 = connection.query_row(
+        "SELECT count(*) FROM authorization_attempts WHERE state IN (?1, ?2, ?3)",
+        params![
+            AUTHORIZATION_PENDING_APPROVAL,
+            AUTHORIZATION_APPROVED_PENDING_MEMBERSHIP,
+            AUTHORIZATION_MEMBERSHIP_OUTCOME_UNKNOWN,
+        ],
+        |row| row.get(0),
+    )?;
+    let maximum_generation_rows: i64 = connection.query_row(
+        "SELECT coalesce(max(generation_rows), 0)
+         FROM (
+             SELECT count(*) AS generation_rows
+             FROM authorization_attempts
+             GROUP BY invitation_id, generation
+         )",
+        [],
+        |row| row.get(0),
+    )?;
     if opening_rows < 0
         || opening_rows as usize > authorization_policy.maximum_live_invitations
         || authorization_rows < 0
-        || authorization_rows as usize > authorization_policy.maximum_retained_attempts
+        || authorization_rows as usize > maximum_authorization_rows
+        || live_authorization_rows < 0
+        || live_authorization_rows as usize > authorization_policy.maximum_retained_attempts
+        || maximum_generation_rows < 0
+        || maximum_generation_rows as usize > authorization_policy.maximum_retained_attempts
     {
         return Err(StoreError::Rejected);
     }

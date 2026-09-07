@@ -989,6 +989,14 @@ non-commit recovery that wins the lock first fences any staged writer. Store
 open also rejects contradictory terminal cross-row state. The headless
 admission compositions use this owner and settle their bounded in-memory
 shadows only after exact durable recovery.
+The persisted attempt policy independently limits simultaneous live
+authorizations and retained replay shadows for each exact invitation
+generation. Rejected, abandoned, and committed shadows remain replay evidence
+through invitation expiry without consuming unrelated live-attempt capacity;
+the checked product of invitation and attempt limits bounds total rows, and
+capacity pressure never evicts unexpired replay evidence.
+Schema v6 persists these three ceilings separately and migrates v5 metadata in
+an exclusive transaction, preventing a same-version policy reinterpretation.
 This contract still depends on SQLCipher confidentiality with a caller-supplied
 key and remains vulnerable to stale-snapshot rollback; platform custody,
 rollback detection, and secure deletion are later gates.

@@ -53,16 +53,24 @@ concurrent recovery that first proves non-commit fences the staged writer;
 known success, known pre-commit failure, and ambiguous post-commit results can
 be finalized in the same open scope. Restart abandons pre-membership work, while
 outcome-unknown recovery releases the invitation only after reconciling the
-exact durable membership transaction. Replay identifiers remain
-retained through the invitation expiry, and the persisted 1-through-8 owner
-limits cannot be reinterpreted on reopen. The outbox portion
+exact durable membership transaction. Replay identifiers remain retained
+through the invitation expiry. The persisted 1-through-8 invitation bound and
+independent 1-through-8 authorization bound cannot be reinterpreted on reopen.
+The authorization bound limits simultaneous live work and retained replay
+shadows per exact invitation generation; terminal history for one generation
+cannot starve unrelated live work, and total rows remain bounded by the checked
+product of both limits. The outbox portion
 persists one nonzero store identity, exact canonical Welcome and LocalV1
 endpoint bytes, delivery state, bounded attempts, monotonic lease generation,
 opaque lease identity, lease expiry, and the per-row attempt ceiling so restart
 cannot reinterpret committed work. Schema metadata is bound to SQLite's
-application `user_version`; the v1-to-v2, v2-to-v3, v3-to-v4, and v4-to-v5 migrations take
+application `user_version`; the v1-to-v2, v2-to-v3, v3-to-v4, v4-to-v5, and
+v5-to-v6 migrations take
 exclusive transactions, and v4-to-v5 persists the caller-selected bounded
-authorization policy inside that transaction. A frozen schema-v2 fixture preserves leased, delivered,
+authorization policy inside that transaction. The v5-to-v6 migration explicitly
+splits its former retained-attempt field into live, per-generation replay, and
+derived total-row ceilings instead of silently reinterpreting v5 metadata. A
+frozen schema-v2 fixture preserves leased, delivered,
 and attempts-exhausted outbox rows plus the store identity through v5, while a
 forced migration conflict proves that versions and rows roll back intact. A
 frozen schema-v3 transition proves that a real legacy identity/group pair stays

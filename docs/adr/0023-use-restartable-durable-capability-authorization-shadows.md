@@ -138,10 +138,17 @@ database can still roll this state backward, so stale-snapshot rollback
 resistance remains outside Phase 1.
 
 The Phase 1 reference owner persists its policy with the store and accepts only
-1 through 8 live invitation generations and 1 through 8 retained unexpired
-authorization attempts. Reopen rejects a caller policy that differs from the
-stored policy. When either bound is full, issue or reserve fails before partial
-mutation; it does not evict a live generation or unexpired replay record.
+1 through 8 live invitation generations. Its independent 1-through-8 attempt
+bound limits both simultaneous live authorization attempts and retained
+unexpired replay shadows for each exact invitation generation. Terminal replay
+shadows from one generation do not consume live-attempt capacity for an
+unrelated generation. Total authorization rows remain bounded by the checked
+product of both policy limits. Reopen rejects a caller policy that differs from
+the stored policy. Schema v6 records separate live-attempt, per-generation
+replay, and total-row ceilings; its exclusive v5 migration makes the semantic
+change explicit while preserving the selected numeric policy. When a relevant
+bound is full, issue or reserve fails before partial mutation; it does not evict
+a live generation or unexpired replay record.
 
 ## Consequences
 
