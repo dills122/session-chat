@@ -38,6 +38,10 @@ candidate parsing fails, and attests the exact JSON bundle with a full-commit
 pinned GitHub provenance action. Uploaded candidates from PR runs are unsigned.
 Consumers must use `scripts/verify-l2-evidence.mjs` with an independently chosen
 expected source commit and approved absolute GitHub CLI path/content digest.
+The consumer checks and boundedly reads each opened file handle, then executes
+a private snapshot of the digest-approved CLI bytes. Path replacement between
+inspection and use cannot substitute the candidate or verifier; file growth
+cannot bypass the read bound.
 The CLI verifies the signature and artifact digest using GitHub/Sigstore trust
 roots, exact repository and signer workflow, expected source digest, GitHub OIDC
 issuer and hosted-runner policy. The additional policy checks use verified

@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { readFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { parseCandidate, matchVerifiedAttestation, sha256 } from './l2-candidate.mjs';
-import { verifyCandidate } from './verify-l2-evidence.mjs';
+import { readBoundedRegularFile, verifyCandidate } from './verify-l2-evidence.mjs';
 const bytes = readFileSync(new URL('./fixtures/l2-candidate-v2.json', import.meta.url));
 const commit = '1'.repeat(40);
 function verifiedResult() {
@@ -60,4 +62,45 @@ test('a spoofed environment or fake git/RUSTC cannot replace an approved externa
   // The candidate cannot select its own trust root, even when tool output and
   // every environment diagnostic are forged; digest mismatch precedes spawn.
   assert.throws(() => verifyCandidate(candidate, commit, fake, '0'.repeat(64)), /untrusted GitHub verifier/);
+});
+test('file bounds and bytes belong to the opened object despite path replacement', context => {
+  const directory = mkdtempSync(join(tmpdir(), 'l2-file-test-'));
+  context.after(() => rmSync(directory, { recursive: true, force: true }));
+  const source = join(directory, 'source');
+  writeFileSync(source, 'original');
+  const originalStat = fs.fstatSync;
+  const mocked = context.mock.method(fs, 'fstatSync', fd => {
+    const stat = originalStat(fd);
+    fs.renameSync(source, join(directory, 'opened'));
+    writeFileSync(source, 'replacement');
+    return stat;
+  });
+  syncBuiltinESMExports();
+  try {
+    assert.equal(readBoundedRegularFile(source, 8).toString(), 'original');
+  } finally {
+    mocked.mock.restore();
+    syncBuiltinESMExports();
+  }
+  assert.throws(() => readBoundedRegularFile(source, 8), /bound/);
+  assert.throws(() => readBoundedRegularFile(directory, 8));
+});
+test('read-time bound rejects growth after the opened file size check', context => {
+  const directory = mkdtempSync(join(tmpdir(), 'l2-growing-file-test-'));
+  context.after(() => rmSync(directory, { recursive: true, force: true }));
+  const source = join(directory, 'source');
+  writeFileSync(source, 'small');
+  const originalStat = fs.fstatSync;
+  const mocked = context.mock.method(fs, 'fstatSync', fd => {
+    const stat = originalStat(fd);
+    fs.appendFileSync(source, 'too large');
+    return stat;
+  });
+  syncBuiltinESMExports();
+  try {
+    assert.throws(() => readBoundedRegularFile(source, 8), /read bound/);
+  } finally {
+    mocked.mock.restore();
+    syncBuiltinESMExports();
+  }
 });

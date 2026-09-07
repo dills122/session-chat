@@ -852,7 +852,8 @@ node scripts/verify-l2-evidence.mjs CANDIDATE.json EXPECTED_COMMIT ABSOLUTE_GH_P
 ```
 
 The verifier never accepts downloaded verification-result JSON or a trust root
-chosen by the candidate. It calls the approved CLI, then checks certificate
+chosen by the candidate. It checks and boundedly reads opened file handles,
+executes a private copy of the approved CLI bytes, then checks certificate
 repository, workflow, commit, hosted-runner and run/attempt fields and the exact
 subject digest. The returned receipt identifies those bytes; copying a receipt
 alone is not independent verification. GitHub account authentication uses the

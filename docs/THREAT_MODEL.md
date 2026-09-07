@@ -678,6 +678,9 @@ external GitHub/Sigstore attestation verification of the exact candidate digest,
 reviewed source/workflow, repository, hosted runner and run/attempt before hosted
 provenance is accepted. A compromised reviewed builder can still lie about test
 results or tool diagnostics; this is not a reproducible-build attestation.
+The consumer binds file checks and bounded reads to opened handles and executes
+private digest-approved CLI bytes, preventing path substitution between its
+verifier check and execution.
 Portable passage remains per-revision three-OS CI evidence. Current evidence still does not cover product-client recovery,
 cross-implementation fixtures,
 cross-device acknowledgement semantics, old-secret deletion, power loss,
