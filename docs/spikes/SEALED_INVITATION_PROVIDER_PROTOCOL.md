@@ -374,8 +374,8 @@ learning an ordinary lookup.
 3. Alice pads and seals the body with reviewed HPKE to Bob's receive key.
 4. Alice acquires the required deposit authorization for the bundle's policy.
 5. Alice sends a fixed-size deposit through the selected transport.
-6. The mailbox validates only visible bounds, expiry, duplicate envelope ID,
-   mailbox state, and deposit authorization.
+6. The mailbox validates only visible bounds, expiry, envelope-ID reuse against
+   the accepted envelope digest, mailbox state, and deposit authorization.
 7. The mailbox stores the opaque envelope and returns an acceptance identifier.
 
 Acceptance is not proof of recipient delivery or decryption.
@@ -702,7 +702,9 @@ Requirements:
 - Deposit authorization is validated before expensive or persistent work.
 - Acknowledgement accepts only a bounded list of canonical delivery identifiers
   no larger than the mailbox queue bound.
-- Retry and acknowledgement are idempotent.
+- Retry and acknowledgement are idempotent over the exact accepted request. A
+  retry that reuses an accepted envelope ID with different bytes is an
+  idempotency conflict, never a delivery acceptance.
 
 The mixnet adapter can carry equivalent binary operations without HTTP.
 
@@ -760,7 +762,8 @@ plaintext.
 - Directory unavailable: use a still-valid cached bundle or report unavailable;
   never substitute an unverified key.
 - Directory returns stale generation: warn/reject according to cached state.
-- Bundle expired: do not deposit; refresh through the selected profile.
+- Bundle expired: do not deposit; refresh through the selected profile. An
+  expired record is rejected by verification as well as lookup.
 - Mailbox full: report invitation not accepted; do not claim delivery.
 - Deposit response lost: retry the same envelope ID and bytes.
 - Poll response duplicated: recipient deduplicates locally.

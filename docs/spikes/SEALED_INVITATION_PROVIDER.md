@@ -274,15 +274,20 @@ The dependency-free simulator implements:
 - Bounded registration, address-control proof, and acknowledgement inputs
 - A closed provisional receive-bundle schema whose authenticated projection is
   exactly the stored projection; unknown and recursive extras are rejected
-- Directory signatures bound to lookup key and bundle
+- Directory signatures over one closed `DirectoryRecordV1` claims projection
+  covering the lookup key, complete bundle, complete address attestation, any
+  continuity signature, issuance, and expiry
+- Record freshness enforced by verification and by a single acceptance API that
+  also requires and binds a caller-supplied expected lookup key
 - Monotonic receive-bundle generation, chaining, and rollback rejection
 - Post-authorization predecessor recheck so one in-process concurrent successor wins
-- X25519 receive and ephemeral keys
+- X25519 receive and ephemeral keys with an explicit non-contributory
+  shared-secret rejection on both seal and open
 - HKDF-SHA-256 plus AES-256-GCM sealed envelopes
 - 1 KiB padded plaintext blocks
 - Random mailbox, read-capability, envelope, and delivery identifiers
-- TTL, queue bounds, lifetime deposit bounds, retry deduplication, fetch, and
-  acknowledgement
+- TTL, queue bounds, lifetime deposit bounds, digest-bound retry
+  deduplication with idempotency-conflict rejection, fetch, and acknowledgement
 - Confidentiality, authorization, attestation binding, tamper, expiry, replay,
   substitution, rotation, rollback, and competing-successor tests
 

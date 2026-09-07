@@ -35,16 +35,23 @@ npm test
 - No invitation plaintext in either service's stored view
 - No directory identity in the mailbox record
 - Address-attestor binding independent of the directory
-- Signed directory records bound to the lookup key
+- Signed directory records over closed claims covering the lookup key, complete
+  bundle, complete address attestation, any continuity signature, issuance, and
+  expiry
 - Chained receive-bundle rotation and rollback rejection
 - In-process rejection of concurrently authorized competing successors
 - Snapshotted async authorization inputs and bounded proof structures
 - Closed receive-bundle schemas with every stored field authenticated
 - Rejection of unknown, oversized, deep, and cyclic bundle extras before authorization
 - Read-capability enforcement
+- Rejection of low-order X25519 peer keys instead of a known shared secret
 - Ciphertext tamper detection
 - Envelope and mailbox expiration
-- Retry deduplication and right-separated acknowledgement authority
+- Retry deduplication bound to the exact envelope bytes, with idempotency
+  conflicts rejected rather than reported as delivered
+- Record freshness enforced on verification and on a single expected-lookup-key
+  acceptance API
+- Right-separated acknowledgement authority
 - Bounded, canonical acknowledgement identifier lists
 - Fixed envelope size and bounded queues
 - Rejection of unauthorized directory registration
