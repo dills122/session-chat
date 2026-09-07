@@ -17,7 +17,7 @@ use session_protocol::{
     MAX_SIGNED_INVITATION_BYTES, ProtectedJoinRequest, SecretCapability,
     SignedCapabilityInvitationV2,
 };
-use zeroize::{Zeroize, Zeroizing};
+use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 const HPKE_KEY_BYTES: usize = 32;
 const PSK_ID_DOMAIN: &[u8] = b"session-chat/invitation-capability-psk/v1\0";
@@ -56,10 +56,24 @@ impl InvitationHpkePrivateKey {
         Ok(Self(bytes))
     }
 
+    /// Copies the key into the provider's owned representation for one call.
+    ///
+    /// The copy is a heap allocation this crate cannot scrub itself, so it is
+    /// only safe because `HpkeSecretKey` clears its own buffer on drop. That
+    /// upstream guarantee is asserted below rather than assumed.
     fn provider_key(&self) -> HpkeSecretKey {
         HpkeSecretKey::from(self.0.to_vec())
     }
 }
+
+/// Fails to compile if the provider's secret-key type stops scrubbing itself.
+///
+/// `provider_key` and `generate_invitation_key` both hand raw invitation
+/// private-key bytes to `mls_rs_core::crypto::HpkeSecretKey`. If a dependency
+/// update removed its `ZeroizeOnDrop`, those copies would be freed unscrubbed
+/// and this crate's own zeroizing `Drop` would protect nothing.
+const fn assert_provider_secret_key_scrubs_itself<T: ZeroizeOnDrop>() {}
+const _: () = assert_provider_secret_key_scrubs_itself::<HpkeSecretKey>();
 
 /// Owned, zeroizing transfer object for one private key loaded from protected storage.
 ///
@@ -418,9 +432,14 @@ impl InvitationJoinProtector for AwsLcInvitationJoinProtector {
             )
             .map_err(coarse_provider_error)?;
         let aad = protected.aad_canonical().map_err(protocol_error)?;
-        let plaintext = receiver
-            .open(Some(&aad), protected.ciphertext())
-            .map_err(coarse_provider_error)?;
+        // The opened plaintext is a complete CapabilityJoinRequest, which carries
+        // the one-use deposit capability. It takes zeroizing ownership on both
+        // the success and the rejection path.
+        let plaintext = Zeroizing::new(
+            receiver
+                .open(Some(&aad), protected.ciphertext())
+                .map_err(coarse_provider_error)?,
+        );
         let request = CapabilityJoinRequest::decode_canonical(&plaintext)
             .map_err(|_| JoinProtectionError::Rejected)?;
         validate_inner_context(invitation, &request)?;

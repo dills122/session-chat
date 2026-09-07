@@ -71,6 +71,22 @@ impl Reservation {
     }
 }
 
+impl Drop for Reservation {
+    fn drop(&mut self) {
+        // Exhaustive destructuring: a new field cannot be added to this type
+        // without being explicitly classified as secret-bearing or not.
+        let Self {
+            invitation_id,
+            generation,
+            join_request_id,
+            expires_at: _,
+        } = self;
+        invitation_id.zeroize();
+        generation.zeroize();
+        join_request_id.zeroize();
+    }
+}
+
 /// Complete secret-bearing input to the disposable SQL transaction.
 pub struct JoinCommit {
     transaction_id: [u8; 16],
@@ -127,11 +143,34 @@ impl JoinCommit {
 
 impl Drop for JoinCommit {
     fn drop(&mut self) {
-        self.request_fingerprint.zeroize();
-        self.approval_record.zeroize();
-        self.mls_state.zeroize();
-        self.welcome.zeroize();
-        self.endpoint.zeroize();
+        // Exhaustive destructuring: see `Reservation`. The generation and join
+        // request identifier are classified with the other retained secrets so
+        // the three owners of these fields cannot drift apart again.
+        let Self {
+            transaction_id,
+            invitation_id,
+            generation,
+            join_request_id,
+            request_fingerprint,
+            group_id,
+            epoch_before: _,
+            epoch_after: _,
+            approval_record,
+            mls_state,
+            welcome,
+            endpoint,
+            outbox_expires_at: _,
+        } = self;
+        transaction_id.zeroize();
+        invitation_id.zeroize();
+        generation.zeroize();
+        join_request_id.zeroize();
+        request_fingerprint.zeroize();
+        group_id.zeroize();
+        approval_record.zeroize();
+        mls_state.zeroize();
+        welcome.zeroize();
+        endpoint.zeroize();
     }
 }
 
@@ -752,13 +791,30 @@ impl StoredJoin {
 
 impl Drop for StoredJoin {
     fn drop(&mut self) {
-        self.generation.zeroize();
-        self.join_request_id.zeroize();
-        self.request_fingerprint.zeroize();
-        self.approval_record.zeroize();
-        self.mls_state.zeroize();
-        self.welcome.zeroize();
-        self.endpoint.zeroize();
+        // Exhaustive destructuring: see `Reservation`.
+        let Self {
+            invitation_id,
+            generation,
+            join_request_id,
+            request_fingerprint,
+            group_id,
+            epoch_before: _,
+            epoch_after: _,
+            approval_record,
+            mls_state,
+            welcome,
+            endpoint,
+            outbox_expires_at: _,
+        } = self;
+        invitation_id.zeroize();
+        generation.zeroize();
+        join_request_id.zeroize();
+        request_fingerprint.zeroize();
+        group_id.zeroize();
+        approval_record.zeroize();
+        mls_state.zeroize();
+        welcome.zeroize();
+        endpoint.zeroize();
     }
 }
 

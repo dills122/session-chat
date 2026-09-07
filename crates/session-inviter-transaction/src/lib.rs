@@ -114,6 +114,22 @@ impl ReservedInvitation {
     }
 }
 
+impl Drop for ReservedInvitation {
+    fn drop(&mut self) {
+        // Exhaustive destructuring: a new field cannot be added to this type
+        // without being explicitly classified as secret-bearing or not.
+        let Self {
+            invitation_id,
+            invitation_generation,
+            join_request_id,
+            expires_at_unix_seconds: _,
+        } = self;
+        invitation_id.zeroize();
+        invitation_generation.zeroize();
+        join_request_id.zeroize();
+    }
+}
+
 /// Complete secret-bearing input to one inviter-local atomic commit.
 pub struct InviterJoinCommit {
     transaction_id: [u8; IDENTIFIER_BYTES],
@@ -133,11 +149,36 @@ pub struct InviterJoinCommit {
 
 impl Drop for InviterJoinCommit {
     fn drop(&mut self) {
-        self.request_fingerprint.zeroize();
-        self.approval_record.zeroize();
-        self.mls_state.zeroize();
-        self.welcome_envelope.zeroize();
-        self.deposit_endpoint.zeroize();
+        // Exhaustive destructuring: a new field cannot be added to this type
+        // without being explicitly classified as secret-bearing or not. The
+        // spec's never-log list covers the invitation generation as well as the
+        // MLS snapshot, Welcome, deposit endpoint, approval evidence and
+        // request fingerprint.
+        let Self {
+            transaction_id,
+            invitation_id,
+            invitation_generation,
+            join_request_id,
+            request_fingerprint,
+            group_id,
+            epoch_before: _,
+            epoch_after: _,
+            approval_record,
+            mls_state,
+            welcome_envelope,
+            deposit_endpoint,
+            outbox_expires_at_unix_seconds: _,
+        } = self;
+        transaction_id.zeroize();
+        invitation_id.zeroize();
+        invitation_generation.zeroize();
+        join_request_id.zeroize();
+        request_fingerprint.zeroize();
+        group_id.zeroize();
+        approval_record.zeroize();
+        mls_state.zeroize();
+        welcome_envelope.zeroize();
+        deposit_endpoint.zeroize();
     }
 }
 
@@ -342,11 +383,45 @@ impl CommittedRecord {
 
 impl Drop for CommittedRecord {
     fn drop(&mut self) {
-        self.request_fingerprint.zeroize();
-        self.approval_record.zeroize();
-        self.mls_state.zeroize();
-        self.welcome_envelope.zeroize();
-        self.deposit_endpoint.zeroize();
+        // Exhaustive destructuring: see `InviterJoinCommit`.
+        let Self {
+            invitation_id,
+            invitation_generation,
+            join_request_id,
+            request_fingerprint,
+            group_id,
+            epoch_before: _,
+            epoch_after: _,
+            approval_record,
+            mls_state,
+            welcome_envelope,
+            deposit_endpoint,
+            outbox_expires_at_unix_seconds: _,
+            outbox: _,
+            delivery_attempts: _,
+        } = self;
+        invitation_id.zeroize();
+        invitation_generation.zeroize();
+        join_request_id.zeroize();
+        request_fingerprint.zeroize();
+        group_id.zeroize();
+        approval_record.zeroize();
+        mls_state.zeroize();
+        welcome_envelope.zeroize();
+        deposit_endpoint.zeroize();
+    }
+}
+
+impl Drop for ReservationRecord {
+    fn drop(&mut self) {
+        // Exhaustive destructuring: see `InviterJoinCommit`.
+        let Self {
+            invitation_generation,
+            join_request_id,
+            expires_at_unix_seconds: _,
+        } = self;
+        invitation_generation.zeroize();
+        join_request_id.zeroize();
     }
 }
 

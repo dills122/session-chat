@@ -1000,6 +1000,19 @@ device binding, fresh user presence, desktop credential UI, recovery, rollback
 resistance, secure deletion, SQLCipher key handoff, or unlocked-endpoint
 protection, and no durable or product path currently uses it.
 
+Secret-bearing owners across the protected-join and inviter-transaction paths
+classify their fields once, in an exhaustive destructuring drop, so a field
+added later cannot silently escape clearing: adding one fails to compile until
+it is classified. That classification now covers the invitation generation and
+join-request identifier in every owner that holds them, matching the spec's own
+never-log list. The HPKE-opened join-request plaintext and the canonical
+re-encodings compared during protected-join decoding take zeroizing ownership on
+both the accept and the reject path; the public `encode_canonical` surfaces
+remain deliberate serialization that transfers cleanup to the caller. Observing
+that a freed allocation is actually scrubbed would need a custom allocator and
+therefore `unsafe`, which the workspace forbids, so these remain best-effort
+source-level controls rather than measured ones.
+
 ADR 0027 also creates L1 Unix directories as 0700 and files as 0600 regardless
 of umask, rejecting permissive or linked channel directories on validation.
 Shared channel, marker and provenance reads reject non-regular files, use
