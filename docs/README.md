@@ -244,8 +244,11 @@ checkpoint is distinct from that immutable tested code revision.
 - [Security secret-boundary tranche evidence](evidence/security-secret-boundaries-2026-09-06.md)
   records local verification of five scan fixes and the remaining portable CI gate.
 - [Authenticated L2 evidence and private test artifacts](adr/0028-authenticate-l2-evidence-and-own-test-artifacts.md)
-  records candidate v2, external attestation verification, executable identity,
+  records external attestation verification, executable identity,
   immutable workflow references, and private SQLCipher fixtures.
+- [Demoted L2 redaction claims](adr/0030-demote-l2-redaction-until-capture-is-owned.md)
+  records candidate v3, bounded case-surface secret scans, unproved capture
+  completeness, and unverified redaction.
 - [Architecture decision records](adr/) record the foundational decisions that
   other documents rely on.
 
@@ -354,9 +357,10 @@ suite now exercises every baseline-derived supported inviter/joiner I/O ordinal,
 every observed journal/main commit-window pause, and every baseline-observed
 application checkpoint. Each direct writer is killed while blocked before a
 fresh reopen that accepts only exact I0/I1 or J0/J1 state and unchanged exact
-retry. Raw case records remain non-public. The retained L2-8 gate lets only
-sealed complete aggregates emit self-reported candidate v2 bundles with
-execution-time binary/artifact identities and bounded secret/canary scans.
+retry. Raw case records remain non-public. The retained L2-8 gate lets complete
+recovery matrices emit self-reported candidate v3 bundles with execution-time
+binary/artifact identities and bounded case-surface secret/canary scans.
+Capture completeness remains unproved and redaction unverified under ADR 0030.
 ADR 0028 requires external GitHub attestation verification before those bytes
 can authenticate a hosted run. A portable passing claim is
 per-revision CI evidence; power-loss, filesystem-durability,

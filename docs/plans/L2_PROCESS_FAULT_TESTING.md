@@ -12,7 +12,7 @@ Date: 2026-08-26
 | --- | --- | --- | --- | --- |
 | L2-2 inviter crash/restart atomicity | Lead-owned integration; `apps/sessionctl/tests/l2_crash_restart_inviter.rs` | Retained L2-0/L2-1 | Every baseline-observed inviter checkpoint is exactly I0 or I1 as specified; missing/duplicate coverage, mixed state, and conflicting retry are rejected | Phase 1 portable gate passed; later revisions require their own three-OS L2 job |
 | L2-3 joiner crash/restart atomicity | Lead-owned integration; `apps/sessionctl/tests/l2_crash_restart_joiner.rs` | Retained L2-0/L2-1 | Every baseline-observed joiner checkpoint is exactly J0 or J1 as specified; missing/duplicate coverage, retained KeyPackage, and conflicting retry are rejected | Phase 1 portable gate passed; later revisions require their own three-OS L2 job |
-| L2-8 portable evidence gate | Lead-owned integration; `apps/sessionctl/src/l2_process/evidence.rs`, checked suite promotion seams, `.github/workflows/ci.yml`, canonical claims | Retained L2-2/L2-3/L2-5 | Sealed complete aggregates emit canonical per-case `l2-evidence-v1` bundles bound to actual compiler, GitHub run/workflow, engine, binary, and artifact provenance; seeded canaries and actual case secrets are absent from every bounded surface; PR smoke catches defective evidence | Passed for the exact Phase 1 revision; portability remains CI-owned per revision |
+| L2-8 portable evidence gate | Lead-owned integration; `apps/sessionctl/src/l2_process/evidence.rs`, checked suite promotion seams, `.github/workflows/ci.yml`, canonical claims | Retained L2-2/L2-3/L2-5 | Complete recovery matrices emit canonical per-case v3 candidates bound to compiler, GitHub run/workflow, engine, binary, and artifact diagnostics; known case surfaces pass seeded-canary and actual-secret scans; capture completeness and redaction remain unproved | Passed for the exact Phase 1 revision; portability remains CI-owned per revision |
 
 The lead task owns shared controller changes, canonical documentation,
 integration verification, commits, and the eventual pull request. Both lanes
@@ -379,9 +379,9 @@ The controller must:
   for lease and recovery decisions.
 
 The local evidence output is a canonical bundle containing one bounded
-`l2-evidence-candidate-v2` record per validated case. Unsigned v1 promotion is
-retired under ADR 0028; candidates require external attestation verification. The bundle can be constructed
-only from a sealed complete aggregate; the raw textual validator and metadata
+`l2-evidence-candidate-v3` record per validated case. Unsigned v1 and candidate
+v2 promotion are retired under ADRs 0028 and 0030; v3 candidates require external attestation verification. The bundle can be constructed
+only from a complete recovery aggregate; the raw textual validator and metadata
 constructors are private. Every record contains only:
 
 - scenario/case ID, canonical case index/count, seed, checkpoint or VFS
@@ -422,10 +422,10 @@ Task L2-5 does not yet emit that public manifest. Its checked tests retain only
 used in memory by the exhaustive-matrix constructors. It must say
 `publication=prohibited`, cannot say `result=pass`, and cannot assert public
 integrity, schema, retry, provenance, artifact-binding, or redaction results.
-Task L2-8 owns promotion to `l2-evidence-v1` after it binds the observations to
-the exact build/platform/artifact metadata above and scans the required
-synthetic canaries, including captured pause-child stdout and stderr. Until
-that promotion passes, L2-5 observations are test diagnostics rather than
+Task L2-8 owns candidate-v3 rendering after it binds the observations to the
+exact build/platform/artifact metadata above and scans known case surfaces and
+actual secrets. Candidate v3 marks capture completeness unproved and redaction
+unverified under ADR 0030. Until that rendering passes, L2-5 observations are test diagnostics rather than
 portable or publishable security evidence.
 
 ## Supported-platform requirements
@@ -654,7 +654,8 @@ promotion infrastructure. Checked-only `WelcomeBarrier` hooks instrument the
 real owner methods; ordinary builds cannot activate them. The application
 sweep has seven workloads and 40 exact checkpoints. A separate clean named-VFS
 trace enumerates all supported engine-window ordinals per workload. Both reject
-partial coverage and promote only through the shared provenance/redaction gate.
+partial coverage and render only through the shared provenance and bounded
+case-surface secret-scan gate.
 See [ADR 0025](../adr/0025-close-phase-one-recovery-and-conformance-evidence.md).
 
 **Acceptance:**
@@ -710,10 +711,10 @@ these paths concurrently.
 - Inviter and joiner process-kill plus named-VFS suites pass on all three
   required families with complete coverage manifests.
 - An intentionally defective adapter is caught in the PR smoke subset.
-- L2-5 internal observations are promoted to a canonical public per-case
-  `l2-evidence-candidate-v2` bundle only after execution-time binary identities are attached and
-  synthetic canaries are absent from bounded stdout, stderr, diagnostics,
-  control frames, the manifest, and retained encrypted artifacts.
+- L2-5 internal observations render to a canonical public per-case
+  `l2-evidence-candidate-v3` bundle only after execution-time binary identities
+  are attached and known case surfaces pass synthetic-canary and actual-secret
+  scans. Every record marks capture completeness unproved and redaction unverified.
 - Canonical documents claim only application-process-kill and SQLite-visible
   fault evidence and retain every prohibition below.
 
@@ -725,15 +726,14 @@ policy where available, and an independent review.
 gates. **Estimated scope:** M (3-5 integration files per atomic commit).
 
 **Retained implementation:** `apps/sessionctl/src/l2_process/evidence.rs`
-keeps raw promotion private, rejects dirty or incomplete promotion, requires
+keeps raw rendering private, rejects dirty or incomplete recovery matrices, requires
 exact bounded Git, actual compiler, GitHub run/workflow, closed runner tuple,
-engine, test-binary, and encrypted-artifact provenance, and scans
-stdout, stderr, diagnostics, control-frame material, the internal observation,
-every public case manifest, and retained encrypted artifacts for the closed
-synthetic canary and actual-case catalogs. Complete checkpoint, SQLite
-return-code, and commit-window kill aggregates alone can emit canonical,
-key-framed per-case `l2-evidence-candidate-v2` bundles. These are explicitly
-self-reported; the external attestation gate is specified by ADR 0028. The dedicated CI matrix runs
+engine, test-binary, and encrypted-artifact provenance, and scans known
+case-runner surfaces for the closed synthetic-canary and actual-secret catalogs.
+Complete checkpoint, SQLite return-code, and commit-window kill aggregates alone
+can emit canonical, key-framed per-case `l2-evidence-candidate-v3` bundles.
+These are explicitly self-reported, capture-incomplete, and redaction-unverified;
+the external attestation gate is specified by ADR 0028 and the demotion by ADR 0030. The dedicated CI matrix runs
 the failure-sensitive smoke subset on pull requests and the complete suites on
 non-PR runs for `ubuntu-24.04`, `macos-15`, and `windows-2025`. A portable
 passing claim remains conditional on that required job being green for the
@@ -825,20 +825,25 @@ The strongest permitted conclusion is narrower: on the exact tested
 SQLCipher/SQLite graph and platform matrix, after a bounded application-process
 kill or injected SQLite-visible full/I/O error, fresh reopen exposed one
 complete allowed transaction state, exact retry did not repeat the MLS
-membership transition, the evidence remained redacted, and supervised cleanup
-completed.
+membership transition, known case surfaces passed secret scans, and supervised
+cleanup completed. Complete capture and redaction remain unproved.
 
-## Candidate v2 and independent verification
+## Candidate v3 and independent verification
 
-`candidate_v2` retains the previous closed case fields and adds mandatory
+`candidate_v2` is retired because its caller-selected channel inventory could
+not prove complete capture. `candidate_v3` retains the recovery and provenance
+fields and adds mandatory
 `provenance=self-reported`, `publication=requires-external-attestation`, and
 role-specific `verifier_binary_sha256`, `producer_binary_sha256`, and
 `fault_driver_binary_sha256` (`none` unless a separate Welcome harness runs).
 `test_binary_sha256` equals the verifier digest for ordinary sweeps and the
 fault-driver digest for Welcome engine sweeps. Digests are captured before
 execution, cases run private binary snapshots, and source changes or mixed
-baseline/case identities reject the aggregate. The v2 compatibility fixture is
-`scripts/fixtures/l2-candidate-v2.json`; it is synthetic, unsigned test data.
+baseline/case identities reject the aggregate. Every v3 record also requires
+`secret_scan=pass`, `capture_completeness=unproven`, and
+`redaction=unverified`. The v3 compatibility fixture is
+`scripts/fixtures/l2-candidate-v3.json`; the v2 fixture beside it is retained as
+synthetic, unsigned negative test data and current parsers reject it.
 
 The CI collector writes JSON arrays of canonical case records under
 `target/l2-candidates/` only after a successful complete suite. Non-PR CI attests

@@ -24,11 +24,10 @@ mod checked {
     };
 
     use sessionctl::l2_process::{
-        L2EvidenceChannels, L2IoBaselineObservation, L2IoDriverObservation, L2IoFaultDriver,
-        L2IoFaultMode, L2IoFaultObservation, L2IoFileRole, L2IoOperation, L2IoPauseDriver,
-        L2IoPauseObservation, L2IoPauseSweepReport, L2IoSweepReport, L2IoSweepTarget,
-        prepare_l2_io_pause_kill_case, run_l2_io_baseline, run_l2_io_fault_case,
-        run_l2_io_pause_writer,
+        L2IoBaselineObservation, L2IoDriverObservation, L2IoFaultDriver, L2IoFaultMode,
+        L2IoFaultObservation, L2IoFileRole, L2IoOperation, L2IoPauseDriver, L2IoPauseObservation,
+        L2IoPauseSweepReport, L2IoSweepReport, L2IoSweepTarget, prepare_l2_io_pause_kill_case,
+        run_l2_io_baseline, run_l2_io_fault_case, run_l2_io_pause_writer,
     };
     use storage_sqlcipher::fault_testing::Scenario;
     use storage_sqlcipher_fault_vfs::{
@@ -568,21 +567,13 @@ mod checked {
             assert!(complete_evidence.contains("modes=one-shot|persistent\n"));
 
             if let Ok(runner_image) = std::env::var("SESSION_CHAT_L2_RUNNER_IMAGE") {
-                let channels = L2EvidenceChannels::new(
-                    complete_evidence.as_bytes(),
-                    b"",
-                    b"",
-                    complete_evidence.as_bytes(),
-                    b"",
-                )
-                .expect("bounded return-code evidence surfaces");
                 let bundle = complete
-                    .candidate_v2(&executable(), &runner_image, &channels)
-                    .expect("promote complete return-code evidence");
+                    .candidate_v3(&executable(), &runner_image)
+                    .expect("emit return-code v3 evidence candidates");
                 for manifest in bundle.manifests() {
                     println!(
                         "L2_CANDIDATE_BEGIN\n{}L2_CANDIDATE_END",
-                        manifest.encode_v2(),
+                        manifest.encode_v3(),
                     );
                 }
             }
@@ -730,21 +721,13 @@ mod checked {
             assert!(evidence.contains("publication=prohibited\n"));
 
             if let Ok(runner_image) = std::env::var("SESSION_CHAT_L2_RUNNER_IMAGE") {
-                let channels = L2EvidenceChannels::new(
-                    evidence.as_bytes(),
-                    b"",
-                    b"",
-                    evidence.as_bytes(),
-                    b"",
-                )
-                .expect("bounded pause evidence surfaces");
                 let bundle = complete
-                    .candidate_v2(&executable(), &runner_image, &channels)
-                    .expect("promote complete pause evidence");
+                    .candidate_v3(&executable(), &runner_image)
+                    .expect("emit pause v3 evidence candidates");
                 for manifest in bundle.manifests() {
                     println!(
                         "L2_CANDIDATE_BEGIN\n{}L2_CANDIDATE_END",
-                        manifest.encode_v2(),
+                        manifest.encode_v3(),
                     );
                 }
             }

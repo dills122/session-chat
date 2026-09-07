@@ -279,10 +279,11 @@ architecture:
   baseline-derived `SQLITE_FULL`/extended-`SQLITE_IOERR` results and kills a
   direct writer at observed SQLite commit-window pauses and every
   baseline-observed inviter/joiner application checkpoint before fresh reopen.
-  Raw case observations remain non-public. The retained L2-8 matrix lets only
-  sealed complete aggregates emit explicitly self-reported candidate v2 bundles
-  with execution-time binary identities and multi-surface secret/canary scans.
-  ADR 0028 requires external attestation verification before hosted provenance; portable passage remains conditional on the
+  Raw case observations remain non-public. The retained L2-8 matrix lets
+  complete recovery aggregates emit explicitly self-reported candidate v3
+  bundles with execution-time binary identities and bounded case-surface
+  secret/canary scans. ADR 0030 marks capture completeness unproved and
+  redaction unverified. ADR 0028 requires external attestation verification before hosted provenance; portable passage remains conditional on the
   exact revision's required three-OS result. None of this is a power-loss,
   filesystem, rollback, or production claim.
 - `storage-sqlcipher-fault-vfs` is a publish-disabled, explicitly selected

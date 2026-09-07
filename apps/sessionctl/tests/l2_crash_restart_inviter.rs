@@ -18,8 +18,8 @@ mod checked {
 
     use sessionctl::SessionCtlError;
     use sessionctl::l2_process::{
-        L2EvidenceChannels, L2HarnessProbe, L2ProcessSweepReport, run_l2_process_baseline,
-        run_l2_process_case, run_l2_process_probe,
+        L2HarnessProbe, L2ProcessSweepReport, run_l2_process_baseline, run_l2_process_case,
+        run_l2_process_probe,
     };
     use storage_sqlcipher::fault_testing::Scenario;
 
@@ -117,21 +117,13 @@ mod checked {
         assert!(trace_digest.bytes().all(|byte| byte.is_ascii_hexdigit()));
 
         if let Ok(runner_image) = std::env::var("SESSION_CHAT_L2_RUNNER_IMAGE") {
-            let channels = L2EvidenceChannels::new(
-                evidence.as_bytes(),
-                b"",
-                b"",
-                trace_digest.as_bytes(),
-                b"",
-            )
-            .expect("bounded inviter evidence surfaces");
             let bundle = sweep
-                .candidate_v2(&executable, &runner_image, &channels)
-                .expect("promote complete inviter evidence");
+                .candidate_v3(&executable, &runner_image)
+                .expect("emit inviter v3 evidence candidates");
             for manifest in bundle.manifests() {
                 println!(
                     "L2_CANDIDATE_BEGIN\n{}L2_CANDIDATE_END",
-                    manifest.encode_v2(),
+                    manifest.encode_v3(),
                 );
             }
         }

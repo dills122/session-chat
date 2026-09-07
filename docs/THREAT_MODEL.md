@@ -715,9 +715,12 @@ verifier accepts only I0/I1 or J0/J1 with exact retry. Separate local checked
 sweeps now kill every baseline-observed inviter/joiner application checkpoint
 and enforce the same complete-state and retry invariants, including
 missing/duplicate coverage rejection. Raw case observations remain non-public.
-The retained L2-8 gate emits only explicitly self-reported candidate v2 bundles
-from sealed complete aggregates, with execution-time binary identities and
-secret/canary scans. Unsigned v1 promotion always fails. GitHub environment,
+The retained L2-8 gate emits only explicitly self-reported candidate v3 bundles
+from complete recovery matrices, with execution-time binary identities and
+bounded case-surface secret/canary scans. Candidate v2 and unsigned v1
+promotion always fail. Candidate v3 states `capture_completeness=unproven` and
+`redaction=unverified`; hosted attestation authenticates exact bytes and origin,
+not omitted streams or redaction completeness. GitHub environment,
 PATH-selected Git, and compiler output are not authentication. ADR 0028 requires
 external GitHub/Sigstore attestation verification of the exact candidate digest,
 reviewed source/workflow, repository, hosted runner and run/attempt before hosted
@@ -1138,6 +1141,15 @@ directories. Unix permissions and Windows DACLs apply at creation; new copied
 artifacts use exclusive creation and cleanup checks directory identity. Checked
 L2 executable snapshots use the same boundary. Same-account or privileged OS
 compromise and malicious replacement of the temporary parent remain outside it.
+
+### Test evidence capture
+
+Caller-selected output slices cannot prove that every process, diagnostic,
+control-frame, or retained-artifact stream was captured. ADR 0030 removes that
+public inventory from L2 candidate construction and forbids a complete
+redaction claim. Existing runners scan their known case surfaces and actual
+secret catalog, but complete capture remains unproved until one runner owns and
+closes every required stream before serialization.
 
 ### Supply chain and updates
 

@@ -44,7 +44,7 @@ use execution::{ExecutableSnapshot, ExecutionIdentity};
 mod evidence;
 pub mod welcome;
 pub mod welcome_io;
-pub use evidence::{L2EvidenceBundle, L2EvidenceChannels, L2EvidenceManifest};
+pub use evidence::{L2EvidenceBundle, L2EvidenceManifest};
 
 const ROOT_MARKER_NAME: &str = ".sessionctl-l2-root";
 const ROOT_MARKER: &[u8] = b"sessionctl-l2-v1\n";

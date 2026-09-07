@@ -4,7 +4,7 @@ export const REPOSITORY = 'dills122/session-chat';
 export const WORKFLOW = `${REPOSITORY}/.github/workflows/ci.yml`;
 export const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 const HEX = /^[0-9a-f]{64}$/;
-const FIELDS = `version protocol provenance publication record scenario result coverage sweep storage_scenario case_index case_count schedule_seed case_id target_kind checkpoint file_role operation fault_mode target_ordinal last_fully_explored_ordinal expected_state observed_state sqlite_primary_code sqlite_extended_code transaction_result commit dirty toolchain rustc_release rustc_commit rustc_host lock_sha256 platform runner_image github_run_id github_run_attempt github_workflow_sha github_workflow_ref github_repository github_event_name runner_os runner_arch runner_environment sqlcipher_version sqlite_version test_binary_sha256 verifier_binary_sha256 producer_binary_sha256 fault_driver_binary_sha256 baseline_artifact_sha256 post_recovery_artifact_sha256 matrix_sha256 internal_observation_sha256 frame_bytes frame_wait_ms child_wait_ms maximum_application_checkpoints maximum_artifact_bytes integrity schema semantic_oracle exact_retry redaction child_cleanup handle_cleanup lease_cleanup directory_cleanup cleanup`.split(' ');
+const FIELDS = `version protocol provenance publication record scenario result coverage sweep storage_scenario case_index case_count schedule_seed case_id target_kind checkpoint file_role operation fault_mode target_ordinal last_fully_explored_ordinal expected_state observed_state sqlite_primary_code sqlite_extended_code transaction_result commit dirty toolchain rustc_release rustc_commit rustc_host lock_sha256 platform runner_image github_run_id github_run_attempt github_workflow_sha github_workflow_ref github_repository github_event_name runner_os runner_arch runner_environment sqlcipher_version sqlite_version test_binary_sha256 verifier_binary_sha256 producer_binary_sha256 fault_driver_binary_sha256 baseline_artifact_sha256 post_recovery_artifact_sha256 matrix_sha256 internal_observation_sha256 frame_bytes frame_wait_ms child_wait_ms maximum_application_checkpoints maximum_artifact_bytes integrity schema semantic_oracle exact_retry secret_scan capture_completeness redaction child_cleanup handle_cleanup lease_cleanup directory_cleanup cleanup`.split(' ');
 
 // Structural validation is NOT authentication. Only verify-l2-evidence may
 // classify these bytes after the external signature verifier succeeds.
@@ -21,9 +21,11 @@ export function parseCandidate(bytes) {
       if (at < 1 || !FIELDS.includes(key) || Object.hasOwn(fields, key) || !/^[\x20-\x7e]+$/.test(value)) throw new Error('candidate field');
       fields[key] = value;
     }
-    if (Object.keys(fields).length !== FIELDS.length || fields.version !== '2' || fields.protocol !== 'l2-evidence-candidate-v2'
+    if (Object.keys(fields).length !== FIELDS.length || fields.version !== '3' || fields.protocol !== 'l2-evidence-candidate-v3'
       || fields.provenance !== 'self-reported' || fields.publication !== 'requires-external-attestation'
       || fields.result !== 'pass' || fields.coverage !== 'complete' || fields.dirty !== 'false'
+      || fields.secret_scan !== 'pass' || fields.capture_completeness !== 'unproven'
+      || fields.redaction !== 'unverified'
       || fields.github_repository !== REPOSITORY || !/^[0-9a-f]{40}$/.test(fields.commit)
       || !/^[0-9]+$/.test(fields.github_run_id) || !/^[0-9]+$/.test(fields.github_run_attempt)
       || !fields.github_workflow_ref.startsWith(`${WORKFLOW}@refs/`)) throw new Error('candidate contract');

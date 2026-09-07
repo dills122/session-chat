@@ -352,9 +352,10 @@ inviter/joiner application checkpoint before fresh reopen. That narrow local
 storage evidence is supplemented by ADR 0025 Welcome-delivery recovery.
 Neither establishes power-loss safety,
 rollback resistance, platform key custody, or production transport behavior.
-Its raw observations remain non-public; the retained L2-8 gate lets only sealed
-complete aggregates emit self-reported candidate v2 bundles with execution-time
-binary/artifact binding and secret/canary scans. ADR 0028 requires external
+Its raw observations remain non-public; the retained L2-8 gate lets complete
+recovery matrices emit self-reported candidate v3 bundles with execution-time
+binary/artifact binding and bounded case-surface secret/canary scans. ADR 0030
+marks capture completeness unproved and redaction unverified. ADR 0028 requires external
 attestation verification before hosted provenance is accepted,
 and portable passage remains conditional on the exact revision's required
 three-OS CI result.

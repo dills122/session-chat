@@ -48,7 +48,7 @@ mod checked {
             fixture_root.join("src/main.rs"),
             concat!(
                 "use sessionctl::l2_process::{L2EvidenceMetadata, L2EvidenceSweep, ",
-                "promote_l2_evidence};\n",
+                "L2EvidenceChannels, promote_l2_evidence};\n",
                 "fn main() {}\n",
             ),
         )
