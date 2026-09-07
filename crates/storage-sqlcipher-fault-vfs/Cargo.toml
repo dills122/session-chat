@@ -10,7 +10,7 @@ description = "Publish-disabled named SQLite VFS fault adapter for Session Chat 
 libsqlite3-sys = { version = "=0.38.2", default-features = false, features = ["bundled-sqlcipher-vendored-openssl", "min_sqlite_version_3_34_1"] }
 
 [dev-dependencies]
-rusqlite = { version = "=0.40.1", default-features = false, features = ["bundled-sqlcipher-vendored-openssl"] }
+rusqlite = { version = "=0.40.2", default-features = false, features = ["bundled-sqlcipher-vendored-openssl"] }
 tempfile = "=3.27.0"
 
 [lints.rust]
