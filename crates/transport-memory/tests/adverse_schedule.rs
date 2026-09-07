@@ -264,6 +264,18 @@ fn acknowledgement_loss_distinguishes_known_precommit_and_ambiguous_postcommit_r
             transport.conformance_snapshot().live_envelopes(),
             expected_live_after_failure
         );
+        let after_failure = ready(EnvelopeDelivery::poll(
+            &mut transport,
+            &receive,
+            poll_request(start),
+            &control,
+        ))
+        .expect("mailbox remains pollable after a lost acknowledgement result");
+        assert_eq!(
+            after_failure.len(),
+            usize::from(loss == AcknowledgementLoss::BeforeCommit),
+            "only a pre-commit acknowledgement failure retains visibility"
+        );
 
         let retry_ids =
             BoundedDeliveryIds::new(vec![*receipt.delivery_id()]).expect("same exact set");

@@ -41,6 +41,11 @@ fn right_specific_contract_delivers_only_the_opaque_envelope() {
         .expect("default action makes delivery visible");
     assert_eq!(received.delivery_id(), &delivery_id);
     assert_eq!(received.envelope(), &expected);
+    let repeated = EnvelopeTransport::receive(&mut transport, &receive, NOW)
+        .expect("repeat receive with read-only authority")
+        .expect("unacknowledged delivery remains visible");
+    assert_eq!(repeated.delivery_id(), &delivery_id);
+    assert_eq!(repeated.envelope(), &expected);
 
     EnvelopeTransport::acknowledge(&mut transport, &acknowledgement, delivery_id, NOW)
         .expect("acknowledge with separate authority");

@@ -15,10 +15,13 @@ The adapter supports bounded `Deliver`, `Drop`, `Hold`, and `Duplicate` actions.
 Held deliveries can be released by insertion index to model reordering. Exact
 deposit retries retain one logical `DeliveryId`, changed bytes under the same
 envelope ID are rejected, and per-mailbox accepted-envelope and per-envelope
-attempt limits bound retained commitments and fault work. Fixed hard ceilings
+attempt limits bound retained commitments and fault work. Live deliveries remain
+visible across direct receive and cursorless poll calls until exact
+acknowledgement; expiry is the only receive-side removal transition. Fixed hard ceilings
 also bound mailbox lifetime, live mailbox count, envelopes, attempts, scheduled
 copies, and live canonical bytes independently of caller configuration. Polling
-coalesces scheduled copies of the same logical delivery so a validated batch
+replays the same bounded page while it remains unacknowledged and coalesces
+scheduled copies of the same logical delivery so a validated batch
 contains distinct delivery IDs; stale exact-byte copies are consumed without
 creating an unacknowledgeable batch. Acknowledgement
 deletes the retained envelope and every scheduled copy while preserving the

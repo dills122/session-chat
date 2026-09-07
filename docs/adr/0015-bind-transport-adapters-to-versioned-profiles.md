@@ -187,7 +187,11 @@ prevent cross-right derivation, validate exact scope, and document cloning or
 serialization policy per right. Controlled deposit transfer is allowed;
 receive and acknowledgement authority should be non-cloneable by default. The
 deterministic memory adapter does so with three separate private provider types
-and now implements this boundary while preserving its narrow compatibility tests. It
+and now implements this boundary while preserving its narrow compatibility tests.
+Direct receive and cursorless poll retain live deliveries until exact
+acknowledgement; expiry remains the only receive-side removal transition. The
+shared connected oracle repeats the poll before acknowledgement and checks
+absence both before and after an acknowledgement retry. It
 rejects all supplied cursors and deliberately does not implement the new
 reusable lifecycle contract. The closed lifecycle fixture vocabulary now fixes
 the positive, restart, resynchronization, binding-mismatch, rotation, and stale

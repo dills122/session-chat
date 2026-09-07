@@ -775,6 +775,7 @@ mutation remains explicitly ambiguous. The deterministic memory adapter now
 adopts this boundary with fixed
 configuration and live-byte ceilings, exact-byte delivery, normalized
 idempotency conflict, exact-set idempotent acknowledgement, cursor rejection,
+unacknowledged direct-receive and cursorless-poll retention,
 final-observation expiry revalidation, and seeded diagnostic redaction evidence
 while retaining the narrow fault tests. Provider-neutral outer right wrappers
 prevent direct positional substitution even if an implementation aliases its
@@ -832,7 +833,10 @@ replays one trace against two fresh memory adapters, and rejects non-quiescent
 adapter-reported state. It accepts only LocalV1 and rejects unbound profile
 labels. A stale replay is an explicitly injected provider response and
 never restores acknowledged provider-owned state. A composed verdict and
-paired defective bridges exercise the retained adverse slice, and the bounded Phase 1 common verdict matrix is retained. This does not
+paired defective bridges exercise the retained adverse slice. The connected
+oracle rejects destructive polling, requires byte-identical pre-acknowledgement
+replay, checks immediate post-acknowledgement absence, retries acknowledgement,
+and checks absence again. The bounded Phase 1 common verdict matrix is retained. This does not
 certify a production network adapter.
 
 Within the retained runner, exact retries reuse one mailbox/envelope-bound

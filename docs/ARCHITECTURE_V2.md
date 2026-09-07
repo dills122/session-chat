@@ -234,7 +234,7 @@ architecture:
 - `transport-iroh` is a bounded authenticated ordered-frame link and connected
   `EnvelopeDelivery` provider for explicit FastV1 online experiments. Its
   volatile mailbox service and headless host/join harness reuse the common
-  seven-operation contract over direct-only loopback; public N0 constructors
+  nine-operation contract over direct-only loopback; public N0 constructors
   and reachability checks are separately invoked operator tests. It is not an
   offline mailbox, durable provider, product network profile, or production
   client transport.

@@ -299,6 +299,11 @@ implements both contracts for headless tests. Its bounded action queue can
 deliver, drop, hold, release out of order, or duplicate one accepted attempt.
 Exact retries retain one logical delivery identifier, while changed bytes under
 the same envelope identifier report a normalized conflict without overwrite.
+Live memory deliveries repeat byte-identically across direct receive and
+cursorless poll calls until exact acknowledgement; expiry is the only
+receive-side removal transition. The shared connected-delivery oracle polls
+before acknowledgement twice and checks absence both before and after an
+idempotent acknowledgement retry.
 Its additive adverse controls model persistent outage, one normalized corrupt
 poll, digest-checked exact-byte stale replay, and acknowledgement-result loss
 before or after deletion, all behind bounded test-only queues and secret-free

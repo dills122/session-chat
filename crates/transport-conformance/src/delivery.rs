@@ -8,7 +8,7 @@ use session_transport::{
 };
 
 /// Exact adapter operations exercised by the connected delivery conformance case.
-pub const CONNECTED_DELIVERY_CONFORMANCE_REQUESTS_V1: usize = 7;
+pub const CONNECTED_DELIVERY_CONFORMANCE_REQUESTS_V1: usize = 9;
 
 /// Secret-free step at which the connected delivery conformance case failed.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -18,7 +18,9 @@ pub enum DeliveryConformanceStepV1 {
     DepositRetry,
     IdempotencyConflict,
     FirstPoll,
+    UnacknowledgedRetentionPoll,
     FirstAcknowledgement,
+    PostAcknowledgementPoll,
     AcknowledgementRetry,
     FinalPoll,
 }
@@ -52,9 +54,10 @@ fn failed(step: DeliveryConformanceStepV1) -> DeliveryConformanceErrorV1 {
 /// Runs the common connected-delivery contract against one already-issued mailbox.
 ///
 /// The case proves byte-identical envelope carriage, stable exact retry receipts,
-/// conflicting same-ID rejection, polling, exact-set acknowledgement, idempotent
-/// acknowledgement retry, and post-acknowledgement absence. The caller owns the
-/// provider lifecycle and supplies a fresh finite budget for every operation.
+/// conflicting same-ID rejection, unacknowledged retention, exact-set
+/// acknowledgement, post-acknowledgement absence, and idempotent acknowledgement
+/// retry. The caller owns the provider lifecycle and supplies a fresh finite budget
+/// for every operation.
 pub async fn run_connected_delivery_conformance_v1<D, B>(
     delivery: &mut D,
     deposit: &DepositRight<D::DepositEndpoint>,
@@ -89,22 +92,6 @@ where
         .map_err(|_| failed(DeliveryConformanceStepV1::FirstDeposit))?;
     let delivery_id = *first.delivery_id();
 
-    let retry = delivery
-        .deposit(
-            deposit,
-            deposit_request(
-                &canonical_bytes,
-                budget(),
-                DeliveryConformanceStepV1::DepositRetry,
-            )?,
-            control,
-        )
-        .await
-        .map_err(|_| failed(DeliveryConformanceStepV1::DepositRetry))?;
-    if retry.delivery_id() != &delivery_id {
-        return Err(failed(DeliveryConformanceStepV1::DepositRetry));
-    }
-
     let conflicting = CanonicalEnvelope::from_opaque(
         OpaqueEnvelope::new([0x31; 16], expires_at, vec![0x42; 32])
             .map_err(|_| failed(DeliveryConformanceStepV1::Fixture))?,
@@ -135,6 +122,35 @@ where
         return Err(failed(DeliveryConformanceStepV1::FirstPoll));
     }
 
+    let retained_batch = delivery
+        .poll(receive, poll_request(budget())?, control)
+        .await
+        .map_err(|_| failed(DeliveryConformanceStepV1::UnacknowledgedRetentionPoll))?;
+    if retained_batch.len() != 1
+        || retained_batch.items()[0].delivery_id() != &delivery_id
+        || retained_batch.items()[0].envelope().as_bytes() != canonical_bytes
+    {
+        return Err(failed(
+            DeliveryConformanceStepV1::UnacknowledgedRetentionPoll,
+        ));
+    }
+
+    let retry = delivery
+        .deposit(
+            deposit,
+            deposit_request(
+                &canonical_bytes,
+                budget(),
+                DeliveryConformanceStepV1::DepositRetry,
+            )?,
+            control,
+        )
+        .await
+        .map_err(|_| failed(DeliveryConformanceStepV1::DepositRetry))?;
+    if retry.delivery_id() != &delivery_id {
+        return Err(failed(DeliveryConformanceStepV1::DepositRetry));
+    }
+
     acknowledge(
         delivery,
         acknowledgement,
@@ -144,6 +160,15 @@ where
         DeliveryConformanceStepV1::FirstAcknowledgement,
     )
     .await?;
+
+    let post_acknowledgement_batch = delivery
+        .poll(receive, poll_request(budget())?, control)
+        .await
+        .map_err(|_| failed(DeliveryConformanceStepV1::PostAcknowledgementPoll))?;
+    if !post_acknowledgement_batch.is_empty() {
+        return Err(failed(DeliveryConformanceStepV1::PostAcknowledgementPoll));
+    }
+
     acknowledge(
         delivery,
         acknowledgement,

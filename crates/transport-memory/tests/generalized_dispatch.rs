@@ -310,6 +310,21 @@ fn memory_adapter_carries_exact_canonical_bytes_through_the_generalized_boundary
     assert_eq!(batch.len(), 1);
     assert_eq!(batch.items()[0].delivery_id(), receipt.delivery_id());
     assert_eq!(batch.items()[0].envelope().as_bytes(), expected);
+    let snapshot_before_repeat = transport.conformance_snapshot();
+    let repeated_batch = ready(EnvelopeDelivery::poll(
+        &mut transport,
+        &receive,
+        poll_request(start + Duration::from_secs(5), None),
+        &control,
+    ))
+    .expect("unacknowledged cursorless poll repeats");
+    assert_eq!(repeated_batch.len(), 1);
+    assert_eq!(
+        repeated_batch.items()[0].delivery_id(),
+        receipt.delivery_id()
+    );
+    assert_eq!(repeated_batch.items()[0].envelope().as_bytes(), expected);
+    assert_eq!(transport.conformance_snapshot(), snapshot_before_repeat);
 
     let unknown = DeliveryId::from_provider_bytes([0x22; 16]).expect("delivery ID");
     let ids = BoundedDeliveryIds::new(vec![*receipt.delivery_id(), unknown])
@@ -679,6 +694,61 @@ fn poll_revalidates_expiry_with_the_final_wall_clock_observation() {
     .expect("poll rejects staged expiry without surfacing stale data");
 
     assert!(batch.is_empty());
+}
+
+#[test]
+fn poll_releases_stale_replay_capacity_when_final_observation_reaches_expiry() {
+    let start = Instant::now();
+    let stable = TestControl {
+        monotonic_now: start,
+        wall_now_unix_seconds: Some(NOW),
+        cancelled: false,
+    };
+    let advancing = AdvancingWallControl {
+        monotonic_now: start,
+        first_wall_unix_seconds: NOW,
+        later_wall_unix_seconds: NOW + 120,
+        observations: AtomicUsize::new(0),
+    };
+    let mut transport = transport();
+    let (deposit, receive, acknowledgement) = transport
+        .create_mailbox(NOW + 180, NOW)
+        .expect("mailbox")
+        .into_dispatch_parts();
+    let original = envelope(0x76, 0x77);
+    let receipt = ready(EnvelopeDelivery::deposit(
+        &mut transport,
+        &deposit,
+        deposit_request(original.clone(), start + Duration::from_secs(5)),
+        &stable,
+    ))
+    .expect("deposit before expiry");
+    let ids = BoundedDeliveryIds::new(vec![*receipt.delivery_id()]).expect("exact set");
+    ready(EnvelopeDelivery::acknowledge(
+        &mut transport,
+        &acknowledgement,
+        AcknowledgementRequest::new(
+            ids,
+            OperationBudget::new(start + Duration::from_secs(5), 4_096, 1).expect("bounded budget"),
+        ),
+        &stable,
+    ))
+    .expect("acknowledge original");
+    transport
+        .replay_stale(&receive, *receipt.delivery_id(), original)
+        .expect("inject exact stale replay");
+    assert_eq!(transport.conformance_snapshot().queued_stale_replays(), 1);
+
+    let batch = ready(EnvelopeDelivery::poll(
+        &mut transport,
+        &receive,
+        poll_request(start + Duration::from_secs(5), None),
+        &advancing,
+    ))
+    .expect("poll rejects replay expiring during observation");
+
+    assert!(batch.is_empty());
+    assert_eq!(transport.conformance_snapshot().queued_stale_replays(), 0);
 }
 
 #[test]
