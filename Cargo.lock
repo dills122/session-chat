@@ -3364,6 +3364,7 @@ dependencies = [
  "session-transport",
  "storage-sqlcipher",
  "storage-sqlcipher-fault-vfs",
+ "test-private-dir",
  "thiserror 2.0.20",
  "tokio",
  "transport-conformance",
@@ -3526,6 +3527,7 @@ dependencies = [
  "session-crypto-mls",
  "session-protocol",
  "session-transport",
+ "test-private-dir",
  "thiserror 2.0.20",
  "zeroize",
 ]
@@ -3651,6 +3653,15 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "test-private-dir"
+version = "0.1.0"
+dependencies = [
+ "getrandom 0.4.3",
+ "same-file",
  "windows-sys 0.61.2",
 ]
 

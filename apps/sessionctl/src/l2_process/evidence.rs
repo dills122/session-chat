@@ -1,5 +1,4 @@
 use std::{
-    fs,
     path::Path,
     process::{Command, Stdio},
 };
@@ -89,6 +88,7 @@ struct L2EvidenceMetadata {
     sqlcipher_version: String,
     sqlite_version: String,
     test_binary_digest: [u8; 32],
+    executables: super::ExecutionIdentity,
 }
 
 struct RustcProvenance {
@@ -163,6 +163,11 @@ impl L2EvidenceMetadata {
             sqlcipher_version: sqlcipher_version.to_owned(),
             sqlite_version: sqlite_version.to_owned(),
             test_binary_digest,
+            executables: super::ExecutionIdentity {
+                verifier: test_binary_digest,
+                producer: test_binary_digest,
+                fault_driver: None,
+            },
         })
     }
 
@@ -182,21 +187,22 @@ impl L2EvidenceMetadata {
             return Err(stage("L2 evidence case index"));
         }
         let repository = repository_root();
-        let executable_metadata =
-            fs::metadata(executable).map_err(|_| stage("L2 evidence test binary"))?;
-        if !executable.is_absolute()
-            || !executable_metadata.is_file()
-            || executable_metadata.len() == 0
-            || executable_metadata.len() > 256 * 1024 * 1024
-        {
-            return Err(stage("L2 evidence test binary"));
-        }
-        let executable_bytes =
-            fs::read(executable).map_err(|_| stage("L2 evidence test binary"))?;
-        let test_binary_digest = digest(&SHA256, &executable_bytes)
+        let identity = first
+            .binding
+            .executables
             .as_ref()
-            .try_into()
-            .map_err(|_| stage("L2 evidence test binary"))?;
+            .ok_or_else(|| stage("L2 executable identity"))?;
+        let supplied = super::execution::binary_digest(executable)?;
+        // Welcome engine callers historically supplied the fault-driving harness;
+        // every other caller supplies the verifier. Both roles remain separate.
+        let test_binary_digest = identity.fault_driver.unwrap_or(identity.verifier);
+        if supplied != test_binary_digest
+            || cases
+                .iter()
+                .any(|case| case.binding.executables.as_ref() != Some(identity))
+        {
+            return Err(stage("L2 executable provenance mismatch"));
+        }
         let platform = match std::env::consts::OS {
             "linux" => "linux",
             "macos" => "macos",
@@ -212,7 +218,7 @@ impl L2EvidenceMetadata {
         let ci = validate_ci_context(&commit, platform, architecture, runner_image, |name| {
             std::env::var(name).ok()
         })?;
-        Self::new(
+        let mut metadata = Self::new(
             &commit,
             git_dirty_at(&repository).ok_or_else(|| stage("L2 evidence dirty state"))?,
             &toolchain,
@@ -222,7 +228,9 @@ impl L2EvidenceMetadata {
             &first.binding.sqlcipher_version,
             &first.binding.sqlite_version,
             test_binary_digest,
-        )
+        )?;
+        metadata.executables = identity.clone();
+        Ok(metadata)
     }
 }
 
@@ -385,18 +393,18 @@ impl<'a> L2EvidenceChannels<'a> {
     }
 }
 
-/// A bounded public manifest that passed provenance, completeness, and redaction gates.
+/// A bounded redacted candidate. Its metadata is self-reported, never hosted authority.
 pub struct L2EvidenceManifest(String);
 
 impl L2EvidenceManifest {
-    /// Encodes the already validated public manifest.
+    /// Encodes a v2 candidate; this does not authenticate metadata or authorize publication.
     #[must_use]
-    pub fn encode_v1(&self) -> String {
+    pub fn encode_v2(&self) -> String {
         self.0.clone()
     }
 }
 
-/// Complete bounded set of public case manifests from one validated L2 sweep.
+/// Complete bounded set of unsigned candidates requiring external attestation verification.
 pub struct L2EvidenceBundle(Vec<L2EvidenceManifest>);
 
 impl L2EvidenceBundle {
@@ -462,8 +470,10 @@ fn promote_l2_evidence(
     for (case_index, (case, fields)) in cases.iter().zip(case_fields).enumerate() {
         let manifest = format!(
             concat!(
-                "version=1\n",
-                "protocol=l2-evidence-v1\n",
+                "version=2\n",
+                "protocol=l2-evidence-candidate-v2\n",
+                "provenance=self-reported\n",
+                "publication=requires-external-attestation\n",
                 "record=case\n",
                 "scenario={}\n",
                 "result=pass\n",
@@ -495,6 +505,9 @@ fn promote_l2_evidence(
                 "sqlcipher_version={}\n",
                 "sqlite_version={}\n",
                 "test_binary_sha256={}\n",
+                "verifier_binary_sha256={}\n",
+                "producer_binary_sha256={}\n",
+                "fault_driver_binary_sha256={}\n",
                 "baseline_artifact_sha256={}\n",
                 "post_recovery_artifact_sha256={}\n",
                 "matrix_sha256={}\n",
@@ -543,6 +556,12 @@ fn promote_l2_evidence(
             metadata.sqlcipher_version,
             metadata.sqlite_version,
             hex(&metadata.test_binary_digest),
+            hex(&metadata.executables.verifier),
+            hex(&metadata.executables.producer),
+            metadata
+                .executables
+                .fault_driver
+                .map_or_else(|| String::from("none"), |value| hex(&value)),
             hex(&case.binding.baseline_artifact_digest),
             hex(&case.binding.post_recovery_artifact_digest),
             matrix_digest,
@@ -700,8 +719,18 @@ fn case_fields(case: &L2EvidenceCase) -> String {
 }
 
 impl super::welcome_io::WelcomeEngineSweepReport {
-    /// Promotes only a complete baseline-derived Welcome engine sweep.
+    /// Unsigned v1 promotion is retired. Environment variables cannot authenticate a hosted run.
     pub fn promote_v1(
+        &self,
+        _executable: &Path,
+        _runner_image: &str,
+        _channels: &L2EvidenceChannels<'_>,
+    ) -> Result<L2EvidenceBundle, SessionCtlError> {
+        Err(stage("L2 external attestation required"))
+    }
+
+    /// Promotes only a complete baseline-derived Welcome engine sweep.
+    pub fn candidate_v2(
         &self,
         executable: &Path,
         runner_image: &str,
@@ -721,8 +750,18 @@ impl super::welcome_io::WelcomeEngineSweepReport {
 }
 
 impl super::welcome::WelcomeSweepReport {
-    /// Promotes the complete Welcome sweep using the same closed L2 provenance and redaction gate.
+    /// Unsigned v1 promotion is retired. Environment variables cannot authenticate a hosted run.
     pub fn promote_v1(
+        &self,
+        _executable: &Path,
+        _runner_image: &str,
+        _channels: &L2EvidenceChannels<'_>,
+    ) -> Result<L2EvidenceBundle, SessionCtlError> {
+        Err(stage("L2 external attestation required"))
+    }
+
+    /// Promotes the complete Welcome sweep using the same closed L2 provenance and redaction gate.
+    pub fn candidate_v2(
         &self,
         executable: &Path,
         runner_image: &str,
@@ -742,8 +781,18 @@ impl super::welcome::WelcomeSweepReport {
 }
 
 impl L2ProcessSweepReport {
-    /// Promotes one complete application-checkpoint sweep using exact runtime provenance.
+    /// Unsigned v1 promotion is retired. Environment variables cannot authenticate a hosted run.
     pub fn promote_v1(
+        &self,
+        _executable: &Path,
+        _runner_image: &str,
+        _channels: &L2EvidenceChannels<'_>,
+    ) -> Result<L2EvidenceBundle, SessionCtlError> {
+        Err(stage("L2 external attestation required"))
+    }
+
+    /// Promotes one complete application-checkpoint sweep with sealed execution digests and self-reported diagnostics.
+    pub fn candidate_v2(
         &self,
         executable: &Path,
         runner_image: &str,
@@ -762,8 +811,18 @@ impl L2ProcessSweepReport {
 }
 
 impl L2IoSweepReport {
-    /// Promotes one complete SQLite return-code sweep using exact runtime provenance.
+    /// Unsigned v1 promotion is retired. Environment variables cannot authenticate a hosted run.
     pub fn promote_v1(
+        &self,
+        _executable: &Path,
+        _runner_image: &str,
+        _channels: &L2EvidenceChannels<'_>,
+    ) -> Result<L2EvidenceBundle, SessionCtlError> {
+        Err(stage("L2 external attestation required"))
+    }
+
+    /// Promotes one complete SQLite return-code sweep with sealed execution digests and self-reported diagnostics.
+    pub fn candidate_v2(
         &self,
         executable: &Path,
         runner_image: &str,
@@ -782,8 +841,18 @@ impl L2IoSweepReport {
 }
 
 impl L2IoPauseSweepReport {
-    /// Promotes one complete commit-window process-kill sweep using exact provenance.
+    /// Unsigned v1 promotion is retired. Environment variables cannot authenticate a hosted run.
     pub fn promote_v1(
+        &self,
+        _executable: &Path,
+        _runner_image: &str,
+        _channels: &L2EvidenceChannels<'_>,
+    ) -> Result<L2EvidenceBundle, SessionCtlError> {
+        Err(stage("L2 external attestation required"))
+    }
+
+    /// Promotes one complete commit-window process-kill sweep with sealed execution digests and self-reported diagnostics.
+    pub fn candidate_v2(
         &self,
         executable: &Path,
         runner_image: &str,
@@ -1163,6 +1232,7 @@ mod tests {
                 observed: "I0",
             },
             binding: super::super::L2EvidenceBinding {
+                executables: Some(super::super::ExecutionIdentity::fixture()),
                 sqlcipher_version: String::from("4.14.0 community"),
                 sqlite_version: String::from("3.50.4"),
                 baseline_artifact_digest: [0x22; 32],
@@ -1175,6 +1245,56 @@ mod tests {
     fn clean_channels() -> L2EvidenceChannels<'static> {
         L2EvidenceChannels::new(b"", b"", b"", b"checkpoint-only", b"encrypted-artifacts")
             .expect("bounded channels")
+    }
+
+    #[test]
+    fn arbitrary_later_binary_cannot_replace_the_sealed_verifier_or_fault_driver() {
+        let root = test_private_dir::PrivateDir::new().unwrap();
+        let a = root.path().join("a");
+        let b = root.path().join("b");
+        std::fs::write(&a, b"producing binary A").unwrap();
+        std::fs::write(&b, b"unrelated reviewed binary B").unwrap();
+        let producing_digest = super::super::execution::binary_digest(&a).unwrap();
+        for separate_driver in [false, true] {
+            let mut case = test_case();
+            case.binding.executables = Some(super::super::ExecutionIdentity {
+                verifier: producing_digest,
+                producer: [8; 32],
+                fault_driver: separate_driver.then_some(producing_digest),
+            });
+            let error = L2EvidenceMetadata::collect(&b, "macos-15", &[case.clone()]);
+            assert!(
+                matches!(error, Err(error) if error.to_string().contains("provenance mismatch"))
+            );
+            std::fs::write(&a, b"replacement at the same path").unwrap();
+            let error = L2EvidenceMetadata::collect(&a, "macos-15", &[case]);
+            assert!(
+                matches!(error, Err(error) if error.to_string().contains("provenance mismatch"))
+            );
+        }
+    }
+
+    #[test]
+    fn complete_spoofed_ci_metadata_never_grants_v1_publication() {
+        // The entire CI tuple above is locally manufactured and syntactically
+        // valid. Even a complete report cannot promote it through the retired API.
+        let metadata = metadata();
+        assert_eq!(metadata.runner_environment, "github-hosted");
+        let report = L2ProcessSweepReport {
+            scenario: Scenario::InviterTransaction,
+            cases: Vec::new(),
+            old_states: 1,
+            new_states: 1,
+            evidence_cases: vec![test_case()],
+        };
+        let error = report.promote_v1(
+            Path::new("/fake/git-or-rustc"),
+            "macos-15",
+            &clean_channels(),
+        );
+        assert!(
+            matches!(error, Err(error) if error.to_string().contains("external attestation required"))
+        );
     }
 
     #[test]
@@ -1193,10 +1313,12 @@ mod tests {
             .manifests()
             .next()
             .expect("one case manifest")
-            .encode_v1();
+            .encode_v2();
 
         for required in [
-            "protocol=l2-evidence-v1\n",
+            "protocol=l2-evidence-candidate-v2\n",
+            "provenance=self-reported\n",
+            "publication=requires-external-attestation\n",
             "result=pass\n",
             "coverage=complete\n",
             "record=case\n",

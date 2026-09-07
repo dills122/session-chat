@@ -14,11 +14,7 @@ fn ordinary_build_cannot_activate_public_l2_evidence() {
 
 #[cfg(session_chat_storage_fault_testing)]
 mod checked {
-    use std::{
-        fs,
-        process::Command,
-        time::{SystemTime, UNIX_EPOCH},
-    };
+    use std::{fs, process::Command};
 
     #[test]
     fn low_level_evidence_forgery_api_is_not_public() {
@@ -37,14 +33,8 @@ mod checked {
                 }
             })
             .unwrap_or_else(|| workspace_root.join("target"));
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system clock after epoch")
-            .as_nanos();
-        let fixture_root = std::env::temp_dir().join(format!(
-            "session-chat-l2-evidence-api-compile-fail-{}-{nonce}",
-            std::process::id()
-        ));
+        let fixture_owner = test_private_dir::PrivateDir::new().expect("private compile fixture");
+        let fixture_root = fixture_owner.path().to_owned();
         fs::create_dir_all(fixture_root.join("src")).expect("fixture directory");
         fs::write(
             fixture_root.join("Cargo.toml"),
@@ -73,7 +63,6 @@ mod checked {
             .expect("compile-fail cargo check");
         let stderr = String::from_utf8_lossy(&output.stderr);
         let isolated_target_created = fixture_root.join("target").exists();
-        let cleanup = fs::remove_dir_all(&fixture_root);
 
         assert!(
             !output.status.success(),
@@ -87,6 +76,6 @@ mod checked {
             !isolated_target_created,
             "compile-fail fixture must reuse the bounded workspace target directory",
         );
-        cleanup.expect("fixture cleanup");
+        drop(fixture_owner);
     }
 }

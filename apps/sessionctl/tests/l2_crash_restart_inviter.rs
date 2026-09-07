@@ -126,12 +126,12 @@ mod checked {
             )
             .expect("bounded inviter evidence surfaces");
             let bundle = sweep
-                .promote_v1(&executable, &runner_image, &channels)
+                .candidate_v2(&executable, &runner_image, &channels)
                 .expect("promote complete inviter evidence");
             for manifest in bundle.manifests() {
                 println!(
-                    "L2_PUBLIC_EVIDENCE_BEGIN\n{}L2_PUBLIC_EVIDENCE_END",
-                    manifest.encode_v1(),
+                    "L2_CANDIDATE_BEGIN\n{}L2_CANDIDATE_END",
+                    manifest.encode_v2(),
                 );
             }
         }

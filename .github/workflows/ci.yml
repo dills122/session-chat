@@ -76,6 +76,10 @@ jobs:
         run: cargo doc --workspace --all-features --no-deps --locked --offline
 
   l2-evidence:
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     name: L2 evidence (${{ matrix.name }})
     strategy:
       fail-fast: false
@@ -106,6 +110,11 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Install repository-pinned Node.js for candidate collection
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
       - name: Restore Rust dependency build cache
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
@@ -128,16 +137,13 @@ jobs:
         run: cargo test -p sessionctl --test l2_crash_restart_joiner checked::changed_committed_joiner_retry_is_rejected_without_mutation --locked --offline -- --exact --test-threads=1
 
       - name: Verify complete Welcome process and engine recovery
-        run: cargo test -p sessionctl --test l2_outbox_crash_restart --locked --offline -- --nocapture --test-threads=1
+        run: node scripts/collect-l2-evidence.mjs l2_outbox_crash_restart
 
       - name: Reject public evidence forgery
         run: cargo test -p sessionctl --test l2_public_evidence --locked --offline
 
       - name: Verify evidence provenance and redaction
-        run: cargo test -p sessionctl --lib l2_process::evidence::tests --locked --offline
-
-      - name: Reject defective Welcome coverage and expiry oracles
-        run: cargo test -p sessionctl --lib l2_process::welcome::tests --locked --offline -- --test-threads=1
+        run: cargo test -p sessionctl --lib l2_process --locked --offline -- --test-threads=1
 
       - name: Reject defective persistent fault coverage in pull-request smoke
         if: github.event_name == 'pull_request'
@@ -157,15 +163,29 @@ jobs:
 
       - name: Verify complete inviter process recovery
         if: github.event_name != 'pull_request'
-        run: cargo test -p sessionctl --test l2_crash_restart_inviter --locked --offline -- --nocapture --test-threads=1
+        run: node scripts/collect-l2-evidence.mjs l2_crash_restart_inviter
 
       - name: Verify complete joiner process recovery
         if: github.event_name != 'pull_request'
-        run: cargo test -p sessionctl --test l2_crash_restart_joiner --locked --offline -- --nocapture --test-threads=1
+        run: node scripts/collect-l2-evidence.mjs l2_crash_restart_joiner
 
       - name: Verify complete SQLite fault and engine recovery
         if: github.event_name != 'pull_request'
-        run: cargo test -p sessionctl --test l2_io_faults --locked --offline -- --nocapture --test-threads=1
+        run: node scripts/collect-l2-evidence.mjs l2_io_faults
+
+      - name: Attest exact L2 candidate bundles from the trusted source workflow
+        if: github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@9d57eef8c06cd9d6b433effeeb7a6a77b3ff94ad
+        with:
+          subject-path: target/l2-candidates/*.json
+
+      - name: Retain candidate bytes for independent attestation verification
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: l2-candidates-${{ matrix.image }}
+          path: target/l2-candidates/*.json
+          if-no-files-found: error
+          retention-days: 14
 
   node:
     name: Retained Node tools
@@ -263,7 +283,7 @@ jobs:
 
       - name: Test and run repository policy checks
         run: |
-          node --test scripts/check-repository.test.mjs
+          node --test scripts/check-repository.test.mjs scripts/l2-candidate.test.mjs
           node scripts/check-repository.mjs
 
   dependency-policy:

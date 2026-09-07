@@ -670,11 +670,18 @@ verifier accepts only I0/I1 or J0/J1 with exact retry. Separate local checked
 sweeps now kill every baseline-observed inviter/joiner application checkpoint
 and enforce the same complete-state and retry invariants, including
 missing/duplicate coverage rejection. Raw case observations remain non-public.
-The retained L2-8 gate lets only sealed complete aggregates emit canonical
-per-case bundles after actual compiler/GitHub-run/runner-tuple, engine, binary,
-and artifact provenance plus synthetic-canary and actual-secret scans across
-every bounded evidence surface; portable passage remains per-revision three-OS CI
-evidence. Current evidence still does not cover product-client recovery,
+The retained L2-8 gate emits only explicitly self-reported candidate v2 bundles
+from sealed complete aggregates, with execution-time binary identities and
+secret/canary scans. Unsigned v1 promotion always fails. GitHub environment,
+PATH-selected Git, and compiler output are not authentication. ADR 0028 requires
+external GitHub/Sigstore attestation verification of the exact candidate digest,
+reviewed source/workflow, repository, hosted runner and run/attempt before hosted
+provenance is accepted. A compromised reviewed builder can still lie about test
+results or tool diagnostics; this is not a reproducible-build attestation.
+The consumer binds file checks and bounded reads to opened handles and executes
+private digest-approved CLI bytes, preventing path substitution between its
+verifier check and execution.
+Portable passage remains per-revision three-OS CI evidence. Current evidence still does not cover product-client recovery,
 cross-implementation fixtures,
 cross-device acknowledgement semantics, old-secret deletion, power loss,
 filesystem faults, rollback resistance, or fuzzing.
@@ -1039,6 +1046,16 @@ ciphertext, envelope/delivery identifiers and expiration. Nested diagnostic
 formatting inherits the redaction. This does not sanitize explicit byte
 accessors, serialization, third-party provider internals, or process dumps.
 
+### Test artifact ownership
+
+Predictable shared temporary database paths allow local co-tenants to redirect
+SQLite and tamper-copy writes through links. ADR 0028 places core and spike test
+databases and sidecars inside exclusively created randomized owner-only
+directories. Unix permissions and Windows DACLs apply at creation; new copied
+artifacts use exclusive creation and cleanup checks directory identity. Checked
+L2 executable snapshots use the same boundary. Same-account or privileged OS
+compromise and malicious replacement of the temporary parent remain outside it.
+
 ### Supply chain and updates
 
 Relevant attacks include dependency compromise, lockfile manipulation,
@@ -1057,6 +1074,11 @@ variables are disabled. Snapshot files are owner-readable and read-only (with
 execute permission where required); this is not protection from a malicious
 same-account process that can change permissions or replace snapshots. Trusted
 local tooling, Git object integrity, and the reviewed commit remain assumptions.
+
+Workflow-reference policy inspects decoded mapping keys in the supported YAML
+subset, including quoted and flow forms, and rejects unsupported representations.
+Docker references require a full SHA-256 digest; other remote actions and reusable
+workflows require full commit pins. A tag or expression never satisfies the gate.
 
 Required controls include pinned dependencies, minimal crypto dependencies,
 reviewed feature sets, CI isolation, artifact signing, protected release keys,

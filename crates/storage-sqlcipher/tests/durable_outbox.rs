@@ -1,6 +1,6 @@
 use std::{
     future::Future,
-    path::{Path, PathBuf},
+    path::Path,
     pin::pin,
     task::{Context, Poll, Waker},
     time::{Duration, Instant},
@@ -32,23 +32,7 @@ const V2_EXHAUSTED_TRANSACTION_ID: [u8; 16] = [53; 16];
 const V2_STORE_ID: [u8; 16] = [54; 16];
 const V3_IDENTITY_GROUP_ID: [u8; 32] = [0xa1; 32];
 
-struct TestDatabase(PathBuf);
-
-impl TestDatabase {
-    fn new(name: &str) -> Self {
-        Self(std::env::temp_dir().join(format!(
-            "session-chat-storage-sqlcipher-outbox-{name}-{}.sqlite3",
-            std::process::id(),
-        )))
-    }
-}
-
-impl Drop for TestDatabase {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.0);
-        let _ = std::fs::remove_file(self.0.with_extension("sqlite3-journal"));
-    }
-}
+use test_private_dir::TestDatabase;
 
 struct TestControl {
     monotonic_now: Instant,
@@ -905,7 +889,7 @@ fn create_schema_v2_fixture(path: &Path, welcome: &[u8], endpoint: &[u8]) {
 }
 
 fn create_schema_v3_fixture(path: &Path, include_group: bool) {
-    let source_database = TestDatabase(path.with_extension("semantic-v5-source.sqlite3"));
+    let source_database = TestDatabase::new("semantic-v5-source");
     let source_storage =
         SqlCipherStorage::create(&source_database.0, vault_key()).expect("semantic source created");
     let group_id = SessionGroupId::new(V3_IDENTITY_GROUP_ID).expect("v3 group id");

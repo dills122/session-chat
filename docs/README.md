@@ -242,6 +242,9 @@ checkpoint is distinct from that immutable tested code revision.
   records verified snapshot execution and managed skill-link migration.
 - [Security secret-boundary tranche evidence](evidence/security-secret-boundaries-2026-09-06.md)
   records local verification of five scan fixes and the remaining portable CI gate.
+- [Authenticated L2 evidence and private test artifacts](adr/0028-authenticate-l2-evidence-and-own-test-artifacts.md)
+  records candidate v2, external attestation verification, executable identity,
+  immutable workflow references, and private SQLCipher fixtures.
 - [Architecture decision records](adr/) record the foundational decisions that
   other documents rely on.
 
@@ -351,10 +354,10 @@ every observed journal/main commit-window pause, and every baseline-observed
 application checkpoint. Each direct writer is killed while blocked before a
 fresh reopen that accepts only exact I0/I1 or J0/J1 state and unchanged exact
 retry. Raw case records remain non-public. The retained L2-8 gate lets only
-sealed complete aggregates emit canonical per-case bundles after binding the
-actual compiler, GitHub run/workflow, closed runner tuple, engine, binary, and
-encrypted-artifact provenance and scanning every bounded evidence surface for
-synthetic canaries and actual case secrets. A portable passing claim is
+sealed complete aggregates emit self-reported candidate v2 bundles with
+execution-time binary/artifact identities and bounded secret/canary scans.
+ADR 0028 requires external GitHub attestation verification before those bytes
+can authenticate a hosted run. A portable passing claim is
 per-revision CI evidence; power-loss, filesystem-durability,
 rollback-resistance, and production evidence remain open.
 The `session-storage` crate now retains a deterministic in-memory conformance

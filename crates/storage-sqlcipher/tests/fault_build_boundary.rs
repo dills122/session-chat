@@ -1,22 +1,12 @@
 #![cfg(not(session_chat_storage_fault_testing))]
 
-use std::{
-    fs,
-    process::Command,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::{fs, process::Command};
 
 #[test]
 fn ordinary_build_does_not_export_fault_testing() {
     let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let nonce = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system clock after epoch")
-        .as_nanos();
-    let fixture_root = std::env::temp_dir().join(format!(
-        "session-chat-storage-fault-compile-fail-{}-{nonce}",
-        std::process::id()
-    ));
+    let fixture_owner = test_private_dir::PrivateDir::new().expect("private compile fixture");
+    let fixture_root = fixture_owner.path().to_owned();
     fs::create_dir_all(fixture_root.join("src")).expect("fixture directory");
     fs::write(
         fixture_root.join("Cargo.toml"),
@@ -54,11 +44,10 @@ fn ordinary_build_does_not_export_fault_testing() {
         .expect("compile-fail cargo check");
     let stderr = String::from_utf8_lossy(&output.stderr);
 
-    let cleanup = fs::remove_dir_all(&fixture_root);
     assert!(!output.status.success(), "fixture unexpectedly compiled");
     assert!(
         stderr.contains("fault_testing"),
         "fixture failed for an unrelated reason: {stderr}"
     );
-    cleanup.expect("fixture cleanup");
+    drop(fixture_owner);
 }

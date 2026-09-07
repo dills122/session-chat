@@ -84,23 +84,7 @@ fn case_id() -> CaseId {
     CaseId::new([0xA5; 16]).expect("nonzero case identifier")
 }
 
-struct TestDatabase(std::path::PathBuf);
-
-impl TestDatabase {
-    fn new(name: &str) -> Self {
-        Self(std::env::temp_dir().join(format!(
-            "session-chat-storage-fault-protocol-{name}-{}.sqlite3",
-            std::process::id()
-        )))
-    }
-}
-
-impl Drop for TestDatabase {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.0);
-        let _ = std::fs::remove_file(self.0.with_extension("sqlite3-journal"));
-    }
-}
+use test_private_dir::TestDatabase;
 
 fn inviter_transaction() -> InviterJoinTransaction {
     let welcome = OpaqueEnvelope::new([8; 16], NOW + 50, vec![8])

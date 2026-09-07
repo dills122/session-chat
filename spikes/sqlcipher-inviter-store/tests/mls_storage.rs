@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use mls_rs_core::group::{EpochRecord, GroupState, GroupStateStorage};
 use sqlcipher_inviter_store_spike::{
     CommitFault, InvitationState, JoinCommit, MlsTransactionalStorage, Reservation, SqlCipherStore,
@@ -9,23 +7,7 @@ use zeroize::Zeroizing;
 
 const NOW: u64 = 2_000;
 
-struct TestDatabase(PathBuf);
-
-impl TestDatabase {
-    fn new(name: &str) -> Self {
-        Self(std::env::temp_dir().join(format!(
-            "session-chat-sqlcipher-mls-{name}-{}.sqlite3",
-            std::process::id()
-        )))
-    }
-}
-
-impl Drop for TestDatabase {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.0);
-        let _ = std::fs::remove_file(self.0.with_extension("sqlite3-journal"));
-    }
-}
+use test_private_dir::TestDatabase;
 
 fn key() -> VaultKey {
     VaultKey::new([21; 32]).expect("nonzero test key")

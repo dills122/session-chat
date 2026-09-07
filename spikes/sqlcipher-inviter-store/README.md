@@ -92,3 +92,7 @@ Primary design references:
 - [SQLCipher design](https://www.zetetic.net/sqlcipher/design/)
 - [SQLCipher licensing](https://www.zetetic.net/sqlcipher/license/)
 - [SQLite atomic commit](https://www.sqlite.org/atomiccommit.html)
+
+Test databases and SQLite sidecars now use the shared private-directory fixture
+owner in `scripts/test-private-dir`; new tamper copies use exclusive creation.
+This test-only change does not harden arbitrary product caller-supplied paths.

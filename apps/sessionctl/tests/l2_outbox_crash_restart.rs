@@ -32,7 +32,7 @@ mod checked {
             )
             .expect("channels");
             let bundle = report
-                .promote_v1(
+                .candidate_v2(
                     std::path::Path::new(env!("CARGO_BIN_EXE_sessionctl-l2")),
                     &image,
                     &channels,
@@ -40,8 +40,8 @@ mod checked {
                 .expect("provenance-bound Welcome evidence");
             for manifest in bundle.manifests() {
                 println!(
-                    "L2_PUBLIC_EVIDENCE_BEGIN\n{}L2_PUBLIC_EVIDENCE_END",
-                    manifest.encode_v1()
+                    "L2_CANDIDATE_BEGIN\n{}L2_CANDIDATE_END",
+                    manifest.encode_v2()
                 );
             }
         }
@@ -226,17 +226,17 @@ mod checked {
             )
             .unwrap();
             let bundle = report
-                .promote_v1(&std::env::current_exe().unwrap(), &image, &channels)
+                .candidate_v2(&std::env::current_exe().unwrap(), &image, &channels)
                 .unwrap_or_else(|error| {
                     let binary_bytes = std::fs::metadata(std::env::current_exe().unwrap())
                         .expect("Welcome engine test binary metadata")
                         .len();
-                    panic!("Welcome engine promotion: {error}; test binary bytes={binary_bytes}");
+                    panic!("Welcome engine candidate: {error}; test binary bytes={binary_bytes}");
                 });
             for manifest in bundle.manifests() {
                 println!(
-                    "L2_PUBLIC_EVIDENCE_BEGIN\n{}L2_PUBLIC_EVIDENCE_END",
-                    manifest.encode_v1()
+                    "L2_CANDIDATE_BEGIN\n{}L2_CANDIDATE_END",
+                    manifest.encode_v2()
                 );
             }
         }

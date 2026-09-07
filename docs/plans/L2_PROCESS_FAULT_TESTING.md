@@ -378,8 +378,9 @@ The controller must:
 - use one supplied logical time and retained seed rather than wall-clock sleeps
   for lease and recovery decisions.
 
-The public evidence output is a canonical bundle containing one bounded
-`l2-evidence-v1` manifest per validated case. The bundle can be constructed
+The local evidence output is a canonical bundle containing one bounded
+`l2-evidence-candidate-v2` record per validated case. Unsigned v1 promotion is
+retired under ADR 0028; candidates require external attestation verification. The bundle can be constructed
 only from a sealed complete aggregate; the raw textual validator and metadata
 constructors are private. Every record contains only:
 
@@ -402,9 +403,10 @@ constructors are private. Every record contains only:
 All case records share the exact matrix digest and declare their canonical
 index and total count. A missing, duplicated, reordered, contradictory, or
 unknown internal claim fails before any public record is created. The evidence
-record is bound to GitHub's immutable default `GITHUB_*`/`RUNNER_*` variables
-and exact run identity; consumers still verify that run in GitHub rather than
-treating an unsigned copied log fragment as independent attestation.
+record treats all `GITHUB_*`/`RUNNER_*` variables and compiler/Git outputs as
+self-reported diagnostics. Consumers verify the exact candidate subject digest
+and repository/source/workflow/run identity through an external GitHub artifact
+attestation under ADR 0028. An unsigned copied log cannot authenticate provenance.
 
 It omits raw paths, usernames, database keys, identity records, invitation
 generations, bearer capabilities, approval records, request fingerprints, MLS
@@ -709,7 +711,7 @@ these paths concurrently.
   required families with complete coverage manifests.
 - An intentionally defective adapter is caught in the PR smoke subset.
 - L2-5 internal observations are promoted to a canonical public per-case
-  `l2-evidence-v1` bundle only after exact build/platform/artifact provenance is attached and
+  `l2-evidence-candidate-v2` bundle only after execution-time binary identities are attached and
   synthetic canaries are absent from bounded stdout, stderr, diagnostics,
   control frames, the manifest, and retained encrypted artifacts.
 - Canonical documents claim only application-process-kill and SQLite-visible
@@ -730,7 +732,8 @@ stdout, stderr, diagnostics, control-frame material, the internal observation,
 every public case manifest, and retained encrypted artifacts for the closed
 synthetic canary and actual-case catalogs. Complete checkpoint, SQLite
 return-code, and commit-window kill aggregates alone can emit canonical,
-key-framed per-case `l2-evidence-v1` bundles. The dedicated CI matrix runs
+key-framed per-case `l2-evidence-candidate-v2` bundles. These are explicitly
+self-reported; the external attestation gate is specified by ADR 0028. The dedicated CI matrix runs
 the failure-sensitive smoke subset on pull requests and the complete suites on
 non-PR runs for `ubuntu-24.04`, `macos-15`, and `windows-2025`. A portable
 passing claim remains conditional on that required job being green for the
@@ -824,3 +827,37 @@ kill or injected SQLite-visible full/I/O error, fresh reopen exposed one
 complete allowed transaction state, exact retry did not repeat the MLS
 membership transition, the evidence remained redacted, and supervised cleanup
 completed.
+
+## Candidate v2 and independent verification
+
+`candidate_v2` retains the previous closed case fields and adds mandatory
+`provenance=self-reported`, `publication=requires-external-attestation`, and
+role-specific `verifier_binary_sha256`, `producer_binary_sha256`, and
+`fault_driver_binary_sha256` (`none` unless a separate Welcome harness runs).
+`test_binary_sha256` equals the verifier digest for ordinary sweeps and the
+fault-driver digest for Welcome engine sweeps. Digests are captured before
+execution, cases run private binary snapshots, and source changes or mixed
+baseline/case identities reject the aggregate. The v2 compatibility fixture is
+`scripts/fixtures/l2-candidate-v2.json`; it is synthetic, unsigned test data.
+
+The CI collector writes JSON arrays of canonical case records under
+`target/l2-candidates/` only after a successful complete suite. Non-PR CI attests
+those exact arrays; the three-OS artifact upload retains them for 14 days.
+PR artifacts remain unsigned. The consumer obtains the bundle independently,
+reviews the expected source/workflow commit, and supplies the installed trusted
+GitHub CLI's absolute path and SHA-256 digest:
+
+```sh
+node scripts/verify-l2-evidence.mjs CANDIDATE.json EXPECTED_COMMIT ABSOLUTE_GH_PATH APPROVED_GH_SHA256
+```
+
+The verifier never accepts downloaded verification-result JSON or a trust root
+chosen by the candidate. It checks and boundedly reads opened file handles,
+executes a private copy of the approved CLI bytes, then checks certificate
+repository, workflow, commit, hosted-runner and run/attempt fields and the exact
+subject digest. The returned receipt identifies those bytes; copying a receipt
+alone is not independent verification. GitHub account authentication uses the
+configured CLI/Keychain without inherited token overrides. The verified source
+and workflow, trusted builder/tool bootstrap, GitHub/Sigstore and consumer OS
+remain trust assumptions. A signed builder statement is not proof against a
+compromised builder, nor independent proof of compiler or hardware identity.

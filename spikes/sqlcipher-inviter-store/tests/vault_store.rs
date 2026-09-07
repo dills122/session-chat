@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use sqlcipher_inviter_store_spike::{
     CommitFault, CommitOutcome, InvitationState, JoinCommit, OutboxState, Reservation,
     SqlCipherStore, StoreError, VaultKey,
@@ -7,24 +5,7 @@ use sqlcipher_inviter_store_spike::{
 
 const NOW: u64 = 1_000;
 
-struct TestDatabase(PathBuf);
-
-impl Drop for TestDatabase {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.0);
-        let _ = std::fs::remove_file(self.0.with_extension("sqlite3-journal"));
-        let _ = std::fs::remove_file(self.0.with_extension("sqlite3-wal"));
-        let _ = std::fs::remove_file(self.0.with_extension("sqlite3-shm"));
-    }
-}
-
-fn temporary_database(name: &str) -> PathBuf {
-    std::env::temp_dir().join(format!(
-        "session-chat-sqlcipher-{name}-{}-{}.sqlite3",
-        std::process::id(),
-        std::thread::current().name().unwrap_or("test")
-    ))
-}
+use test_private_dir::TestDatabase;
 
 fn key() -> VaultKey {
     VaultKey::new([7; 32]).expect("nonzero test key")
@@ -54,7 +35,7 @@ fn join_commit(request_fingerprint: u8) -> JoinCommit {
 
 #[test]
 fn raw_vault_key_creates_encrypted_database_and_wrong_key_fails_closed() {
-    let database = TestDatabase(temporary_database("wrong-key"));
+    let database = TestDatabase::new("wrong-key");
     let path = &database.0;
     let key = VaultKey::new([7; 32]).expect("nonzero test key");
     let store = SqlCipherStore::create(path, key).expect("encrypted store created");
@@ -73,7 +54,7 @@ fn raw_vault_key_creates_encrypted_database_and_wrong_key_fails_closed() {
 
 #[test]
 fn precommit_failure_rolls_back_every_join_component() {
-    let database = TestDatabase(temporary_database("rollback"));
+    let database = TestDatabase::new("rollback");
     let mut store = SqlCipherStore::create(&database.0, key()).expect("store created");
     store
         .seed_reservation(&reservation(), NOW)
@@ -105,7 +86,7 @@ fn precommit_failure_rolls_back_every_join_component() {
 
 #[test]
 fn lost_commit_response_recovers_complete_join_and_exact_retry() {
-    let database = TestDatabase(temporary_database("ambiguous"));
+    let database = TestDatabase::new("ambiguous");
     let mut store = SqlCipherStore::create(&database.0, key()).expect("store created");
     store
         .seed_reservation(&reservation(), NOW)
@@ -142,8 +123,8 @@ fn lost_commit_response_recovers_complete_join_and_exact_retry() {
 
 #[test]
 fn closed_database_hides_plaintext_and_detects_page_tampering() {
-    let database = TestDatabase(temporary_database("artifact"));
-    let tampered = TestDatabase(temporary_database("tampered"));
+    let database = TestDatabase::new("artifact");
+    let tampered = TestDatabase::new("tampered");
     let mut store = SqlCipherStore::create(&database.0, key()).expect("store created");
     store
         .seed_reservation(&reservation(), NOW)
@@ -185,7 +166,9 @@ fn closed_database_hides_plaintext_and_detects_page_tampering() {
     let mut corrupted = bytes;
     let middle = corrupted.len() / 2;
     corrupted[middle] ^= 0x80;
-    std::fs::write(&tampered.0, corrupted).expect("tampered copy written");
+    tampered
+        .write_new(&corrupted)
+        .expect("tampered copy written");
     match SqlCipherStore::open(&tampered.0, key()) {
         Err(_) => {}
         Ok(opened) => assert!(!opened.integrity_check().unwrap_or(false)),
@@ -194,7 +177,7 @@ fn closed_database_hides_plaintext_and_detects_page_tampering() {
 
 #[test]
 fn abrupt_process_exit_before_commit_recovers_the_old_complete_state() {
-    let database = TestDatabase(temporary_database("process-exit"));
+    let database = TestDatabase::new("process-exit");
     let helper = env!("CARGO_BIN_EXE_sqlcipher-crash-writer");
     let status = std::process::Command::new(helper)
         .arg(&database.0)

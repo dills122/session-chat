@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use mls_rs_core::group::GroupStateStorage;
 use session_crypto_mls::{
     SessionGroupId, create_client, create_durable_client_with_storage,
@@ -12,23 +10,7 @@ use storage_sqlcipher::{
 
 const NOW: u64 = 1_900_000_000;
 
-struct TestDatabase(PathBuf);
-
-impl TestDatabase {
-    fn new(name: &str) -> Self {
-        Self(std::env::temp_dir().join(format!(
-            "session-chat-storage-sqlcipher-inviter-{name}-{}.sqlite3",
-            std::process::id(),
-        )))
-    }
-}
-
-impl Drop for TestDatabase {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.0);
-        let _ = std::fs::remove_file(self.0.with_extension("sqlite3-journal"));
-    }
-}
+use test_private_dir::TestDatabase;
 
 fn vault_key() -> VaultKey {
     VaultKey::new([7; 32]).expect("nonzero test key")

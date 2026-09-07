@@ -19,3 +19,6 @@ unsafe_code = "forbid"
 dbg_macro = "deny"
 todo = "deny"
 unimplemented = "deny"
+
+[dev-dependencies]
+test-private-dir = { version = "=0.1.0", path = "../../scripts/test-private-dir" }

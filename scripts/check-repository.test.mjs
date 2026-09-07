@@ -59,3 +59,68 @@ test('rejects stale evidence digests and unresolved steering placeholders', (con
   assert.match(messages, /collectionSha256 does not match/);
   assert.match(messages, /unresolved template placeholder/);
 });
+
+const COMMIT = '0123456789abcdef0123456789abcdef01234567';
+const DIGEST = 'a'.repeat(64);
+for (const extension of ['yml', 'yaml']) {
+  for (const reference of [
+    'docker://alpine:latest', 'docker://registry.example:5000/team/image:1.2.3',
+    'docker://image', `DOCKER://image:latest@${COMMIT}`, `docker://image@sha256:${DIGEST.slice(1)}`,
+    `docker://image@sha256:${DIGEST}garbage`, 'actions/checkout@v7',
+    'owner/repo/.github/workflows/reuse.yml@main', '${{ inputs.action }}',
+  ]) {
+    for (const encode of [
+      value => `jobs:\n  nested:\n    steps:\n      - uses: ${value}\n`,
+      value => `steps: [{ uses: '${value}' }]\n`,
+      value => `jobs: { nested: { "uses": "${value}" } }\n`,
+      value => `steps: [{ "\\u0075ses": '${value}' }]\n`,
+    ]) {
+      test(`rejects mutable/ambiguous ${extension} reference ${encode(reference)}`, context => {
+        const root = fixture();
+        context.after(() => rmSync(root, { force: true, recursive: true }));
+        mkdirSync(join(root, '.github/workflows'), { recursive: true });
+        writeFileSync(join(root, `.github/workflows/ci.${extension}`), encode(reference));
+        assert.ok(checkRepository(root).failures.length > 0);
+      });
+    }
+  }
+}
+for (const contents of [
+  `steps: [{uses: actions/checkout@${COMMIT}}]\n`,
+  `jobs: { reuse: { 'uses': 'owner/repo/.github/workflows/ci.yaml@${COMMIT}' } }\n`,
+  `steps:\n  - "\\u0075ses": "docker://registry.example:5000/team/image:tag@sha256:${DIGEST}" # pinned\n`,
+  `steps:\n  - run: |\n      uses: docker://not-yaml:latest\n      echo 'uses: mutable@latest'\n  - uses: ./local/action\n`,
+]) {
+  test(`accepts supported immutable workflow ${contents}`, context => {
+    const root = fixture();
+    context.after(() => rmSync(root, { force: true, recursive: true }));
+    mkdirSync(join(root, '.github/workflows'), { recursive: true });
+    writeFileSync(join(root, '.github/workflows/ci.yml'), contents);
+    assert.deepEqual(checkRepository(root).failures, []);
+  });
+}
+for (const contents of [
+  'steps:\n - uses: >-\n     docker://alpine:latest\n',
+  'steps:\n - uses:\n     docker://alpine:latest\n',
+  'steps:\n - ? uses\n   : docker://alpine:latest\n',
+  'steps:\n - uses: &action docker://alpine:latest\n',
+  'steps:\n - uses: *action\n',
+  'steps:\n - !!str uses: docker://alpine:latest\n',
+  'steps:\n - "us\\\n     es": docker://alpine:latest\n',
+]) {
+  test(`rejects unsupported workflow representation ${contents}`, context => {
+    const root = fixture();
+    context.after(() => rmSync(root, { force: true, recursive: true }));
+    mkdirSync(join(root, '.github/workflows'), { recursive: true });
+    writeFileSync(join(root, '.github/workflows/ci.yml'), contents);
+    assert.ok(checkRepository(root).failures.length > 0);
+  });
+}
+
+test('block scalar in compact sequence cannot hide a sibling uses key', context => {
+  const root = fixture();
+  context.after(() => rmSync(root, { force: true, recursive: true }));
+  mkdirSync(join(root, '.github/workflows'), { recursive: true });
+  writeFileSync(join(root, '.github/workflows/ci.yml'), 'steps:\n  - run: |\n      echo ok\n    uses: docker://alpine:latest\n');
+  assert.ok(checkRepository(root).failures.length > 0);
+});

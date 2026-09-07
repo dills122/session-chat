@@ -6,8 +6,8 @@ import { fileURLToPath } from 'node:url';
 const SKIPPED_DIRECTORIES = new Set(['.git', '.agents', 'node_modules', 'target']);
 const LOCAL_MACHINE_PATH = /(?:file:\/\/|\/Users\/|\/home\/[A-Za-z0-9_.-]+\/|[A-Za-z]:\\Users\\)/;
 const MARKDOWN_LINK = /!?\[[^\]]*\]\(([^)]+)\)/g;
-const ACTION_USE = /^\s*(?:-\s+)?uses:\s*([^\s#]+)(?:\s+#.*)?$/gm;
-const FULL_COMMIT = /^[^@]+@[0-9a-f]{40}$/;
+import { workflowUses } from './workflow-uses.mjs';
+const FULL_COMMIT = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_./-]+)?@[0-9a-f]{40}$/;
 
 function normalize(relativePath) {
   return relativePath.split(sep).join('/');
@@ -122,12 +122,19 @@ function checkEvidenceManifest(root, path, failures) {
 function checkWorkflow(root, path, failures) {
   const contents = readFileSync(path, 'utf8');
   const repositoryPath = normalize(relative(root, path));
-  for (const match of contents.matchAll(ACTION_USE)) {
-    const action = match[1];
-    if (action.startsWith('./') || action.startsWith('docker://')) continue;
-    if (!FULL_COMMIT.test(action)) {
-      failures.push(`${repositoryPath}: action is not pinned to a full commit: ${action}`);
+  try {
+    for (const action of workflowUses(contents)) {
+      if (/^\.\/[A-Za-z0-9_./-]+$/.test(action) && !action.split('/').includes('..')) continue;
+      if (action.startsWith('docker://')) {
+        if (!/^docker:\/\/[a-z0-9][a-z0-9./:_-]*@sha256:[0-9a-f]{64}$/.test(action)) {
+          failures.push(`${repositoryPath}: container action is not pinned to a SHA-256 digest`);
+        }
+      } else if (!FULL_COMMIT.test(action)) {
+        failures.push(`${repositoryPath}: action is not pinned to a full commit: ${action}`);
+      }
     }
+  } catch (error) {
+    failures.push(`${repositoryPath}: ${error.message}`);
   }
 }
 

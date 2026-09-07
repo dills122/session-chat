@@ -72,3 +72,11 @@ This evidence is application-kill and SQLite-visible laboratory evidence. It
 proves neither physical power-loss safety, stale-snapshot rollback resistance,
 secure deletion, platform key custody, a production receive owner, nor a network
 profile. Iroh feasibility remains separate from the reusable Fast adapter.
+
+## Provenance correction
+
+[ADR 0027](0028-authenticate-l2-evidence-and-own-test-artifacts.md) supersedes
+the unsigned `l2-evidence-v1` promotion claim above. Only self-reported candidate
+v2 records can be collected locally; hosted provenance requires external
+attestation verification. Existing historical process-recovery evidence does
+not become a signed attestation retroactively.
