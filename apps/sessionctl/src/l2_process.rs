@@ -3,6 +3,25 @@
 //! This module is test infrastructure. It is compiled only under the
 //! workspace-declared storage fault-testing cfg and has no runtime activation
 //! path in an ordinary `sessionctl` build.
+//!
+//! Public consumers can name validated bundles:
+//! ```
+//! use sessionctl::l2_process::L2EvidenceBundle;
+//! ```
+//! Low-level evidence construction stays unavailable. Each import is checked
+//! separately against the built library, without a second Cargo workspace.
+//! ```compile_fail
+//! use sessionctl::l2_process::L2EvidenceMetadata;
+//! ```
+//! ```compile_fail
+//! use sessionctl::l2_process::L2EvidenceSweep;
+//! ```
+//! ```compile_fail
+//! use sessionctl::l2_process::L2EvidenceChannels;
+//! ```
+//! ```compile_fail
+//! use sessionctl::l2_process::promote_l2_evidence;
+//! ```
 
 use std::{
     ffi::OsStr,
@@ -4509,7 +4528,8 @@ impl Drop for ManagedChild {
 enum PipeMessage {
     Bytes(Vec<u8>),
     Eof,
-    Rejected,
+    OverLimit,
+    ReadFailed,
 }
 
 struct PipeReader {
@@ -4540,8 +4560,13 @@ impl PipeReader {
                             return;
                         }
                     }
-                    Ok(_) | Err(_) => {
-                        let _ = sender.send(PipeMessage::Rejected);
+                    Ok(_) => {
+                        let _ = sender.send(PipeMessage::OverLimit);
+                        return;
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
+                    Err(_) => {
+                        let _ = sender.send(PipeMessage::ReadFailed);
                         return;
                     }
                 }
@@ -4609,9 +4634,10 @@ impl PipeReader {
                 self.eof = true;
                 Ok(())
             }
-            Ok(PipeMessage::Rejected)
-            | Err(RecvTimeoutError::Disconnected)
-            | Err(RecvTimeoutError::Timeout) => Err(stage("L2 child output")),
+            Ok(PipeMessage::OverLimit) => Err(stage("L2 output bound")),
+            Ok(PipeMessage::ReadFailed) => Err(stage("L2 output read")),
+            Err(RecvTimeoutError::Disconnected) => Err(stage("L2 output disconnected")),
+            Err(RecvTimeoutError::Timeout) => Err(stage("L2 output timeout")),
         }
     }
 }
@@ -4801,6 +4827,63 @@ mod tests {
                 .observe(*frames.last().expect("target frame"))
                 .expect("target checkpoint")
         );
+    }
+
+    #[test]
+    fn pipe_failures_keep_distinct_secret_free_causes() {
+        struct FailedRead;
+        impl Read for FailedRead {
+            fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::other("must never appear in diagnostics"))
+            }
+        }
+        let mut reader = PipeReader::new(FailedRead);
+        assert!(matches!(
+            reader.collect(CHILD_WAIT),
+            Err(SessionCtlError::Stage("L2 output read"))
+        ));
+
+        let mut reader = PipeReader::new(std::io::Cursor::new(vec![0; MAX_CHILD_OUTPUT_BYTES + 1]));
+        assert!(matches!(
+            reader.collect(CHILD_WAIT),
+            Err(SessionCtlError::Stage("L2 output bound"))
+        ));
+
+        let (sender, receiver) = mpsc::channel();
+        let mut reader = PipeReader {
+            receiver,
+            join: None,
+            buffered: Vec::new(),
+            eof: false,
+        };
+        assert!(matches!(
+            reader.collect(Duration::from_millis(1)),
+            Err(SessionCtlError::Stage("L2 output timeout"))
+        ));
+        drop(sender);
+        assert!(matches!(
+            reader.collect(CHILD_WAIT),
+            Err(SessionCtlError::Stage("L2 output disconnected"))
+        ));
+    }
+
+    #[test]
+    fn pipe_interrupted_read_preserves_the_exact_frame() {
+        struct InterruptedOnce(bool);
+        impl Read for InterruptedOnce {
+            fn read(&mut self, bytes: &mut [u8]) -> std::io::Result<usize> {
+                if !std::mem::replace(&mut self.0, true) {
+                    return Err(std::io::ErrorKind::Interrupted.into());
+                }
+                bytes[..3].copy_from_slice(b"abc");
+                Ok(3)
+            }
+        }
+        let mut reader = PipeReader::new(InterruptedOnce(false).take(3));
+        assert_eq!(reader.read_exact_frame(3, CHILD_WAIT).unwrap(), b"abc");
+        reader
+            .require_empty(CHILD_WAIT)
+            .expect("EOF after exact frame");
     }
 
     #[test]

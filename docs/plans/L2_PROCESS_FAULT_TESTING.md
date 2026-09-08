@@ -736,10 +736,33 @@ Complete checkpoint, SQLite return-code, and commit-window kill aggregates alone
 can emit canonical, key-framed per-case `l2-evidence-candidate-v4` bundles.
 These are explicitly self-reported, capture-incomplete, and redaction-unverified;
 the external attestation gate is specified by ADR 0028 and the demotion by ADR 0030. The dedicated CI matrix runs
-the failure-sensitive smoke subset on pull requests and the complete suites on
-non-PR runs for `ubuntu-24.04`, `macos-15`, and `windows-2025`. A portable
+the failure-sensitive I/O smoke subset plus complete application-checkpoint and
+Welcome sweeps on pull requests, and complete I/O ordinal suites on non-PR runs for `ubuntu-24.04`, `macos-15`, and `windows-2025`. A portable
 passing claim remains conditional on that required job being green for the
 exact revision.
+
+### CI regression rescue (2026-09-08)
+
+PR #364 initially enabled all I/O ordinal sweeps on every PR, contrary to the
+bounded PR cadence above. Run `34274938260` took 35m16s on Windows: initial
+checked compilation took 10m43s, the external Cargo compile-fail fixture took
+10m, and selecting the fault-VFS package alone rebuilt native dependencies in
+8m49s. Windows then failed the joiner commit-return case after 15s with the
+ambiguous `L2 child output` stage; that message conflated timeout, read failure,
+output overflow, and reader disconnection, so it did not identify the cause.
+
+API visibility is now checked with separate rustdoc compile-fail imports and a
+positive public-bundle import against the built library. The VFS smoke command
+selects both `sessionctl` and `storage-sqlcipher-fault-vfs` library roots to reuse
+the same unified dependency graph. Full application-checkpoint sweeps remain
+on PRs because they are cheap and cover the observed failure. Full I/O sweeps
+remain on master, scheduled, and manual runs; PRs retain the defective-provider,
+FULL, canary, and committed-inviter unlock regressions. Gate still requires all
+three OS jobs. Pipe errors now report distinct bounded, secret-free causes;
+raw child output and OS error messages are never added to those diagnostics.
+
+Local success does not close the Windows failure or advance portable evidence;
+retain passing hosted results from the repaired revision before doing either.
 
 ## Dispatch graph and checkpoints
 
