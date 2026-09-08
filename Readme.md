@@ -6,9 +6,9 @@ Session Chat is a protocol-first project for disposable, end-to-end encrypted
 conversations with pluggable admission and delivery. The project is currently a
 headless research and implementation laboratory, not a deployable chat product.
 
-**Current milestone:** Phase 1 is complete. The first source-only protocol
-laboratory prerelease is documented as
-[`v0.1.0-alpha.1`](docs/releases/v0.1.0-alpha.1.md).
+**Current milestone:** Phase 1 is complete. The security-stabilized source-only
+protocol-laboratory prerelease for the next two-computer test is documented as
+[`v0.1.0-alpha.2`](docs/releases/v0.1.0-alpha.2.md).
 
 The design principle is: **publish the door, not the key**.
 

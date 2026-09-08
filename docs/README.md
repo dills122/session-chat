@@ -67,9 +67,11 @@ checkpoint is distinct from that immutable tested code revision.
   is historical and complete; it records durable-admission composition,
   transport conformance, independent-process recovery and the exact-revision
   evidence supporting the laboratory completion decision.
+- [Security-stabilized protocol laboratory alpha `v0.1.0-alpha.2`](releases/v0.1.0-alpha.2.md)
+  records the recommended two-computer test checkpoint, completed audit fixes,
+  retained evidence, and explicit non-product limits.
 - [Protocol laboratory alpha `v0.1.0-alpha.1`](releases/v0.1.0-alpha.1.md)
-  records the source-only Phase 1 release scope, trial instructions, evidence,
-  and explicit non-product limits.
+  records the first source-only Phase 1 release scope and trial instructions.
 - [Transport abstraction implementation plan](plans/TRANSPORT_ABSTRACTION_IMPLEMENTATION.md)
   sequences stabilization of the existing local adapter and outbox model, the
   generalized contract, conformance harness, coordinator, and later
