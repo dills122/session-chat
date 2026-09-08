@@ -9,6 +9,7 @@ default-run = "sessionctl"
 [dependencies]
 admission-capability = { version = "=0.1.0", path = "../../crates/admission-capability" }
 aws-lc-rs.workspace = true
+git2.workspace = true
 mls-rs-core.workspace = true
 session-admission = { version = "=0.1.0", path = "../../crates/session-admission" }
 session-core = { version = "=0.1.0", path = "../../crates/session-core" }
@@ -26,6 +27,9 @@ transport-iroh = { version = "=0.1.0", path = "../../crates/transport-iroh" }
 transport-conformance = { version = "=0.1.0", path = "../../crates/transport-conformance" }
 transport-memory = { version = "=0.1.0", path = "../../crates/transport-memory" }
 zeroize.workspace = true
+
+[build-dependencies]
+sha2.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 libc.workspace = true

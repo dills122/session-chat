@@ -24,7 +24,7 @@ mod checked {
         assert!(evidence.contains("publication=prohibited\n"));
         if let Ok(image) = std::env::var("SESSION_CHAT_L2_RUNNER_IMAGE") {
             let bundle = report
-                .candidate_v3(
+                .candidate_v4(
                     std::path::Path::new(env!("CARGO_BIN_EXE_sessionctl-l2")),
                     &image,
                 )
@@ -32,7 +32,7 @@ mod checked {
             for manifest in bundle.manifests() {
                 println!(
                     "L2_CANDIDATE_BEGIN\n{}L2_CANDIDATE_END",
-                    manifest.encode_v3()
+                    manifest.encode_v4()
                 );
             }
         }
@@ -209,7 +209,7 @@ mod checked {
         assert!(evidence.contains("coverage=complete\n"));
         if let Ok(image) = std::env::var("SESSION_CHAT_L2_RUNNER_IMAGE") {
             let bundle = report
-                .candidate_v3(&std::env::current_exe().unwrap(), &image)
+                .candidate_v4(&std::env::current_exe().unwrap(), &image)
                 .unwrap_or_else(|error| {
                     let binary_bytes = std::fs::metadata(std::env::current_exe().unwrap())
                         .expect("Welcome engine test binary metadata")
@@ -219,7 +219,7 @@ mod checked {
             for manifest in bundle.manifests() {
                 println!(
                     "L2_CANDIDATE_BEGIN\n{}L2_CANDIDATE_END",
-                    manifest.encode_v3()
+                    manifest.encode_v4()
                 );
             }
         }

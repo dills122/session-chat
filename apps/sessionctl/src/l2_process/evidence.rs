@@ -1,13 +1,11 @@
-use std::{
-    path::Path,
-    process::{Command, Stdio},
-};
+use std::path::Path;
+
+use crate::provenance::{CompilerProvenance, compiler_provenance};
 
 use super::{
-    CHILD_WAIT, L2EvidenceCase, L2EvidenceCaseTarget, L2IoPauseSweepReport, L2IoSweepReport,
-    L2ProcessSweepReport, ManagedChild, SHA256, Scenario, SessionCtlError, digest, git_dirty_at,
-    hex, lock_digest_at, pinned_toolchain_at, repository_root, resolve_l1_process_git_commit,
-    sanitize_environment, stage,
+    L2EvidenceCase, L2EvidenceCaseTarget, L2IoPauseSweepReport, L2IoSweepReport,
+    L2ProcessSweepReport, SHA256, Scenario, SessionCtlError, digest, git_dirty_at, hex,
+    lock_digest_at, pinned_toolchain_at, repository_root, resolve_l1_process_git_commit, stage,
 };
 
 const MAX_MANIFEST_BYTES: usize = 4_096;
@@ -70,6 +68,7 @@ struct L2EvidenceMetadata {
     rustc_release: String,
     rustc_commit: String,
     rustc_host: String,
+    rustc_digest: [u8; 32],
     lock_digest: String,
     runner_image: String,
     platform: String,
@@ -87,12 +86,6 @@ struct L2EvidenceMetadata {
     sqlite_version: String,
     test_binary_digest: [u8; 32],
     executables: super::ExecutionIdentity,
-}
-
-struct RustcProvenance {
-    release: String,
-    commit: String,
-    host: String,
 }
 
 struct L2CiContext {
@@ -117,7 +110,7 @@ impl L2EvidenceMetadata {
         commit: &str,
         dirty: bool,
         toolchain: &str,
-        rustc: RustcProvenance,
+        rustc: CompilerProvenance,
         lock_digest: &str,
         ci: L2CiContext,
         sqlcipher_version: &str,
@@ -131,6 +124,7 @@ impl L2EvidenceMetadata {
             || rustc.release != toolchain
             || !is_lower_hex(&rustc.commit, 40)
             || !is_token(&rustc.host, 128)
+            || rustc.digest.iter().all(|byte| *byte == 0)
             || !is_lower_hex(&ci.github_workflow_sha, 40)
             || !is_version(sqlcipher_version)
             || !is_version(sqlite_version)
@@ -145,6 +139,7 @@ impl L2EvidenceMetadata {
             rustc_release: rustc.release,
             rustc_commit: rustc.commit,
             rustc_host: rustc.host,
+            rustc_digest: rustc.digest,
             lock_digest: lock_digest.to_owned(),
             runner_image: ci.runner_image,
             platform: ci.platform,
@@ -212,7 +207,7 @@ impl L2EvidenceMetadata {
             .ok_or_else(|| stage("L2 evidence commit"))?;
         let toolchain =
             pinned_toolchain_at(&repository).ok_or_else(|| stage("L2 evidence toolchain"))?;
-        let rustc = collect_rustc_provenance(&toolchain)?;
+        let rustc = compiler_provenance()?;
         let ci = validate_ci_context(&commit, platform, architecture, runner_image, |name| {
             std::env::var(name).ok()
         })?;
@@ -230,53 +225,6 @@ impl L2EvidenceMetadata {
         metadata.executables = identity.clone();
         Ok(metadata)
     }
-}
-
-fn collect_rustc_provenance(pinned_toolchain: &str) -> Result<RustcProvenance, SessionCtlError> {
-    let rustc = std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
-    let mut command = Command::new(rustc);
-    command
-        .arg("-Vv")
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    sanitize_environment(&mut command);
-    let mut child = ManagedChild::spawn_command(command)?;
-    let status = child.wait(CHILD_WAIT)?;
-    let stdout = child.stdout.collect(CHILD_WAIT)?;
-    let stderr = child.stderr.collect(CHILD_WAIT)?;
-    if !status.success() || !stderr.is_empty() || stdout.len() > 4_096 {
-        return Err(stage("L2 evidence rustc provenance"));
-    }
-    parse_rustc_verbose(&stdout, pinned_toolchain)
-}
-
-fn parse_rustc_verbose(
-    output: &[u8],
-    pinned_toolchain: &str,
-) -> Result<RustcProvenance, SessionCtlError> {
-    let text = std::str::from_utf8(output).map_err(|_| stage("L2 evidence rustc provenance"))?;
-    let field = |name: &str| {
-        let prefix = format!("{name}: ");
-        let mut matches = text.lines().filter_map(|line| line.strip_prefix(&prefix));
-        let value = matches.next()?;
-        matches.next().is_none().then_some(value)
-    };
-    let release = field("release").ok_or_else(|| stage("L2 evidence rustc provenance"))?;
-    let commit = field("commit-hash").ok_or_else(|| stage("L2 evidence rustc provenance"))?;
-    let host = field("host").ok_or_else(|| stage("L2 evidence rustc provenance"))?;
-    if release != pinned_toolchain
-        || !is_version(release)
-        || !is_lower_hex(commit, 40)
-        || !is_token(host, 128)
-    {
-        return Err(stage("L2 evidence rustc provenance"));
-    }
-    Ok(RustcProvenance {
-        release: release.to_owned(),
-        commit: commit.to_owned(),
-        host: host.to_owned(),
-    })
 }
 
 fn validate_ci_context(
@@ -349,9 +297,9 @@ fn validate_ci_context(
 pub struct L2EvidenceManifest(String);
 
 impl L2EvidenceManifest {
-    /// Encodes a v3 candidate; this does not authenticate metadata or prove capture completeness.
+    /// Encodes a v4 candidate; this does not authenticate metadata or prove capture completeness.
     #[must_use]
-    pub fn encode_v3(&self) -> String {
+    pub fn encode_v4(&self) -> String {
         self.0.clone()
     }
 }
@@ -366,8 +314,8 @@ impl L2EvidenceBundle {
     }
 }
 
-/// Builds one v3 candidate after recovery, provenance, and known-surface secret checks pass.
-fn build_l2_candidate_v3(
+/// Builds one v4 candidate after recovery, provenance, and known-surface secret checks pass.
+fn build_l2_candidate_v4(
     sweep: L2EvidenceSweep,
     scenario: Scenario,
     observation: &str,
@@ -416,8 +364,8 @@ fn build_l2_candidate_v3(
     for (case_index, (case, fields)) in cases.iter().zip(case_fields).enumerate() {
         let manifest = format!(
             concat!(
-                "version=3\n",
-                "protocol=l2-evidence-candidate-v3\n",
+                "version=4\n",
+                "protocol=l2-evidence-candidate-v4\n",
                 "provenance=self-reported\n",
                 "publication=requires-external-attestation\n",
                 "record=case\n",
@@ -436,6 +384,7 @@ fn build_l2_candidate_v3(
                 "rustc_release={}\n",
                 "rustc_commit={}\n",
                 "rustc_host={}\n",
+                "rustc_sha256={}\n",
                 "lock_sha256={}\n",
                 "platform={}-{}\n",
                 "runner_image={}\n",
@@ -488,6 +437,7 @@ fn build_l2_candidate_v3(
             metadata.rustc_release,
             metadata.rustc_commit,
             metadata.rustc_host,
+            hex(&metadata.rustc_digest),
             metadata.lock_digest,
             metadata.platform,
             metadata.architecture,
@@ -685,15 +635,15 @@ impl super::welcome_io::WelcomeEngineSweepReport {
         retired_candidate_v2()
     }
 
-    /// Emits a v3 Welcome engine candidate with an explicitly incomplete redaction claim.
-    pub fn candidate_v3(
+    /// Emits a v4 Welcome engine candidate with build-bound compiler provenance.
+    pub fn candidate_v4(
         &self,
         executable: &Path,
         runner_image: &str,
     ) -> Result<L2EvidenceBundle, SessionCtlError> {
         self.validate_coverage()?;
         let metadata = L2EvidenceMetadata::collect(executable, runner_image, &self.cases)?;
-        build_l2_candidate_v3(
+        build_l2_candidate_v4(
             L2EvidenceSweep::WelcomeEngineProcessKill,
             Scenario::InviterTransaction,
             &self.encode_v1(),
@@ -722,15 +672,15 @@ impl super::welcome::WelcomeSweepReport {
         retired_candidate_v2()
     }
 
-    /// Emits a v3 Welcome candidate with an explicitly incomplete redaction claim.
-    pub fn candidate_v3(
+    /// Emits a v4 Welcome candidate with build-bound compiler provenance.
+    pub fn candidate_v4(
         &self,
         executable: &Path,
         runner_image: &str,
     ) -> Result<L2EvidenceBundle, SessionCtlError> {
         self.validate_coverage()?;
         let metadata = L2EvidenceMetadata::collect(executable, runner_image, &self.cases)?;
-        build_l2_candidate_v3(
+        build_l2_candidate_v4(
             L2EvidenceSweep::WelcomeProcessKill,
             Scenario::InviterTransaction,
             &self.encode_v1(),
@@ -759,14 +709,14 @@ impl L2ProcessSweepReport {
         retired_candidate_v2()
     }
 
-    /// Emits a v3 application-checkpoint candidate with an explicitly incomplete redaction claim.
-    pub fn candidate_v3(
+    /// Emits a v4 application-checkpoint candidate with build-bound compiler provenance.
+    pub fn candidate_v4(
         &self,
         executable: &Path,
         runner_image: &str,
     ) -> Result<L2EvidenceBundle, SessionCtlError> {
         let metadata = L2EvidenceMetadata::collect(executable, runner_image, &self.evidence_cases)?;
-        build_l2_candidate_v3(
+        build_l2_candidate_v4(
             L2EvidenceSweep::ApplicationProcessKill,
             self.scenario,
             &self.encode_v1(),
@@ -795,14 +745,14 @@ impl L2IoSweepReport {
         retired_candidate_v2()
     }
 
-    /// Emits a v3 SQLite return-code candidate with an explicitly incomplete redaction claim.
-    pub fn candidate_v3(
+    /// Emits a v4 SQLite return-code candidate with build-bound compiler provenance.
+    pub fn candidate_v4(
         &self,
         executable: &Path,
         runner_image: &str,
     ) -> Result<L2EvidenceBundle, SessionCtlError> {
         let metadata = L2EvidenceMetadata::collect(executable, runner_image, &self.evidence_cases)?;
-        build_l2_candidate_v3(
+        build_l2_candidate_v4(
             L2EvidenceSweep::SqliteReturnCode,
             self.scenario,
             &self.encode_v1(),
@@ -831,14 +781,14 @@ impl L2IoPauseSweepReport {
         retired_candidate_v2()
     }
 
-    /// Emits a v3 commit-window candidate with an explicitly incomplete redaction claim.
-    pub fn candidate_v3(
+    /// Emits a v4 commit-window candidate with build-bound compiler provenance.
+    pub fn candidate_v4(
         &self,
         executable: &Path,
         runner_image: &str,
     ) -> Result<L2EvidenceBundle, SessionCtlError> {
         let metadata = L2EvidenceMetadata::collect(executable, runner_image, &self.evidence_cases)?;
-        build_l2_candidate_v3(
+        build_l2_candidate_v4(
             L2EvidenceSweep::CommitWindowProcessKill,
             self.scenario,
             &self.encode_v1(),
@@ -1143,23 +1093,25 @@ mod tests {
         "directory_cleanup=pass\n",
     );
 
-    fn rustc_provenance() -> RustcProvenance {
-        RustcProvenance {
+    fn rustc_provenance() -> CompilerProvenance {
+        CompilerProvenance {
             release: String::from("1.97.1"),
             commit: String::from("0123456789abcdef0123456789abcdef01234567"),
             host: String::from("aarch64-apple-darwin"),
+            digest: [0x44; 32],
         }
     }
 
     #[test]
-    fn rustc_provenance_collects_from_bounded_child_pipes() {
+    fn rustc_provenance_is_bound_to_the_build_compiler() {
         let repository = repository_root();
         let pinned = pinned_toolchain_at(&repository).expect("pinned Rust toolchain");
-        let provenance = collect_rustc_provenance(&pinned).expect("collect rustc provenance");
+        let provenance = compiler_provenance().expect("collect rustc provenance");
 
         assert_eq!(provenance.release, pinned);
         assert!(is_lower_hex(&provenance.commit, 40));
         assert!(is_token(&provenance.host, 128));
+        assert!(provenance.digest.iter().any(|byte| *byte != 0));
     }
 
     fn ci_context(commit: &str) -> L2CiContext {
@@ -1277,22 +1229,22 @@ mod tests {
     #[test]
     fn sealed_promotion_builds_a_bounded_manifest() {
         let cases = [test_case()];
-        let bundle = build_l2_candidate_v3(
+        let bundle = build_l2_candidate_v4(
             L2EvidenceSweep::ApplicationProcessKill,
             Scenario::InviterTransaction,
             COMPLETE_PROCESS_OBSERVATION,
             &metadata(),
             &cases,
         )
-        .expect("emit bounded v3 evidence candidate");
+        .expect("emit bounded v4 evidence candidate");
         let manifest = bundle
             .manifests()
             .next()
             .expect("one case manifest")
-            .encode_v3();
+            .encode_v4();
 
         for required in [
-            "protocol=l2-evidence-candidate-v3\n",
+            "protocol=l2-evidence-candidate-v4\n",
             "provenance=self-reported\n",
             "publication=requires-external-attestation\n",
             "result=pass\n",
@@ -1307,6 +1259,7 @@ mod tests {
             "rustc_release=1.97.1\n",
             "rustc_commit=0123456789abcdef0123456789abcdef01234567\n",
             "rustc_host=aarch64-apple-darwin\n",
+            "rustc_sha256=4444444444444444444444444444444444444444444444444444444444444444\n",
             "github_run_id=123456\n",
             "github_run_attempt=2\n",
             "github_workflow_sha=0123456789abcdef0123456789abcdef01234567\n",
@@ -1389,7 +1342,7 @@ mod tests {
         const CANARY: &[u8] = b"SC-L2-CANARY-DATABASE-KEY";
         let cases = [test_case()];
         assert!(
-            build_l2_candidate_v3(
+            build_l2_candidate_v4(
                 L2EvidenceSweep::ApplicationProcessKill,
                 Scenario::InviterTransaction,
                 std::str::from_utf8(CANARY).expect("ASCII canary"),
@@ -1453,24 +1406,6 @@ mod tests {
             .is_err(),
             "a self-asserted runner label must not cross platform tuples",
         );
-    }
-
-    #[test]
-    fn rustc_provenance_parses_actual_verbose_output_and_rejects_pin_mismatch() {
-        let output = concat!(
-            "rustc 1.97.1 (012345678 2026-08-01)\n",
-            "binary: rustc\n",
-            "commit-hash: 0123456789abcdef0123456789abcdef01234567\n",
-            "commit-date: 2026-08-01\n",
-            "host: aarch64-apple-darwin\n",
-            "release: 1.97.1\n",
-            "LLVM version: 21.1.0\n",
-        );
-        let parsed = parse_rustc_verbose(output.as_bytes(), "1.97.1").expect("actual rustc");
-        assert_eq!(parsed.release, "1.97.1");
-        assert_eq!(parsed.host, "aarch64-apple-darwin");
-        assert_eq!(parsed.commit, "0123456789abcdef0123456789abcdef01234567",);
-        assert!(parse_rustc_verbose(output.as_bytes(), "1.98.0").is_err());
     }
 
     #[test]

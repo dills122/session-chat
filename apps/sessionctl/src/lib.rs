@@ -4,6 +4,7 @@
 
 mod fast_adapter;
 mod l1_process;
+mod provenance;
 
 #[cfg(session_chat_storage_fault_testing)]
 #[doc(hidden)]

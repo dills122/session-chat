@@ -719,13 +719,14 @@ verifier accepts only I0/I1 or J0/J1 with exact retry. Separate local checked
 sweeps now kill every baseline-observed inviter/joiner application checkpoint
 and enforce the same complete-state and retry invariants, including
 missing/duplicate coverage rejection. Raw case observations remain non-public.
-The retained L2-8 gate emits only explicitly self-reported candidate v3 bundles
-from complete recovery matrices, with execution-time binary identities and
-bounded case-surface secret/canary scans. Candidate v2 and unsigned v1
-promotion always fail. Candidate v3 states `capture_completeness=unproven` and
+The retained L2-8 gate emits only explicitly self-reported candidate v4 bundles
+from complete recovery matrices, with in-process Git status, build-bound
+compiler identity/digest, execution-time binary identities, and bounded
+case-surface secret/canary scans. Candidates v2/v3 and unsigned v1 promotion
+always fail. Candidate v4 states `capture_completeness=unproven` and
 `redaction=unverified`; hosted attestation authenticates exact bytes and origin,
 not omitted streams or redaction completeness. GitHub environment,
-PATH-selected Git, and compiler output are not authentication. ADR 0028 requires
+Git/compiler assertions, and tool output are not authentication. ADR 0028 requires
 external GitHub/Sigstore attestation verification of the exact candidate digest,
 reviewed source/workflow, repository, hosted runner and run/attempt before hosted
 provenance is accepted. A compromised reviewed builder can still lie about test

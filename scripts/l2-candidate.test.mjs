@@ -8,7 +8,8 @@ import test from 'node:test';
 import { parseCandidate, matchVerifiedAttestation, sha256 } from './l2-candidate.mjs';
 import { readBoundedRegularFile, verifyCandidate } from './verify-l2-evidence.mjs';
 const v2Bytes = readFileSync(new URL('./fixtures/l2-candidate-v2.json', import.meta.url));
-const bytes = readFileSync(new URL('./fixtures/l2-candidate-v3.json', import.meta.url));
+const v3Bytes = readFileSync(new URL('./fixtures/l2-candidate-v3.json', import.meta.url));
+const bytes = readFileSync(new URL('./fixtures/l2-candidate-v4.json', import.meta.url));
 const commit = '1'.repeat(40);
 function verifiedResult() {
   return [{ verificationResult: {
@@ -24,7 +25,7 @@ function verifiedResult() {
     statement: { predicateType: 'https://slsa.dev/provenance/v1', subject: [{ digest: { sha256: sha256(bytes) } }] },
   } }];
 }
-test('v3 candidate remains explicitly unverified and requires external verification', () => {
+test('v4 candidate remains explicitly unverified and requires external verification', () => {
   const records = parseCandidate(bytes);
   assert.equal(records[0].provenance, 'self-reported');
   assert.equal(records[0].secret_scan, 'pass');
@@ -37,6 +38,9 @@ test('v3 candidate remains explicitly unverified and requires external verificat
 });
 test('rejects frozen v2 candidate that overclaims complete redaction', () => {
   assert.throws(() => parseCandidate(v2Bytes));
+});
+test('rejects retired v3 candidate without build-bound compiler digest', () => {
+  assert.throws(() => parseCandidate(v3Bytes));
 });
 for (const field of ['issuer', 'sourceRepositoryURI', 'sourceRepositoryDigest', 'buildSignerURI', 'buildSignerDigest', 'runnerEnvironment', 'runInvocationURI']) {
   test(`rejects a verified statement with wrong certificate ${field}`, () => {
@@ -55,7 +59,7 @@ test('rejects changed subject, manifest, run, revision, binary, legacy schema an
     const changed = Buffer.from(bytes.toString().replace(before, after));
     assert.throws(() => matchVerifiedAttestation(verifiedResult(), changed, parseCandidate(changed), commit));
   }
-  assert.throws(() => parseCandidate(Buffer.from(bytes.toString().replace('l2-evidence-candidate-v3', 'l2-evidence-v1'))));
+  assert.throws(() => parseCandidate(Buffer.from(bytes.toString().replace('l2-evidence-candidate-v4', 'l2-evidence-v1'))));
   const values = JSON.parse(bytes);
   assert.throws(() => parseCandidate(Buffer.from(JSON.stringify([values[0], values[0]]))));
 });

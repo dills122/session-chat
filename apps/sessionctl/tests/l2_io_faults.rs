@@ -568,12 +568,12 @@ mod checked {
 
             if let Ok(runner_image) = std::env::var("SESSION_CHAT_L2_RUNNER_IMAGE") {
                 let bundle = complete
-                    .candidate_v3(&executable(), &runner_image)
+                    .candidate_v4(&executable(), &runner_image)
                     .expect("emit return-code v3 evidence candidates");
                 for manifest in bundle.manifests() {
                     println!(
                         "L2_CANDIDATE_BEGIN\n{}L2_CANDIDATE_END",
-                        manifest.encode_v3(),
+                        manifest.encode_v4(),
                     );
                 }
             }
@@ -722,12 +722,12 @@ mod checked {
 
             if let Ok(runner_image) = std::env::var("SESSION_CHAT_L2_RUNNER_IMAGE") {
                 let bundle = complete
-                    .candidate_v3(&executable(), &runner_image)
+                    .candidate_v4(&executable(), &runner_image)
                     .expect("emit pause v3 evidence candidates");
                 for manifest in bundle.manifests() {
                     println!(
                         "L2_CANDIDATE_BEGIN\n{}L2_CANDIDATE_END",
-                        manifest.encode_v3(),
+                        manifest.encode_v4(),
                     );
                 }
             }

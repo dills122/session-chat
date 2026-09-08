@@ -37,7 +37,10 @@ use self::fault_testing::{
     BarrierFailure, BarrierTransport, CONTROL_FRAME_BYTES, CaseId, Checkpoint, ControlFrame,
     FaultObserver, FrameKind, OracleState, Role, Scenario,
 };
-use super::{SessionCtlError, random_nonzero, resolve_l1_process_git_commit, stage};
+use super::{
+    SessionCtlError, provenance::repository_dirty_at, random_nonzero,
+    resolve_l1_process_git_commit, stage,
+};
 
 mod execution;
 use execution::{ExecutableSnapshot, ExecutionIdentity};
@@ -4598,18 +4601,7 @@ fn repository_root() -> PathBuf {
 }
 
 fn git_dirty_at(root: &Path) -> Option<bool> {
-    let mut command = Command::new("git");
-    command
-        .args(["-C", root.to_str()?, "status", "--porcelain=v1"])
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    sanitize_environment(&mut command);
-    let mut child = ManagedChild::spawn_command(command).ok()?;
-    let status = child.wait(CHILD_WAIT).ok()?;
-    let stdout = child.stdout.collect(CHILD_WAIT).ok()?;
-    let stderr = child.stderr.collect(CHILD_WAIT).ok()?;
-    (status.success() && stderr.is_empty()).then_some(!stdout.is_empty())
+    repository_dirty_at(root).ok()
 }
 
 fn pinned_toolchain_at(root: &Path) -> Option<String> {

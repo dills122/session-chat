@@ -247,7 +247,7 @@ checkpoint is distinct from that immutable tested code revision.
   records external attestation verification, executable identity,
   immutable workflow references, and private SQLCipher fixtures.
 - [Demoted L2 redaction claims](adr/0030-demote-l2-redaction-until-capture-is-owned.md)
-  records candidate v3, bounded case-surface secret scans, unproved capture
+  records bounded case-surface secret scans, unproved capture
   completeness, and unverified redaction.
 - [Durable MLS Add binding](adr/0031-separate-transient-and-durable-mls-add-results.md)
   separates transient output APIs from durable Add persistence obligations.
@@ -255,6 +255,8 @@ checkpoint is distinct from that immutable tested code revision.
   prevents memory or Iroh poll results from inheriting foreign owner bindings.
 - [One-shot transient MLS identities](adr/0033-make-transient-mls-identities-one-shot.md)
   prevent one transient credential or signer from spanning multiple sessions.
+- [Evidence tool provenance](adr/0034-bind-evidence-to-in-process-git-and-build-compiler.md)
+  replaces PATH-selected Git and rustc with in-process status and build-bound compiler identity.
 - [Architecture decision records](adr/) record the foundational decisions that
   other documents rely on.
 
@@ -364,8 +366,8 @@ every observed journal/main commit-window pause, and every baseline-observed
 application checkpoint. Each direct writer is killed while blocked before a
 fresh reopen that accepts only exact I0/I1 or J0/J1 state and unchanged exact
 retry. Raw case records remain non-public. The retained L2-8 gate lets complete
-recovery matrices emit self-reported candidate v3 bundles with execution-time
-binary/artifact identities and bounded case-surface secret/canary scans.
+recovery matrices emit self-reported candidate v4 bundles with in-process Git
+status, build-bound compiler/binary identities, and bounded case-surface secret/canary scans.
 Capture completeness remains unproved and redaction unverified under ADR 0030.
 ADR 0028 requires external GitHub attestation verification before those bytes
 can authenticate a hosted run. A portable passing claim is
