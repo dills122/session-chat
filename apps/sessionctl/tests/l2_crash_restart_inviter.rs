@@ -18,10 +18,10 @@ mod checked {
 
     use sessionctl::SessionCtlError;
     use sessionctl::l2_process::{
-        L2HarnessProbe, L2ProcessSweepReport, run_l2_process_baseline, run_l2_process_case,
-        run_l2_process_probe,
+        L2HarnessProbe, L2ProcessCase, L2ProcessSweepReport, run_l2_process_baseline,
+        run_l2_process_case, run_l2_process_probe,
     };
-    use storage_sqlcipher::fault_testing::Scenario;
+    use storage_sqlcipher::fault_testing::{Checkpoint, Scenario};
 
     const MAX_EVIDENCE_BYTES: usize = 2_048;
 
@@ -142,6 +142,18 @@ mod checked {
             L2ProcessSweepReport::new(Scenario::InviterTransaction, &baseline, &reports,).is_err(),
             "duplicate checkpoint coverage must be rejected",
         );
+    }
+
+    #[test]
+    fn committed_inviter_reopens_before_shadow_welcome_fixture_exists() {
+        let case = L2ProcessCase::new(Checkpoint::InviterAfterCommitReturn, 0)
+            .expect("committed inviter checkpoint");
+        let report = run_l2_process_case(&executable(), case, L2HarnessProbe::KillWhileBlocked)
+            .expect("committed inviter state reopens from durable Welcome");
+        let evidence = report.encode_v1();
+        assert_inviter_case_evidence(&evidence);
+        assert!(evidence.contains("expected=I1\n"));
+        assert!(evidence.contains("observed=I1\n"));
     }
 
     #[test]

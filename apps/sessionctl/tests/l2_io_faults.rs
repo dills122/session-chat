@@ -515,6 +515,30 @@ mod checked {
     }
 
     #[test]
+    fn persistent_unlock_after_commit_reopens_complete_inviter_state() {
+        let baseline = run_l2_io_baseline(
+            &executable(),
+            Scenario::InviterTransaction,
+            &mut BaselineTrace,
+        )
+        .expect("clean inviter I/O baseline");
+        let target = baseline
+            .targets()
+            .find(|target| {
+                target.file_role() == L2IoFileRole::MainDatabase
+                    && target.operation() == L2IoOperation::Unlock
+            })
+            .expect("observed main-database unlock");
+        let mut driver =
+            ReturnCodeAtTarget::new(target, 0, L2IoFaultMode::Persistent, FaultCode::IoErrUnlock);
+        let report = run_l2_io_fault_case(&executable(), Scenario::InviterTransaction, &mut driver)
+            .expect("committed inviter state reopens after persistent unlock failure");
+        let evidence = report.encode_v1();
+        assert!(evidence.contains("status=validated\n"));
+        assert!(evidence.contains("observed=I1\n"));
+    }
+
+    #[test]
     fn clean_baselines_discover_only_observed_supported_ordinals() {
         for scenario in [Scenario::InviterTransaction, Scenario::JoinerTransaction] {
             let report = run_l2_io_baseline(&executable(), scenario, &mut BaselineTrace)
