@@ -39,8 +39,9 @@ cargo run -p sessionctl --bin sessionctl-pair --locked --offline -- join /tmp/se
 ```
 
 The host permits up to five minutes for the operator to start the joiner, owns
-a bounded local forwarder, and removes only its marked fresh run
-directory after both commands report `status=complete`. This is a scripted
+a bounded local forwarder, retains a capability for its fresh run directory,
+and removes that owned tree without recursively following a rebound pathname
+after both commands report `status=complete`. This is a scripted
 two-process protocol demonstration over local filesystem IPC, not yet an
 interactive chat UI or network transport.
 

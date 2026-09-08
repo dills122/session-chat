@@ -257,6 +257,8 @@ checkpoint is distinct from that immutable tested code revision.
   prevent one transient credential or signer from spanning multiple sessions.
 - [Evidence tool provenance](adr/0034-bind-evidence-to-in-process-git-and-build-compiler.md)
   replaces PATH-selected Git and rustc with in-process status and build-bound compiler identity.
+- [Capability-bound local artifact handling](adr/0035-bind-local-artifacts-to-created-filesystem-objects.md)
+  binds L1 cleanup to retained directory authority and Fast Windows handoffs to verified native handles.
 - [Architecture decision records](adr/) record the foundational decisions that
   other documents rely on.
 

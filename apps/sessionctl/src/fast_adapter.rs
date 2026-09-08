@@ -2,12 +2,15 @@
 
 use std::{
     fmt,
-    fs::{self, File, OpenOptions},
+    fs::{self, File},
     io::{self, Read, Write},
     path::{Path, PathBuf},
     str::FromStr,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+
+#[cfg(unix)]
+use std::fs::OpenOptions;
 
 use same_file::Handle;
 use session_transport::{
@@ -195,14 +198,22 @@ impl FastAdapterAuthorityFileGuard {
             return Err(stage("Fast adapter handoff bound"));
         }
         let temporary = validate_new_handoff_paths(&path)?;
-        let mut options = OpenOptions::new();
-        options.write(true).create_new(true);
         #[cfg(unix)]
-        {
+        let file = {
             use std::os::unix::fs::OpenOptionsExt as _;
-            options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
-        }
-        let file = map_stage(options.open(&temporary), "Fast adapter handoff create")?;
+            let mut options = OpenOptions::new();
+            options
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .custom_flags(libc::O_NOFOLLOW);
+            map_stage(options.open(&temporary), "Fast adapter handoff create")?
+        };
+        #[cfg(windows)]
+        let file = map_stage(
+            session_native_fs::create_owner_only_file(&temporary),
+            "Fast adapter handoff create",
+        )?;
         let temporary_identity =
             map_stage(Handle::from_file(file), "Fast adapter handoff identity")?;
         let mut guard = Self {
@@ -230,6 +241,16 @@ impl FastAdapterAuthorityFileGuard {
         map_stage(
             fs::hard_link(&temporary, &path),
             "Fast adapter handoff publish",
+        )?;
+        let published_path_identity =
+            map_stage(Handle::from_path(&path), "Fast adapter handoff identity")?;
+        if published_path_identity != published_identity {
+            return Err(stage("Fast adapter handoff identity"));
+        }
+        #[cfg(windows)]
+        map_stage(
+            session_native_fs::verify_owner_only_file(temporary_file),
+            "Fast adapter handoff permissions",
         )?;
         guard.published = Some(GuardedAuthorityPath {
             path,
@@ -551,14 +572,6 @@ pub fn fast_adapter_profile_disclosure_v1(mode: FastAdapterPathMode) -> String {
     )
 }
 
-/// `FILE_FLAG_OPEN_REPARSE_POINT`: open the link itself, never its target.
-#[cfg(windows)]
-const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
-
-/// `FILE_ATTRIBUTE_REPARSE_POINT`: the opened name is a link, not the file.
-#[cfg(windows)]
-const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
-
 fn validate_new_handoff_path(path: &Path) -> Result<(), SessionCtlError> {
     if !path.is_absolute() || path.as_os_str().len() > 4_096 {
         return Err(stage("Fast adapter handoff path"));
@@ -590,67 +603,51 @@ fn read_handoff(path: &Path) -> Result<Zeroizing<Vec<u8>>, SessionCtlError> {
     if !path.is_absolute() || path.as_os_str().len() > 4_096 {
         return Err(stage("Fast adapter handoff path"));
     }
-    let before = map_stage(fs::symlink_metadata(path), "Fast adapter handoff metadata")?;
-    if !before.file_type().is_file()
-        || before.len() == 0
-        || before.len() > MAX_FAST_OPERATOR_HANDOFF_BYTES as u64
-    {
-        return Err(stage("Fast adapter handoff file"));
-    }
-    let mut options = OpenOptions::new();
-    options.read(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt as _;
-        options.custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW);
-    }
     #[cfg(windows)]
     {
-        use std::os::windows::fs::OpenOptionsExt as _;
-        options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+        let file = map_stage(
+            session_native_fs::open_owner_only_regular_file(path),
+            "Fast adapter handoff read",
+        )?;
+        let metadata = map_stage(file.metadata(), "Fast adapter handoff metadata")?;
+        if !metadata.file_type().is_file()
+            || metadata.len() == 0
+            || metadata.len() > MAX_FAST_OPERATOR_HANDOFF_BYTES as u64
+        {
+            return Err(stage("Fast adapter handoff file"));
+        }
+        read_bounded(file)
     }
-    let file = map_stage(options.open(path), "Fast adapter handoff read")?;
-    let after = map_stage(file.metadata(), "Fast adapter handoff metadata")?;
-    if !after.file_type().is_file() || after.len() != before.len() {
-        return Err(stage("Fast adapter handoff file"));
-    }
-    // Equal type and length are not identity. Every parse below reads from this
-    // already opened handle, so the handle must be proven to be the same file
-    // the operator selected, not one swapped in by a directory writer.
     #[cfg(unix)]
     {
+        let before = map_stage(fs::symlink_metadata(path), "Fast adapter handoff metadata")?;
+        if !before.file_type().is_file()
+            || before.len() == 0
+            || before.len() > MAX_FAST_OPERATOR_HANDOFF_BYTES as u64
+        {
+            return Err(stage("Fast adapter handoff file"));
+        }
+        let mut options = OpenOptions::new();
+        options.read(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt as _;
+            options.custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW);
+        }
+        let file = map_stage(options.open(path), "Fast adapter handoff read")?;
+        let after = map_stage(file.metadata(), "Fast adapter handoff metadata")?;
+        if !after.file_type().is_file() || after.len() != before.len() {
+            return Err(stage("Fast adapter handoff file"));
+        }
+        // Equal type and length are not identity. Every parse below reads from this
+        // already opened handle, so the handle must be proven to be the same file
+        // the operator selected, not one swapped in by a directory writer.
         use std::os::unix::fs::MetadataExt as _;
         if before.dev() != after.dev() || before.ino() != after.ino() {
             return Err(stage("Fast adapter handoff file"));
         }
+        read_bounded(file)
     }
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::MetadataExt as _;
-        // Reject a link at either observation: the open above keeps the reparse
-        // point itself rather than following it, so a junction or symlink
-        // swapped into the directory cannot redirect the read.
-        if before.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
-            || after.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
-        {
-            return Err(stage("Fast adapter handoff file"));
-        }
-        // Stable std exposes no volume/index pair (`windows_by_handle` is still
-        // unstable) and no owner or ACL data, so this compares every stable
-        // attribute the handle does expose. A replacement that matches type,
-        // length, attributes, creation time and last-write time to 100ns is not
-        // excluded; true handle identity needs `GetFileInformationByHandle`,
-        // which requires a Windows binding and `unsafe`, and the workspace sets
-        // `unsafe_code = "forbid"`.
-        if before.file_attributes() != after.file_attributes()
-            || before.creation_time() != after.creation_time()
-            || before.last_write_time() != after.last_write_time()
-            || before.file_size() != after.file_size()
-        {
-            return Err(stage("Fast adapter handoff file"));
-        }
-    }
-    read_bounded(file)
 }
 
 fn load_authorities(
@@ -1081,5 +1078,25 @@ mod tests {
             symlink(&malformed, &link).expect("create symlink fixture");
             assert!(read_handoff(&link).is_err());
         }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn handoff_reader_rejects_same_length_regular_replacement() {
+        let directory = TestDirectory::new();
+        let path = directory.join("authority.v2");
+        let moved = directory.join("original-authority.v2");
+        let original = b"owner-only authority";
+        let mut guard = FastAdapterAuthorityFileGuard::create(path.clone(), original).unwrap();
+
+        fs::rename(&path, &moved).unwrap();
+        fs::write(&path, vec![b'x'; original.len()]).unwrap();
+        assert_eq!(fs::metadata(&path).unwrap().len(), original.len() as u64);
+
+        assert_eq!(read_handoff(&path), Err(stage("Fast adapter handoff read")));
+
+        guard.remove().unwrap();
+        fs::remove_file(path).unwrap();
+        fs::remove_file(moved).unwrap();
     }
 }

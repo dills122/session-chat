@@ -71,6 +71,8 @@ const APPROVED_NON_INSTRUMENTED_SOURCES = [
   'apps/sessionctl/src/l2_process/execution.rs',
   'apps/sessionctl/src/l2_process/welcome.rs',
   'apps/sessionctl/src/l2_process/welcome_io.rs',
+  'crates/session-native-fs/src/lib.rs',
+  'crates/session-native-fs/src/windows.rs',
   'crates/storage-sqlcipher-fault-vfs/src/lib.rs',
   'crates/storage-sqlcipher/src/fault_testing.rs',
   'crates/transport-conformance/src/lib.rs',
@@ -164,6 +166,15 @@ test('ordinary production coverage explicitly excludes checked-cfg fault modules
     'apps/sessionctl/src/l2_process.rs',
     'apps/sessionctl/src/l2_process/evidence.rs',
     'crates/storage-sqlcipher/src/fault_testing.rs',
+  ]) {
+    assert.ok(COVERAGE_POLICY.nonInstrumentedSources.includes(source), source);
+  }
+});
+
+test('Linux coverage explicitly allows isolated Windows native filesystem sources', () => {
+  for (const source of [
+    'crates/session-native-fs/src/lib.rs',
+    'crates/session-native-fs/src/windows.rs',
   ]) {
     assert.ok(COVERAGE_POLICY.nonInstrumentedSources.includes(source), source);
   }

@@ -9,6 +9,7 @@ members = [
   "crates/session-crypto-hpke",
   "crates/session-crypto-mls",
   "crates/session-inviter-transaction",
+  "crates/session-native-fs",
   "crates/session-protocol",
   "crates/session-storage",
   "crates/session-transport",
@@ -33,6 +34,7 @@ debug = 1
 
 [workspace.dependencies]
 argon2 = { version = "=0.6.0", default-features = false, features = ["zeroize"] }
+cap-std = "=4.0.3"
 ed25519-dalek = { version = "=3.0.0", default-features = false, features = ["fast", "zeroize"] }
 aws-lc-rs = { version = "=1.16.3", default-features = false, features = ["non-fips"] }
 git2 = { version = "=0.21.0", default-features = false, features = ["vendored-libgit2"] }

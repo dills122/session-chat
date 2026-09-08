@@ -293,22 +293,20 @@ Assumptions:
   file identity and leaves a replacement already present at comparison time
   untouched. The portable compare-then-remove sequence has a residual
   concurrent pathname-swap race and remains laboratory behavior.
-- The handoff reader opens the selected pathname once and parses only from that
-  handle. Unix adds `O_NOFOLLOW` and a device/inode identity comparison. Windows
-  opens the reparse point itself rather than following it, rejects a reparse
-  attribute at either observation, and compares every stable attribute the
-  handle exposes: file attributes, creation time, last-write time and size. That
-  is weaker than the Unix check. Stable `std` exposes no volume/index pair
-  (`windows_by_handle` is unstable) and no owner or ACL data, so a replacement
-  matching all of those values to 100ns is not excluded, and true handle
-  identity would need `GetFileInformationByHandle` through a Windows binding and
-  `unsafe`, which `unsafe_code = "forbid"` rules out.
-- Handoff creation requests owner-only mode on Unix only. On Windows the file
-  inherits the operator-selected directory's DACL, which is neither set nor
-  checked, so another local principal permitted to read that directory can copy
-  every mailbox right before expiry or removal. Setting an explicit owner-only
-  DACL and reading the effective ACL both require Windows security APIs that
-  `std` does not expose, so this remains an open gap rather than a control.
+- The handoff reader parses only from one validated handle. Unix retains
+  `O_NOFOLLOW` plus device/inode comparison. Windows opens once with
+  no-reparse semantics, rejects directory or reparse handles, obtains stable
+  volume/file-index identity from that handle, and requires its effective DACL
+  to be protected with exactly full-control Owner Rights and Local System allow
+  entries. A same-length pathname replacement with inherited or foreign access
+  therefore fails before decode or public network work.
+- Handoff creation requests owner-only mode at creation on every supported
+  family. Windows supplies a protected Owner Rights/Local System DACL during
+  exclusive temporary-file creation, reads back and verifies the effective
+  descriptor before writing any mailbox capability bytes, and verifies the
+  published hard link still names the retained object. Native calls and unsafe
+  blocks are isolated behind the safe `session-native-fs` contract. These
+  controls do not resist same-principal process or memory compromise.
 - Address-free path evidence distinguishes Iroh's selected direct and relay
   paths without logging socket or relay addresses. Relay-only evidence removes
   direct IP transports but still contacts address lookup, DNS, and relay

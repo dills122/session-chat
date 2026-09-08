@@ -53,7 +53,9 @@ The policy makes these distinctions explicit:
   enforces doctests.
 - There is no generated Rust source in the workspace.
 - Provider-invariant random failures, hard-to-reach production errors, and
-  platform glue are not excluded. New production source that is absent from the
+  platform glue active on the Linux coverage host are not excluded. Isolated
+  target-only native glue requires an exact documented allowance plus its
+  platform test and scan gates. New production source that is absent from the
   report or not assigned to exactly one component fails the gate.
 
 ### Approved non-instrumented source allowances
@@ -64,6 +66,8 @@ The policy makes these distinctions explicit:
 - `apps/sessionctl/src/l2_process/execution.rs`
 - `apps/sessionctl/src/l2_process/welcome.rs`
 - `apps/sessionctl/src/l2_process/welcome_io.rs`
+- `crates/session-native-fs/src/lib.rs`
+- `crates/session-native-fs/src/windows.rs`
 - `crates/storage-sqlcipher-fault-vfs/src/lib.rs`
 - `crates/storage-sqlcipher/src/fault_testing.rs`
 - `crates/transport-conformance/src/lib.rs`
@@ -71,10 +75,13 @@ The policy makes these distinctions explicit:
 
 The five `l2_process` files and `storage-sqlcipher` fault module exist only
 under registered checked fault-testing cfgs; their checked-cfg commands remain
-separate retained evidence. The fault-VFS and transport-conformance crate roots
-contain declarations, re-exports, and constants but no executable function
-bodies. The checker requires every allowance to exist and fails if one becomes
-instrumented or stale.
+separate retained evidence. The `session-native-fs` crate is Windows-only: its
+crate root contains only a gated module and re-exports on the Linux coverage
+host, while its native implementation is compiled, linted, tested, and scanned
+by the Windows Rust and Rust CodeQL jobs. The fault-VFS and
+transport-conformance crate roots contain declarations, re-exports, and
+constants but no executable function bodies. The checker requires every
+allowance to exist and fails if one becomes instrumented or stale.
 
 ## Clean-master baseline and enforced result
 

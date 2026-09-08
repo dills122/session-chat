@@ -877,14 +877,11 @@ fn run_hostile_replay_controller(root: &Path) -> Result<(), SessionCtlError> {
         Ok(())
     })();
     let child_cleanup_result = children.cleanup();
-    let directory_cleanup_result = validate_root(root)
-        .and_then(|()| fs::remove_dir_all(root).at_stage("hostile process root removal"));
     scenario_result?;
     child_cleanup_result?;
-    directory_cleanup_result?;
 
     print!(
-        "version=1\nscenario=E2E-JOIN-002\ncase=replayed-protected-join\nresult=pass\nreplay=rejected\nmembership=unchanged\nredaction=pass\nchild_cleanup=pass\ndirectory_cleanup=pass\n"
+        "version=1\nscenario=E2E-JOIN-002\ncase=replayed-protected-join\nresult=pass\nreplay=rejected\nmembership=unchanged\nredaction=pass\nchild_cleanup=pass\ndirectory_cleanup=delegated\n"
     );
     Ok(())
 }
@@ -1220,10 +1217,8 @@ fn run_hostile_matrix_controller(root: &Path) -> Result<(), SessionCtlError> {
         directory_cleanup_result?;
     }
 
-    validate_root(root)?;
-    fs::remove_dir_all(root).at_stage("hostile matrix root removal")?;
     print!(
-        "version=1\nscenario=E2E-JOIN-002\ntopology=two-clients-one-untrusted-service\nresult=pass\ncases=malformed-protected-join,expired-protected-join,copied-protected-join,wrong-invitation,wrong-key-package,wrong-verifier,reordered-protected-joins\ncase_count=7\napproval=not-reached\nmls_add=not-reached\nmembership=unchanged\nservice_input=canonical-public-only\nredaction=pass\nchild_cleanup=pass\ndirectory_cleanup=pass\n"
+        "version=1\nscenario=E2E-JOIN-002\ntopology=two-clients-one-untrusted-service\nresult=pass\ncases=malformed-protected-join,expired-protected-join,copied-protected-join,wrong-invitation,wrong-key-package,wrong-verifier,reordered-protected-joins\ncase_count=7\napproval=not-reached\nmls_add=not-reached\nmembership=unchanged\nservice_input=canonical-public-only\nredaction=pass\nchild_cleanup=pass\ndirectory_cleanup=delegated\n"
     );
     Ok(())
 }
@@ -2338,7 +2333,10 @@ fn create_private_directory(path: &Path) -> Result<(), SessionCtlError> {
     builder.create(path).at_stage("process root")
 }
 
-struct ProcessRoot(Option<PathBuf>);
+struct ProcessRoot {
+    path: Option<PathBuf>,
+    directory: Option<cap_std::fs::Dir>,
+}
 
 impl ProcessRoot {
     fn new() -> Result<Self, SessionCtlError> {
@@ -2346,11 +2344,25 @@ impl ProcessRoot {
     }
 
     fn create_at(root: PathBuf) -> Result<Self, SessionCtlError> {
+        Self::create_at_with(root, |_| Ok(()))
+    }
+
+    fn create_at_with(
+        root: PathBuf,
+        after_create: impl FnOnce(&Path) -> std::io::Result<()>,
+    ) -> Result<Self, SessionCtlError> {
         if !root.is_absolute() || root.as_os_str().len() > 4_096 || root.exists() {
             return Err(stage("process root"));
         }
         create_private_directory(&root)?;
-        let process_root = Self(Some(root));
+        after_create(&root).at_stage("process root creation")?;
+        let directory = cap_std::fs::Dir::open_ambient_dir(&root, cap_std::ambient_authority())
+            .at_stage("process root handle")?;
+        validate_new_root_handle(&root, &directory)?;
+        let process_root = Self {
+            path: Some(root),
+            directory: Some(directory),
+        };
         atomic_write(
             &process_root.path().join(".sessionctl-l1-root"),
             ROOT_MARKER,
@@ -2369,27 +2381,112 @@ impl ProcessRoot {
     }
 
     fn path(&self) -> &Path {
-        self.0
+        self.path
             .as_deref()
             .expect("process root is unavailable after cleanup")
     }
 
     fn cleanup(&mut self) -> Result<(), SessionCtlError> {
-        self.cleanup_with(|path| fs::remove_dir_all(path))
+        self.cleanup_with(|_| Ok(()))
     }
 
     fn cleanup_with(
         &mut self,
-        remove: impl FnOnce(&Path) -> std::io::Result<()>,
+        before_remove: impl FnOnce(&Path) -> std::io::Result<()>,
     ) -> Result<(), SessionCtlError> {
-        let Some(path) = self.0.as_deref() else {
+        let Some(path) = self.path.clone() else {
             return Ok(());
         };
-        validate_root(path)?;
-        remove(path).at_stage("process root removal")?;
-        self.0 = None;
+        validate_root(&path)?;
+        before_remove(&path).at_stage("process root removal")?;
+        let directory = self
+            .directory
+            .as_ref()
+            .ok_or_else(|| stage("process root handle"))?;
+        remove_directory_contents(directory).at_stage("process root removal")?;
+        #[cfg(not(windows))]
+        {
+            let removal_handle = directory
+                .try_clone()
+                .at_stage("process root removal handle")?;
+            remove_open_directory(removal_handle, &path).at_stage("process root removal")?;
+        }
+        #[cfg(windows)]
+        {
+            let removal_handle = self
+                .directory
+                .take()
+                .ok_or_else(|| stage("process root handle"))?;
+            remove_open_directory(removal_handle, &path).at_stage("process root removal")?;
+        }
+        self.directory = None;
+        self.path = None;
         Ok(())
     }
+}
+
+fn validate_new_root_handle(
+    path: &Path,
+    directory: &cap_std::fs::Dir,
+) -> Result<(), SessionCtlError> {
+    let metadata = fs::symlink_metadata(path).at_stage("process root identity")?;
+    if !metadata.file_type().is_dir() {
+        return Err(stage("process root identity"));
+    }
+    let retained = directory
+        .try_clone()
+        .map(cap_std::fs::Dir::into_std_file)
+        .and_then(same_file::Handle::from_file)
+        .at_stage("process root identity")?;
+    let named = same_file::Handle::from_path(path).at_stage("process root identity")?;
+    if retained != named {
+        return Err(stage("process root identity"));
+    }
+    if directory
+        .entries()
+        .at_stage("process root identity")?
+        .next()
+        .transpose()
+        .at_stage("process root identity")?
+        .is_some()
+    {
+        return Err(stage("process root identity"));
+    }
+    Ok(())
+}
+
+fn remove_directory_contents(directory: &cap_std::fs::Dir) -> std::io::Result<()> {
+    let entries = directory
+        .entries()?
+        .collect::<Result<Vec<_>, std::io::Error>>()?;
+    for entry in entries {
+        let name = entry.file_name();
+        let file_type = entry.file_type()?;
+        if file_type.is_dir() {
+            let child = directory.open_dir(&name)?;
+            remove_directory_contents(&child)?;
+            drop(child);
+            directory.remove_dir(&name)?;
+        } else {
+            directory.remove_file(&name)?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn remove_open_directory(directory: cap_std::fs::Dir, _path: &Path) -> std::io::Result<()> {
+    directory.remove_open_dir()
+}
+
+#[cfg(windows)]
+fn remove_open_directory(directory: cap_std::fs::Dir, path: &Path) -> std::io::Result<()> {
+    // cap-std holds this handle without FILE_SHARE_DELETE, so the pathname
+    // cannot be rebound while contents are removed. Only the final empty-dir
+    // removal occurs after releasing that lock; it can never recurse into a
+    // replacement tree.
+    drop(directory);
+    fs::remove_dir(path)
 }
 
 impl Drop for ProcessRoot {
@@ -3188,6 +3285,120 @@ mod tests {
 
         drop(root);
         assert!(!path.exists());
+    }
+
+    #[test]
+    fn process_root_creation_rejects_a_replacement_before_handle_acquisition() {
+        let path = fresh_process_root_path("creation-replacement").unwrap();
+        let moved = path.with_extension("created");
+        let sentinel = path.join("replacement-sentinel");
+
+        let result = ProcessRoot::create_at_with(path.clone(), |candidate| {
+            fs::rename(candidate, &moved)?;
+            fs::create_dir(candidate)?;
+            fs::write(&sentinel, b"preserve pre-handle replacement")?;
+            Ok(())
+        });
+
+        assert!(result.is_err());
+        assert!(sentinel.is_file());
+        assert!(moved.is_dir());
+        fs::remove_dir_all(path).unwrap();
+        fs::remove_dir_all(moved).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn process_root_cleanup_preserves_replacement_after_validation() {
+        let mut root = ProcessRoot::new().unwrap();
+        let path = root.path().to_owned();
+        let moved = path.with_extension("owned");
+        let sentinel = path.join("replacement-sentinel");
+
+        let result = root.cleanup_with(|candidate| {
+            fs::rename(candidate, &moved)?;
+            fs::create_dir(candidate)?;
+            fs::write(&sentinel, b"preserve replacement")?;
+            Ok(())
+        });
+
+        let replacement_survived = sentinel.is_file();
+        let owned_root_removed = !moved.exists();
+        let _ = fs::remove_dir_all(&path);
+        let _ = fs::remove_dir_all(&moved);
+
+        assert!(result.is_ok());
+        assert!(replacement_survived);
+        assert!(owned_root_removed);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn process_root_cleanup_preserves_same_marker_replacement() {
+        let mut root = ProcessRoot::new().unwrap();
+        let path = root.path().to_owned();
+        let moved = path.with_extension("owned");
+        let sentinel = path.join("replacement-sentinel");
+
+        fs::rename(&path, &moved).unwrap();
+        create_private_directory(&path).unwrap();
+        fs::write(path.join(".sessionctl-l1-root"), ROOT_MARKER).unwrap();
+        for directory in ["direct", "relay", "relay/in", "relay/out", "alice"] {
+            create_private_directory(&path.join(directory)).unwrap();
+        }
+        fs::write(&sentinel, b"preserve same-marker replacement").unwrap();
+
+        let result = root.cleanup();
+        let replacement_survived = sentinel.is_file();
+        let owned_root_removed = !moved.exists();
+        let _ = fs::remove_dir_all(&path);
+        let _ = fs::remove_dir_all(&moved);
+
+        assert!(result.is_ok());
+        assert!(replacement_survived);
+        assert!(owned_root_removed);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn process_root_cleanup_denies_rebinding_while_capability_is_live() {
+        let mut root = ProcessRoot::new().unwrap();
+        let path = root.path().to_owned();
+        let moved = path.with_extension("replacement-attempt");
+
+        let result = root.cleanup_with(|candidate| {
+            assert!(fs::rename(candidate, &moved).is_err());
+            Ok(())
+        });
+
+        assert!(result.is_ok());
+        assert!(!path.exists());
+        assert!(!moved.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn process_root_cleanup_rejects_symlink_replacement() {
+        use std::os::unix::fs::symlink;
+
+        let mut root = ProcessRoot::new().unwrap();
+        let path = root.path().to_owned();
+        let moved = path.with_extension("owned");
+        let victim = path.with_extension("victim");
+        create_private_directory(&victim).unwrap();
+        let sentinel = victim.join("sentinel");
+        fs::write(&sentinel, b"preserve symlink target").unwrap();
+        fs::rename(&path, &moved).unwrap();
+        symlink(&victim, &path).unwrap();
+
+        let result = root.cleanup();
+        let target_survived = sentinel.is_file();
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_dir_all(&moved);
+        let _ = fs::remove_dir_all(&victim);
+
+        assert!(result.is_err());
+        assert!(target_survived);
     }
 
     #[test]
