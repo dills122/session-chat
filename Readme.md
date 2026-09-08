@@ -35,6 +35,8 @@ The Rust workspace currently contains:
   ownership-preserving invitation/MLS prepare/apply coordination
 - `session-crypto-mls`, with an isolated in-memory two-party MLS 1.0 adapter for
   bounded KeyPackage validation, Add/Welcome, messages, path updates, and removal
+- `session-native-fs`, a publish-disabled safe boundary around the narrow
+  Windows file/DACL operations required by the FastV1 evidence harness
 - `session-transport`, with provider-generated, right-specific local Welcome
   mailboxes, one-envelope idempotency, expiry, bounded in-memory state, and the
   provider-neutral right-specific opaque-envelope transport contract

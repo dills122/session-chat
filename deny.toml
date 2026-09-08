@@ -31,6 +31,9 @@ exceptions = [
   { allow = ["Zlib"], crate = "foldhash@0.2.0" },
   { allow = ["BSD-2-Clause"], crate = "spez@0.1.2" },
   { allow = ["CDLA-Permissive-2.0"], crate = "webpki-roots@1.0.9" },
+  # Exact Windows support dependency of pinned cap-std 4.0.3. Keep the
+  # LLVM exception coupled to Apache-2.0 and scoped to this reviewed version.
+  { allow = ["Apache-2.0 WITH LLVM-exception"], crate = "winx@0.36.4" },
 ]
 
 [bans]

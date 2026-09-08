@@ -297,6 +297,11 @@ architecture:
   named SQLite VFS delegator for the checked L2 suite. It records bounded,
   path-free operation evidence and injects only the retained SQLite result
   codes; ordinary connections never select it.
+- `session-native-fs` isolates the audited Windows filesystem calls used by
+  `sessionctl`. It creates and verifies owner/System-only Fast handoff files
+  before bearer bytes are written, and opens join handoffs once with
+  handle-derived regular-file, reparse, identity, and DACL checks. It is not a
+  general storage provider or platform vault.
 - `sessionctl` composes the current local pieces into one headless Alice/Bob
   flow: capability join, simulated approval, atomic SQLCipher inviter commit,
   ambiguous-result recovery, exact Alice identity/group reload, reconstructed coordinator Welcome delivery,
@@ -533,6 +538,7 @@ session-chat/
 |   |-- session-crypto/          # provider-neutral message-session contract
 |   |-- session-crypto-mls/      # MLS integration
 |   |-- session-admission/       # admission traits and policies
+|   |-- session-native-fs/       # narrow native local-file security controls
 |   |-- admission-github/
 |   |-- admission-credential/
 |   |-- admission-capability/

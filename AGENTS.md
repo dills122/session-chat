@@ -49,6 +49,8 @@ Current areas:
   and in-memory invitation/MLS coordination
 - `crates/session-crypto-mls`: isolated in-memory two-party MLS adapter with
   bounded exact KeyPackage ownership and explicit prepare/apply transitions
+- `crates/session-native-fs`: publish-disabled native local-file security
+  boundary for verified Windows owner-only Fast handoffs
 - `crates/session-transport`: bounded local one-Welcome mailbox with distinct
   deposit, receive, and acknowledgement authorities plus the provider-neutral
   right-specific opaque-envelope transport trait and a fail-closed LocalV1-only

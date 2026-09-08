@@ -9,6 +9,7 @@ default-run = "sessionctl"
 [dependencies]
 admission-capability = { version = "=0.1.0", path = "../../crates/admission-capability" }
 aws-lc-rs.workspace = true
+cap-std.workspace = true
 git2.workspace = true
 mls-rs-core.workspace = true
 session-admission = { version = "=0.1.0", path = "../../crates/session-admission" }
@@ -16,6 +17,7 @@ session-core = { version = "=0.1.0", path = "../../crates/session-core" }
 session-crypto = { version = "=0.1.0", path = "../../crates/session-crypto" }
 session-crypto-hpke = { version = "=0.1.0", path = "../../crates/session-crypto-hpke" }
 session-crypto-mls = { version = "=0.1.0", path = "../../crates/session-crypto-mls" }
+session-native-fs = { version = "=0.1.0", path = "../../crates/session-native-fs" }
 session-protocol = { version = "=0.1.0", path = "../../crates/session-protocol" }
 session-transport = { version = "=0.1.0", path = "../../crates/session-transport" }
 rusqlite.workspace = true

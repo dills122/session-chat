@@ -284,11 +284,11 @@ fn hostile_replayed_join_is_rejected_before_durable_membership_mutation() {
     assert!(output.stdout.len() <= MAX_EVIDENCE_BYTES);
     assert_eq!(
         output.stdout,
-        b"version=1\nscenario=E2E-JOIN-002\ncase=replayed-protected-join\nresult=pass\nreplay=rejected\nmembership=unchanged\nredaction=pass\nchild_cleanup=pass\ndirectory_cleanup=pass\n"
+        b"version=1\nscenario=E2E-JOIN-002\ncase=replayed-protected-join\nresult=pass\nreplay=rejected\nmembership=unchanged\nredaction=pass\nchild_cleanup=pass\ndirectory_cleanup=delegated\n"
     );
     assert!(
-        controller_removed_root,
-        "controller must remove the scenario root"
+        !controller_removed_root,
+        "caller retains root cleanup authority"
     );
 }
 
@@ -314,7 +314,7 @@ fn hostile_first_contact_matrix_rejects_every_remaining_process_case() {
     assert!(output.stdout.len() <= MAX_EVIDENCE_BYTES);
     assert_eq!(
         output.stdout,
-        b"version=1\nscenario=E2E-JOIN-002\ntopology=two-clients-one-untrusted-service\nresult=pass\ncases=malformed-protected-join,expired-protected-join,copied-protected-join,wrong-invitation,wrong-key-package,wrong-verifier,reordered-protected-joins\ncase_count=7\napproval=not-reached\nmls_add=not-reached\nmembership=unchanged\nservice_input=canonical-public-only\nredaction=pass\nchild_cleanup=pass\ndirectory_cleanup=pass\n"
+        b"version=1\nscenario=E2E-JOIN-002\ntopology=two-clients-one-untrusted-service\nresult=pass\ncases=malformed-protected-join,expired-protected-join,copied-protected-join,wrong-invitation,wrong-key-package,wrong-verifier,reordered-protected-joins\ncase_count=7\napproval=not-reached\nmls_add=not-reached\nmembership=unchanged\nservice_input=canonical-public-only\nredaction=pass\nchild_cleanup=pass\ndirectory_cleanup=delegated\n"
     );
     let lowercase = String::from_utf8_lossy(&output.stdout).to_ascii_lowercase();
     for forbidden in [
@@ -333,8 +333,8 @@ fn hostile_first_contact_matrix_rejects_every_remaining_process_case() {
         assert!(!lowercase.contains(forbidden), "leaked term {forbidden:?}");
     }
     assert!(
-        controller_removed_root,
-        "controller must remove the scenario root"
+        !controller_removed_root,
+        "caller retains root cleanup authority"
     );
 }
 
@@ -409,9 +409,10 @@ fn internal_roles_fail_closed_on_missing_or_malformed_scoped_inputs() {
             .is_err()
     );
     assert!(
-        !hostile_controller.exists(),
-        "failed hostile controller must still reap children and remove its root"
+        hostile_controller.exists(),
+        "failed hostile controller must leave caller-owned root cleanup to caller"
     );
+    fs::remove_dir_all(hostile_controller).expect("remove failed hostile controller root");
 
     for role in [
         "hostile-matrix-service",
