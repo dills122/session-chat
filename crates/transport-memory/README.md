@@ -44,7 +44,9 @@ revalidates staged receive expiry against its final wall-clock observation, and
 treats a valid-authority acknowledgement of unknown or already-acknowledged IDs
 as an indistinguishable idempotent result. The initial memory profile has no
 persisted cursor state, so every supplied cursor fails with `InvalidCursor`;
-cursorless polling remains bounded and deterministic.
+cursorless polling remains bounded and deterministic. Its receive capability
+also has no reusable-lifecycle binding, so checkpoint-bound polls fail with
+`AuthorityScopeMismatch` before mailbox data is read.
 
 `OpaqueEnvelope` is a structural byte container. This adapter neither encrypts
 its contents nor proves that callers supplied ciphertext. It is single-process,

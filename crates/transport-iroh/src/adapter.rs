@@ -933,6 +933,9 @@ impl EnvelopeDelivery for IrohFastDelivery {
     ) -> Result<ReceiveBatch, TransportFailure> {
         let authority = authority.provider();
         let observation = control.checkpoint(request.budget())?;
+        if request.receive_binding().is_some() {
+            return Err(failure(TransportFailureCode::AuthorityScopeMismatch));
+        }
         self.validate_scope(
             authority.server,
             authority.expires_at_unix_seconds,

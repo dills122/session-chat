@@ -458,8 +458,14 @@ pub struct InviterJoinTransaction {
     epoch_after: u64,
     approval_record: Vec<u8>,
     welcome: Vec<u8>,
+    bound_welcome: Option<BoundWelcome>,
     endpoint: Vec<u8>,
     outbox_expires_at: u64,
+}
+
+struct BoundWelcome {
+    envelope_id: [u8; 16],
+    expires_at: u64,
 }
 
 impl InviterJoinTransaction {
@@ -490,6 +496,47 @@ impl InviterJoinTransaction {
             epoch_after,
             approval_record,
             welcome,
+            bound_welcome: None,
+            endpoint,
+            outbox_expires_at,
+        };
+        validate_inviter(&value, 0)?;
+        Ok(value)
+    }
+
+    /// Validates inviter metadata while leaving Welcome ciphertext opaque until
+    /// the exact provider storage write is active.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_bound(
+        transaction_id: [u8; 16],
+        invitation_id: [u8; 16],
+        invitation_generation: [u8; 64],
+        join_request_id: [u8; 16],
+        request_fingerprint: [u8; 32],
+        group_id: [u8; 32],
+        epoch_before: u64,
+        epoch_after: u64,
+        approval_record: Vec<u8>,
+        welcome_envelope_id: [u8; 16],
+        welcome_expires_at: u64,
+        endpoint: Vec<u8>,
+        outbox_expires_at: u64,
+    ) -> Result<Self, StoreError> {
+        let value = Self {
+            transaction_id,
+            invitation_id,
+            invitation_generation,
+            join_request_id,
+            request_fingerprint,
+            group_id,
+            epoch_before,
+            epoch_after,
+            approval_record,
+            welcome: Vec::new(),
+            bound_welcome: Some(BoundWelcome {
+                envelope_id: welcome_envelope_id,
+                expires_at: welcome_expires_at,
+            }),
             endpoint,
             outbox_expires_at,
         };
@@ -1587,6 +1634,9 @@ impl SqlCipherStorage {
         fault: PersistenceFault,
     ) -> Result<(), StoreError> {
         validate_inviter(&transaction, now_unix_seconds)?;
+        if transaction.bound_welcome.is_some() {
+            return Err(StoreError::Rejected);
+        }
         let mut inner = self.lock()?;
         if inner.staged_inviter.is_some()
             || inner.staged_joiner.is_some()
@@ -1614,7 +1664,9 @@ impl SqlCipherStorage {
         now_unix_seconds: u64,
         fault: PersistenceFault,
     ) -> Result<(), StoreError> {
-        if !Arc::ptr_eq(&self.lease_scope, &authorization.open_scope) {
+        if !Arc::ptr_eq(&self.lease_scope, &authorization.open_scope)
+            || transaction.bound_welcome.is_none()
+        {
             return Err(StoreError::Conflict);
         }
         let attempt_id = authorization.attempt_id;
@@ -1647,6 +1699,37 @@ impl SqlCipherStorage {
         inner.staged_inviter = Some(StagedInviter {
             transaction,
             authorization: Some(authorization),
+            addition: Some(addition),
+            now_unix_seconds,
+            staged_at: Instant::now(),
+            fault,
+        });
+        Ok(())
+    }
+
+    /// Stages an inviter transaction whose Welcome is supplied only by the
+    /// exact active durable provider write.
+    pub fn stage_bound_inviter(
+        &self,
+        addition: CommittedAdditionStorageBinding,
+        transaction: InviterJoinTransaction,
+        now_unix_seconds: u64,
+        fault: PersistenceFault,
+    ) -> Result<(), StoreError> {
+        validate_inviter(&transaction, now_unix_seconds)?;
+        if transaction.bound_welcome.is_none() {
+            return Err(StoreError::Rejected);
+        }
+        let mut inner = self.lock()?;
+        if inner.staged_inviter.is_some()
+            || inner.staged_joiner.is_some()
+            || inner.pending_joiner.is_some()
+        {
+            return Err(StoreError::Conflict);
+        }
+        inner.staged_inviter = Some(StagedInviter {
+            transaction,
+            authorization: None,
             addition: Some(addition),
             now_unix_seconds,
             staged_at: Instant::now(),
@@ -2334,7 +2417,7 @@ impl GroupStateStorage for SqlCipherStorage {
                 .map(|authorization| authorization.attempt_id);
             let result = commit_inviter(
                 &mut inner.connection,
-                &staged,
+                staged,
                 &state,
                 &epoch_inserts,
                 &epoch_updates,
@@ -3369,12 +3452,9 @@ fn authorization_matches_inviter(
     expected_state: i64,
     now_unix_seconds: u64,
 ) -> Result<bool, StoreError> {
-    let welcome =
-        OpaqueEnvelope::decode_canonical(&inviter.welcome).map_err(|_| StoreError::Rejected)?;
     if addition.group_id() != &inviter.group_id
         || addition.epoch_before() != inviter.epoch_before
         || addition.epoch_after() != inviter.epoch_after
-        || addition.welcome().as_bytes() != welcome.ciphertext()
     {
         return Ok(false);
     }
@@ -3602,7 +3682,7 @@ fn map_outbox_store_error(error: StoreError) -> OutboxPortError {
 
 fn commit_inviter(
     connection: &mut Connection,
-    staged: &StagedInviter,
+    mut staged: StagedInviter,
     state: &GroupState,
     epoch_inserts: &[EpochRecord],
     epoch_updates: &[EpochRecord],
@@ -3610,6 +3690,25 @@ fn commit_inviter(
         &fault_testing::FaultObserver,
     >,
 ) -> Result<(), StoreError> {
+    if let Some(addition) = &staged.addition {
+        let bound = staged
+            .transaction
+            .bound_welcome
+            .take()
+            .ok_or(StoreError::Rejected)?;
+        let welcome = addition
+            .welcome_for_current_provider_write(state, epoch_inserts, epoch_updates)
+            .ok_or(StoreError::Conflict)?;
+        staged.transaction.welcome = OpaqueEnvelope::new(
+            bound.envelope_id,
+            bound.expires_at,
+            welcome.as_bytes().to_vec(),
+        )
+        .and_then(|envelope| envelope.encode_canonical())
+        .map_err(|_| StoreError::Rejected)?;
+    } else if staged.transaction.bound_welcome.is_some() {
+        return Err(StoreError::Rejected);
+    }
     let commit = &staged.transaction;
     if state.id.as_slice() != commit.group_id || commit.epoch_after > i64::MAX as u64 {
         return Err(StoreError::Rejected);
@@ -3626,9 +3725,14 @@ fn commit_inviter(
         .checked_add(staged.staged_at.elapsed().as_secs())
         .ok_or(StoreError::Rejected)?;
     validate_inviter(commit, commit_now_unix_seconds)?;
-    if let (Some(authorization), Some(addition)) = (&staged.authorization, &staged.addition) {
-        if !addition.authorizes_current_provider_write(state, epoch_inserts, epoch_updates)
-            || store_id_on(&transaction)? != authorization.store_id
+    if let Some(addition) = &staged.addition
+        && !addition.authorizes_current_provider_write(state, epoch_inserts, epoch_updates)
+    {
+        return Err(StoreError::Conflict);
+    }
+    if let Some(authorization) = &staged.authorization {
+        let addition = staged.addition.as_ref().ok_or(StoreError::Rejected)?;
+        if store_id_on(&transaction)? != authorization.store_id
             || !authorization_matches_inviter(
                 &transaction,
                 authorization,
@@ -3640,7 +3744,7 @@ fn commit_inviter(
         {
             return Err(StoreError::Conflict);
         }
-    } else if staged.authorization.is_none() && staged.addition.is_none() {
+    } else {
         let durable_opening_exists = transaction
             .query_row(
                 "SELECT 1 FROM invitation_opening_contexts
@@ -3653,8 +3757,6 @@ fn commit_inviter(
         if durable_opening_exists {
             return Err(StoreError::Conflict);
         }
-    } else {
-        return Err(StoreError::Rejected);
     }
     let existing = transaction
         .query_row(
@@ -4095,7 +4197,6 @@ fn validate_inviter(
         || transaction.epoch_after > i64::MAX as u64
         || transaction.approval_record.is_empty()
         || transaction.approval_record.len() > 4_096
-        || transaction.welcome.is_empty()
         || transaction.welcome.len() > 65_536
         || transaction.endpoint.is_empty()
         || transaction.endpoint.len() > 4_096
@@ -4105,11 +4206,37 @@ fn validate_inviter(
     {
         return Err(StoreError::Rejected);
     }
-    validate_delivery_material(
-        &transaction.welcome,
-        &transaction.endpoint,
-        transaction.outbox_expires_at,
-    )
+    match &transaction.bound_welcome {
+        Some(bound) if transaction.welcome.is_empty() => validate_delivery_metadata(
+            &bound.envelope_id,
+            bound.expires_at,
+            &transaction.endpoint,
+            transaction.outbox_expires_at,
+        ),
+        None if !transaction.welcome.is_empty() => validate_delivery_material(
+            &transaction.welcome,
+            &transaction.endpoint,
+            transaction.outbox_expires_at,
+        ),
+        _ => Err(StoreError::Rejected),
+    }
+}
+
+fn validate_delivery_metadata(
+    envelope_id: &[u8; 16],
+    welcome_expires_at: u64,
+    endpoint: &[u8],
+    outbox_expires_at: u64,
+) -> Result<(), StoreError> {
+    let endpoint = LocalWelcomeDepositEndpoint::decode_canonical(endpoint)
+        .map_err(|_| StoreError::Rejected)?;
+    if all_zero(envelope_id)
+        || outbox_expires_at > welcome_expires_at
+        || welcome_expires_at > endpoint.expires_at_unix_seconds()
+    {
+        return Err(StoreError::Rejected);
+    }
+    Ok(())
 }
 
 fn validate_mls_write(

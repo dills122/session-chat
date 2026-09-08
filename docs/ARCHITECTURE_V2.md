@@ -201,8 +201,10 @@ architecture:
   provider-owned approved one-shot value to enter MLS prepare/apply.
 - `session-crypto-mls` isolates the pinned `mls-rs`/AWS-LC provider behind
   bounded KeyPackage, Welcome, and message inputs and models an in-memory
-  two-member Add, path-update, message, and removal lifecycle. It is the only
-  current implementation of the provider-neutral message contract.
+  two-member Add, path-update, message, and removal lifecycle. Transient clients
+  permit one inviter group or one KeyPackage followed by one fail-closed Welcome
+  attempt; durable clients retain exact-group identity continuity. It is the
+  only current implementation of the provider-neutral message contract.
 - `session-transport` creates bounded local one-Welcome mailboxes with distinct
   deposit, receive, and acknowledgement authorities, exact-retry idempotency,
   expiry, and no ambient credentials. Its additive generalized values provide
@@ -230,12 +232,16 @@ architecture:
   exact-byte stale replay, acknowledgement-result loss, poll-page, exact-set
   acknowledgement, cursor-rejection, and secret-free probe controls for
   headless tests.
+  It rejects checkpoint-bound polls because its receive authority has no
+  reusable-mailbox lifecycle binding.
   It is not a network transport.
 - `transport-iroh` is a bounded authenticated ordered-frame link and connected
   `EnvelopeDelivery` provider for explicit FastV1 online experiments. Its
   volatile mailbox service and headless host/join harness reuse the common
   nine-operation contract over direct-only loopback; public N0 constructors
-  and reachability checks are separately invoked operator tests. It is not an
+  and reachability checks are separately invoked operator tests. It issues no
+  authority for durable cursor checkpoints and rejects checkpoint-bound polls
+  before network work. It is not an
   offline mailbox, durable provider, product network profile, or production
   client transport.
 - `transport-conformance` is a publish-disabled offline test-support crate. Its
@@ -280,9 +286,10 @@ architecture:
   direct writer at observed SQLite commit-window pauses and every
   baseline-observed inviter/joiner application checkpoint before fresh reopen.
   Raw case observations remain non-public. The retained L2-8 matrix lets
-  complete recovery aggregates emit explicitly self-reported candidate v3
-  bundles with execution-time binary identities and bounded case-surface
-  secret/canary scans. ADR 0030 marks capture completeness unproved and
+  complete recovery aggregates emit explicitly self-reported candidate v4
+  bundles with in-process Git status, build-bound compiler identity/digest,
+  execution-time binary identities, and bounded case-surface secret/canary
+  scans. ADR 0030 marks capture completeness unproved and
   redaction unverified. ADR 0028 requires external attestation verification before hosted provenance; portable passage remains conditional on the
   exact revision's required three-OS result. None of this is a power-loss,
   filesystem, rollback, or production claim.
@@ -312,6 +319,17 @@ shadows from that exact result. The SQLCipher-backed headless paths issue the
 opening context before publication, retain replay and approval shadows across
 restart, and abandon rather than reconstruct lost provider authority. This is
 retained laboratory integration, not a rollback-resistant product client.
+ADR 0031 makes transient and durable MLS state distinct types. Durable Add
+application records a state-revision obligation, rejects ordinary provider
+writes, and withholds Welcome and Commit outputs until its exact bound
+stage-and-write succeeds. Bound application staging carries only envelope
+metadata; SQLCipher obtains Welcome ciphertext inside the exact active provider
+write. Explicit transient write and output APIs remain only for process-local
+lifecycle and provider tests.
+ADR 0033 makes each transient MLS credential and signer one-shot across group
+creation and join. A transient client either creates one inviter group or
+generates one KeyPackage and consumes its pending identity on the first Welcome
+attempt. Durable clients remain reusable only inside their bound group.
 Human approval UX does not exist. The separate memory conformance model and
 SQLCipher laboratory exercise atomic visibility, durable Welcome-owner
 recovery, and ambiguous-result retry. The in-memory committed join result now carries the

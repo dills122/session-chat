@@ -122,13 +122,11 @@ jobs:
           cache-workspace-crates: false
           shared-key: l2-evidence
 
-      - name: Verify the actual evidence compiler
-        run: |
-          rustc --version --verbose
-          node -e 'const { execFileSync } = require("node:child_process"); const version = execFileSync("rustc", ["--version"], { encoding: "utf8" }).trim().split(/\s+/)[1]; if (version !== "1.97.1") throw new Error("expected Rust 1.97.1, received " + version);'
-
       - name: Fetch the locked dependency graph
         run: cargo fetch --locked
+
+      - name: Verify build-bound compiler provenance
+        run: cargo test -p sessionctl --lib provenance::tests::compiler_provenance_rejects_runtime_selection_and_digest_substitution --locked --offline -- --exact
 
       # Keep one Cargo command per step: Windows' default shell propagates
       # the final native exit code, so a later command must not overwrite it.

@@ -53,7 +53,7 @@ use zeroize::Zeroizing;
 
 use super::{
     INVITATION_EXPIRES_AT, MAILBOX_EXPIRES_AT, NOW, REQUEST_EXPIRES_AT, SessionCtlError,
-    StageResult, encode_approval_record, random_nonzero, stage,
+    StageResult, encode_approval_record, provenance::repository_dirty_at, random_nonzero, stage,
 };
 
 const IPC_MAGIC: &[u8; 8] = b"SCL1IPC1";
@@ -76,7 +76,6 @@ const MAX_LOCKFILE_BYTES: usize = 4 * 1024 * 1024;
 const MAX_TOOLCHAIN_BYTES: usize = 4_096;
 const MAX_GIT_PATH_BYTES: usize = 4_096;
 const MAX_GIT_REF_BYTES: usize = 512;
-const METADATA_COMMAND_WAIT: Duration = Duration::from_secs(5);
 const TWO_TERMINAL_DONE: &[u8] = b"sessionctl-two-terminal-complete-v1\n";
 const CAPABILITY_HANDOFF_DISCLOSURE: &str = "invitation_handling=authenticated-confidential-only\napproval=simulated-automatic\nrecipient_identity=not-verified\n";
 const NETWORK_OPERATION_WAIT: Duration = Duration::from_secs(30);
@@ -162,24 +161,25 @@ pub fn run_l1_process_demo() -> Result<L1ProcessReport, SessionCtlError> {
     child_cleanup_result?;
     directory_cleanup_result?;
 
-    let repository_root = repository_root();
+    let repository_root = repository_root().ok_or_else(|| stage("evidence provenance"))?;
+    let dirty = repository_dirty_at(&repository_root)?;
+    if dirty {
+        return Err(stage("evidence provenance"));
+    }
+    let commit = git_commit_at(&repository_root);
+    let toolchain = pinned_toolchain_at(&repository_root);
+    let lock_digest = lock_digest_at(&repository_root);
+    if commit == "unavailable" || toolchain == "unavailable" || lock_digest == "unavailable" {
+        return Err(stage("evidence provenance"));
+    }
 
     let report = L1ProcessReport {
         started_at,
         completed_at: unix_now()?,
-        commit: repository_root
-            .as_deref()
-            .map(git_commit_at)
-            .unwrap_or_else(|| String::from("unavailable")),
-        dirty: repository_root.as_deref().is_none_or(git_dirty_at),
-        toolchain: repository_root
-            .as_deref()
-            .map(pinned_toolchain_at)
-            .unwrap_or_else(|| String::from("unavailable")),
-        lock_digest: repository_root
-            .as_deref()
-            .map(lock_digest_at)
-            .unwrap_or_else(|| String::from("unavailable")),
+        commit,
+        dirty,
+        toolchain,
+        lock_digest,
     };
     if report.encode_v1().len() > MAX_EVIDENCE_BYTES {
         return Err(stage("evidence bound"));
@@ -1504,7 +1504,8 @@ fn build_hostile_join_request(
         .at_stage("hostile matrix Bob KeyPackage validation")?;
     let (key_package_bytes, credential_identity, leaf_signature_key) =
         if matches!(case, HostileJoinCase::WrongKeyPackage) {
-            let foreign_key_package = bob
+            let foreign_bob = create_client().at_stage("hostile matrix foreign Bob client")?;
+            let foreign_key_package = foreign_bob
                 .generate_key_package(issued_at)
                 .at_stage("hostile matrix foreign KeyPackage")?;
             let foreign_validated = create_key_package_validator()
@@ -1767,34 +1768,12 @@ fn run_alice_init_with_receiver(
             return Err(stage("process MLS apply"));
         }
     };
-    let welcome_envelope = OpaqueEnvelope::new(
-        random_nonzero()?,
-        REQUEST_EXPIRES_AT,
-        pending_durability.welcome().as_bytes().to_vec(),
-    )
-    .at_stage("process Welcome envelope")?;
-    let canonical_welcome = welcome_envelope
-        .encode_canonical()
-        .at_stage("process Welcome encoding")?;
+    let welcome_envelope_id = random_nonzero()?;
     let transaction_id = random_nonzero()?;
-    let transaction = InviterJoinTransaction::new(
-        transaction_id,
-        *issued.invitation().invitation_id(),
-        *issued.invitation().signature(),
-        join_request_id,
-        request_fingerprint,
-        *group.group_id(),
-        0,
-        1,
-        approval_record,
-        canonical_welcome,
-        pending_durability
-            .response_endpoint()
-            .encode_canonical()
-            .at_stage("process endpoint encoding")?,
-        REQUEST_EXPIRES_AT,
-    )
-    .at_stage("process inviter transaction")?;
+    let response_endpoint = pending_durability
+        .response_endpoint()
+        .encode_canonical()
+        .at_stage("process endpoint encoding")?;
     let membership = storage
         .begin_membership_authorization(durable_approved, transaction_id, &protector, NOW)
         .at_stage("process membership authorization")?;
@@ -1802,6 +1781,22 @@ fn run_alice_init_with_receiver(
         pending_durability.into_durable_owner_parts();
     committed_addition
         .stage_and_write_to_storage(&mut group, |binding| {
+            let transaction = InviterJoinTransaction::new_bound(
+                transaction_id,
+                *issued.invitation().invitation_id(),
+                *issued.invitation().signature(),
+                join_request_id,
+                request_fingerprint,
+                *group_id.as_bytes(),
+                0,
+                1,
+                approval_record,
+                welcome_envelope_id,
+                REQUEST_EXPIRES_AT,
+                response_endpoint,
+                REQUEST_EXPIRES_AT,
+            )
+            .map_err(|_| StoreError::Rejected)?;
             storage.stage_authorized_inviter(
                 membership,
                 binding,
@@ -2720,24 +2715,6 @@ pub fn resolve_l1_process_git_commit(repository_root: &Path) -> Option<String> {
     resolve_git_commit(repository_root)
 }
 
-fn git_dirty_at(repository_root: &Path) -> bool {
-    let tracked = git_status_at(repository_root, &["diff-index", "--quiet", "HEAD", "--"]);
-    if tracked.is_none_or(|status| status.code() != Some(0)) {
-        return true;
-    }
-    let untracked = git_status_at(
-        repository_root,
-        &[
-            "ls-files",
-            "--others",
-            "--exclude-standard",
-            "--error-unmatch",
-            ":(glob)**",
-        ],
-    );
-    untracked.is_none_or(|status| status.code() != Some(1))
-}
-
 fn lock_digest_at(repository_root: &Path) -> String {
     read_bounded_file(&repository_root.join("Cargo.lock"), MAX_LOCKFILE_BYTES)
         .map(|bytes| hex(digest(&SHA256, &bytes).as_ref()))
@@ -2824,12 +2801,7 @@ fn parse_git_commit(value: &str) -> Option<String> {
         .then(|| value.to_ascii_lowercase())
 }
 
-fn git_status_at(repository_root: &Path, arguments: &[&str]) -> Option<ExitStatus> {
-    let mut command = Command::new("git");
-    command.current_dir(repository_root).args(arguments);
-    bounded_command_status(command, METADATA_COMMAND_WAIT)
-}
-
+#[cfg(test)]
 fn bounded_command_status(mut command: Command, timeout: Duration) -> Option<ExitStatus> {
     let deadline = Instant::now().checked_add(timeout)?;
     let child = command

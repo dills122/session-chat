@@ -6,7 +6,8 @@ use session_admission::{AdmissionMethod, ApprovalContext, PendingAdmission};
 use session_core::{InvitationRegistry, InvitationReservation, ValidatedCapabilityInvitationV2};
 use session_crypto_hpke::OpenedCapabilityJoinRequest;
 use session_crypto_mls::{
-    CommittedAddition, KeyPackageReference, PreparedAddition, SessionMlsConfig, SessionMlsGroup,
+    CommittedAddition, DurableStorage, KeyPackageReference, PreparedAddition, SessionMlsConfig,
+    SessionMlsGroup, SessionStorageMode, TransientCommittedAddition, TransientStorage,
     ValidatedKeyPackage, create_key_package_validator,
 };
 use session_protocol::LocalWelcomeDepositEndpoint;
@@ -311,14 +312,20 @@ impl CapabilityAdmissionVerifier {
     }
 
     /// Prepares MLS Add from the exact explicitly approved cross-state value.
-    pub fn prepare_approved_add<'verifier, 'registry, 'group, C: SessionMlsConfig>(
+    pub fn prepare_approved_add<
+        'verifier,
+        'registry,
+        'group,
+        C: SessionMlsConfig,
+        S: SessionStorageMode,
+    >(
         &'verifier mut self,
         registry: &'registry mut InvitationRegistry,
         approved: Box<ApprovedCapabilityAdmission>,
-        group: &'group mut SessionMlsGroup<C>,
+        group: &'group mut SessionMlsGroup<C, S>,
         now_unix_seconds: u64,
     ) -> Result<
-        PreparedApprovedCapabilityAddition<'verifier, 'registry, 'group, C>,
+        PreparedApprovedCapabilityAddition<'verifier, 'registry, 'group, C, S>,
         CapabilityAdmissionError,
     > {
         let ApprovedCapabilityAdmission {
@@ -486,10 +493,16 @@ impl ApprovedCapabilityAdmission {
 }
 
 /// Pending approved MLS Add coupled to invitation and replay reservations.
-pub struct PreparedApprovedCapabilityAddition<'verifier, 'registry, 'group, C: SessionMlsConfig> {
+pub struct PreparedApprovedCapabilityAddition<
+    'verifier,
+    'registry,
+    'group,
+    C: SessionMlsConfig,
+    S: SessionStorageMode,
+> {
     verifier: Option<&'verifier mut CapabilityAdmissionVerifier>,
     registry: Option<&'registry mut InvitationRegistry>,
-    inner: Option<PreparedAddition<'group, C>>,
+    inner: Option<PreparedAddition<'group, C, S>>,
     replay_reservation: ReplayReservation,
     invitation_reservation: Option<InvitationReservation>,
     now_unix_seconds: u64,
@@ -498,8 +511,8 @@ pub struct PreparedApprovedCapabilityAddition<'verifier, 'registry, 'group, C: S
     preserve_states: bool,
 }
 
-impl<'verifier, 'registry, C: SessionMlsConfig>
-    PreparedApprovedCapabilityAddition<'verifier, 'registry, '_, C>
+impl<'verifier, 'registry, C: SessionMlsConfig, S: SessionStorageMode>
+    PreparedApprovedCapabilityAddition<'verifier, 'registry, '_, C, S>
 {
     /// Returns the exact admitted KeyPackage reference targeted by the Welcome.
     #[must_use]
@@ -518,28 +531,56 @@ impl<'verifier, 'registry, C: SessionMlsConfig>
             .expect("prepared addition exists until apply")
             .current_group_epoch()
     }
+}
 
-    /// Applies MLS Add and consumes the exact invitation reservation in memory.
-    ///
-    /// Durable composition roots must use [`Self::apply_awaiting_durability`]
-    /// instead so an ambiguous owner-store outcome cannot be mistaken for a
-    /// proven commit or rollback.
+impl<'verifier, 'registry, C: SessionMlsConfig>
+    PreparedApprovedCapabilityAddition<'verifier, 'registry, '_, C, TransientStorage>
+{
+    /// Applies an explicitly transient MLS Add and consumes its in-memory reservations.
     pub fn apply(
         self,
         now_unix_seconds: u64,
     ) -> Result<CommittedCapabilityJoin, CapabilityAdmissionError> {
-        self.apply_awaiting_durability(now_unix_seconds)?
-            .finalize_committed()
+        let mut this = self;
+        this.now_unix_seconds = now_unix_seconds;
+        this.validate_before_apply(now_unix_seconds)?;
+        let committed = this
+            .inner
+            .take()
+            .expect("prepared MLS addition exists until apply")
+            .apply()
+            .map_err(|_| CapabilityAdmissionError::Rejected)?;
+        let invitation_reservation = this
+            .invitation_reservation
+            .take()
+            .expect("prepared invitation reservation exists after MLS apply");
+        this.registry
+            .as_deref_mut()
+            .expect("prepared registry borrow exists after MLS apply")
+            .consume_after_membership(invitation_reservation, now_unix_seconds)
+            .map_err(|_| CapabilityAdmissionError::ReservationMismatch)?;
+        this.preserve_states = true;
+        Ok(CommittedCapabilityJoin {
+            committed,
+            response_endpoint: this
+                .response_endpoint
+                .take()
+                .expect("prepared response endpoint exists after MLS apply"),
+        })
     }
+}
 
+impl<'verifier, 'registry, C: SessionMlsConfig>
+    PreparedApprovedCapabilityAddition<'verifier, 'registry, '_, C, DurableStorage>
+{
     /// Applies the exact approved MLS Add while preserving both admission
     /// reservations until the owner-store result is resolved.
     ///
     /// The returned one-shot value deliberately has no automatic rollback on
     /// drop: a lost or ambiguous SQL commit result must remain fail-closed.
-    /// Callers may expose the Welcome only after the durable transaction is
-    /// recovered as committed and [`AppliedCapabilityJoinAwaitingDurability::finalize_committed`]
-    /// succeeds.
+    /// Callers may expose the Welcome only through the persisted MLS result
+    /// after the durable transaction succeeds. Admission shadows are settled
+    /// separately from authoritative durable recovery.
     pub fn apply_awaiting_durability(
         mut self,
         now_unix_seconds: u64,
@@ -548,23 +589,7 @@ impl<'verifier, 'registry, C: SessionMlsConfig>
         CapabilityAdmissionError,
     > {
         self.now_unix_seconds = now_unix_seconds;
-        if self.request_expires_at_unix_seconds <= now_unix_seconds
-            || self
-                .response_endpoint
-                .as_ref()
-                .is_none_or(|endpoint| endpoint.expires_at_unix_seconds() <= now_unix_seconds)
-        {
-            return Err(CapabilityAdmissionError::Rejected);
-        }
-        let invitation_reservation = self
-            .invitation_reservation
-            .as_ref()
-            .expect("prepared invitation reservation exists until apply");
-        self.registry
-            .as_deref()
-            .expect("prepared registry borrow exists until apply")
-            .validate_reservation(invitation_reservation, now_unix_seconds)
-            .map_err(|_| CapabilityAdmissionError::Rejected)?;
+        self.validate_before_apply(now_unix_seconds)?;
         let inner = self
             .inner
             .take()
@@ -601,6 +626,31 @@ impl<'verifier, 'registry, C: SessionMlsConfig>
     }
 }
 
+impl<C: SessionMlsConfig, S: SessionStorageMode>
+    PreparedApprovedCapabilityAddition<'_, '_, '_, C, S>
+{
+    fn validate_before_apply(&self, now_unix_seconds: u64) -> Result<(), CapabilityAdmissionError> {
+        if self.request_expires_at_unix_seconds <= now_unix_seconds
+            || self
+                .response_endpoint
+                .as_ref()
+                .is_none_or(|endpoint| endpoint.expires_at_unix_seconds() <= now_unix_seconds)
+        {
+            return Err(CapabilityAdmissionError::Rejected);
+        }
+        let invitation_reservation = self
+            .invitation_reservation
+            .as_ref()
+            .expect("prepared invitation reservation exists until apply");
+        self.registry
+            .as_deref()
+            .expect("prepared registry borrow exists until apply")
+            .validate_reservation(invitation_reservation, now_unix_seconds)
+            .map_err(|_| CapabilityAdmissionError::Rejected)?;
+        Ok(())
+    }
+}
+
 /// Applied MLS result whose owner-store transaction is not yet resolved.
 ///
 /// Dropping this value preserves both in-memory admission reservations. This
@@ -621,18 +671,6 @@ impl<'verifier, 'registry> AppliedCapabilityJoinAwaitingDurability<'verifier, 'r
     #[must_use]
     pub fn key_package_reference(&self) -> &KeyPackageReference {
         self.committed.key_package_reference()
-    }
-
-    /// Borrows the MLS Commit that must be included in the durable owner write.
-    #[must_use]
-    pub fn commit(&self) -> &session_crypto_mls::MlsWireMessage {
-        self.committed.commit()
-    }
-
-    /// Borrows the encrypted Welcome that must be queued byte-exactly.
-    #[must_use]
-    pub fn welcome(&self) -> &session_crypto_mls::WelcomeMessage {
-        self.committed.welcome()
     }
 
     /// Borrows the authenticated deposit-only response endpoint.
@@ -682,18 +720,6 @@ impl<'verifier, 'registry> AppliedCapabilityJoinAwaitingDurability<'verifier, 'r
     pub fn invitation_lifecycle(&self) -> Option<session_core::InvitationLifecycle> {
         let invitation_id = &self.replay_reservation.generation.invitation_id;
         self.registry.lifecycle(invitation_id)
-    }
-
-    /// Reflects a recovered committed owner-store transaction in the in-memory
-    /// invitation shadow and returns the delivery material.
-    pub fn finalize_committed(self) -> Result<CommittedCapabilityJoin, CapabilityAdmissionError> {
-        self.registry
-            .consume_after_membership(self.invitation_reservation, self.applied_at_unix_seconds)
-            .map_err(|_| CapabilityAdmissionError::ReservationMismatch)?;
-        Ok(CommittedCapabilityJoin {
-            committed: self.committed,
-            response_endpoint: self.response_endpoint,
-        })
     }
 
     /// Releases both admission reservations after the owner store proves that
@@ -749,7 +775,7 @@ impl DurableCapabilityShadowSettlement<'_, '_> {
 
 /// Applied in-memory capability join plus its authenticated deposit-only endpoint.
 pub struct CommittedCapabilityJoin {
-    committed: CommittedAddition,
+    committed: TransientCommittedAddition,
     response_endpoint: LocalWelcomeDepositEndpoint,
 }
 
@@ -780,12 +806,14 @@ impl CommittedCapabilityJoin {
 
     /// Separates the committed MLS result from its deposit-only destination.
     #[must_use]
-    pub fn into_parts(self) -> (CommittedAddition, LocalWelcomeDepositEndpoint) {
+    pub fn into_parts(self) -> (TransientCommittedAddition, LocalWelcomeDepositEndpoint) {
         (self.committed, self.response_endpoint)
     }
 }
 
-impl<C: SessionMlsConfig> Drop for PreparedApprovedCapabilityAddition<'_, '_, '_, C> {
+impl<C: SessionMlsConfig, S: SessionStorageMode> Drop
+    for PreparedApprovedCapabilityAddition<'_, '_, '_, C, S>
+{
     fn drop(&mut self) {
         if !self.preserve_states {
             drop(self.inner.take());

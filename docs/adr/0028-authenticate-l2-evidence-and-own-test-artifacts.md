@@ -3,9 +3,10 @@
 Status: accepted
 
 Candidate redaction semantics are superseded by
-[ADR 0030](0030-demote-l2-redaction-until-capture-is-owned.md). Candidate v3
-keeps external attestation and artifact ownership while marking complete
-capture unproved and redaction unverified.
+[ADR 0030](0030-demote-l2-redaction-until-capture-is-owned.md). Candidate v4
+keeps external attestation, artifact ownership, and those demoted redaction
+semantics while adding build-bound compiler provenance under
+[ADR 0034](0034-bind-evidence-to-in-process-git-and-build-compiler.md).
 
 ## Context
 
@@ -21,9 +22,10 @@ paths, including a symlink-following tamper-copy write.
 This decision retired unsigned `promote_v1`: it always rejects with an
 external-attestation requirement. Its original local collection format was
 `l2-evidence-candidate-v2`, explicitly marked `provenance=self-reported` and
-`publication=requires-external-attestation`. Git cleanliness, compiler output,
-runner labels and GitHub environment values remain diagnostic assertions;
-neither PATH-selected Git nor a caller-selected compiler is a trust root.
+`publication=requires-external-attestation`. Candidate v4 obtains cleanliness
+through in-process libgit2 and binds compiler identity plus executable digest at
+build time; Git/compiler assertions, runner labels, and GitHub environment
+values remain diagnostics rather than trust roots.
 The new version prevents consumers from interpreting candidates as the old
 public format. Internal observation v1 formats and product protocols do not
 change.

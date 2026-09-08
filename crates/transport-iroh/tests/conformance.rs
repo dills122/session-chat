@@ -3,10 +3,12 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use minicbor::Encoder;
 use session_protocol::OpaqueEnvelope;
 use session_transport::{
-    AcknowledgementRequest, BoundedDeliveryIds, CanonicalEnvelope, Cursor, DeliveryId,
-    DepositRequest, DepositRight, DispatchControl, EnforcementModeV1, EnvelopeDelivery,
-    OperationBudget, PollRequest, PollWait, RetryAdvice, TransportFailureCode, TransportProfileId,
-    bind_fast_transport_v1,
+    AcknowledgementRequest, BindingFingerprint, BoundedDeliveryIds, CanonicalEnvelope, Cursor,
+    CursorBindingV1, CursorSchemaVersion, DeliveryId, DepositRequest, DepositRight,
+    DispatchControl, EnforcementModeV1, EnvelopeDelivery, MailboxContinuityId, MailboxGeneration,
+    OperationBudget, PollRequest, PollWait, ProviderStateEpoch, ReceiveCheckpointRevision,
+    ReceiveCheckpointV1, ReceiveScopeFingerprint, RetryAdvice, TransportFailureCode,
+    TransportProfileId, bind_fast_transport_v1,
 };
 use transport_conformance::{
     CONNECTED_DELIVERY_CONFORMANCE_REQUESTS_V1, run_connected_delivery_conformance_v1,
@@ -126,6 +128,28 @@ fn poll_request(cursor: Option<Cursor>, maximum_envelopes: u16, maximum_bytes: u
         budget(),
     )
     .expect("poll request")
+}
+
+fn checkpoint_bound_poll_request(now: u64) -> PollRequest {
+    let binding = CursorBindingV1::new(
+        TransportProfileId::FastV1,
+        BindingFingerprint::from_bytes([0xa1; 32]).expect("binding fingerprint"),
+        MailboxContinuityId::from_provider_bytes([0xa2; 16]).expect("continuity ID"),
+        MailboxGeneration::new(1).expect("generation"),
+        ReceiveScopeFingerprint::from_bytes([0xa3; 32]).expect("receive scope"),
+        CursorSchemaVersion::new(1).expect("cursor schema"),
+        ProviderStateEpoch::new(1).expect("provider epoch"),
+        now + 300,
+    )
+    .expect("foreign binding");
+    ReceiveCheckpointV1::new_generation(
+        binding,
+        ReceiveCheckpointRevision::new(1).expect("revision"),
+        now,
+    )
+    .expect("foreign checkpoint")
+    .poll_request(1, 64 * 1024, PollWait::immediate(), budget(), now)
+    .expect("checkpoint-bound poll")
 }
 
 fn acknowledgement_request(delivery_id: DeliveryId) -> AcknowledgementRequest {
@@ -921,6 +945,17 @@ async fn connected_mailbox_enforces_queue_cursor_and_acknowledgement_boundaries(
         panic!("bounded mailbox must reject a third retained envelope");
     };
     assert_eq!(full.code(), TransportFailureCode::QueueFull);
+
+    let foreign_checkpoint = delivery
+        .poll(&receive, checkpoint_bound_poll_request(now), &control)
+        .await;
+    let Err(foreign_checkpoint) = foreign_checkpoint else {
+        panic!("unbound Iroh authority must reject checkpoint-bound poll");
+    };
+    assert_eq!(
+        foreign_checkpoint.code(),
+        TransportFailureCode::AuthorityScopeMismatch
+    );
 
     let too_small = delivery
         .poll(&receive, poll_request(None, 1, 1), &control)

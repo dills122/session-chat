@@ -4,9 +4,10 @@
 
 use std::{
     cell::RefCell,
+    marker::PhantomData,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicU8, AtomicU64, Ordering},
     },
     thread::ThreadId,
     time::Duration,
@@ -67,6 +68,9 @@ const SIGNATURE_PUBLIC_KEY_BYTES: usize = 32;
 const SIGNATURE_SECRET_KEY_BYTES: usize = 64;
 const DURABLE_IDENTITY_KEY_CHECK: &[u8] = b"session-chat/durable-mls-identity/v1";
 const PROVIDER_STATE_WRITE_DIGEST_CONTEXT: &[u8] = b"session-chat/provider-state-write/v1";
+const TRANSIENT_CLIENT_FRESH: u8 = 0;
+const TRANSIENT_CLIENT_KEY_PACKAGE_ISSUED: u8 = 1;
+const TRANSIENT_CLIENT_CONSUMED: u8 = 2;
 
 /// Coarse, non-provider-specific MLS adapter failures.
 #[derive(Clone, Copy, Debug, Eq, Error, PartialEq)]
@@ -103,6 +107,33 @@ pub enum CommittedAdditionPersistenceError<E> {
     StaleSnapshot,
     /// The provider could not serialize or persist its current state.
     Provider(MlsAdapterError),
+}
+
+mod storage_mode {
+    pub trait Sealed {}
+}
+
+/// Explicit marker for process-local MLS state and test storage adapters.
+pub struct TransientStorage;
+
+/// Explicit marker for MLS state backed by a durable client identity.
+pub struct DurableStorage;
+
+impl storage_mode::Sealed for TransientStorage {}
+impl storage_mode::Sealed for DurableStorage {}
+
+/// Closed set of storage modes carried by clients, groups, and pending Adds.
+pub trait SessionStorageMode: storage_mode::Sealed {
+    #[doc(hidden)]
+    const IS_DURABLE: bool;
+}
+
+impl SessionStorageMode for TransientStorage {
+    const IS_DURABLE: bool = false;
+}
+
+impl SessionStorageMode for DurableStorage {
+    const IS_DURABLE: bool = true;
 }
 
 /// Opaque secret-bearing durable client-identity record.
@@ -371,17 +402,22 @@ fn phase_one_crypto_provider() -> AwsLcCryptoProvider {
 }
 
 /// A client whose MLS state is isolated behind configured provider repositories.
-pub struct SessionMlsClient<C: MlsConfig> {
+///
+/// Transient clients permit one inviter group or one KeyPackage followed by one
+/// Welcome attempt. Durable clients remain reusable only for their bound group.
+pub struct SessionMlsClient<C: MlsConfig, S: SessionStorageMode> {
     inner: Client<C>,
     credential_identity: SessionCredentialId,
     signature_public_key: [u8; SIGNATURE_PUBLIC_KEY_BYTES],
     bound_group_id: Option<SessionGroupId>,
+    transient_use_state: AtomicU8,
+    storage_mode: PhantomData<S>,
 }
 
 fn create_client_with_credential_identity(
     credential_identity: SessionCredentialId,
     crypto: AwsLcCryptoProvider,
-) -> Result<SessionMlsClient<impl MlsConfig>, MlsAdapterError> {
+) -> Result<SessionMlsClient<impl MlsConfig, TransientStorage>, MlsAdapterError> {
     let cipher_suite = crypto
         .cipher_suite_provider(CIPHERSUITE)
         .ok_or(MlsAdapterError::UnexpectedProviderOutput)?;
@@ -407,12 +443,15 @@ fn create_client_with_credential_identity(
         credential_identity,
         signature_public_key,
         bound_group_id: None,
+        transient_use_state: AtomicU8::new(TRANSIENT_CLIENT_FRESH),
+        storage_mode: PhantomData,
     })
 }
 
 /// Creates a Phase 1 client with a fresh random session identity, the selected
 /// suite, and a one-hour KeyPackage lifetime.
-pub fn create_client() -> Result<SessionMlsClient<impl MlsConfig>, MlsAdapterError> {
+pub fn create_client() -> Result<SessionMlsClient<impl MlsConfig, TransientStorage>, MlsAdapterError>
+{
     let crypto = phase_one_crypto_provider();
     let cipher_suite = crypto
         .cipher_suite_provider(CIPHERSUITE)
@@ -428,15 +467,15 @@ pub fn create_client() -> Result<SessionMlsClient<impl MlsConfig>, MlsAdapterErr
     create_client_with_credential_identity(SessionCredentialId(bytes), crypto)
 }
 
-/// Creates a Phase 1 client with caller-owned MLS group and KeyPackage stores.
+/// Creates an explicitly transient Phase 1 client with caller-owned MLS stores.
 ///
 /// The stores remain separate provider types because `mls-rs` invokes them
-/// separately. A durable implementation that needs one joiner-local transaction
-/// must coordinate those two trait calls behind shared provider state.
-pub fn create_client_with_storage<G, K>(
+/// separately. Supplying a file-backed store here does not grant durable Add
+/// semantics; retained durable clients use the separate durable constructors.
+pub fn create_transient_client_with_storage<G, K>(
     group_state_storage: G,
     key_package_storage: K,
-) -> Result<SessionMlsClient<impl MlsConfig>, MlsAdapterError>
+) -> Result<SessionMlsClient<impl MlsConfig, TransientStorage>, MlsAdapterError>
 where
     G: GroupStateStorage + Clone,
     K: KeyPackageStorage + Clone,
@@ -478,6 +517,8 @@ where
         credential_identity: SessionCredentialId(credential_identity),
         signature_public_key,
         bound_group_id: None,
+        transient_use_state: AtomicU8::new(TRANSIENT_CLIENT_FRESH),
+        storage_mode: PhantomData,
     })
 }
 
@@ -490,7 +531,7 @@ pub fn create_durable_client_with_storage<G, K, I>(
     group_state_storage: G,
     key_package_storage: K,
     identity_storage: I,
-) -> Result<SessionMlsClient<impl MlsConfig>, MlsAdapterError>
+) -> Result<SessionMlsClient<impl MlsConfig, DurableStorage>, MlsAdapterError>
 where
     G: GroupStateStorage + Clone,
     K: KeyPackageStorage + Clone,
@@ -524,7 +565,7 @@ pub fn load_durable_client_with_storage<G, K, I>(
     group_state_storage: G,
     key_package_storage: K,
     identity_storage: I,
-) -> Result<SessionMlsClient<impl MlsConfig>, MlsAdapterError>
+) -> Result<SessionMlsClient<impl MlsConfig, DurableStorage>, MlsAdapterError>
 where
     G: GroupStateStorage + Clone,
     K: KeyPackageStorage + Clone,
@@ -551,7 +592,7 @@ fn build_stored_client<G, K>(
     durable_identity: DurableClientIdentity,
     crypto: AwsLcCryptoProvider,
     group_id: SessionGroupId,
-) -> Result<SessionMlsClient<impl MlsConfig>, MlsAdapterError>
+) -> Result<SessionMlsClient<impl MlsConfig, DurableStorage>, MlsAdapterError>
 where
     G: GroupStateStorage + Clone,
     K: KeyPackageStorage + Clone,
@@ -578,6 +619,8 @@ where
         credential_identity: SessionCredentialId(durable_identity.credential_identity),
         signature_public_key: durable_identity.signature_public_key,
         bound_group_id: Some(group_id),
+        transient_use_state: AtomicU8::new(TRANSIENT_CLIENT_FRESH),
+        storage_mode: PhantomData,
     })
 }
 
@@ -592,7 +635,17 @@ impl KeyPackageMessage {
     }
 }
 
-impl<C: MlsConfig> SessionMlsClient<C> {
+impl<C: MlsConfig, S: SessionStorageMode> SessionMlsClient<C, S> {
+    fn transition_transient_use(&self, expected: u8, next: u8) -> Result<(), MlsAdapterError> {
+        if S::IS_DURABLE {
+            return Ok(());
+        }
+        self.transient_use_state
+            .compare_exchange(expected, next, Ordering::AcqRel, Ordering::Acquire)
+            .map(|_| ())
+            .map_err(|_| MlsAdapterError::ProtocolRejected)
+    }
+
     fn ensure_group_scope(&self, group_id: &SessionGroupId) -> Result<(), MlsAdapterError> {
         if self
             .bound_group_id
@@ -614,7 +667,7 @@ impl<C: MlsConfig> SessionMlsClient<C> {
     pub fn load_group(
         &self,
         group_id: SessionGroupId,
-    ) -> Result<SessionMlsGroup<C>, MlsAdapterError> {
+    ) -> Result<SessionMlsGroup<C, S>, MlsAdapterError> {
         self.ensure_group_scope(&group_id)?;
         let inner = self
             .inner
@@ -635,11 +688,33 @@ impl<C: MlsConfig> SessionMlsClient<C> {
         SessionMlsGroup::from_provider(inner)
     }
 
-    /// Generates one one-shot KeyPackage using a caller-supplied clock value.
+    fn validate_local_identity(
+        &self,
+        group: &SessionMlsGroup<C, S>,
+    ) -> Result<(), MlsAdapterError> {
+        let local_identity = group
+            .inner
+            .current_member_signing_identity()
+            .map_err(|_| MlsAdapterError::ProtocolRejected)?;
+        let credential = local_identity
+            .credential
+            .as_basic()
+            .ok_or(MlsAdapterError::ProtocolRejected)?;
+        if credential.identifier() != self.credential_identity.as_bytes()
+            || local_identity.signature_key.as_ref() != self.signature_public_key
+        {
+            return Err(MlsAdapterError::ProtocolRejected);
+        }
+        Ok(())
+    }
+
+    /// Generates the only KeyPackage permitted for a transient client, or a
+    /// replacement KeyPackage for an exact-group durable client.
     pub fn generate_key_package(
         &self,
         now_unix_seconds: u64,
     ) -> Result<KeyPackageMessage, MlsAdapterError> {
+        self.transition_transient_use(TRANSIENT_CLIENT_FRESH, TRANSIENT_CLIENT_KEY_PACKAGE_ISSUED)?;
         let message = self
             .inner
             .generate_key_package_message(
@@ -658,12 +733,13 @@ impl<C: MlsConfig> SessionMlsClient<C> {
         Ok(KeyPackageMessage(bytes))
     }
 
-    /// Creates an isolated one-member group with no extensions.
+    /// Creates one inviter group. Transient clients reject every later identity use.
     pub fn create_group(
         &self,
         group_id: SessionGroupId,
         now_unix_seconds: u64,
-    ) -> Result<SessionMlsGroup<C>, MlsAdapterError> {
+    ) -> Result<SessionMlsGroup<C, S>, MlsAdapterError> {
+        self.transition_transient_use(TRANSIENT_CLIENT_FRESH, TRANSIENT_CLIENT_CONSUMED)?;
         self.ensure_group_scope(&group_id)?;
         let inner = self
             .inner
@@ -677,12 +753,19 @@ impl<C: MlsConfig> SessionMlsClient<C> {
         SessionMlsGroup::from_provider(inner)
     }
 
-    /// Consumes one bounded Welcome to join its corresponding two-member group.
+    /// Processes one Welcome for a previously generated KeyPackage.
+    ///
+    /// A transient client's pending identity is consumed before parsing, so a
+    /// failed attempt cannot be retried with another Welcome.
     pub fn join_group(
         &self,
         welcome: WelcomeMessage,
         now_unix_seconds: u64,
-    ) -> Result<SessionMlsGroup<C>, MlsAdapterError> {
+    ) -> Result<SessionMlsGroup<C, S>, MlsAdapterError> {
+        self.transition_transient_use(
+            TRANSIENT_CLIENT_KEY_PACKAGE_ISSUED,
+            TRANSIENT_CLIENT_CONSUMED,
+        )?;
         let message = decode_exact(&welcome.0).map_err(|_| MlsAdapterError::ProtocolRejected)?;
         if message.wire_format() != WireFormat::Welcome
             || message.cipher_suite() != Some(CIPHERSUITE)
@@ -702,6 +785,7 @@ impl<C: MlsConfig> SessionMlsClient<C> {
         }
         let group = SessionMlsGroup::from_provider(inner)?;
         self.ensure_group_scope(&SessionGroupId(*group.group_id()))?;
+        self.validate_local_identity(&group)?;
         if group.member_count() != 2 {
             return Err(MlsAdapterError::UnexpectedProviderOutput);
         }
@@ -913,14 +997,16 @@ impl std::fmt::Debug for IncomingMessage {
 }
 
 /// In-memory two-member Phase 1 group behind the Session Chat adapter.
-pub struct SessionMlsGroup<C: MlsConfig> {
+pub struct SessionMlsGroup<C: MlsConfig, S: SessionStorageMode> {
     inner: Group<C>,
     group_id: SessionGroupId,
     state_binding: Arc<AtomicU64>,
+    pending_addition_revision: Option<u64>,
     inactive: bool,
+    storage_mode: PhantomData<S>,
 }
 
-impl<C: MlsConfig> SessionMlsGroup<C> {
+impl<C: MlsConfig, S: SessionStorageMode> SessionMlsGroup<C, S> {
     fn from_provider(inner: Group<C>) -> Result<Self, MlsAdapterError> {
         let group_id: [u8; SESSION_GROUP_ID_BYTES] = inner
             .group_id()
@@ -932,7 +1018,9 @@ impl<C: MlsConfig> SessionMlsGroup<C> {
             inner,
             group_id,
             state_binding: Arc::new(AtomicU64::new(0)),
+            pending_addition_revision: None,
             inactive: false,
+            storage_mode: PhantomData,
         };
         if !group.phase_one_invariants_hold() {
             return Err(MlsAdapterError::UnexpectedProviderOutput);
@@ -1002,12 +1090,7 @@ impl<C: MlsConfig> SessionMlsGroup<C> {
         self.state_binding.fetch_add(1, Ordering::AcqRel);
     }
 
-    /// Persists the provider's complete current snapshot and pending epochs.
-    ///
-    /// For a joining client, `mls-rs` subsequently asks its configured
-    /// KeyPackage store to delete the exact one-time KeyPackage. A durable
-    /// provider must make those owner-local effects atomic.
-    pub fn write_to_storage(&mut self) -> Result<(), MlsAdapterError> {
+    fn write_provider_state(&mut self) -> Result<(), MlsAdapterError> {
         self.inner
             .write_to_storage()
             .map_err(|_| MlsAdapterError::ProtocolRejected)
@@ -1018,7 +1101,7 @@ impl<C: MlsConfig> SessionMlsGroup<C> {
         &mut self,
         validated: ValidatedKeyPackage,
         now_unix_seconds: u64,
-    ) -> Result<PreparedAddition<'_, C>, MlsAdapterError> {
+    ) -> Result<PreparedAddition<'_, C, S>, MlsAdapterError> {
         self.invalidate_state_binding();
         if self.member_count() != 1 {
             return Err(MlsAdapterError::GroupFull);
@@ -1090,7 +1173,7 @@ impl<C: MlsConfig> SessionMlsGroup<C> {
     pub fn prepare_remove_peer(
         &mut self,
         now_unix_seconds: u64,
-    ) -> Result<PreparedRemoval<'_, C>, MlsAdapterError> {
+    ) -> Result<PreparedRemoval<'_, C, S>, MlsAdapterError> {
         self.invalidate_state_binding();
         if self.member_count() != 2 {
             return Err(MlsAdapterError::ProtocolRejected);
@@ -1134,7 +1217,7 @@ impl<C: MlsConfig> SessionMlsGroup<C> {
     pub fn prepare_epoch_update(
         &mut self,
         now_unix_seconds: u64,
-    ) -> Result<PreparedEpochUpdate<'_, C>, MlsAdapterError> {
+    ) -> Result<PreparedEpochUpdate<'_, C, S>, MlsAdapterError> {
         self.invalidate_state_binding();
         if self.inactive || !(1..=2).contains(&self.member_count()) {
             return Err(MlsAdapterError::ProtocolRejected);
@@ -1228,7 +1311,28 @@ impl<C: MlsConfig> SessionMlsGroup<C> {
     }
 }
 
-impl<C: MlsConfig> MessageSession for SessionMlsGroup<C> {
+impl<C: MlsConfig> SessionMlsGroup<C, TransientStorage> {
+    /// Persists this explicitly transient group's provider snapshot.
+    ///
+    /// This escape hatch exists for process-local lifecycle and provider-adapter
+    /// tests. Durable groups cannot call it.
+    pub fn write_transient_state_to_storage(&mut self) -> Result<(), MlsAdapterError> {
+        self.write_provider_state()
+    }
+}
+
+impl<C: MlsConfig> SessionMlsGroup<C, DurableStorage> {
+    /// Persists durable provider state only when no applied Add awaits its exact
+    /// atomic invitation, replay, approval, and Welcome-outbox transaction.
+    pub fn write_to_storage(&mut self) -> Result<(), MlsAdapterError> {
+        if self.pending_addition_revision.is_some() {
+            return Err(MlsAdapterError::ProtocolRejected);
+        }
+        self.write_provider_state()
+    }
+}
+
+impl<C: MlsConfig, S: SessionStorageMode> MessageSession for SessionMlsGroup<C, S> {
     fn epoch(&self) -> u64 {
         SessionMlsGroup::epoch(self)
     }
@@ -1316,8 +1420,8 @@ impl WelcomeMessage {
 }
 
 /// Pending Add whose group state has not yet advanced.
-pub struct PreparedAddition<'a, C: MlsConfig> {
-    group: &'a mut SessionMlsGroup<C>,
+pub struct PreparedAddition<'a, C: MlsConfig, S: SessionStorageMode> {
+    group: &'a mut SessionMlsGroup<C, S>,
     epoch_before: u64,
     reference: KeyPackageReference,
     credential_identity: [u8; SESSION_CREDENTIAL_ID_BYTES],
@@ -1327,7 +1431,7 @@ pub struct PreparedAddition<'a, C: MlsConfig> {
     applied: bool,
 }
 
-impl<C: MlsConfig> PreparedAddition<'_, C> {
+impl<C: MlsConfig, S: SessionStorageMode> PreparedAddition<'_, C, S> {
     /// Returns the exact KeyPackage reference targeted by the Welcome.
     #[must_use]
     pub const fn key_package_reference(&self) -> &KeyPackageReference {
@@ -1346,8 +1450,7 @@ impl<C: MlsConfig> PreparedAddition<'_, C> {
         self.group.epoch()
     }
 
-    /// Applies the pending Add in memory and returns its transport outputs.
-    pub fn apply(mut self) -> Result<CommittedAddition, MlsAdapterError> {
+    fn apply_provider(&mut self) -> Result<AppliedAddition, MlsAdapterError> {
         self.group
             .inner
             .apply_pending_commit()
@@ -1369,7 +1472,7 @@ impl<C: MlsConfig> PreparedAddition<'_, C> {
         };
         self.applied = true;
         self.group.invalidate_state_binding();
-        Ok(CommittedAddition {
+        Ok(AppliedAddition {
             group_id: *self.group.group_id(),
             epoch_before: self.epoch_before,
             epoch_after: self.group.epoch(),
@@ -1385,7 +1488,23 @@ impl<C: MlsConfig> PreparedAddition<'_, C> {
     }
 }
 
-impl<C: MlsConfig> Drop for PreparedAddition<'_, C> {
+impl<C: MlsConfig> PreparedAddition<'_, C, TransientStorage> {
+    /// Applies this explicitly transient Add and returns its transport outputs.
+    pub fn apply(mut self) -> Result<TransientCommittedAddition, MlsAdapterError> {
+        self.apply_provider().map(TransientCommittedAddition)
+    }
+}
+
+impl<C: MlsConfig> PreparedAddition<'_, C, DurableStorage> {
+    /// Applies a durable Add and records its unresolved atomic-persistence obligation.
+    pub fn apply(mut self) -> Result<CommittedAddition, MlsAdapterError> {
+        let applied = self.apply_provider()?;
+        self.group.pending_addition_revision = Some(applied.state_revision);
+        Ok(CommittedAddition(applied))
+    }
+}
+
+impl<C: MlsConfig, S: SessionStorageMode> Drop for PreparedAddition<'_, C, S> {
     fn drop(&mut self) {
         if !self.applied {
             self.group.inner.clear_pending_commit();
@@ -1393,8 +1512,7 @@ impl<C: MlsConfig> Drop for PreparedAddition<'_, C> {
     }
 }
 
-/// Applied in-memory Add plus the exact opaque transport outputs it produced.
-pub struct CommittedAddition {
+struct AppliedAddition {
     group_id: [u8; SESSION_GROUP_ID_BYTES],
     epoch_before: u64,
     epoch_after: u64,
@@ -1408,7 +1526,34 @@ pub struct CommittedAddition {
     commit: MlsWireMessage,
 }
 
+/// Applied transient Add plus the exact opaque transport outputs it produced.
+pub struct TransientCommittedAddition(AppliedAddition);
+
+/// Applied durable Add whose transport outputs remain unavailable until persistence.
+///
+/// ```compile_fail
+/// use session_crypto_mls::CommittedAddition;
+/// fn expose_before_persistence(addition: CommittedAddition) {
+///     let _ = addition.welcome();
+/// }
+/// ```
+#[must_use = "persist the exact durable Add before exposing its transport outputs"]
+pub struct CommittedAddition(AppliedAddition);
+
+/// Successfully persisted durable Add plus its exact opaque transport outputs.
+pub struct PersistedAddition {
+    welcome: WelcomeMessage,
+    commit: MlsWireMessage,
+}
+
 /// Opaque, one-shot proof of the exact provider-applied Add entering durable storage.
+///
+/// ```compile_fail
+/// use session_crypto_mls::CommittedAdditionStorageBinding;
+/// fn expose_from_staging(binding: CommittedAdditionStorageBinding) {
+///     let _ = binding.welcome();
+/// }
+/// ```
 pub struct CommittedAdditionStorageBinding {
     group_id: [u8; SESSION_GROUP_ID_BYTES],
     epoch_before: u64,
@@ -1587,7 +1732,7 @@ impl CommittedAddition {
     /// Returns the reference checked against the encrypted Welcome recipients.
     #[must_use]
     pub const fn key_package_reference(&self) -> &KeyPackageReference {
-        &self.reference
+        &self.0.reference
     }
 
     /// Stages and immediately persists the exact provider state produced by this Add.
@@ -1598,56 +1743,104 @@ impl CommittedAddition {
     /// this one-shot authority before durable staging begins.
     pub fn stage_and_write_to_storage<C, E>(
         self,
-        group: &mut SessionMlsGroup<C>,
+        group: &mut SessionMlsGroup<C, DurableStorage>,
         stage: impl FnOnce(CommittedAdditionStorageBinding) -> Result<(), E>,
-    ) -> Result<(), CommittedAdditionPersistenceError<E>>
+    ) -> Result<PersistedAddition, CommittedAdditionPersistenceError<E>>
     where
         C: MlsConfig,
     {
-        if !Arc::ptr_eq(&self.state_binding, &group.state_binding)
-            || self.state_revision != group.state_binding.load(Ordering::Acquire)
-            || self.group_id != *group.group_id()
-            || self.epoch_after != group.epoch()
+        let AppliedAddition {
+            group_id,
+            epoch_before,
+            epoch_after,
+            state_binding,
+            state_revision,
+            write_authority,
+            reference,
+            credential_identity,
+            leaf_signature_key,
+            welcome,
+            commit,
+        } = self.0;
+        if !Arc::ptr_eq(&state_binding, &group.state_binding)
+            || state_revision != group.state_binding.load(Ordering::Acquire)
+            || group.pending_addition_revision != Some(state_revision)
+            || group_id != *group.group_id()
+            || epoch_after != group.epoch()
         {
             return Err(CommittedAdditionPersistenceError::StaleSnapshot);
         }
-        let expected_revision = self.state_revision;
-        let write_authority = self.write_authority;
+        let persisted_welcome = WelcomeMessage(welcome.0.clone());
         let binding = CommittedAdditionStorageBinding {
-            group_id: self.group_id,
-            epoch_before: self.epoch_before,
-            epoch_after: self.epoch_after,
-            reference: self.reference,
-            credential_identity: self.credential_identity,
-            leaf_signature_key: self.leaf_signature_key,
-            welcome: self.welcome,
+            group_id,
+            epoch_before,
+            epoch_after,
+            reference,
+            credential_identity,
+            leaf_signature_key,
+            welcome,
             write_authority: write_authority.clone(),
         };
         stage(binding).map_err(CommittedAdditionPersistenceError::Staging)?;
-        if expected_revision != group.state_binding.load(Ordering::Acquire) {
+        if state_revision != group.state_binding.load(Ordering::Acquire)
+            || group.pending_addition_revision != Some(state_revision)
+        {
             return Err(CommittedAdditionPersistenceError::StaleSnapshot);
         }
         let _write_guard = write_authority
             .activate()
             .map_err(CommittedAdditionPersistenceError::Provider)?;
         group
-            .write_to_storage()
-            .map_err(CommittedAdditionPersistenceError::Provider)
+            .write_provider_state()
+            .map_err(CommittedAdditionPersistenceError::Provider)?;
+        group.pending_addition_revision = None;
+        Ok(PersistedAddition {
+            welcome: persisted_welcome,
+            commit,
+        })
+    }
+}
+
+impl TransientCommittedAddition {
+    /// Returns the exact KeyPackage reference targeted by this transient Add.
+    #[must_use]
+    pub const fn key_package_reference(&self) -> &KeyPackageReference {
+        &self.0.reference
     }
 
-    /// Borrows the Commit output for future durable outbox staging.
+    /// Borrows the transient Commit output for test delivery.
+    #[must_use]
+    pub const fn commit(&self) -> &MlsWireMessage {
+        &self.0.commit
+    }
+
+    /// Borrows the transient Welcome output for transport serialization.
+    #[must_use]
+    pub const fn welcome(&self) -> &WelcomeMessage {
+        &self.0.welcome
+    }
+
+    /// Consumes this transient result into the Welcome value.
+    #[must_use]
+    pub fn into_welcome(self) -> WelcomeMessage {
+        self.0.welcome
+    }
+}
+
+impl PersistedAddition {
+    /// Borrows the Commit output released after durable persistence succeeded.
     #[must_use]
     pub const fn commit(&self) -> &MlsWireMessage {
         &self.commit
     }
 
-    /// Borrows the one-shot Welcome output for transport serialization.
+    /// Borrows the Welcome output released after durable persistence succeeded.
     #[must_use]
     pub const fn welcome(&self) -> &WelcomeMessage {
         &self.welcome
     }
 
-    /// Consumes the result into the one-shot Welcome value.
+    /// Consumes the persisted result into the Welcome value.
     #[must_use]
     pub fn into_welcome(self) -> WelcomeMessage {
         self.welcome
@@ -1691,12 +1884,6 @@ impl CommittedAdditionStorageBinding {
         &self.leaf_signature_key
     }
 
-    /// Returns the exact Welcome emitted for the applied Add.
-    #[must_use]
-    pub const fn welcome(&self) -> &WelcomeMessage {
-        &self.welcome
-    }
-
     /// Reports whether this callback matches the exact originating provider write.
     #[doc(hidden)]
     #[must_use]
@@ -1709,17 +1896,34 @@ impl CommittedAdditionStorageBinding {
         self.write_authority
             .authorizes_current_write(state, epoch_inserts, epoch_updates)
     }
+
+    /// Returns the exact Welcome only while the originating provider write is active.
+    ///
+    /// Durable storage adapters use this after `mls-rs` has captured the exact
+    /// provider snapshot. Staging callbacks cannot use it to expose transport
+    /// output before persistence begins.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn welcome_for_current_provider_write(
+        &self,
+        state: &GroupState,
+        epoch_inserts: &[EpochRecord],
+        epoch_updates: &[EpochRecord],
+    ) -> Option<&WelcomeMessage> {
+        self.authorizes_current_provider_write(state, epoch_inserts, epoch_updates)
+            .then_some(&self.welcome)
+    }
 }
 
 /// Pending peer removal whose group state has not yet advanced.
-pub struct PreparedRemoval<'a, C: MlsConfig> {
-    group: &'a mut SessionMlsGroup<C>,
+pub struct PreparedRemoval<'a, C: MlsConfig, S: SessionStorageMode> {
+    group: &'a mut SessionMlsGroup<C, S>,
     epoch_before: u64,
     commit: Option<MlsWireMessage>,
     applied: bool,
 }
 
-impl<C: MlsConfig> PreparedRemoval<'_, C> {
+impl<C: MlsConfig, S: SessionStorageMode> PreparedRemoval<'_, C, S> {
     /// Returns the epoch before applying the pending removal.
     #[must_use]
     pub const fn epoch_before(&self) -> u64 {
@@ -1754,7 +1958,7 @@ impl<C: MlsConfig> PreparedRemoval<'_, C> {
     }
 }
 
-impl<C: MlsConfig> Drop for PreparedRemoval<'_, C> {
+impl<C: MlsConfig, S: SessionStorageMode> Drop for PreparedRemoval<'_, C, S> {
     fn drop(&mut self) {
         if !self.applied {
             self.group.inner.clear_pending_commit();
@@ -1768,15 +1972,15 @@ pub struct CommittedRemoval {
 }
 
 /// Pending path update whose group state has not yet advanced.
-pub struct PreparedEpochUpdate<'a, C: MlsConfig> {
-    group: &'a mut SessionMlsGroup<C>,
+pub struct PreparedEpochUpdate<'a, C: MlsConfig, S: SessionStorageMode> {
+    group: &'a mut SessionMlsGroup<C, S>,
     epoch_before: u64,
     member_count_before: usize,
     commit: Option<MlsWireMessage>,
     applied: bool,
 }
 
-impl<C: MlsConfig> PreparedEpochUpdate<'_, C> {
+impl<C: MlsConfig, S: SessionStorageMode> PreparedEpochUpdate<'_, C, S> {
     /// Returns the epoch before applying the pending path update.
     #[must_use]
     pub const fn epoch_before(&self) -> u64 {
@@ -1805,7 +2009,7 @@ impl<C: MlsConfig> PreparedEpochUpdate<'_, C> {
     }
 }
 
-impl<C: MlsConfig> Drop for PreparedEpochUpdate<'_, C> {
+impl<C: MlsConfig, S: SessionStorageMode> Drop for PreparedEpochUpdate<'_, C, S> {
     fn drop(&mut self) {
         if !self.applied {
             self.group.inner.clear_pending_commit();
@@ -1905,7 +2109,7 @@ mod tests {
     fn create_client_with_storage(
         credential_identity: SessionCredentialId,
         storage: RecordingStorage,
-    ) -> Result<SessionMlsClient<impl MlsConfig>, MlsAdapterError> {
+    ) -> Result<SessionMlsClient<impl MlsConfig, TransientStorage>, MlsAdapterError> {
         let crypto = phase_one_crypto_provider();
         let cipher_suite = crypto
             .cipher_suite_provider(CIPHERSUITE)
@@ -1934,6 +2138,8 @@ mod tests {
             credential_identity,
             signature_public_key,
             bound_group_id: None,
+            transient_use_state: AtomicU8::new(TRANSIENT_CLIENT_FRESH),
+            storage_mode: PhantomData,
         })
     }
 
@@ -2030,10 +2236,7 @@ mod tests {
         prepared.apply()?;
         assert_eq!(storage.write_count(), 0);
 
-        alice_group
-            .inner
-            .write_to_storage()
-            .map_err(|_| MlsAdapterError::ProtocolRejected)?;
+        alice_group.write_transient_state_to_storage()?;
         assert_eq!(storage.write_count(), 1);
 
         Ok(())

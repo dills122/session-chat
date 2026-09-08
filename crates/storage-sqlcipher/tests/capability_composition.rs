@@ -14,12 +14,11 @@ use session_admission::{AdmissionMethod, PendingAdmission};
 use session_core::{InvitationLifecycle, InvitationPolicy, InvitationRegistry};
 use session_crypto_hpke::{AwsLcInvitationJoinProtector, InvitationJoinProtector};
 use session_crypto_mls::{
-    SessionGroupId, WelcomeMessage, create_client, create_client_with_storage,
+    SessionGroupId, WelcomeMessage, create_client, create_durable_client_with_storage,
     create_key_package_validator,
 };
 use session_protocol::{
     CapabilityJoinRequest, InvitationJoinBinding, JoinRequestBinding, MlsKeyPackageBinding,
-    OpaqueEnvelope,
 };
 use session_transport::{
     CoordinatorOutcome, CoordinatorPolicy, DispatchControl, LocalMailboxPolicy,
@@ -185,42 +184,24 @@ fn real_capability_admission_mls_commit_and_restart_delivery_are_one_shot() {
         .approve_authorization(durable_pending, &protector, NOW)
         .expect("durable approval recorded");
 
-    let alice = create_client_with_storage(storage.clone(), storage.clone()).expect("Alice client");
-    let mut alice_group = alice
-        .create_group(SessionGroupId::new([0x71; 32]).expect("group id"), NOW)
-        .expect("Alice group");
+    let group_id = SessionGroupId::new([0x71; 32]).expect("group id");
+    let alice = create_durable_client_with_storage(
+        group_id,
+        storage.clone(),
+        storage.clone(),
+        storage.clone(),
+    )
+    .expect("durable Alice client");
+    let mut alice_group = alice.create_group(group_id, NOW).expect("Alice group");
     let durability_pending = verifier
         .prepare_approved_add(&mut registry, approved, &mut alice_group, NOW)
         .expect("approved exact Add")
         .apply_awaiting_durability(NOW)
         .expect("transient MLS Add");
-    let envelope = OpaqueEnvelope::new(
-        [0x81; 16],
-        NOW + 180,
-        durability_pending.welcome().as_bytes().to_vec(),
-    )
-    .expect("Welcome envelope");
-    let canonical_envelope = envelope
+    let response_endpoint = durability_pending
+        .response_endpoint()
         .encode_canonical()
-        .expect("canonical Welcome envelope");
-    let transaction = InviterJoinTransaction::new(
-        TRANSACTION_ID,
-        invitation_id,
-        invitation_generation,
-        REQUEST_ID,
-        request_fingerprint,
-        *alice_group.group_id(),
-        0,
-        1,
-        approval_record,
-        canonical_envelope.clone(),
-        durability_pending
-            .response_endpoint()
-            .encode_canonical()
-            .expect("canonical endpoint"),
-        NOW + 120,
-    )
-    .expect("bounded inviter transaction");
+        .expect("canonical endpoint");
     let membership = storage
         .begin_membership_authorization(durable_approved, TRANSACTION_ID, &protector, NOW)
         .expect("durable membership authorized");
@@ -229,6 +210,22 @@ fn real_capability_admission_mls_commit_and_restart_delivery_are_one_shot() {
     assert!(
         committed_addition
             .stage_and_write_to_storage(&mut alice_group, |binding| {
+                let transaction = InviterJoinTransaction::new_bound(
+                    TRANSACTION_ID,
+                    invitation_id,
+                    invitation_generation,
+                    REQUEST_ID,
+                    request_fingerprint,
+                    *group_id.as_bytes(),
+                    0,
+                    1,
+                    approval_record,
+                    [0x81; 16],
+                    NOW + 180,
+                    response_endpoint,
+                    NOW + 120,
+                )
+                .expect("bounded inviter transaction");
                 storage.stage_authorized_inviter(
                     membership,
                     binding,
@@ -331,13 +328,7 @@ fn real_capability_admission_mls_commit_and_restart_delivery_are_one_shot() {
         .receive(&receive_capability, NOW + 1)
         .expect("mailbox receive")
         .expect("Welcome retained");
-    assert_eq!(
-        received
-            .envelope()
-            .encode_canonical()
-            .expect("received canonical envelope"),
-        canonical_envelope
-    );
+    assert_eq!(received.envelope().envelope_id(), &[0x81; 16]);
     let bob_group = bob
         .join_group(
             WelcomeMessage::from_bytes(received.envelope().ciphertext()).expect("bounded Welcome"),

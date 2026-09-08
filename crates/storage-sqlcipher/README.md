@@ -59,8 +59,10 @@ one-shot handles bind transitions to the exact store, attempt, invitation
 generation, and membership transaction. The authorized inviter write rechecks
 that binding after acquiring the database write lock and consumes a
 provider-created `CommittedAdditionStorageBinding` whose exact KeyPackage
-reference, credential identity, leaf key, group, epoch transition, and Welcome
-must match the retained authorization and inviter transaction. The MLS adapter
+reference, credential identity, leaf key, group, and epoch transition must
+match the retained authorization and inviter transaction. Application staging
+stores only Welcome envelope metadata; ciphertext becomes readable to
+SQLCipher only inside the exact active provider write. The MLS adapter
 exposes that binding only inside an inseparable stage-and-write operation tied
 to the exact group instance and state revision. The actual callback must also
 carry the one-shot authority activated by that provider operation on its
@@ -69,6 +71,10 @@ state and ordered epoch records, while commit-time expiry uses staging time
 advanced by fresh monotonic elapsed time. It then
 atomically commits MLS state, the Welcome outbox, `Committed`, and invitation consumption. A
 concurrent recovery that first proves non-commit fences the staged writer;
+durable MLS groups now reject ordinary writes while an Add persistence
+obligation is pending, and Welcome/Commit outputs are released only after the
+exact bound write succeeds. Explicit transient write APIs remain test-only and
+cannot be called on a durable group.
 known success, known pre-commit failure, and ambiguous post-commit results can
 be finalized in the same open scope. Restart abandons pre-membership work, while
 outcome-unknown recovery releases the invitation only after reconciling the

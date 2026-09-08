@@ -697,8 +697,12 @@ parsing, retained KeyPackage ownership through Add and Welcome targeting,
 two-member roster enforcement, explicit prepare/apply and abandoned-pending
 handling, replay, reordering, temporarily lost epoch commits, path updates,
 removal, explicit-only group-state writes, and the provider-neutral established-
-session message interface from ADR 0013. The headless `sessionctl` acceptance
-flow now composes fresh capability admission, an atomic SQLCipher inviter
+session message interface from ADR 0013. ADR 0033 additionally makes transient
+credentials and signers one-shot: one inviter group or one KeyPackage followed
+by one Welcome attempt. The attempt is consumed before provider work, and a
+successful join must reproduce the pending client's exact credential and leaf
+signing key even when KeyPackage storage is shared. The headless `sessionctl`
+acceptance flow now composes fresh capability admission, an atomic SQLCipher inviter
 transaction, ambiguous-result recovery, exact identity/group reload, reconstructed coordinator Welcome
 delivery, bidirectional protected messages, path update, removal, and
 post-removal rejection across the local adapters. It adds durable-component
@@ -715,13 +719,14 @@ verifier accepts only I0/I1 or J0/J1 with exact retry. Separate local checked
 sweeps now kill every baseline-observed inviter/joiner application checkpoint
 and enforce the same complete-state and retry invariants, including
 missing/duplicate coverage rejection. Raw case observations remain non-public.
-The retained L2-8 gate emits only explicitly self-reported candidate v3 bundles
-from complete recovery matrices, with execution-time binary identities and
-bounded case-surface secret/canary scans. Candidate v2 and unsigned v1
-promotion always fail. Candidate v3 states `capture_completeness=unproven` and
+The retained L2-8 gate emits only explicitly self-reported candidate v4 bundles
+from complete recovery matrices, with in-process Git status, build-bound
+compiler identity/digest, execution-time binary identities, and bounded
+case-surface secret/canary scans. Candidates v2/v3 and unsigned v1 promotion
+always fail. Candidate v4 states `capture_completeness=unproven` and
 `redaction=unverified`; hosted attestation authenticates exact bytes and origin,
 not omitted streams or redaction completeness. GitHub environment,
-PATH-selected Git, and compiler output are not authentication. ADR 0028 requires
+Git/compiler assertions, and tool output are not authentication. ADR 0028 requires
 external GitHub/Sigstore attestation verification of the exact candidate digest,
 reviewed source/workflow, repository, hosted runner and run/attempt before hosted
 provenance is accepted. A compromised reviewed builder can still lie about test
@@ -816,6 +821,12 @@ validated batch carry the exact binding, owner revision, checkpoint-position
 kind, and cursor bytes into commit; duplicate delivery IDs fail validation.
 Explicit resynchronization is owner-CAS recorded before polling from none and is
 restart reloadable.
+The current memory and Iroh adapters issue no authority bound to that lifecycle
+identity. ADR 0032 therefore makes both reject checkpoint-bound polls before
+mailbox reads or Iroh network work. Unbound experimental polls remain available;
+neither adapter may be composed with durable checkpoint ownership until its
+receive authority binds the complete cursor scope and the Iroh wire authenticates
+that binding server-side.
 Owner-defined opaque commit evidence cannot be constructed or token-spliced by
 callers, and explicit wall time gates commit, load, immediate lease, and restart
 recovery. Mismatched outcome cardinality, page binding, commit evidence, CAS
@@ -956,6 +967,16 @@ KeyPackage-deletion callback can reacquire it. The exact pending reference may
 finish the transaction, while any foreign 32-byte reference rolls it back. The
 upstream deletion trait cannot prove which same-process clone called it, so
 same-open-scope callers remain trusted not to invoke that callback directly.
+ADR 0031 additionally separates transient and durable MLS types. A durable Add
+sets an exact pending-persistence obligation; ordinary writes reject it, raw
+provider writes are private, and transport outputs become available only from
+the successfully persisted result. Failed or stale staging yields no
+transport-capable value and requires authoritative recovery or reload.
+ADR 0033 prevents one transient client identity from creating or joining more
+than one session and consumes failed Welcome attempts. Durable identity reuse
+remains limited to the exact stored group and is required for restart and
+replacement-KeyPackage workflows. These controls do not prevent correlation by
+other local state, endpoint metadata, timing, or application behavior.
 Wrong-key, pre-commit rollback, ambiguous-result recovery,
 close/reopen, and closed-file checks are retained on
 the required Linux, macOS, and Windows CI runners. Schema version 2 also makes
@@ -1019,8 +1040,10 @@ the exact applied KeyPackage tuple, group/epoch, Welcome, group-instance state
 revision, and one-shot originating-thread write authority. An MLS-owned
 provider-facing wrapper additionally fingerprints the exact serialized group
 state and ordered epoch insert/update records before any caller-supplied
-storage wrapper runs; SQLCipher recomputes that domain-separated SHA-256 digest
-from the callback it receives. It rechecks the resulting binding with the
+storage wrapper runs. The application staging callback receives no Welcome
+accessor. SQLCipher can materialize the canonical Welcome envelope only while
+the originating provider write and its domain-separated SHA-256 state digest
+are active. It rechecks the resulting binding with the
 exact authorization and fresh monotonic elapsed time under the database write
 lock, and commits the terminal authorization and invitation states atomically
 with MLS and outbox state; exact

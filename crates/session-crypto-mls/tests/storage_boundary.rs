@@ -1,12 +1,12 @@
 use std::sync::{Arc, Mutex};
 
 use mls_rs::storage_provider::in_memory::{InMemoryGroupStateStorage, InMemoryKeyPackageStorage};
-use mls_rs_core::group::GroupStateStorage;
+use mls_rs_core::group::{GroupState, GroupStateStorage};
 use session_crypto_mls::{
-    DURABLE_CLIENT_IDENTITY_BYTES, DurableClientIdentityRecord, DurableClientIdentityStorage,
-    IncomingMessage, MlsWireMessage, SessionGroupId, create_client_with_storage,
+    CommittedAdditionPersistenceError, DURABLE_CLIENT_IDENTITY_BYTES, DurableClientIdentityRecord,
+    DurableClientIdentityStorage, IncomingMessage, MlsAdapterError, MlsWireMessage, SessionGroupId,
     create_durable_client_with_storage, create_key_package_validator,
-    load_durable_client_with_storage,
+    create_transient_client_with_storage, load_durable_client_with_storage,
 };
 
 const NOW: u64 = 1_900_000_000;
@@ -119,15 +119,15 @@ fn decode_hex(hex: &str) -> Vec<u8> {
 fn configured_provider_receives_real_group_writes_and_joiner_key_package_deletion() {
     let alice_groups = InMemoryGroupStateStorage::default();
     let alice_key_packages = InMemoryKeyPackageStorage::default();
-    let alice =
-        create_client_with_storage(alice_groups.clone(), alice_key_packages).expect("Alice client");
+    let alice = create_transient_client_with_storage(alice_groups.clone(), alice_key_packages)
+        .expect("Alice client");
     let mut alice_group = alice
         .create_group(SessionGroupId::new([1; 32]).expect("group id"), NOW)
         .expect("Alice group");
 
     let bob_groups = InMemoryGroupStateStorage::default();
     let bob_key_packages = InMemoryKeyPackageStorage::default();
-    let bob = create_client_with_storage(bob_groups.clone(), bob_key_packages.clone())
+    let bob = create_transient_client_with_storage(bob_groups.clone(), bob_key_packages.clone())
         .expect("Bob client");
     let bob_key_package = bob.generate_key_package(NOW).expect("Bob KeyPackage");
     let validator = create_key_package_validator();
@@ -143,7 +143,7 @@ fn configured_provider_receives_real_group_writes_and_joiner_key_package_deletio
         .apply()
         .expect("applied Add");
     alice_group
-        .write_to_storage()
+        .write_transient_state_to_storage()
         .expect("inviter group persisted");
     assert!(
         alice_groups
@@ -164,7 +164,7 @@ fn configured_provider_receives_real_group_writes_and_joiner_key_package_deletio
     assert!(bob_key_packages.get(&key_package_reference).is_some());
 
     bob_group
-        .write_to_storage()
+        .write_transient_state_to_storage()
         .expect("joiner group and KeyPackage deletion persisted");
     assert!(
         bob_groups
@@ -173,6 +173,48 @@ fn configured_provider_receives_real_group_writes_and_joiner_key_package_deletio
             .is_some()
     );
     assert!(bob_key_packages.get(&key_package_reference).is_none());
+}
+
+#[test]
+fn transient_join_rejects_key_package_owned_by_another_client_in_shared_storage() {
+    let shared_key_packages = InMemoryKeyPackageStorage::default();
+    let owner = create_transient_client_with_storage(
+        InMemoryGroupStateStorage::default(),
+        shared_key_packages.clone(),
+    )
+    .expect("KeyPackage owner");
+    let owner_key_package = owner.generate_key_package(NOW).expect("owner KeyPackage");
+    let validated = create_key_package_validator()
+        .validate_key_package(owner_key_package.as_bytes(), NOW)
+        .expect("validated owner KeyPackage");
+
+    let alice = create_transient_client_with_storage(
+        InMemoryGroupStateStorage::default(),
+        InMemoryKeyPackageStorage::default(),
+    )
+    .expect("Alice client");
+    let mut alice_group = alice
+        .create_group(SessionGroupId::new([0x41; 32]).expect("group id"), NOW)
+        .expect("Alice group");
+    let welcome = alice_group
+        .prepare_add(validated, NOW)
+        .expect("prepared Add")
+        .apply()
+        .expect("applied Add")
+        .into_welcome();
+
+    let substitute = create_transient_client_with_storage(
+        InMemoryGroupStateStorage::default(),
+        shared_key_packages,
+    )
+    .expect("substitute client");
+    let _substitute_key_package = substitute
+        .generate_key_package(NOW)
+        .expect("substitute KeyPackage");
+    assert!(matches!(
+        substitute.join_group(welcome, NOW),
+        Err(MlsAdapterError::ProtocolRejected)
+    ));
 }
 
 #[test]
@@ -212,6 +254,64 @@ fn frozen_identity_v1_fixture_loads_the_expected_credential_and_signer() {
         validated.leaf_signature_key(),
         &IDENTITY_V1_SIGNING_PUBLIC_KEY
     );
+    let replacement = client
+        .generate_key_package(NOW + 1)
+        .expect("durable signer creates replacement KeyPackage");
+    let replacement = create_key_package_validator()
+        .validate_key_package(replacement.as_bytes(), NOW + 1)
+        .expect("replacement KeyPackage validates");
+    assert_eq!(replacement.credential_identity(), &IDENTITY_V1_CREDENTIAL);
+    assert_eq!(
+        replacement.leaf_signature_key(),
+        &IDENTITY_V1_SIGNING_PUBLIC_KEY
+    );
+}
+
+#[test]
+fn failed_durable_add_staging_keeps_direct_provider_writes_blocked() {
+    let groups = InMemoryGroupStateStorage::default();
+    let group_id = SessionGroupId::new([0x61; 32]).expect("group id");
+    let alice = create_durable_client_with_storage(
+        group_id,
+        groups.clone(),
+        InMemoryKeyPackageStorage::default(),
+        IdentityStore::default(),
+    )
+    .expect("durable Alice client");
+    let bob = create_transient_client_with_storage(
+        InMemoryGroupStateStorage::default(),
+        InMemoryKeyPackageStorage::default(),
+    )
+    .expect("transient Bob client");
+    let validated = create_key_package_validator()
+        .validate_key_package(
+            bob.generate_key_package(NOW)
+                .expect("Bob KeyPackage")
+                .as_bytes(),
+            NOW,
+        )
+        .expect("validated KeyPackage");
+    let mut group = alice.create_group(group_id, NOW).expect("Alice group");
+    let addition = group
+        .prepare_add(validated, NOW)
+        .expect("prepared Add")
+        .apply()
+        .expect("applied Add");
+
+    assert!(matches!(
+        addition.stage_and_write_to_storage(&mut group, |_binding| Err("staging failed")),
+        Err(CommittedAdditionPersistenceError::Staging("staging failed"))
+    ));
+    assert_eq!(
+        group.write_to_storage(),
+        Err(MlsAdapterError::ProtocolRejected)
+    );
+    assert!(
+        groups
+            .state(group.group_id())
+            .expect("group lookup")
+            .is_none()
+    );
 }
 
 #[test]
@@ -242,7 +342,7 @@ fn durable_identity_reloads_the_same_member_and_rejects_fresh_or_malformed_ident
         .is_err()
     );
 
-    let bob = create_client_with_storage(
+    let bob = create_transient_client_with_storage(
         InMemoryGroupStateStorage::default(),
         InMemoryKeyPackageStorage::default(),
     )
@@ -251,14 +351,55 @@ fn durable_identity_reloads_the_same_member_and_rejects_fresh_or_malformed_ident
     let validated = create_key_package_validator()
         .validate_key_package(bob_key_package.as_bytes(), NOW)
         .expect("validated KeyPackage");
-    let welcome = alice_group
+    let expected_reference = *validated.key_package_reference();
+    let expected_credential = *validated.credential_identity();
+    let expected_leaf_key = *validated.leaf_signature_key();
+    let addition = alice_group
         .prepare_add(validated, NOW)
         .expect("prepared Add")
         .apply()
-        .expect("applied Add")
-        .into_welcome();
-    let mut bob_group = bob.join_group(welcome, NOW).expect("Bob joins");
-    alice_group.write_to_storage().expect("Alice state stored");
+        .expect("applied Add");
+    assert_eq!(
+        alice_group.write_to_storage(),
+        Err(MlsAdapterError::ProtocolRejected)
+    );
+    assert!(
+        alice_groups
+            .state(alice_group.group_id())
+            .expect("rejected direct write lookup")
+            .is_none()
+    );
+    let persisted = addition
+        .stage_and_write_to_storage(&mut alice_group, |binding| {
+            assert_eq!(binding.group_id(), group_id.as_bytes());
+            assert_eq!(binding.epoch_before(), 0);
+            assert_eq!(binding.epoch_after(), 1);
+            assert_eq!(binding.key_package_reference(), &expected_reference);
+            assert_eq!(binding.credential_identity(), &expected_credential);
+            assert_eq!(binding.leaf_signature_key(), &expected_leaf_key);
+            assert!(
+                binding
+                    .welcome_for_current_provider_write(
+                        &GroupState {
+                            id: group_id.as_bytes().to_vec(),
+                            data: vec![1].into(),
+                        },
+                        &[],
+                        &[],
+                    )
+                    .is_none()
+            );
+            Ok::<_, ()>(())
+        })
+        .expect("bound Add state stored");
+    assert!(!persisted.commit().as_bytes().is_empty());
+    assert!(!persisted.welcome().as_bytes().is_empty());
+    alice_group
+        .write_to_storage()
+        .expect("successful bound write clears Add obligation");
+    let mut bob_group = bob
+        .join_group(persisted.into_welcome(), NOW)
+        .expect("Bob joins");
     drop(alice_group);
     drop(alice);
 
@@ -288,7 +429,7 @@ fn durable_identity_reloads_the_same_member_and_rejects_fresh_or_malformed_ident
         IncomingMessage::Application(b"after restart".to_vec())
     );
 
-    let fresh = create_client_with_storage(alice_groups, alice_key_packages)
+    let fresh = create_transient_client_with_storage(alice_groups, alice_key_packages)
         .expect("fresh client using old group store");
     assert!(fresh.load_group(group_id).is_err());
     assert!(

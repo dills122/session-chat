@@ -16,6 +16,11 @@ and the post-removal rejection check cross the provider-neutral
 `EnvelopeDelivery` boundary using bounded operations and distinct deposit,
 receive, and acknowledgement rights over the deterministic memory adapter.
 
+Alice uses the durable MLS mode: Add application withholds Welcome and Commit,
+ordinary provider writes fail while persistence is pending, and only the exact
+bound SQLCipher transaction returns transport-capable output. Process-local
+provider fixtures use the separately named transient APIs.
+
 ```sh
 cargo run -p sessionctl --locked --offline
 ```

@@ -22,19 +22,28 @@ The adapter currently provides:
   `mls-rs`/AWS-LC feature graph from ADR 0012;
 - adapter-generated random 32-byte session credential identities and nonzero
   32-byte group identifiers supplied by the caller;
+- atomic one-shot transient identity use: one inviter group, or one KeyPackage
+  followed by one Welcome attempt consumed before provider processing;
 - a one-hour KeyPackage lifetime checked against caller-supplied time;
 - a bounded external KeyPackage validator that returns a private, non-`Clone`
   value owning the exact validated message, reference, credential identity,
   and leaf signature key;
 - in-memory two-member Add/Welcome, application-message, path-update, and
   removal transitions with explicit prepare/apply stages;
+- sealed transient and durable storage-mode markers carried through clients,
+  groups, and prepared Adds; only transient groups expose the explicitly named
+  raw provider-write test seam;
 - a non-forgeable, one-shot persistence operation derived from an applied Add,
   tied to the exact group instance and state revision, and carrying its exact
   KeyPackage reference, credential identity, leaf key, group, epoch transition,
   and Welcome; any intervening state-changing operation invalidates it before
   durable staging, while a one-shot thread-bound authority plus an MLS-owned
   domain-separated digest of the exact group-state and ordered epoch callback
-  records rejects callbacks substituted by caller-supplied storage; and
+  records rejects callbacks substituted by caller-supplied storage; staging
+  callbacks cannot read Welcome ciphertext, while the configured provider can
+  read it only during the matching active write; durable groups retain that
+  obligation after staging or provider failure, and release Welcome/Commit
+  transport outputs only in the successful persisted result; and
 - a versioned opaque durable-identity contract that creates once, reloads the
   same credential and AWS-LC signing key, and rejects a stored group whose local
   member does not match that reconstructed client; and
@@ -69,9 +78,11 @@ approval UX remain unimplemented.
 
 Retained tests cover malformed, trailing, oversized, expired, replayed,
 reordered, delayed, duplicate-identity, abandoned-pending-Commit, path-update,
-third-member, and removal cases. A recording storage provider verifies that
-create/prepare/apply cause no implicit group-state write and that an explicit
-provider write causes one write.
+third-member, transient identity reuse, second-Welcome, shared-KeyPackage-store
+owner substitution, and removal cases. A recording storage provider verifies that
+create/prepare/apply cause no implicit group-state write, an explicit transient
+provider write causes one write, and a durable Add rejects ordinary persistence
+until its exact bound stage-and-write succeeds.
 
 The default client helper still uses process memory. The durable helper requires
 one exact group identifier and a caller-owned identity store, inserts exactly
@@ -82,6 +93,10 @@ the 32-byte BasicCredential identity, 32-byte signing public key, and 64-byte
 signing secret; malformed, unknown, absent, conflicting, and key-mismatched
 records fail closed. Storage binds the record to that exact group, and the
 durable client rejects create, load, or join under another group identifier.
+It may generate replacement KeyPackages carrying that same exact-group
+credential and signer. A transient client instead rejects a second group or
+KeyPackage, consumes its pending identity on its first Welcome attempt, and
+verifies the joined local member against its own credential and signing key.
 The separate SQLCipher laboratory owns this record and the
 MLS group/KeyPackage stores. This crate does not itself coordinate invitation,
 replay, approval, outbox, or KeyPackage-deletion transactions. Remote

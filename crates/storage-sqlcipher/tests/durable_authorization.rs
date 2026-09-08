@@ -5,7 +5,7 @@ use session_crypto_mls::{
     SessionGroupId, ValidatedKeyPackage, create_client, create_durable_client_with_storage,
     create_key_package_validator,
 };
-use session_protocol::{DepositCapability, LocalWelcomeDepositEndpoint, OpaqueEnvelope};
+use session_protocol::{DepositCapability, LocalWelcomeDepositEndpoint};
 use storage_sqlcipher::{
     AuthorizationPolicy, AuthorizationShadowInput, AuthorizationState, InvitationOpeningState,
     InviterJoinTransaction, MembershipAuthorization, PersistenceFault, SqlCipherStorage,
@@ -224,14 +224,6 @@ where
         .expect("prepared Add")
         .apply()
         .expect("applied Add");
-    let welcome = OpaqueEnvelope::new(
-        [0xb2; 16],
-        NOW + 180,
-        addition.welcome().as_bytes().to_vec(),
-    )
-    .expect("Welcome envelope")
-    .encode_canonical()
-    .expect("canonical Welcome");
     let endpoint = LocalWelcomeDepositEndpoint::new(
         [0xb3; 16],
         [0xb4; 16],
@@ -241,21 +233,6 @@ where
     .expect("endpoint")
     .encode_canonical()
     .expect("canonical endpoint");
-    let transaction = InviterJoinTransaction::new(
-        transaction_id,
-        invitation_id,
-        generation,
-        join_request_id,
-        request_fingerprint,
-        *alice_group.group_id(),
-        0,
-        1,
-        vec![0xb6; 32],
-        welcome,
-        endpoint,
-        NOW + 120,
-    )
-    .expect("bounded inviter transaction");
     if options.advance_group_before_write {
         alice_group
             .prepare_epoch_update(NOW + 3)
@@ -265,6 +242,22 @@ where
     }
     addition
         .stage_and_write_to_storage(&mut alice_group, |binding| {
+            let transaction = InviterJoinTransaction::new_bound(
+                transaction_id,
+                invitation_id,
+                generation,
+                join_request_id,
+                request_fingerprint,
+                *group_id.as_bytes(),
+                0,
+                1,
+                vec![0xb6; 32],
+                [0xb2; 16],
+                NOW + 180,
+                endpoint,
+                NOW + 120,
+            )
+            .expect("bounded inviter transaction");
             storage.stage_authorized_inviter(
                 membership,
                 binding,
