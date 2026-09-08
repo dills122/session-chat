@@ -7,6 +7,7 @@ import { sitePath } from '../lib/paths';
   title="Session Chat · Private conversations without permanent accounts"
   description="Session Chat is an experimental system for temporary, end-to-end encrypted conversations between two people without permanent chat accounts."
 >
+  <span hidden data-current-claim="current-claim:fast_v1_delivery=implemented_experimental"></span>
   <div class="status-rail">
     <aside class="status-note" aria-label="Current project status">
       <strong>Phase 1 laboratory complete</strong>
@@ -36,7 +37,7 @@ import { sitePath } from '../lib/paths';
         <div><dt>Access</dt><dd>private invitation + approval</dd></div>
         <div><dt>Encryption</dt><dd>MLS 1.0</dd></div>
         <div><dt>Join proof</dt><dd>one-shot HPKE</dd></div>
-        <div><dt>Delivery</dt><dd>local test adapter</dd></div>
+        <div><dt>Delivery</dt><dd>local test + experimental Iroh</dd></div>
         <div><dt>Interface</dt><dd>command-line demo</dd></div>
       </dl>
     </aside>
@@ -87,10 +88,10 @@ import { sitePath } from '../lib/paths';
         <li class="workflow-stage">
           <span class="stage-number">5.0 · talk</span>
           <div class="stage-copy">
-            <h3>Transport carries encrypted envelopes, not chat text.</h3>
-            <p>A transport can move data but cannot approve a person or add a device. The current adapter only runs in memory and tests loss, duplication, delay, reordering, retry, expiry, and separate mailbox rights.</p>
+            <h3>Transport carries opaque envelopes, not chat text.</h3>
+            <p>A transport can move data but cannot approve a person or add a device. The memory adapter tests loss, duplication, delay, reordering, retry, expiry, and separate mailbox rights; the authenticated Iroh adapter adds experimental connected FastV1 delivery.</p>
           </div>
-          <div class="stage-proof"><span class="proof-label">Current limit</span><code>no network transport</code></div>
+          <div class="stage-proof"><span class="proof-label">Current limit</span><code>no offline or durable network profile</code></div>
         </li>
         <li class="workflow-stage">
           <span class="stage-number">6.0 · end</span>

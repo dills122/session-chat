@@ -260,6 +260,58 @@ fn conflicting_retry_and_stale_generation_fail_closed() {
 }
 
 #[test]
+fn expired_reservation_does_not_consume_distinct_invitation_capacity() {
+    let mut store = InMemoryInviterJoinStore::new(policy(1));
+    store
+        .seed_reservation(
+            ReservedInvitation::new([1; 16], [2; 64], [3; 16], NOW + 1)
+                .expect("expiring reservation"),
+            NOW,
+        )
+        .expect("initial reservation");
+
+    store
+        .seed_reservation(
+            ReservedInvitation::new([11; 16], [12; 64], [13; 16], NOW + 300)
+                .expect("fresh reservation"),
+            NOW + 1,
+        )
+        .expect("expired reservation yields its capacity");
+    assert_eq!(store.invitation_state(&[1; 16]), None);
+    assert_eq!(
+        store.invitation_state(&[11; 16]),
+        Some(InvitationState::Reserved)
+    );
+}
+
+#[test]
+fn retired_generation_replay_remains_rejected_after_capacity_reuse() {
+    let mut store = InMemoryInviterJoinStore::new(policy(1));
+    store
+        .seed_reservation(
+            ReservedInvitation::new([1; 16], [2; 64], [3; 16], NOW + 1).expect("first generation"),
+            NOW,
+        )
+        .expect("first reservation");
+    store
+        .seed_reservation(
+            ReservedInvitation::new([11; 16], [12; 64], [13; 16], NOW + 2)
+                .expect("second generation"),
+            NOW + 1,
+        )
+        .expect("second invitation reuses active capacity");
+
+    assert_eq!(
+        store.seed_reservation(
+            ReservedInvitation::new([1; 16], [2; 64], [3; 16], NOW + 300)
+                .expect("replayed first generation"),
+            NOW + 2,
+        ),
+        Err(TransactionError::Conflict)
+    );
+}
+
+#[test]
 fn delivery_failure_and_expired_lease_preserve_atomic_commit() {
     let mut store = seeded_store();
     store

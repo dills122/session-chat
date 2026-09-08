@@ -234,7 +234,7 @@ architecture:
 - `transport-iroh` is a bounded authenticated ordered-frame link and connected
   `EnvelopeDelivery` provider for explicit FastV1 online experiments. Its
   volatile mailbox service and headless host/join harness reuse the common
-  seven-operation contract over direct-only loopback; public N0 constructors
+  nine-operation contract over direct-only loopback; public N0 constructors
   and reachability checks are separately invoked operator tests. It is not an
   offline mailbox, durable provider, product network profile, or production
   client transport.
@@ -279,10 +279,11 @@ architecture:
   baseline-derived `SQLITE_FULL`/extended-`SQLITE_IOERR` results and kills a
   direct writer at observed SQLite commit-window pauses and every
   baseline-observed inviter/joiner application checkpoint before fresh reopen.
-  Raw case observations remain non-public. The retained L2-8 matrix lets only
-  sealed complete aggregates emit explicitly self-reported candidate v2 bundles
-  with execution-time binary identities and multi-surface secret/canary scans.
-  ADR 0028 requires external attestation verification before hosted provenance; portable passage remains conditional on the
+  Raw case observations remain non-public. The retained L2-8 matrix lets
+  complete recovery aggregates emit explicitly self-reported candidate v3
+  bundles with execution-time binary identities and bounded case-surface
+  secret/canary scans. ADR 0030 marks capture completeness unproved and
+  redaction unverified. ADR 0028 requires external attestation verification before hosted provenance; portable passage remains conditional on the
   exact revision's required three-OS result. None of this is a power-loss,
   filesystem, rollback, or production claim.
 - `storage-sqlcipher-fault-vfs` is a publish-disabled, explicitly selected

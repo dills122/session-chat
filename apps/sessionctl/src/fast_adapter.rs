@@ -786,7 +786,7 @@ mod tests {
             host,
         ));
         wait_for_handoff(&path).await.unwrap();
-        // Seven denied peers must not produce seven-operation completion.
+        // Nine denied peers must not produce nine-operation completion.
         for index in 0..9 {
             let peer = IrohFastEndpoint::bind_loopback().await.unwrap();
             let mut link = peer

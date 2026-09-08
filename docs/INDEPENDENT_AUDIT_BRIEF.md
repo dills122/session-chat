@@ -34,6 +34,10 @@ Method names such as `reserve_after_admission` and `consume_after_membership`
 state caller preconditions; the current crate does not verify admission or
 perform MLS membership changes.
 
+<!-- current-claim:hpke_join=implemented_laboratory -->
+<!-- current-claim:durable_authorization=implemented_laboratory -->
+<!-- current-claim:fast_v1_delivery=implemented_experimental -->
+
 ## Current system in one page
 
 The checked-in runtime consists of:
@@ -77,6 +81,10 @@ The checked-in runtime consists of:
   alias-only adverse trace v1 fixtures and run one normalized trace twice
   against fresh memory adapters with exact-byte and quiescence checks; its
   reusable adapter verdict suite is not complete;
+- `transport-iroh`: an experimental authenticated connected FastV1
+  `EnvelopeDelivery` adapter with bounded frames and retained two-endpoint
+  evidence; it is not offline delivery, a durable mailbox, an anonymity
+  mechanism, or production-ready transport;
 - `session-storage`: a deterministic in-memory sealed-session lifecycle and
   bounded canonical opaque-inbox conformance model with generation-bound local
   import plus bounded external unlock preparation, one-shot credentials, and
@@ -102,28 +110,31 @@ The checked-in runtime consists of:
   redacted manifest. Its checked L2 support also derives and exhausts the
   named-VFS return-code matrix and kills a separate child at each observed
   supported commit-window pause before fresh-process verification. Raw L2-5
-  records remain non-public; the retained L2-8 gate lets only sealed complete
-  aggregates emit explicitly unsigned candidate v2 bundles with execution-time
-  binary/artifact binding and bounded multi-surface secret/canary scans. ADR 0028
-  requires external attestation verification for hosted provenance, with portable passage remaining per-revision
+  records remain non-public; the retained L2-8 gate lets complete recovery
+  matrices emit explicitly unsigned candidate v3 bundles with execution-time
+  binary/artifact binding and bounded case-surface secret/canary scans. Candidate
+  v3 marks capture completeness unproved and redaction unverified under ADR 0030.
+  ADR 0028 requires external attestation verification for hosted provenance,
+  with portable passage remaining per-revision
   three-OS CI evidence; and
 - a disposable Node.js sealed-post-office simulator used only to test boundary
   semantics such as schema rejection, right-specific authorization ordering,
   rotation, and capacity limits.
 
 There is no human approval UX, portable/public all-checkpoint abrupt-kill or
-power-loss recovery, independently
-restartable durable product, network or production transport, production
-client vault, desktop shell, or hosted realm. The
+power-loss recovery, independently restartable durable product, offline or
+production transport, production client vault, desktop shell, or hosted realm.
+The connected Iroh FastV1 adapter remains an experimental online transport
+slice, not an offline mailbox or production network profile. The
 HPKE adapter proves PSK possession only for its exact typed context; the
 capability adapter performs automated verification, explicit simulated
 approval, exact v2/replay reservation, and MLS coordination. The isolated MLS
 adapter uses exact `mls-rs` 0.56.0 and AWS-LC 0.25.0 dependencies. The headless
 path uses its storage and group-bound identity-reload boundaries through
-SQLCipher. The L1 process runner crosses graceful Alice exit, but hands its
+SQLCipher. The L1 process runner crosses graceful Alice exit and reloads the
+durable approval and replay records with Alice's MLS state, but hands its
 disposable raw database key through an Alice-only inherited pipe rather than a
-platform vault and retains approval/replay shadows only in the initialization
-process. The superseded OpenMLS selection remains
+platform vault. The superseded OpenMLS selection remains
 blocked by repository dependency policy. The Node simulator's custom
 composition of platform crypto and placeholder address control is explicitly
 non-production.
@@ -135,9 +146,10 @@ single-process replay-aware capability verification and approval-gated
 invitation/MLS sequencing. The right-specific local mailbox is also runtime
 inventory, and the committed approved-join result carries only its authenticated
 deposit endpoint beside the exact MLS outputs. A retained test deposits the
-encrypted Welcome. Human approval UX, durable replay loading, platform key
-custody and durable approval/replay reload remain accepted-but-unimplemented
-contracts. The checked L2 laboratory locally covers its named SQLite-visible
+encrypted Welcome. Durable approval and replay reload are implemented within
+the SQLCipher laboratory. Human approval UX, platform key custody, stale
+snapshot rollback resistance, secure deletion, and production readiness remain
+unimplemented. The checked L2 laboratory locally covers its named SQLite-visible
 fault cases, engine commit-window kills, and every baseline-observed inviter
 and joiner application checkpoint, while portable/public evidence remains open.
 
@@ -204,8 +216,8 @@ flowchart LR
 | A sealed-session lifecycle and locked-mode capability matrix reject stale completion and gate privileged model operations | Implemented and tested in memory | ADRs 0016/0020 and `session-storage`; exact vault-instance/session/generation result binding, pre-provider cancellation checks, one-shot credentials, and bounded work are retained without a durable or production-scheduler claim |
 | Sealed mode accepts only bounded canonical opaque receipt, and local import requires the exact open and insertion generations | Implemented and tested in memory | `session-storage` malformed, expiry, quota, all-state append, and vault/inbox ABA tests; local removal is not remote acknowledgement |
 | Inviter MLS/join/Welcome state and joiner MLS/KeyPackage deletion are each one owner-local encrypted file transaction | Implemented and tested on three CI OS families | ADR 0017 and `storage-sqlcipher` use the real MLS storage path with rollback, ambiguous-result, exact-retry, wrong-key, and close/reopen evidence; hosted runners do not establish production packaging or broader platform support |
-| SQLite-visible FULL/extended-IOERR failures and named commit-window process kills reopen to one exact complete inviter/joiner state | Implemented and locally tested; unsigned promotion retired; external attestation required, portable passage is per-revision CI evidence | `sessionctl` derives every target ordinal from a fresh named-VFS baseline, rejects incomplete return-code/pause coverage, disables faults or confirms child termination before a fresh verifier, and accepts only I0/I1 or J0/J1 with exact retry. Raw L2-5 records prohibit publication; sealed complete aggregates emit unsigned candidate v2 bundles with execution-time binary/artifact binding and secret/canary scans. ADR 0028 requires external attestation verification; environment and tool diagnostics alone never authenticate a hosted run. Power loss, filesystem behavior, rollback resistance, and production durability remain unimplemented or unclaimed. |
-| Every baseline-observed inviter/joiner application checkpoint reopens to exact I0/I1 or J0/J1 state | Implemented and locally tested; unsigned promotion retired; external attestation required, portable passage is per-revision CI evidence | `sessionctl` discovers each clean transaction trace, kills the direct writer while the target checkpoint remains unacknowledged, rejects missing/duplicate sweep coverage, freshly verifies exact SQL/MLS state, and requires mutation-free exact retry. L2-8 applies the same promotion/provenance/redaction gate. Retained-KeyPackage and conflicting-retry defects fail closed. Power loss, filesystem behavior, rollback resistance, and production durability remain unimplemented or unclaimed. |
+| SQLite-visible FULL/extended-IOERR failures and named commit-window process kills reopen to one exact complete inviter/joiner state | Implemented and locally tested; unsigned promotion retired; external attestation required, portable passage is per-revision CI evidence | `sessionctl` derives every target ordinal from a fresh named-VFS baseline, rejects incomplete return-code/pause coverage, disables faults or confirms child termination before a fresh verifier, and accepts only I0/I1 or J0/J1 with exact retry. Raw L2-5 records prohibit publication; complete recovery matrices emit unsigned candidate v3 bundles with execution-time binary/artifact binding and bounded case-surface secret scans. ADR 0030 marks capture completeness unproved and redaction unverified. ADR 0028 requires external attestation verification; environment and tool diagnostics alone never authenticate a hosted run. Power loss, filesystem behavior, rollback resistance, and production durability remain unimplemented or unclaimed. |
+| Every baseline-observed inviter/joiner application checkpoint reopens to exact I0/I1 or J0/J1 state | Implemented and locally tested; unsigned promotion retired; external attestation required, portable passage is per-revision CI evidence | `sessionctl` discovers each clean transaction trace, kills the direct writer while the target checkpoint remains unacknowledged, rejects missing/duplicate sweep coverage, freshly verifies exact SQL/MLS state, and requires mutation-free exact retry. L2-8 applies the same recovery/provenance gate and emits only v3 candidates with unproved capture completeness and unverified redaction. Retained-KeyPackage and conflicting-retry defects fail closed. Power loss, filesystem behavior, rollback resistance, and production durability remain unimplemented or unclaimed. |
 | Key protector claims are factually capability-gated | Implemented and tested as a contract | `session-storage` rejects a protector weaker than `TestOnly`, `DeviceBound`, or `FreshUserPresence`; no native adapter exists |
 | The portable wrapped-key protector can drive the deterministic lifecycle without retaining a passphrase | Implemented and tested as non-production conformance | `key-protector-passphrase` owns only the wrapped record, consumes one exact-session credential, reports `ApplicationWrapped`/`MayBackup`, and remains disconnected from SQLCipher |
 | Local-app foundations require one common macOS, Windows, and Linux baseline | Accepted contract; CI gate implemented | ADR 0018 and the required Rust matrix; no desktop shell or portable production key protector exists yet |
@@ -289,12 +301,18 @@ binding; this is not an authentication or admission claim. Because pinned
 `mls-rs` 0.56.0 exposes no public KeyPackage leaf accessor, the adapter
 re-decodes the already
 provider-validated KeyPackage through a private mirror of that exact TLS layout
-to enforce the closed leaf extension/capability policy. Review that maintenance
-seam and its negative test on every provider update.
+to enforce the closed leaf extension/capability policy, including the exact
+singleton `CURVE25519_AES128` capability list. Adapter clients narrow AWS-LC to
+that same list, and retained negative fixtures reject foreign and duplicate
+ciphersuite claims. Review that maintenance seam and its negative test on every
+provider update. Pre-correction KeyPackages and persisted laboratory groups
+advertise the former broad provider list; they fail closed and require
+regeneration or recreation rather than an unproven migration.
 
-HPKE, encrypted storage, OS key protectors, realm signing, and signed updates
-have not been selected. Citations in the reference ledger are research inputs,
-not dependency decisions.
+The HPKE join adapter and SQLCipher encrypted-storage adapter are selected and
+tested for their bounded laboratory roles. Production OS key protectors, realm
+signing, and signed updates have not been selected. Citations in the reference
+ledger are research inputs, not dependency decisions.
 
 ## Conditional target guarantees
 
@@ -385,9 +403,9 @@ The headless composition crosses a real SQLCipher transaction: it resolves
 rollback or ambiguous commit, reloads the exact group-bound client identity and
 group after close/reopen, and resumes Welcome delivery from the sole-owner
 outbox. ADR 0021 repeats the positive lifecycle across graceful Alice process
-exit, Bob, and an untrusted forwarder. The approval/replay shadows are still
-process memory, and the raw database key uses a disposable Alice-only inherited pipe
-rather than a platform vault.
+exit, Bob, and an untrusted forwarder. The durable approval/replay records
+reload with the owner state, while the raw database key uses a disposable
+Alice-only inherited pipe rather than a platform vault.
 
 The next evidence-producing research or implementation tasks are:
 
@@ -395,8 +413,8 @@ The next evidence-producing research or implementation tasks are:
    observations through the three-OS provenance/canary gate, then extend
    process-kill evidence to outbox delivery and migration/restore without
    weakening the exact identity/group recovery contract.
-2. Make approval/result, replay, and invitation state reloadable with the MLS
-   and Welcome-outbox transaction, including rollback-anchor research.
+2. Extend the reloadable approval, replay, invitation, MLS, and Welcome-outbox
+   state with stale-snapshot rollback resistance and production key custody.
 3. Select a common platform key-custody baseline before connecting SQLCipher to
    a desktop credential path.
 4. Retain parser fuzzing, state-machine properties, and explicit RNG/clock

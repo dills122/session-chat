@@ -416,6 +416,11 @@ Assumptions:
   nearly all protocol guarantees.
 - Release provenance, dependency review, reproducibility, and signed updates
   are part of the product security boundary.
+- Retained evidence inventories are contributor-controlled input. Their gate
+  accepts only explicit comments, HTTPS sources, and canonical regular files
+  contained under declared repository evidence roots; traversal, symlinks,
+  directories, and unknown lines fail closed. Inventory digests bind inventory
+  text, while repository contents remain bound by the recorded Git revision.
 
 ### Attacker-controlled inputs
 
@@ -538,6 +543,13 @@ local deposit endpoint. Deposit, receive, and acknowledgement authority remain
 separate. The mailbox admits one logical bounded envelope and treats only the
 same envelope ID and exact bytes as an idempotent retry.
 
+The isolated MLS adapter also narrows AWS-LC to the sole Phase 1 ciphersuite and
+requires every validated KeyPackage and retained roster leaf to advertise the
+exact singleton `CURVE25519_AES128` capability list. Foreign, extra, or duplicate
+ciphersuite claims fail closed; outstanding KeyPackages from the former broad
+provider default must be regenerated, while persisted laboratory groups made
+under that default fail closed on reload and must be recreated.
+
 The canonical invitation-v2, protected outer/inner, exact outer AAD, local
 deposit-endpoint values, and one-shot HPKE operation are implemented and
 tested. Evidence includes exact fixtures, the official RFC PSK vector,
@@ -595,6 +607,13 @@ FULL/extended-IOERR failures, observed engine commit-window process kills, and
 every baseline-observed inviter/joiner application checkpoint. Raw observations
 remain non-public; only complete, secret-free aggregate manifests may enter the
 portable CI evidence record.
+
+[ADR 0029](adr/0029-split-phase-one-crash-atomicity-from-rollback-resistance.md)
+separates these claims in the normative Phase 1 ledger: application-crash
+atomic restore passed; rejection of valid older snapshots was superseded as a
+Phase 1 completion blocker and remains unproved. Phase 3 retains rollback
+resistance as an exit criterion requiring an independently anchored highest
+accepted generation across restart.
 
 Attacker story: Mallory captures a protected request and resubmits it after the
 invitation expires and is reissued with the same invitation and request IDs.
@@ -696,9 +715,12 @@ verifier accepts only I0/I1 or J0/J1 with exact retry. Separate local checked
 sweeps now kill every baseline-observed inviter/joiner application checkpoint
 and enforce the same complete-state and retry invariants, including
 missing/duplicate coverage rejection. Raw case observations remain non-public.
-The retained L2-8 gate emits only explicitly self-reported candidate v2 bundles
-from sealed complete aggregates, with execution-time binary identities and
-secret/canary scans. Unsigned v1 promotion always fails. GitHub environment,
+The retained L2-8 gate emits only explicitly self-reported candidate v3 bundles
+from complete recovery matrices, with execution-time binary identities and
+bounded case-surface secret/canary scans. Candidate v2 and unsigned v1
+promotion always fail. Candidate v3 states `capture_completeness=unproven` and
+`redaction=unverified`; hosted attestation authenticates exact bytes and origin,
+not omitted streams or redaction completeness. GitHub environment,
 PATH-selected Git, and compiler output are not authentication. ADR 0028 requires
 external GitHub/Sigstore attestation verification of the exact candidate digest,
 reviewed source/workflow, repository, hosted runner and run/attempt before hosted
@@ -763,6 +785,7 @@ mutation remains explicitly ambiguous. The deterministic memory adapter now
 adopts this boundary with fixed
 configuration and live-byte ceilings, exact-byte delivery, normalized
 idempotency conflict, exact-set idempotent acknowledgement, cursor rejection,
+unacknowledged direct-receive and cursorless-poll retention,
 final-observation expiry revalidation, and seeded diagnostic redaction evidence
 while retaining the narrow fault tests. Provider-neutral outer right wrappers
 prevent direct positional substitution even if an implementation aliases its
@@ -820,7 +843,10 @@ replays one trace against two fresh memory adapters, and rejects non-quiescent
 adapter-reported state. It accepts only LocalV1 and rejects unbound profile
 labels. A stale replay is an explicitly injected provider response and
 never restores acknowledged provider-owned state. A composed verdict and
-paired defective bridges exercise the retained adverse slice, and the bounded Phase 1 common verdict matrix is retained. This does not
+paired defective bridges exercise the retained adverse slice. The connected
+oracle rejects destructive polling, requires byte-identical pre-acknowledgement
+replay, checks immediate post-acknowledgement absence, retries acknowledgement,
+and checks absence again. The bounded Phase 1 common verdict matrix is retained. This does not
 certify a production network adapter.
 
 Within the retained runner, exact retries reuse one mailbox/envelope-bound
@@ -924,14 +950,27 @@ remains out of scope.
 ADR 0017's `storage-sqlcipher` adapter adds keyed, encrypted file-backed
 evidence for both real owner-local MLS transactions. The inviter snapshot and
 join/outbox state share one SQL commit; the joiner snapshot and exact one-time
-KeyPackage deletion share another. Wrong-key, pre-commit rollback,
-ambiguous-result recovery, close/reopen, and closed-file checks are retained on
+KeyPackage deletion share another. All cloned storage handles reject reads and
+unrelated writes while the split joiner callback transaction is open; only the
+KeyPackage-deletion callback can reacquire it. The exact pending reference may
+finish the transaction, while any foreign 32-byte reference rolls it back. The
+upstream deletion trait cannot prove which same-process clone called it, so
+same-open-scope callers remain trusted not to invoke that callback directly.
+Wrong-key, pre-commit rollback, ambiguous-result recovery,
+close/reopen, and closed-file checks are retained on
 the required Linux, macOS, and Windows CI runners. Schema version 2 also makes
 that inviter row the sole Welcome-delivery ledger with persistent store
 identity, exact canonical material, bounded attempts, generation/identity-bound
 leases, a persisted attempt ceiling, and delivered/exhausted/expired terminal
 states. The schema version is paired with SQLite's application `user_version`,
 migration is exclusive, and retained configuration is read back on open.
+Unix creation atomically reserves the main database at owner-only `0600`; open
+tightens recognized existing database and sidecar handles, rejects unsafe
+foreign-owned or non-sticky writable ancestry, passes SQLite a canonical
+no-follow path, and relies on SQLite sidecar mode inheritance. Permissive-umask
+and main/sidecar symlink-collision tests retain that evidence. Windows
+arbitrary-path ACL validation remains unimplemented; supported compositions
+must supply a protected parent with inherited DACLs.
 Retained tests reject old-open-scope, stale, and foreign results and reconcile
 an ambiguous prior adapter acceptance byte-identically after reopen. Schema
 version 3 adds one opaque, versioned client-identity record; version 4 adds the
@@ -989,6 +1028,14 @@ non-commit recovery that wins the lock first fences any staged writer. Store
 open also rejects contradictory terminal cross-row state. The headless
 admission compositions use this owner and settle their bounded in-memory
 shadows only after exact durable recovery.
+The persisted attempt policy independently limits simultaneous live
+authorizations and retained replay shadows for each exact invitation
+generation. Rejected, abandoned, and committed shadows remain replay evidence
+through invitation expiry without consuming unrelated live-attempt capacity;
+the checked product of invitation and attempt limits bounds total rows, and
+capacity pressure never evicts unexpired replay evidence.
+Schema v6 persists these three ceilings separately and migrates v5 metadata in
+an exclusive transaction, preventing a same-version policy reinterpretation.
 This contract still depends on SQLCipher confidentiality with a caller-supplied
 key and remains vulnerable to stale-snapshot rollback; platform custody,
 rollback detection, and secure deletion are later gates.
@@ -1094,6 +1141,15 @@ directories. Unix permissions and Windows DACLs apply at creation; new copied
 artifacts use exclusive creation and cleanup checks directory identity. Checked
 L2 executable snapshots use the same boundary. Same-account or privileged OS
 compromise and malicious replacement of the temporary parent remain outside it.
+
+### Test evidence capture
+
+Caller-selected output slices cannot prove that every process, diagnostic,
+control-frame, or retained-artifact stream was captured. ADR 0030 removes that
+public inventory from L2 candidate construction and forbids a complete
+redaction claim. Existing runners scan their known case surfaces and actual
+secret catalog, but complete capture remains unproved until one runner owns and
+closes every required stream before serialization.
 
 ### Supply chain and updates
 

@@ -818,7 +818,7 @@ impl EnvelopeTransport for DeterministicMemoryTransport {
             return Err(MemoryTransportError::Rejected);
         }
         loop {
-            let Some(delivery_id) = record.visible.pop_front() else {
+            let Some(delivery_id) = record.visible.front().copied() else {
                 return Ok(None);
             };
             let Some(accepted) = record
@@ -826,9 +826,11 @@ impl EnvelopeTransport for DeterministicMemoryTransport {
                 .values_mut()
                 .find(|accepted| accepted.delivery_id == delivery_id)
             else {
+                record.visible.pop_front();
                 continue;
             };
             let Some(envelope) = accepted.envelope.as_ref() else {
+                record.visible.pop_front();
                 continue;
             };
             if envelope.expires_at_unix_seconds() <= now_unix_seconds {
@@ -985,8 +987,6 @@ impl EnvelopeDelivery for DeterministicMemoryTransport {
 
         let mut items: Vec<ReceivedCanonicalEnvelope> =
             Vec::with_capacity(usize::from(request.max_envelopes()));
-        let mut consumed_prefix = 0_usize;
-        let mut consumed_stale_indices = Vec::new();
         let mut expired_ids = Vec::new();
         let mut encoded_bytes = 0_usize;
         for delivery_id in record
@@ -994,7 +994,6 @@ impl EnvelopeDelivery for DeterministicMemoryTransport {
             .iter()
             .take(usize::from(request.max_envelopes()))
         {
-            consumed_prefix += 1;
             let Some(accepted) = record
                 .accepted
                 .values()
@@ -1021,7 +1020,6 @@ impl EnvelopeDelivery for DeterministicMemoryTransport {
                 > usize::try_from(request.max_encoded_bytes())
                     .map_err(|_| transport_failure(TransportFailureCode::EnvelopeTooLarge))?
             {
-                consumed_prefix -= 1;
                 if items.is_empty() {
                     return Err(transport_failure(TransportFailureCode::EnvelopeTooLarge));
                 }
@@ -1032,7 +1030,7 @@ impl EnvelopeDelivery for DeterministicMemoryTransport {
         }
 
         if items.len() < usize::from(request.max_envelopes()) {
-            for (index, replay) in self.stale_replays.iter().enumerate() {
+            for replay in &self.stale_replays {
                 if replay.mailbox_id != authority.mailbox_id {
                     continue;
                 }
@@ -1040,7 +1038,6 @@ impl EnvelopeDelivery for DeterministicMemoryTransport {
                     break;
                 }
                 if replay.envelope.expires_at_unix_seconds() <= now_unix_seconds {
-                    consumed_stale_indices.push(index);
                     continue;
                 }
                 let canonical = CanonicalEnvelope::from_opaque(replay.envelope.clone())
@@ -1054,7 +1051,6 @@ impl EnvelopeDelivery for DeterministicMemoryTransport {
                             TransportFailureCode::CorruptRemoteResponse,
                         ));
                     }
-                    consumed_stale_indices.push(index);
                     continue;
                 }
                 let next_encoded_bytes = encoded_bytes
@@ -1074,7 +1070,6 @@ impl EnvelopeDelivery for DeterministicMemoryTransport {
                     replay.delivery_id,
                     canonical,
                 ));
-                consumed_stale_indices.push(index);
             }
         }
 
@@ -1095,9 +1090,6 @@ impl EnvelopeDelivery for DeterministicMemoryTransport {
             .mailboxes
             .get_mut(&authority.mailbox_id)
             .ok_or_else(|| transport_failure(TransportFailureCode::Internal))?;
-        for _ in 0..consumed_prefix {
-            record.visible.pop_front();
-        }
         for delivery_id in expired_ids {
             if let Some(accepted) = record
                 .accepted
@@ -1112,9 +1104,19 @@ impl EnvelopeDelivery for DeterministicMemoryTransport {
                 self.corrupt_next_poll = None;
             }
         }
-        for index in consumed_stale_indices.into_iter().rev() {
-            self.stale_replays.remove(index);
-        }
+        let accepted = &record.accepted;
+        record.visible.retain(|delivery_id| {
+            accepted.values().any(|entry| {
+                entry.delivery_id == *delivery_id
+                    && entry.envelope.as_ref().is_some_and(|envelope| {
+                        envelope.expires_at_unix_seconds() > final_wall_now_unix_seconds
+                    })
+            })
+        });
+        self.stale_replays.retain(|replay| {
+            replay.mailbox_id != authority.mailbox_id
+                || replay.envelope.expires_at_unix_seconds() > final_wall_now_unix_seconds
+        });
         Ok(batch)
     }
 

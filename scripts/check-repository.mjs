@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -8,6 +8,95 @@ const LOCAL_MACHINE_PATH = /(?:file:\/\/|\/Users\/|\/home\/[A-Za-z0-9_.-]+\/|[A-
 const MARKDOWN_LINK = /!?\[[^\]]*\]\(([^)]+)\)/g;
 import { workflowUses } from './workflow-uses.mjs';
 const FULL_COMMIT = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_./-]+)?@[0-9a-f]{40}$/;
+const EVIDENCE_ROOTS = new Set(['apps', 'crates', 'docs', 'scripts', 'spikes']);
+const CURRENT_CLAIM_POLICY = Object.freeze({
+  hpke_join: Object.freeze({
+    state: 'implemented_laboratory',
+    evidence: Object.freeze([
+      'crates/session-crypto-hpke/tests/capability_join_protection.rs',
+    ]),
+    limitations: Object.freeze(['no_human_approval_ux', 'no_production_readiness']),
+    surfaces: Object.freeze([
+      'docs/INDEPENDENT_AUDIT_BRIEF.md',
+      'site/src/pages/security.astro',
+      'site/CONTENT_DUMP.md',
+    ]),
+    contradictions: Object.freeze([/\bhpke\b.{0,120}\b(?:has|have) not been selected\b/is]),
+  }),
+  durable_authorization: Object.freeze({
+    state: 'implemented_laboratory',
+    evidence: Object.freeze([
+      'apps/sessionctl/tests/l1_process.rs',
+      'crates/storage-sqlcipher/tests/durable_authorization.rs',
+    ]),
+    limitations: Object.freeze([
+      'no_platform_key_custody',
+      'no_stale_snapshot_rollback_resistance',
+      'no_secure_deletion',
+      'no_production_readiness',
+    ]),
+    surfaces: Object.freeze([
+      'docs/INDEPENDENT_AUDIT_BRIEF.md',
+      'site/src/pages/security.astro',
+      'site/src/pages/architecture.astro',
+      'site/src/pages/project.astro',
+      'site/CONTENT_DUMP.md',
+    ]),
+    contradictions: Object.freeze([
+      /approval\/replay shadows (?:only in the initialization process|are still process memory)/i,
+      /durable approval\/replay reload remain accepted-but-unimplemented/i,
+      /durable product join transaction.{0,320}required, not integrated/is,
+    ]),
+  }),
+  fast_v1_delivery: Object.freeze({
+    state: 'implemented_experimental',
+    evidence: Object.freeze([
+      'crates/transport-iroh/tests/conformance.rs',
+      'docs/evidence/transport-iroh-fast.md',
+    ]),
+    limitations: Object.freeze([
+      'no_offline_delivery',
+      'no_durable_mailbox',
+      'no_anonymity',
+      'no_production_readiness',
+    ]),
+    surfaces: Object.freeze([
+      'docs/INDEPENDENT_AUDIT_BRIEF.md',
+      'docs/ROADMAP_V2.md',
+      'site/src/pages/index.astro',
+      'site/src/pages/security.astro',
+      'site/src/pages/architecture.astro',
+      'site/src/pages/project.astro',
+      'site/CONTENT_DUMP.md',
+    ]),
+    contradictions: Object.freeze([
+      /not an `?EnvelopeDelivery`? provider/i,
+      /\bno network adapter\b/i,
+      /\bno network transport\b/i,
+      /\bnot networked\b/i,
+    ]),
+    implementation: Object.freeze([
+      Object.freeze({
+        path: 'crates/transport-iroh/src/adapter.rs',
+        pattern: /impl\s+EnvelopeDelivery\s+for\s+IrohFastDelivery\b/u,
+      }),
+      Object.freeze({
+        path: 'crates/transport-iroh/src/lib.rs',
+        pattern: /pub\s+async\s+fn\s+bind_public\s*\(/u,
+      }),
+      Object.freeze({
+        path: 'apps/sessionctl/src/fast_adapter.rs',
+        pattern: /IrohFastEndpoint::bind_public\s*\(\s*\)/u,
+      }),
+      Object.freeze({
+        path: 'apps/sessionctl/Cargo.toml',
+        pattern: /^transport-iroh\s*=\s*\{[^}\n]*path\s*=\s*"\.\.\/\.\.\/crates\/transport-iroh"[^}\n]*\}/mu,
+      }),
+    ]),
+  }),
+});
+
+const HISTORICAL_REVISION_SENTENCE = /(?:^|\n)\s*Historical(?:ly)?\s+(?:at\s+)?(?:revision|commit)\s+`?[0-9a-f]{40}`?\s*:[^.\n]*(?:\.|$)/gimu;
 
 function normalize(relativePath) {
   return relativePath.split(sep).join('/');
@@ -15,7 +104,8 @@ function normalize(relativePath) {
 
 function shouldSkip(relativePath, entryName) {
   if (SKIPPED_DIRECTORIES.has(entryName)) return true;
-  return normalize(relativePath) === '.codex/skills';
+  const repositoryPath = normalize(relativePath);
+  return repositoryPath === '.codex/skills' || repositoryPath === '.claude/worktrees';
 }
 
 export function collectFiles(root) {
@@ -111,10 +201,66 @@ function checkJson(root, path, failures) {
 
 function checkEvidenceManifest(root, path, failures) {
   const repositoryPath = normalize(relative(root, path));
+  const canonicalRoot = realpathSync(root);
   for (const line of readFileSync(path, 'utf8').split(/\r?\n/)) {
-    if (!/^(?:apps|crates|docs|scripts|spikes)\//.test(line)) continue;
-    if (!existsSync(resolve(root, line))) {
-      failures.push(`${repositoryPath}: missing repository evidence ${line}`);
+    if (line === '' || line === '#' || line.startsWith('# ')) continue;
+    if (line.trim() !== line) {
+      failures.push(`${repositoryPath}: invalid evidence entry ${line}: surrounding whitespace`);
+      continue;
+    }
+    if (line.startsWith('https://')) {
+      try {
+        const source = new URL(line);
+        if (source.protocol === 'https:' && source.hostname && !source.username && !source.password) {
+          continue;
+        }
+      } catch {
+        // Fall through to one stable policy error.
+      }
+      failures.push(`${repositoryPath}: invalid external evidence URL ${line}`);
+      continue;
+    }
+    if (isAbsolute(line) || line.includes('\\') || line.includes(':')) {
+      failures.push(`${repositoryPath}: invalid repository evidence path ${line}`);
+      continue;
+    }
+
+    const parts = line.split('/');
+    if (!EVIDENCE_ROOTS.has(parts[0]) || parts.some(part => !part || part === '.' || part === '..')) {
+      failures.push(`${repositoryPath}: invalid repository evidence path ${line}`);
+      continue;
+    }
+
+    let target = canonicalRoot;
+    let metadata;
+    try {
+      for (const part of parts) {
+        target = join(target, part);
+        metadata = lstatSync(target);
+        if (metadata.isSymbolicLink()) {
+          throw new Error('symbolic link');
+        }
+      }
+    } catch (error) {
+      const reason = error.message === 'symbolic link' ? 'symbolic link' : 'missing path';
+      failures.push(`${repositoryPath}: invalid repository evidence ${line}: ${reason}`);
+      continue;
+    }
+
+    const allowedRoot = join(canonicalRoot, parts[0]);
+    let canonicalTarget;
+    try {
+      canonicalTarget = realpathSync(target);
+    } catch {
+      failures.push(`${repositoryPath}: invalid repository evidence ${line}: unresolved path`);
+      continue;
+    }
+    const allowedRelative = relative(allowedRoot, canonicalTarget);
+    const contained = allowedRelative === ''
+      || (!isAbsolute(allowedRelative) && allowedRelative !== '..' && !allowedRelative.startsWith(`..${sep}`));
+    if (!contained || !metadata.isFile()) {
+      const reason = contained ? 'not a regular file' : 'outside allowed evidence root';
+      failures.push(`${repositoryPath}: invalid repository evidence ${line}: ${reason}`);
     }
   }
 }
@@ -135,6 +281,322 @@ function checkWorkflow(root, path, failures) {
     }
   } catch (error) {
     failures.push(`${repositoryPath}: ${error.message}`);
+  }
+}
+
+function markedBlock(contents, startMarker, endMarker) {
+  if (contents.split(startMarker).length !== 2 || contents.split(endMarker).length !== 2) {
+    return undefined;
+  }
+  const start = contents.indexOf(startMarker);
+  const end = contents.indexOf(endMarker);
+  if (start === -1 || end === -1 || end <= start) return undefined;
+  return contents.slice(start + startMarker.length, end);
+}
+
+function retainedRepositoryFile(root, sourcePath, evidence) {
+  const match = evidence.match(/\[[^\]]+\]\(([^)]+)\)/);
+  if (!match) return undefined;
+  const target = linkTarget(match[1]);
+  if (!target || target.startsWith('#') || /^[A-Za-z][A-Za-z0-9+.-]*:/.test(target)) {
+    return undefined;
+  }
+  const withoutFragment = target.split('#', 1)[0].split('?', 1)[0];
+  let decoded;
+  try {
+    decoded = decodeURIComponent(withoutFragment);
+  } catch {
+    return undefined;
+  }
+  if (!decoded || isAbsolute(decoded)) return undefined;
+  const resolved = resolve(dirname(sourcePath), decoded);
+  const canonicalRoot = realpathSync(root);
+  let metadata;
+  let canonicalTarget;
+  try {
+    metadata = lstatSync(resolved);
+    canonicalTarget = realpathSync(resolved);
+  } catch {
+    return undefined;
+  }
+  const relativeTarget = relative(canonicalRoot, canonicalTarget);
+  if (
+    metadata.isSymbolicLink()
+    || !metadata.isFile()
+    || isAbsolute(relativeTarget)
+    || relativeTarget === '..'
+    || relativeTarget.startsWith(`..${sep}`)
+  ) {
+    return undefined;
+  }
+  return normalize(relativeTarget);
+}
+
+function canonicalRepositoryFile(root, repositoryPath) {
+  if (
+    typeof repositoryPath !== 'string'
+    || isAbsolute(repositoryPath)
+    || repositoryPath.includes('\\')
+    || repositoryPath.split('/').some((part) => !part || part === '.' || part === '..')
+  ) {
+    return false;
+  }
+  const resolved = resolve(root, repositoryPath);
+  let metadata;
+  let canonicalRoot;
+  let canonicalTarget;
+  try {
+    metadata = lstatSync(resolved);
+    canonicalRoot = realpathSync(root);
+    canonicalTarget = realpathSync(resolved);
+  } catch {
+    return false;
+  }
+  const relativeTarget = relative(canonicalRoot, canonicalTarget);
+  return metadata.isFile()
+    && !metadata.isSymbolicLink()
+    && !isAbsolute(relativeTarget)
+    && relativeTarget !== '..'
+    && !relativeTarget.startsWith(`..${sep}`);
+}
+
+function exactStringSet(actual, expected) {
+  return Array.isArray(actual)
+    && actual.every((value) => typeof value === 'string')
+    && new Set(actual).size === actual.length
+    && [...actual].sort().join('\n') === [...expected].sort().join('\n');
+}
+
+function checkCurrentImplementationClaims(root, failures) {
+  const projectDetected = existsSync(join(root, 'Cargo.toml'))
+    && existsSync(join(root, 'apps', 'sessionctl'));
+  if (!projectDetected) return;
+  const ledgerPath = join(root, 'docs', 'current-implementation.json');
+  if (!existsSync(ledgerPath)) {
+    failures.push('docs/current-implementation.json: missing current implementation ledger');
+    return;
+  }
+  let ledger;
+  try {
+    ledger = JSON.parse(readFileSync(ledgerPath, 'utf8'));
+  } catch {
+    return;
+  }
+  if (
+    ledger?.schemaVersion !== 1
+    || !Array.isArray(ledger.claims)
+    || Object.keys(ledger).sort().join(',') !== 'claims,schemaVersion'
+  ) {
+    failures.push('docs/current-implementation.json: invalid closed schema v1');
+    return;
+  }
+
+  const claims = new Map();
+  for (const claim of ledger.claims) {
+    if (
+      claim === null
+      || typeof claim !== 'object'
+      || Object.keys(claim).sort().join(',') !== 'evidence,id,limitations,state,surfaces'
+      || typeof claim.id !== 'string'
+      || typeof claim.state !== 'string'
+      || !Array.isArray(claim.evidence)
+      || claim.evidence.length === 0
+    ) {
+      failures.push('docs/current-implementation.json: malformed claim record');
+      continue;
+    }
+    if (claims.has(claim.id)) {
+      failures.push(`docs/current-implementation.json: duplicate claim ${claim.id}`);
+      continue;
+    }
+    claims.set(claim.id, claim);
+  }
+
+  const claimSurfaces = new Set(
+    Object.values(CURRENT_CLAIM_POLICY).flatMap((policy) => policy.surfaces),
+  );
+  for (const surface of claimSurfaces) {
+    const surfacePath = join(root, surface);
+    if (!existsSync(surfacePath)) continue;
+    const expected = new Map(
+      Object.entries(CURRENT_CLAIM_POLICY)
+        .filter(([, policy]) => policy.surfaces.includes(surface))
+        .map(([id, policy]) => [id, policy.state]),
+    );
+    const markers = [...readFileSync(surfacePath, 'utf8').matchAll(/current-claim:([a-z0-9_]+)=([a-z0-9_]+)/gu)];
+    const valid = markers.length === expected.size
+      && markers.every((match) => expected.get(match[1]) === match[2])
+      && new Set(markers.map((match) => match[1])).size === markers.length;
+    if (!valid) failures.push(`${surface}: invalid current-claim markers`);
+  }
+
+  for (const [id, policy] of Object.entries(CURRENT_CLAIM_POLICY)) {
+    const claim = claims.get(id);
+    if (!claim) {
+      failures.push(`docs/current-implementation.json: missing claim ${id}`);
+      continue;
+    }
+    if (claim.state !== policy.state) {
+      failures.push(`docs/current-implementation.json: ${id} has unsupported state ${claim.state}`);
+    }
+    if (!exactStringSet(claim.limitations, policy.limitations)) {
+      failures.push(`docs/current-implementation.json: ${id} has incorrect limitation set`);
+    }
+    if (!exactStringSet(claim.surfaces, policy.surfaces)) {
+      failures.push(`docs/current-implementation.json: ${id} has incorrect surface set`);
+    }
+    if (!exactStringSet(claim.evidence, policy.evidence)) {
+      failures.push(`docs/current-implementation.json: ${id} has incorrect evidence set`);
+    } else if (!claim.evidence.every((path) => canonicalRepositoryFile(root, path))) {
+      failures.push(`docs/current-implementation.json: ${id} has invalid evidence paths`);
+    }
+    for (const implementation of policy.implementation ?? []) {
+      const implementationPath = join(root, implementation.path);
+      if (
+        !existsSync(implementationPath)
+        || !implementation.pattern.test(readFileSync(implementationPath, 'utf8'))
+      ) {
+        failures.push(`${implementation.path}: missing connected FastV1 implementation`);
+      }
+    }
+
+    for (const surface of policy.surfaces) {
+      const surfacePath = join(root, surface);
+      if (!existsSync(surfacePath)) continue;
+      const contents = readFileSync(surfacePath, 'utf8');
+      for (const paragraph of contents.split(/\r?\n\s*\r?\n/)) {
+        const currentText = paragraph.replace(HISTORICAL_REVISION_SENTENCE, '');
+        if (policy.contradictions.some((pattern) => pattern.test(currentText))) {
+          failures.push(`${surface}: ${id} contradicts ${policy.state}`);
+          break;
+        }
+      }
+    }
+  }
+  for (const id of claims.keys()) {
+    if (!Object.hasOwn(CURRENT_CLAIM_POLICY, id)) {
+      failures.push(`docs/current-implementation.json: unknown claim ${id}`);
+    }
+  }
+
+  for (const surface of ['site/src/pages/architecture.astro', 'site/src/pages/project.astro']) {
+    const surfacePath = join(root, surface);
+    if (!existsSync(surfacePath) || !/transport-iroh.{0,120}experimental/is.test(readFileSync(surfacePath, 'utf8'))) {
+      failures.push(`${surface}: missing experimental transport-iroh inventory`);
+    }
+  }
+}
+
+function checkPhaseOneAcceptance(root, failures) {
+  const adrRoot = join(root, 'docs', 'adr');
+  const closeoutPath = join(root, 'docs', 'evidence', 'phase1-closeout.md');
+  const adrCandidates = existsSync(adrRoot)
+    ? readdirSync(adrRoot).filter((name) => /^0004-.*\.md$/.test(name))
+    : [];
+  if (adrCandidates.length === 0 && !existsSync(closeoutPath)) return;
+  if (adrCandidates.length !== 1) {
+    failures.push('docs/adr: Phase 1 acceptance policy requires exactly one ADR 0004 file');
+    return;
+  }
+  if (!existsSync(closeoutPath)) {
+    failures.push('docs/evidence/phase1-closeout.md: missing Phase 1 acceptance ledger');
+    return;
+  }
+
+  const adrPath = join(adrRoot, adrCandidates[0]);
+  const criteriaBlock = markedBlock(
+    readFileSync(adrPath, 'utf8'),
+    '<!-- phase1-acceptance-criteria:start -->',
+    '<!-- phase1-acceptance-criteria:end -->',
+  );
+  if (criteriaBlock === undefined) {
+    failures.push(`${normalize(relative(root, adrPath))}: missing Phase 1 acceptance criteria block`);
+    return;
+  }
+  const criteria = new Set();
+  for (const line of criteriaBlock.split(/\r?\n/).filter(Boolean)) {
+    const match = line.match(/^- `([A-Z][A-Z0-9-]+)` — .+$/);
+    if (!match) {
+      failures.push(`${normalize(relative(root, adrPath))}: malformed Phase 1 criterion ${line}`);
+      continue;
+    }
+    if (criteria.has(match[1])) {
+      failures.push(`${normalize(relative(root, adrPath))}: duplicate criterion ${match[1]}`);
+    }
+    criteria.add(match[1]);
+  }
+
+  const closeout = readFileSync(closeoutPath, 'utf8');
+  const ledgerBlock = markedBlock(
+    closeout,
+    '<!-- phase1-acceptance-ledger:start -->',
+    '<!-- phase1-acceptance-ledger:end -->',
+  );
+  if (ledgerBlock === undefined) {
+    failures.push('docs/evidence/phase1-closeout.md: missing Phase 1 acceptance ledger block');
+    return;
+  }
+  const status = closeout.match(/^Status: (.+)$/m)?.[1] ?? '';
+  const complete = /\bcomplete\b/.test(status);
+  const ledger = new Map();
+  const lines = ledgerBlock.split(/\r?\n/).filter(Boolean);
+  const rows = [];
+  for (const line of lines) {
+    if (
+      line === '| Criterion ID | Disposition | Evidence or superseding ADR |'
+      || line === '| --- | --- | --- |'
+    ) {
+      continue;
+    }
+    if (!line.startsWith('| `')) {
+      failures.push(`docs/evidence/phase1-closeout.md: malformed acceptance row ${line}`);
+      continue;
+    }
+    rows.push(line);
+  }
+  for (const row of rows) {
+    const match = row.match(
+      /^\| `([A-Z][A-Z0-9-]+)` \| (passed|superseded|incomplete) \| (.+) \|$/,
+    );
+    if (!match) {
+      failures.push(`docs/evidence/phase1-closeout.md: malformed acceptance row ${row}`);
+      continue;
+    }
+    const [, criterion, disposition, evidence] = match;
+    if (ledger.has(criterion)) {
+      failures.push(`docs/evidence/phase1-closeout.md: duplicate criterion ${criterion}`);
+      continue;
+    }
+    ledger.set(criterion, disposition);
+    const evidencePath = retainedRepositoryFile(root, closeoutPath, evidence);
+    if (disposition === 'passed' && evidencePath === undefined) {
+      failures.push(
+        `docs/evidence/phase1-closeout.md: passed criterion ${criterion} requires retained evidence link`,
+      );
+    }
+    if (
+      disposition === 'superseded'
+      && (evidencePath === undefined || !/^docs\/adr\/\d{4}-[^/]+\.md$/.test(evidencePath))
+    ) {
+      failures.push(
+        `docs/evidence/phase1-closeout.md: superseded criterion ${criterion} requires ADR link`,
+      );
+    }
+    if (complete && disposition === 'incomplete') {
+      failures.push(
+        `docs/evidence/phase1-closeout.md: complete ledger contains incomplete criterion ${criterion}`,
+      );
+    }
+  }
+  for (const criterion of criteria) {
+    if (!ledger.has(criterion)) {
+      failures.push(`docs/evidence/phase1-closeout.md: missing criterion ${criterion}`);
+    }
+  }
+  for (const criterion of ledger.keys()) {
+    if (!criteria.has(criterion)) {
+      failures.push(`docs/evidence/phase1-closeout.md: unknown criterion ${criterion}`);
+    }
   }
 }
 
@@ -159,6 +621,9 @@ export function checkRepository(root) {
       checkWorkflow(root, path, failures);
     }
   }
+
+  checkPhaseOneAcceptance(root, failures);
+  checkCurrentImplementationClaims(root, failures);
 
   const steeringRoot = join(root, '.codex', 'steering');
   if (existsSync(steeringRoot)) {

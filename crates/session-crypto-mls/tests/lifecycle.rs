@@ -110,6 +110,29 @@ fn exact_validated_key_package_reaches_add_welcome_and_two_party_messages()
 }
 
 #[test]
+fn newly_admitted_member_rejects_application_ciphertext_from_an_earlier_epoch()
+-> Result<(), MlsAdapterError> {
+    let alice = create_client()?;
+    let bob = create_client()?;
+    let validator = create_key_package_validator();
+    let mut alice_group = alice.create_group(group_id(), NOW)?;
+    let before_join = alice_group.encrypt_application_message(b"before Bob joined")?;
+
+    let bob_key_package = bob.generate_key_package(NOW)?;
+    let bob_admission = validator.validate_key_package(bob_key_package.as_bytes(), NOW)?;
+    let addition = alice_group.prepare_add(bob_admission, NOW)?.apply()?;
+    let mut bob_group = bob.join_group(addition.into_welcome(), NOW)?;
+
+    assert_eq!(bob_group.epoch(), 1);
+    assert_eq!(
+        bob_group.process_message(before_join),
+        Err(MlsAdapterError::ProtocolRejected)
+    );
+
+    Ok(())
+}
+
+#[test]
 fn application_messages_use_the_provider_neutral_session_interface()
 -> Result<(), Box<dyn std::error::Error>> {
     let alice = create_client()?;
@@ -347,8 +370,8 @@ fn otherwise_valid_key_package_with_leaf_extension_is_rejected() -> Result<(), M
     };
     use mls_rs_crypto_awslc::AwsLcCryptoProvider;
 
-    let crypto = AwsLcCryptoProvider::default();
     let suite = CipherSuite::CURVE25519_AES128;
+    let crypto = AwsLcCryptoProvider::with_enabled_cipher_suites(vec![suite]);
     let provider = crypto
         .cipher_suite_provider(suite)
         .expect("selected ciphersuite");
@@ -378,6 +401,56 @@ fn otherwise_valid_key_package_with_leaf_extension_is_rejected() -> Result<(), M
         create_key_package_validator().validate_key_package(&bytes, NOW),
         Err(MlsAdapterError::RejectedKeyPackage)
     ));
+
+    Ok(())
+}
+
+#[test]
+fn otherwise_valid_key_packages_with_open_ciphersuite_capabilities_are_rejected()
+-> Result<(), MlsAdapterError> {
+    use mls_rs::{
+        CipherSuite, CipherSuiteProvider, Client, CryptoProvider, ExtensionList, ProtocolVersion,
+        identity::{
+            SigningIdentity,
+            basic::{BasicCredential, BasicIdentityProvider},
+        },
+    };
+    use mls_rs_crypto_awslc::AwsLcCryptoProvider;
+
+    let selected = CipherSuite::CURVE25519_AES128;
+    for advertised in [
+        vec![selected, CipherSuite::CURVE25519_CHACHA],
+        vec![selected, selected],
+    ] {
+        let crypto = AwsLcCryptoProvider::with_enabled_cipher_suites(advertised);
+        let provider = crypto
+            .cipher_suite_provider(selected)
+            .expect("selected ciphersuite");
+        let (secret, public) = provider.signature_key_generate().expect("signature key");
+        let identity = SigningIdentity::new(
+            BasicCredential::new(vec![0x23; 32]).into_credential(),
+            public,
+        );
+        let client = Client::builder()
+            .identity_provider(BasicIdentityProvider)
+            .crypto_provider(crypto)
+            .protocol_version(ProtocolVersion::MLS_10)
+            .signing_identity(identity, secret, selected)
+            .build();
+        let message = client
+            .generate_key_package_message(
+                ExtensionList::new(),
+                ExtensionList::new(),
+                Some(NOW.into()),
+            )
+            .expect("otherwise valid KeyPackage");
+        let bytes = message.to_bytes().expect("serialize KeyPackage");
+
+        assert!(matches!(
+            create_key_package_validator().validate_key_package(&bytes, NOW),
+            Err(MlsAdapterError::RejectedKeyPackage)
+        ));
+    }
 
     Ok(())
 }

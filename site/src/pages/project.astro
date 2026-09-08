@@ -6,6 +6,8 @@ import BaseLayout from '../layouts/BaseLayout.astro';
   title="Project status · Session Chat"
   description="What can be run in Session Chat today, what is still missing, and the evidence gates before a usable desktop product."
 >
+  <span hidden data-current-claim="current-claim:durable_authorization=implemented_laboratory"></span>
+  <span hidden data-current-claim="current-claim:fast_v1_delivery=implemented_experimental"></span>
   <div class="page-shell">
     <header class="route-hero">
       <div class="route-title">
@@ -13,7 +15,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         <h1>Today: a command-line protocol demo, not a chat app.</h1>
       </div>
       <p class="lede">
-        Phase 1 laboratory work is complete: the headless two-person flow, hostile inputs, deterministic delivery faults, and encrypted SQLCipher recovery passed the Linux, macOS, and Windows gate. Product key custody, a human approval screen, desktop packaging, and reusable network transports remain later work.
+        Phase 1 laboratory work is complete: the headless two-person flow, hostile inputs, deterministic delivery faults, and encrypted SQLCipher authorization recovery passed the Linux, macOS, and Windows gate. Connected Iroh FastV1 delivery is experimental. Product key custody, a human approval screen, desktop packaging, offline delivery, and production network transports remain later work.
       </p>
     </header>
   </div>
@@ -34,7 +36,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         <div class="crate-row"><dt>Protocol objects</dt><dd>Canonical envelopes, invitation v1/v2, protected join framing, exact AAD, and local deposit endpoint.</dd><dd class="crate-state">bounded fixtures retained</dd></div>
         <div class="crate-row"><dt>Admission path</dt><dd>HPKE provenance, exact KeyPackage ownership, durable laboratory replay reservation, local invitation binding, and simulated approval.</dd><dd class="crate-state">laboratory composition</dd></div>
         <div class="crate-row"><dt>MLS path</dt><dd>Two-member Add/Welcome, protected messages, update, removal, replay, and reordering behavior.</dd><dd class="crate-state">isolated adapter</dd></div>
-        <div class="crate-row"><dt>Delivery path</dt><dd>Right-specific local Welcome mailbox and a deterministic adverse memory transport.</dd><dd class="crate-state">not networked</dd></div>
+        <div class="crate-row"><dt>Delivery path</dt><dd>Right-specific local Welcome mailbox, deterministic adverse memory transport, and the authenticated <code>transport-iroh</code> adapter.</dd><dd class="crate-state">experimental online FastV1</dd></div>
         <div class="crate-row"><dt>Storage evidence</dt><dd>Composed SQLCipher transaction and process-recovery evidence; separate sealed-vault and passphrase-wrapper laboratories.</dd><dd class="crate-state">laboratory only</dd></div>
         <div class="crate-row"><dt>Platform baseline</dt><dd>Workspace build, lint, and test matrix on Linux, macOS, and Windows CI.</dd><dd class="crate-state">CI gate active</dd></div>
       </dl>

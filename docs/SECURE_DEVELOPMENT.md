@@ -12,11 +12,16 @@ does not certify future architecture or make a test build production-ready.
 | --- | --- |
 | Rust | Exact toolchain and locked graph; all-target/all-feature Clippy and tests on pinned Linux, macOS, and Windows runners; formatting, doctests, and warning-free rustdoc on Linux |
 | Retained Node tools | Exact Node patch and all dependency-free repository/provider tests |
-| Rust production coverage | Pinned source-based driver; integration-target production measurement; 92.23% workspace lines, 88.53% regions, 85.64% functions, and 90% lines for every vital library component |
+| Rust production coverage | Pinned source-based driver; integration-target production measurement; 92.23% workspace lines, 88.00% regions, 85.64% functions, and 90% lines for every vital library component |
 | Repository policy | Local Markdown links, JSON parsing, evidence-manifest references/digests, absence of developer-local paths/placeholders, and immutable action references |
 | Rust dependency policy | RustSec advisories/yanks, reviewed license allowlist and exact-crate exceptions, supported application target graph, crates.io-only sources, and no wildcard requirements |
 | Pull-request dependency review | Rejects newly introduced moderate-or-higher vulnerabilities in runtime or unknown scopes |
 | Gate | Uses `always()` and verifies every intended job result, including an intentional dependency-review skip outside pull requests |
+
+The exact reviewed non-instrumented source allowance set is canonical in
+[CODE_COVERAGE.md](CODE_COVERAGE.md#approved-non-instrumented-source-allowances).
+Repository tests bind that list and this threshold tuple to `COVERAGE_POLICY`;
+additions require a reviewed policy and documentation change.
 
 The workflow has no path filters: a documentation-only security-contract change
 must produce the same stable required check as a code change. Every job has a
@@ -32,6 +37,16 @@ credentials, or installed binaries, and a cache miss never skips compilation.
 The matrix makes the common local-app foundation an all-platform merge
 requirement; a matrix failure fails the aggregate Rust job and therefore the
 final gate.
+
+Evidence manifests use an explicit dependency-free line grammar: blank lines,
+`#` comments, credential-free `https://` sources, or canonical forward-slash
+repository file paths beneath `apps/`, `crates/`, `docs/`, `scripts/`, or
+`spikes/`. The checker rejects dot segments, backslashes, absolute paths,
+colons/NTFS alternate streams, unknown lines, symlink components, missing
+targets, directories, and targets outside the selected evidence root.
+Repository content remains bound by the
+recorded Git revision; a sibling hardening record's collection digest binds the
+exact inventory text, not mutable external page content.
 
 Run the equivalent local gate with:
 

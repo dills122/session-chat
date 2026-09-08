@@ -44,7 +44,7 @@ use execution::{ExecutableSnapshot, ExecutionIdentity};
 mod evidence;
 pub mod welcome;
 pub mod welcome_io;
-pub use evidence::{L2EvidenceBundle, L2EvidenceChannels, L2EvidenceManifest};
+pub use evidence::{L2EvidenceBundle, L2EvidenceManifest};
 
 const ROOT_MARKER_NAME: &str = ".sessionctl-l2-root";
 const ROOT_MARKER: &[u8] = b"sessionctl-l2-v1\n";
@@ -74,9 +74,9 @@ const BASELINE_NOW: u64 = 1_900_000_000;
 const RESERVATION_EXPIRES_AT: u64 = BASELINE_NOW + 300;
 const OUTBOX_EXPIRES_AT: u64 = BASELINE_NOW + 180;
 const APPROVAL_RECORD: &[u8] = b"l2-approved";
-const EXPECTED_SCHEMA_VERSION: u32 = 5;
+const EXPECTED_SCHEMA_VERSION: u32 = 6;
 const SCHEMA_FINGERPRINT_SHA256: &str =
-    "f365ba3c3ad9720e4ea20915d5c1579b9570800a04c385cfc23ca1cefd5a31c6";
+    "2ea478c22099a3aeae70bd21788a1292879f217db3b73b30b4cfa7289642eb36";
 
 /// Checked harness cases used to prove the reusable controller boundary.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

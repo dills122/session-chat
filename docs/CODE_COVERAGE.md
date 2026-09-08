@@ -52,24 +52,29 @@ The policy makes these distinctions explicit:
   LLVM region and function ratchets, while the ordinary Rust job separately
   enforces doctests.
 - There is no generated Rust source in the workspace.
-- `apps/sessionctl/src/l2_process.rs`, its
-  `apps/sessionctl/src/l2_process/evidence.rs` child module, and
-  `crates/storage-sqlcipher/src/fault_testing.rs` are explicit
-  non-instrumented allowances because they exist only under the registered
-  checked fault-testing cfg and are absent from the ordinary production
-  coverage build. Their checked-cfg test commands remain separate retained
-  evidence.
-- `crates/transport-conformance/src/lib.rs` is also an explicit
-  non-instrumented allowance. It contains only the declaration `pub mod trace;`
-  and therefore exports no instrumentable region. The checker requires every
-  allowed file to exist and fails if an allowance becomes stale.
-- `crates/storage-sqlcipher-fault-vfs/src/lib.rs` is the declaration-only root
-  of the publish-disabled native fault adapter. Its controller and isolated
-  native implementation remain measured as their own component; only the root
-  re-exports and constants have no instrumentable region.
 - Provider-invariant random failures, hard-to-reach production errors, and
   platform glue are not excluded. New production source that is absent from the
   report or not assigned to exactly one component fails the gate.
+
+### Approved non-instrumented source allowances
+
+<!-- coverage-policy:non-instrumented-sources:start -->
+- `apps/sessionctl/src/l2_process.rs`
+- `apps/sessionctl/src/l2_process/evidence.rs`
+- `apps/sessionctl/src/l2_process/execution.rs`
+- `apps/sessionctl/src/l2_process/welcome.rs`
+- `apps/sessionctl/src/l2_process/welcome_io.rs`
+- `crates/storage-sqlcipher-fault-vfs/src/lib.rs`
+- `crates/storage-sqlcipher/src/fault_testing.rs`
+- `crates/transport-conformance/src/lib.rs`
+<!-- coverage-policy:non-instrumented-sources:end -->
+
+The five `l2_process` files and `storage-sqlcipher` fault module exist only
+under registered checked fault-testing cfgs; their checked-cfg commands remain
+separate retained evidence. The fault-VFS and transport-conformance crate roots
+contain declarations, re-exports, and constants but no executable function
+bodies. The checker requires every allowance to exist and fails if one becomes
+instrumented or stale.
 
 ## Clean-master baseline and enforced result
 
@@ -104,9 +109,10 @@ VFS.
 | **Workspace** | **8034/8850 (90.78%)** | **16128/17379 (92.80%)** | **92.23% ratchet** |
 
 The workspace also moved from 86.88% to 88.02% region coverage and from
-83.47% to 90.06% function coverage. CI retains stable floors at
-92.23% lines, 88.00% regions, and 85.64% functions. The region floor was
-recalibrated after the durable authorization and Iroh graph added production
+83.47% to 90.06% function coverage. CI retains stable floors at 92.23%
+workspace lines, 88.00% regions, 85.64% functions, and 90% lines for each vital
+component. The region floor was recalibrated after the durable authorization
+and Iroh graph added production
 generic instantiations under multiple integration binaries; the retained
 hostile-process and app-owner composition tests keep the expanded graph above
 that new floor. The slight fractional margin avoids making display rounding

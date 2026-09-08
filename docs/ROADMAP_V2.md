@@ -2,6 +2,8 @@
 
 Status: proposed sequencing, not a delivery commitment
 
+<!-- current-claim:fast_v1_delivery=implemented_experimental -->
+
 ## Guiding approach
 
 Build a new protocol core without carrying the retired application as active
@@ -85,8 +87,9 @@ now crosses the SQLCipher transaction through an explicit durability-pending
 one-shot value, recovers an ambiguous commit, finalizes invitation state once,
 reopens the owner store, and delivers the exact Welcome to the original joiner.
 Human approval UX and reusable/product network transport remain later-phase
-work. The bounded authenticated Iroh frame-link experiment is not an
-`EnvelopeDelivery` provider, offline mailbox, or completed network profile.
+work. The bounded authenticated Iroh frame-link is an experimental connected
+FastV1 `EnvelopeDelivery` adapter; it is not offline delivery, a durable
+mailbox, an anonymity mechanism, or a completed production network profile.
 The complete Phase 1 hostile first-contact matrix is now retained by the
 independent-process runner: malformed, expired, copied, wrong-invitation,
 wrong-KeyPackage, wrong-verifier, reordered, and exact-replay inputs reject
@@ -160,7 +163,8 @@ Welcome-delivery application and SQLite commit-window kill recovery are now
 implemented in the checked closeout suites. The [evidence matrix](evidence/phase1-closeout.md)
 records their exact tests, independent review and passing merged-revision full
 three-platform gate. Power-loss evidence, human
-approval UX, and a network profile remain later gates.
+approval UX, and offline, durable production network profiles remain later
+gates.
 
 The Rust source-coverage gate now measures production code through integration
 targets without counting inline test helpers. The clean-master baseline was
@@ -214,9 +218,10 @@ results at every observed supported inviter/joiner ordinal, and kills a
 separately supervised child at every observed journal/main commit-window pause
 before fresh-process verification. Incomplete return-code or pause matrices
 cannot emit complete matrix coverage. Raw case observations remain non-public.
-The retained L2-8 gate lets sealed complete aggregates emit explicitly unsigned
-`l2-evidence-candidate-v2` bundles with execution-time binary identities and
-bounded synthetic-canary/actual-secret scans. ADR 0028 requires external
+The retained L2-8 gate lets complete recovery matrices emit explicitly unsigned
+`l2-evidence-candidate-v3` bundles with execution-time binary identities and
+bounded case-surface synthetic-canary/actual-secret scans. ADR 0030 marks
+capture completeness unproved and redaction unverified. ADR 0028 requires external
 attestation verification before accepting hosted provenance. Portable
 passage remains per-revision three-OS evidence, so this adds no power-loss,
 filesystem, rollback-resistance, or production-durability claim.
@@ -382,6 +387,11 @@ Exit criteria:
 - Crash recovery is tested before and after every registration write boundary.
 - Concurrent competing successors across multiple service instances cannot both commit.
 - Rotation history, draining mailboxes, and continuity-reset state recover consistently.
+
+[ADR 0029](adr/0029-split-phase-one-crash-atomicity-from-rollback-resistance.md)
+maps the original Phase 1 stale-snapshot criterion here. Phase 1 proves only
+application-crash atomic restore; this Phase 3 rollback-resistance gate remains
+open.
 
 ## Phase 4: desktop client
 

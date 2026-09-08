@@ -2,7 +2,10 @@
 
 //! Bounded conformance model for ADR 0008's inviter-local join transaction.
 
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+    collections::{BTreeMap, VecDeque},
+    sync::Arc,
+};
 
 use session_protocol::{LocalWelcomeDepositEndpoint, OpaqueEnvelope};
 use session_transport::{LeasedWelcome, OutboxPortError, WelcomeOutboxPort};
@@ -16,6 +19,7 @@ pub const INVITATION_GENERATION_BYTES: usize = 64;
 /// Exact canonical-request fingerprint size.
 pub const REQUEST_FINGERPRINT_BYTES: usize = 32;
 const HARD_MAXIMUM_TRANSACTIONS: usize = 4_096;
+const HARD_MAXIMUM_RETIRED_RESERVATIONS: usize = HARD_MAXIMUM_TRANSACTIONS;
 const HARD_MAXIMUM_GROUP_ID_BYTES: usize = 255;
 const HARD_MAXIMUM_APPROVAL_BYTES: usize = 4_096;
 const HARD_MAXIMUM_MLS_STATE_BYTES: usize = 2_097_152;
@@ -338,6 +342,7 @@ pub struct InMemoryInviterJoinStore {
     lease_scope: Arc<()>,
     next_lease_sequence: u64,
     reservations: BTreeMap<[u8; IDENTIFIER_BYTES], ReservationRecord>,
+    retired_reservations: VecDeque<RetiredReservation>,
     commits: BTreeMap<[u8; IDENTIFIER_BYTES], CommittedRecord>,
 }
 
@@ -345,6 +350,11 @@ struct ReservationRecord {
     invitation_generation: [u8; INVITATION_GENERATION_BYTES],
     join_request_id: [u8; IDENTIFIER_BYTES],
     expires_at_unix_seconds: u64,
+}
+
+struct RetiredReservation {
+    invitation_id: [u8; IDENTIFIER_BYTES],
+    invitation_generation: [u8; INVITATION_GENERATION_BYTES],
 }
 
 struct CommittedRecord {
@@ -425,6 +435,13 @@ impl Drop for ReservationRecord {
     }
 }
 
+impl Drop for RetiredReservation {
+    fn drop(&mut self) {
+        self.invitation_id.zeroize();
+        self.invitation_generation.zeroize();
+    }
+}
+
 #[derive(Clone, Copy)]
 enum StoredOutboxState {
     Pending,
@@ -447,8 +464,23 @@ impl InMemoryInviterJoinStore {
             lease_scope: Arc::new(()),
             next_lease_sequence: 1,
             reservations: BTreeMap::new(),
+            retired_reservations: VecDeque::new(),
             commits: BTreeMap::new(),
         }
+    }
+
+    fn retire_reservation(
+        &mut self,
+        invitation_id: [u8; IDENTIFIER_BYTES],
+        reservation: &ReservationRecord,
+    ) {
+        if self.retired_reservations.len() >= HARD_MAXIMUM_RETIRED_RESERVATIONS {
+            self.retired_reservations.pop_front();
+        }
+        self.retired_reservations.push_back(RetiredReservation {
+            invitation_id,
+            invitation_generation: reservation.invitation_generation,
+        });
     }
 
     /// Seeds the exact reservation created by the admission state machine.
@@ -467,25 +499,34 @@ impl InMemoryInviterJoinStore {
         if reservation.expires_at_unix_seconds <= now_unix_seconds {
             return Err(TransactionError::Expired);
         }
-        let replaces_expired = self
-            .reservations
-            .get(&reservation.invitation_id)
-            .is_some_and(|current| current.expires_at_unix_seconds <= now_unix_seconds);
-        if self.reservations.contains_key(&reservation.invitation_id) && !replaces_expired {
+        if self.retired_reservations.iter().any(|retired| {
+            retired.invitation_id == reservation.invitation_id
+                && retired.invitation_generation == reservation.invitation_generation
+        }) {
             return Err(TransactionError::Conflict);
         }
-        if !replaces_expired && self.reservations.len() >= self.policy.maximum_transactions {
-            return Err(TransactionError::CapacityExceeded);
-        }
-        if replaces_expired
-            && self
-                .reservations
-                .get(&reservation.invitation_id)
-                .is_some_and(|current| {
-                    current.invitation_generation == reservation.invitation_generation
-                })
+        if let Some(current) = self.reservations.get(&reservation.invitation_id)
+            && (current.expires_at_unix_seconds > now_unix_seconds
+                || current.invitation_generation == reservation.invitation_generation)
         {
             return Err(TransactionError::Conflict);
+        }
+        if let Some(expired) = self.reservations.remove(&reservation.invitation_id) {
+            self.retire_reservation(reservation.invitation_id, &expired);
+        } else if self.reservations.len() >= self.policy.maximum_transactions {
+            let expired_invitation_id = self
+                .reservations
+                .iter()
+                .filter(|(_, current)| current.expires_at_unix_seconds <= now_unix_seconds)
+                .map(|(invitation_id, current)| (current.expires_at_unix_seconds, *invitation_id))
+                .min()
+                .map(|(_, invitation_id)| invitation_id)
+                .ok_or(TransactionError::CapacityExceeded)?;
+            let expired = self
+                .reservations
+                .remove(&expired_invitation_id)
+                .ok_or(TransactionError::CapacityExceeded)?;
+            self.retire_reservation(expired_invitation_id, &expired);
         }
         self.reservations.insert(
             reservation.invitation_id,
@@ -837,6 +878,29 @@ impl WelcomeOutboxPort for InMemoryInviterJoinStore {
         now_unix_seconds: u64,
         lease_seconds: u64,
     ) -> Result<Option<LeasedWelcome<Self::Lease>>, OutboxPortError> {
+        if lease_seconds == 0
+            || lease_seconds > self.policy.maximum_lease_seconds
+            || now_unix_seconds.checked_add(lease_seconds).is_none()
+        {
+            return Err(map_outbox_port_error(TransactionError::InvalidInput));
+        }
+        for record in self.commits.values_mut() {
+            let attempts_exhausted = record.outbox_expires_at_unix_seconds > now_unix_seconds
+                && record.delivery_attempts >= self.policy.maximum_delivery_attempts
+                && match record.outbox {
+                    StoredOutboxState::Pending => true,
+                    StoredOutboxState::Leased {
+                        expires_at_unix_seconds,
+                        ..
+                    } => expires_at_unix_seconds <= now_unix_seconds,
+                    StoredOutboxState::Delivered { .. } | StoredOutboxState::AttemptsExhausted => {
+                        false
+                    }
+                };
+            if attempts_exhausted {
+                record.outbox = StoredOutboxState::AttemptsExhausted;
+            }
+        }
         let Some(transaction_id) = self
             .pending_transaction_ids(now_unix_seconds)
             .into_iter()

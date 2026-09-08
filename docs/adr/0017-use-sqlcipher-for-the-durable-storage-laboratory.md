@@ -44,6 +44,13 @@ libraries across the three required CI operating systems.
   acceptance, and failure transition uses one immediate SQL transaction;
   restart reconstructs work from this ledger, and old-open-scope, stale, or
   foreign lease results fail closed.
+- The joiner transaction spans the provider's group-write and exact
+  KeyPackage-delete callbacks. While that transaction is pending, every cloned
+  handle rejects all other reads and writes; only the deletion callback may
+  reacquire the connection. The exact pending reference may finish, while a
+  foreign 32-byte reference rolls back. The upstream trait does not authenticate
+  which same-process clone invokes `delete`, so callers sharing an open scope
+  remain trusted not to invoke that callback directly.
 - Schema version 3 retains those semantics and adds one exact 141-byte,
   versioned MLS client-identity record. Version 4 adds one exact nonzero 32-byte
   group binding. The public storage boundary carries the record only in an opaque
@@ -73,6 +80,13 @@ libraries across the three required CI operating systems.
 - The adapter retains SQLCipher's default memory policy, which locks and
   sanitizes its internal cryptographic allocations without enabling the
   optional process-wide wiping of every SQLite allocation.
+- On Unix, the adapter atomically precreates a new main database at `0600`,
+  tightens existing database and recognized sidecar handles before SQLCipher
+  access, and rejects foreign-owned or non-sticky group- or world-writable
+  ancestry. SQLite opens the canonical database path with no-follow enabled and
+  inherits the main-file mode for new rollback/WAL sidecars. Main and sidecar
+  symlink collisions fail closed. Windows retains protected-parent DACL inheritance as baseline;
+  validation of arbitrary caller-selected ACLs remains outside this laboratory.
 
 The headless `sessionctl` laboratory now opens this adapter with a disposable
 random raw key and proves exact identity/group reload after a real close/reopen

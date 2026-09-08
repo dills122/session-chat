@@ -123,7 +123,7 @@ cargo run -p sessionctl --bin sessionctl-fast-adapter --locked -- join auto /tmp
 
 The joiner rejects a CLI path mode that differs from the authenticated handoff,
 prints the same complete disclosure before creating a public endpoint, then
-executes the shared seven-operation adapter conformance case. It reports
+executes the shared nine-operation adapter conformance case. It reports
 `byte_identity=pass` only after exact retry, conflict, poll,
 acknowledgement, acknowledgement retry, and final-empty checks pass. Both sides
 print only address-free `direct`, `relay`, `custom`, or `undetermined` path

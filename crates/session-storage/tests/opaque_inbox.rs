@@ -191,6 +191,39 @@ fn import_requires_the_exact_open_generation_and_completion_is_local_only() {
 }
 
 #[test]
+fn foreign_vault_import_token_cannot_delete_matching_local_generation() {
+    let first = encoded_envelope(0x68, 0x91, NOW + 120);
+    let second = encoded_envelope(0x68, 0x92, NOW + 120);
+    let mut first_vault = model(1, 256 * 1024);
+    let mut second_vault = model(1, 256 * 1024);
+    first_vault
+        .append_opaque(&first)
+        .expect("store first vault");
+    second_vault
+        .append_opaque(&second)
+        .expect("store second vault");
+    unlock(&mut first_vault);
+    unlock(&mut second_vault);
+
+    let foreign = first_vault
+        .begin_opaque_import(session_id())
+        .expect("first vault import")
+        .expect("first vault item");
+    assert_eq!(
+        second_vault.complete_opaque_import(foreign),
+        Err(VaultError::ReservationMismatch)
+    );
+    assert_eq!(first_vault.inbox_count(), 1);
+    assert_eq!(second_vault.inbox_count(), 1);
+
+    let retained = second_vault
+        .begin_opaque_import(session_id())
+        .expect("second vault import")
+        .expect("second vault item remains");
+    assert_eq!(retained.envelope().ciphertext(), &[0x92; 32]);
+}
+
+#[test]
 fn expired_items_are_pruned_and_stale_import_tokens_cannot_delete_reused_ids() {
     let first = encoded_envelope(0x71, 0x81, NOW + 10);
     let replacement = encoded_envelope(0x71, 0x82, NOW + 120);

@@ -262,6 +262,7 @@ struct OpaqueInboxRecord {
 /// delivery acknowledgement authority. This type intentionally implements
 /// neither `Clone`, `Debug`, nor `Display` because it owns ciphertext bytes.
 pub struct PendingOpaqueImport {
+    vault_instance: Arc<VaultInstance>,
     session_id: SessionId,
     open_generation: u64,
     envelope_id: [u8; 16],
@@ -1014,6 +1015,7 @@ impl<C: VaultClock> SessionVaultModel<C> {
         let envelope =
             OpaqueEnvelope::decode_canonical(&record.encoded).map_err(|_| VaultError::Rejected)?;
         Ok(Some(PendingOpaqueImport {
+            vault_instance: Arc::clone(&self.vault_instance),
             session_id,
             open_generation: *generation,
             envelope_id: *envelope_id,
@@ -1039,7 +1041,10 @@ impl<C: VaultClock> SessionVaultModel<C> {
         else {
             return Err(VaultError::ReservationMismatch);
         };
-        if *session_id != pending.session_id || *generation != pending.open_generation {
+        if !Arc::ptr_eq(&self.vault_instance, &pending.vault_instance)
+            || *session_id != pending.session_id
+            || *generation != pending.open_generation
+        {
             return Err(VaultError::ReservationMismatch);
         }
         let record = self

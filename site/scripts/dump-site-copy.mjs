@@ -16,6 +16,7 @@ const pages = [
 
 const blockTags = new Set(['article', 'aside', 'div', 'dl', 'footer', 'header', 'nav', 'ol', 'p', 'section', 'ul']);
 const spacedTags = new Set(['button', 'kbd', 'label', 'small', 'span', 'strong']);
+const currentClaimComment = /<!-- (current-claim:[a-z0-9_]+=[a-z0-9_]+) -->/gu;
 
 function childNodes(node) {
   return Array.isArray(node.childNodes) ? node.childNodes : [];
@@ -66,7 +67,16 @@ function renderChildren(node) {
 
 function renderNode(node, previousTag) {
   if (node.nodeName === '#text') return node.value ?? '';
-  if (node.nodeName === '#comment' || node.tagName === 'script' || node.tagName === 'style') return '';
+  if (node.nodeName === '#comment') {
+    const comment = (node.data ?? '').trim();
+    return /^current-claim:[a-z0-9_]+=[a-z0-9_]+$/u.test(comment) ? `\n<!-- ${comment} -->\n` : '';
+  }
+  if (node.tagName === 'script' || node.tagName === 'style') return '';
+
+  const currentClaim = attribute(node, 'data-current-claim');
+  if (currentClaim && /^current-claim:[a-z0-9_]+=[a-z0-9_]+$/u.test(currentClaim)) {
+    return `\n<!-- ${currentClaim} -->\n`;
+  }
 
   const tag = node.tagName;
   const contents = renderChildren(node);
@@ -129,11 +139,18 @@ const commandPalette = textify(
     'command palette',
   ),
 );
+const currentClaims = [...new Set(
+  renderedPages.flatMap((page) => [...page.main.matchAll(currentClaimComment)].map((match) => match[1])),
+)].sort();
 
 const sections = [
   '# Session Chat site copy',
   '',
   'Generated from the production Astro build by `npm run dump:copy`. Edit the Astro source, not this file.',
+  '',
+  '## Current implementation claims',
+  '',
+  ...currentClaims.map((claim) => `<!-- ${claim} -->`),
   '',
   '## Global navigation',
   '',
@@ -159,7 +176,7 @@ for (const page of renderedPages) {
     '',
     `Meta description: ${page.description}`,
     '',
-    page.main,
+    page.main.replace(currentClaimComment, '').replace(/\n{3,}/gu, '\n\n').trim(),
   );
 }
 

@@ -105,6 +105,12 @@ durability, rollback resistance, forward-secret deletion, or atomic delivery.
   validation solely to enforce a closed leaf extension/capability policy,
   because that release exposes no public leaf accessor. A dependency update
   must re-review this compatibility seam before it can pass.
+- That closed profile requires the leaf ciphersuite capability list to equal
+  `[CURVE25519_AES128]`. Adapter clients narrow AWS-LC to this singleton list;
+  older outstanding KeyPackages with the provider's broader default list fail
+  closed and require regeneration. Persisted laboratory groups created under
+  that former default also fail closed on reload and require recreation; no
+  production migration claim follows from this increment.
 - A full independent review of the exact protocol/provider boundary remains a
   release gate. The missing third-party `mls-rs` audit must be stated to external reviewers.
 

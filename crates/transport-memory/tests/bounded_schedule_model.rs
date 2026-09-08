@@ -28,12 +28,14 @@ fn envelope(index: usize) -> OpaqueEnvelope {
 fn drain_visible(
     transport: &mut DeterministicMemoryTransport,
     receive: &transport_memory::MemoryReceiveCapability,
+    acknowledgement: &transport_memory::MemoryAcknowledgementCapability,
     receipts: &[DeliveryId],
     processed: &mut BTreeSet<[u8; 16]>,
     case: &str,
 ) -> usize {
     let mut observations = 0;
     while let Some(received) = transport.receive(receive, NOW).expect("bounded receive") {
+        let live_before_acknowledgement = transport.conformance_snapshot().live_envelopes();
         assert!(
             receipts
                 .iter()
@@ -42,6 +44,14 @@ fn drain_visible(
         );
         observations += 1;
         processed.insert(*received.envelope().envelope_id());
+        assert_eq!(
+            transport.conformance_snapshot().live_envelopes(),
+            live_before_acknowledgement,
+            "{case}: receive is not acknowledgement"
+        );
+        transport
+            .acknowledge(acknowledgement, *received.delivery_id(), NOW)
+            .expect("exact acknowledgement advances the visible queue");
     }
     observations
 }
@@ -92,8 +102,14 @@ fn exhaustive_duplicate_reorder_loss_and_release_schedules_converge_once() {
                     );
 
                     let mut processed = BTreeSet::new();
-                    let mut observations =
-                        drain_visible(&mut transport, &receive, &receipts, &mut processed, &case);
+                    let mut observations = drain_visible(
+                        &mut transport,
+                        &receive,
+                        &acknowledgement,
+                        &receipts,
+                        &mut processed,
+                        &case,
+                    );
 
                     let held = schedule
                         .iter()
@@ -108,8 +124,14 @@ fn exhaustive_duplicate_reorder_loss_and_release_schedules_converge_once() {
                             .release_held(index, NOW)
                             .expect("bounded held delivery remains releasable");
                     }
-                    observations +=
-                        drain_visible(&mut transport, &receive, &receipts, &mut processed, &case);
+                    observations += drain_visible(
+                        &mut transport,
+                        &receive,
+                        &acknowledgement,
+                        &receipts,
+                        &mut processed,
+                        &case,
+                    );
 
                     for (index, action) in schedule.iter().enumerate() {
                         if *action != DeliveryAction::Drop {
@@ -123,8 +145,14 @@ fn exhaustive_duplicate_reorder_loss_and_release_schedules_converge_once() {
                             "{case}: exact retry must preserve receipt identity"
                         );
                     }
-                    observations +=
-                        drain_visible(&mut transport, &receive, &receipts, &mut processed, &case);
+                    observations += drain_visible(
+                        &mut transport,
+                        &receive,
+                        &acknowledgement,
+                        &receipts,
+                        &mut processed,
+                        &case,
+                    );
 
                     assert!(
                         observations >= ENVELOPES_PER_SCHEDULE,
@@ -137,8 +165,8 @@ fn exhaustive_duplicate_reorder_loss_and_release_schedules_converge_once() {
                     );
                     assert_eq!(
                         transport.conformance_snapshot().live_envelopes(),
-                        ENVELOPES_PER_SCHEDULE,
-                        "{case}: application processing is not acknowledgement"
+                        0,
+                        "{case}: every observed delivery was explicitly acknowledged"
                     );
 
                     for receipt in &receipts {

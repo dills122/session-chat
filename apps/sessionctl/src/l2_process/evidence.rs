@@ -10,8 +10,6 @@ use super::{
     sanitize_environment, stage,
 };
 
-const MAX_CHANNEL_BYTES: usize = 64 * 1024 * 1024;
-const MAX_DIAGNOSTIC_BYTES: usize = 4 * 1024;
 const MAX_MANIFEST_BYTES: usize = 4_096;
 
 const SYNTHETIC_CANARIES: [&[u8]; 12] = [
@@ -347,59 +345,13 @@ fn validate_ci_context(
     })
 }
 
-/// Every bounded surface scanned before an internal observation may be published.
-pub struct L2EvidenceChannels<'a> {
-    stdout: &'a [u8],
-    stderr: &'a [u8],
-    diagnostics: &'a [u8],
-    control_frames: &'a [u8],
-    retained_artifacts: &'a [u8],
-}
-
-impl<'a> L2EvidenceChannels<'a> {
-    /// Binds the exact captured surfaces to the redaction verdict.
-    pub fn new(
-        stdout: &'a [u8],
-        stderr: &'a [u8],
-        diagnostics: &'a [u8],
-        control_frames: &'a [u8],
-        retained_artifacts: &'a [u8],
-    ) -> Result<Self, SessionCtlError> {
-        if stdout.len() > MAX_DIAGNOSTIC_BYTES
-            || stderr.len() > MAX_DIAGNOSTIC_BYTES
-            || diagnostics.len() > MAX_DIAGNOSTIC_BYTES
-            || control_frames.len() > MAX_DIAGNOSTIC_BYTES
-            || retained_artifacts.len() > MAX_CHANNEL_BYTES
-        {
-            return Err(stage("L2 evidence surface bound"));
-        }
-        Ok(Self {
-            stdout,
-            stderr,
-            diagnostics,
-            control_frames,
-            retained_artifacts,
-        })
-    }
-
-    fn values(&self) -> [&[u8]; 5] {
-        [
-            self.stdout,
-            self.stderr,
-            self.diagnostics,
-            self.control_frames,
-            self.retained_artifacts,
-        ]
-    }
-}
-
-/// A bounded redacted candidate. Its metadata is self-reported, never hosted authority.
+/// A bounded self-reported candidate with no complete-capture or redaction claim.
 pub struct L2EvidenceManifest(String);
 
 impl L2EvidenceManifest {
-    /// Encodes a v2 candidate; this does not authenticate metadata or authorize publication.
+    /// Encodes a v3 candidate; this does not authenticate metadata or prove capture completeness.
     #[must_use]
-    pub fn encode_v2(&self) -> String {
+    pub fn encode_v3(&self) -> String {
         self.0.clone()
     }
 }
@@ -414,14 +366,13 @@ impl L2EvidenceBundle {
     }
 }
 
-/// Promotes one complete internal observation to public evidence after every L2-8 gate passes.
-fn promote_l2_evidence(
+/// Builds one v3 candidate after recovery, provenance, and known-surface secret checks pass.
+fn build_l2_candidate_v3(
     sweep: L2EvidenceSweep,
     scenario: Scenario,
     observation: &str,
     metadata: &L2EvidenceMetadata,
     cases: &[L2EvidenceCase],
-    channels: &L2EvidenceChannels<'_>,
 ) -> Result<L2EvidenceBundle, SessionCtlError> {
     validate_observation(sweep, scenario, observation)?;
     if cases.is_empty()
@@ -430,12 +381,7 @@ fn promote_l2_evidence(
     {
         return Err(stage("L2 evidence case index"));
     }
-    scan_canaries(
-        channels
-            .values()
-            .into_iter()
-            .chain(std::iter::once(observation.as_bytes())),
-    )?;
+    scan_canaries(std::iter::once(observation.as_bytes()))?;
 
     let storage_scenario = if matches!(
         sweep,
@@ -470,8 +416,8 @@ fn promote_l2_evidence(
     for (case_index, (case, fields)) in cases.iter().zip(case_fields).enumerate() {
         let manifest = format!(
             concat!(
-                "version=2\n",
-                "protocol=l2-evidence-candidate-v2\n",
+                "version=3\n",
+                "protocol=l2-evidence-candidate-v3\n",
                 "provenance=self-reported\n",
                 "publication=requires-external-attestation\n",
                 "record=case\n",
@@ -521,7 +467,9 @@ fn promote_l2_evidence(
                 "schema=pass\n",
                 "semantic_oracle=pass\n",
                 "exact_retry=pass\n",
-                "redaction=pass\n",
+                "secret_scan=pass\n",
+                "capture_completeness=unproven\n",
+                "redaction=unverified\n",
                 "child_cleanup=pass\n",
                 "handle_cleanup=pass\n",
                 "lease_cleanup=pass\n",
@@ -724,27 +672,33 @@ impl super::welcome_io::WelcomeEngineSweepReport {
         &self,
         _executable: &Path,
         _runner_image: &str,
-        _channels: &L2EvidenceChannels<'_>,
     ) -> Result<L2EvidenceBundle, SessionCtlError> {
         Err(stage("L2 external attestation required"))
     }
 
-    /// Promotes only a complete baseline-derived Welcome engine sweep.
+    /// Candidate v2 is retired because caller-selected channels did not prove complete capture.
     pub fn candidate_v2(
+        &self,
+        _executable: &Path,
+        _runner_image: &str,
+    ) -> Result<L2EvidenceBundle, SessionCtlError> {
+        retired_candidate_v2()
+    }
+
+    /// Emits a v3 Welcome engine candidate with an explicitly incomplete redaction claim.
+    pub fn candidate_v3(
         &self,
         executable: &Path,
         runner_image: &str,
-        channels: &L2EvidenceChannels<'_>,
     ) -> Result<L2EvidenceBundle, SessionCtlError> {
         self.validate_coverage()?;
         let metadata = L2EvidenceMetadata::collect(executable, runner_image, &self.cases)?;
-        promote_l2_evidence(
+        build_l2_candidate_v3(
             L2EvidenceSweep::WelcomeEngineProcessKill,
             Scenario::InviterTransaction,
             &self.encode_v1(),
             &metadata,
             &self.cases,
-            channels,
         )
     }
 }
@@ -755,27 +709,33 @@ impl super::welcome::WelcomeSweepReport {
         &self,
         _executable: &Path,
         _runner_image: &str,
-        _channels: &L2EvidenceChannels<'_>,
     ) -> Result<L2EvidenceBundle, SessionCtlError> {
         Err(stage("L2 external attestation required"))
     }
 
-    /// Promotes the complete Welcome sweep using the same closed L2 provenance and redaction gate.
+    /// Candidate v2 is retired because caller-selected channels did not prove complete capture.
     pub fn candidate_v2(
+        &self,
+        _executable: &Path,
+        _runner_image: &str,
+    ) -> Result<L2EvidenceBundle, SessionCtlError> {
+        retired_candidate_v2()
+    }
+
+    /// Emits a v3 Welcome candidate with an explicitly incomplete redaction claim.
+    pub fn candidate_v3(
         &self,
         executable: &Path,
         runner_image: &str,
-        channels: &L2EvidenceChannels<'_>,
     ) -> Result<L2EvidenceBundle, SessionCtlError> {
         self.validate_coverage()?;
         let metadata = L2EvidenceMetadata::collect(executable, runner_image, &self.cases)?;
-        promote_l2_evidence(
+        build_l2_candidate_v3(
             L2EvidenceSweep::WelcomeProcessKill,
             Scenario::InviterTransaction,
             &self.encode_v1(),
             &metadata,
             &self.cases,
-            channels,
         )
     }
 }
@@ -786,26 +746,32 @@ impl L2ProcessSweepReport {
         &self,
         _executable: &Path,
         _runner_image: &str,
-        _channels: &L2EvidenceChannels<'_>,
     ) -> Result<L2EvidenceBundle, SessionCtlError> {
         Err(stage("L2 external attestation required"))
     }
 
-    /// Promotes one complete application-checkpoint sweep with sealed execution digests and self-reported diagnostics.
+    /// Candidate v2 is retired because caller-selected channels did not prove complete capture.
     pub fn candidate_v2(
+        &self,
+        _executable: &Path,
+        _runner_image: &str,
+    ) -> Result<L2EvidenceBundle, SessionCtlError> {
+        retired_candidate_v2()
+    }
+
+    /// Emits a v3 application-checkpoint candidate with an explicitly incomplete redaction claim.
+    pub fn candidate_v3(
         &self,
         executable: &Path,
         runner_image: &str,
-        channels: &L2EvidenceChannels<'_>,
     ) -> Result<L2EvidenceBundle, SessionCtlError> {
         let metadata = L2EvidenceMetadata::collect(executable, runner_image, &self.evidence_cases)?;
-        promote_l2_evidence(
+        build_l2_candidate_v3(
             L2EvidenceSweep::ApplicationProcessKill,
             self.scenario,
             &self.encode_v1(),
             &metadata,
             &self.evidence_cases,
-            channels,
         )
     }
 }
@@ -816,26 +782,32 @@ impl L2IoSweepReport {
         &self,
         _executable: &Path,
         _runner_image: &str,
-        _channels: &L2EvidenceChannels<'_>,
     ) -> Result<L2EvidenceBundle, SessionCtlError> {
         Err(stage("L2 external attestation required"))
     }
 
-    /// Promotes one complete SQLite return-code sweep with sealed execution digests and self-reported diagnostics.
+    /// Candidate v2 is retired because caller-selected channels did not prove complete capture.
     pub fn candidate_v2(
+        &self,
+        _executable: &Path,
+        _runner_image: &str,
+    ) -> Result<L2EvidenceBundle, SessionCtlError> {
+        retired_candidate_v2()
+    }
+
+    /// Emits a v3 SQLite return-code candidate with an explicitly incomplete redaction claim.
+    pub fn candidate_v3(
         &self,
         executable: &Path,
         runner_image: &str,
-        channels: &L2EvidenceChannels<'_>,
     ) -> Result<L2EvidenceBundle, SessionCtlError> {
         let metadata = L2EvidenceMetadata::collect(executable, runner_image, &self.evidence_cases)?;
-        promote_l2_evidence(
+        build_l2_candidate_v3(
             L2EvidenceSweep::SqliteReturnCode,
             self.scenario,
             &self.encode_v1(),
             &metadata,
             &self.evidence_cases,
-            channels,
         )
     }
 }
@@ -846,28 +818,38 @@ impl L2IoPauseSweepReport {
         &self,
         _executable: &Path,
         _runner_image: &str,
-        _channels: &L2EvidenceChannels<'_>,
     ) -> Result<L2EvidenceBundle, SessionCtlError> {
         Err(stage("L2 external attestation required"))
     }
 
-    /// Promotes one complete commit-window process-kill sweep with sealed execution digests and self-reported diagnostics.
+    /// Candidate v2 is retired because caller-selected channels did not prove complete capture.
     pub fn candidate_v2(
+        &self,
+        _executable: &Path,
+        _runner_image: &str,
+    ) -> Result<L2EvidenceBundle, SessionCtlError> {
+        retired_candidate_v2()
+    }
+
+    /// Emits a v3 commit-window candidate with an explicitly incomplete redaction claim.
+    pub fn candidate_v3(
         &self,
         executable: &Path,
         runner_image: &str,
-        channels: &L2EvidenceChannels<'_>,
     ) -> Result<L2EvidenceBundle, SessionCtlError> {
         let metadata = L2EvidenceMetadata::collect(executable, runner_image, &self.evidence_cases)?;
-        promote_l2_evidence(
+        build_l2_candidate_v3(
             L2EvidenceSweep::CommitWindowProcessKill,
             self.scenario,
             &self.encode_v1(),
             &metadata,
             &self.evidence_cases,
-            channels,
         )
     }
+}
+
+fn retired_candidate_v2() -> Result<L2EvidenceBundle, SessionCtlError> {
+    Err(stage("L2 complete capture required"))
 }
 
 fn validate_observation(
@@ -1242,11 +1224,6 @@ mod tests {
         }
     }
 
-    fn clean_channels() -> L2EvidenceChannels<'static> {
-        L2EvidenceChannels::new(b"", b"", b"", b"checkpoint-only", b"encrypted-artifacts")
-            .expect("bounded channels")
-    }
-
     #[test]
     fn arbitrary_later_binary_cannot_replace_the_sealed_verifier_or_fault_driver() {
         let root = test_private_dir::PrivateDir::new().unwrap();
@@ -1287,36 +1264,35 @@ mod tests {
             new_states: 1,
             evidence_cases: vec![test_case()],
         };
-        let error = report.promote_v1(
-            Path::new("/fake/git-or-rustc"),
-            "macos-15",
-            &clean_channels(),
-        );
+        let error = report.promote_v1(Path::new("/fake/git-or-rustc"), "macos-15");
         assert!(
             matches!(error, Err(error) if error.to_string().contains("external attestation required"))
+        );
+        let error = report.candidate_v2(Path::new("/fake/git-or-rustc"), "macos-15");
+        assert!(
+            matches!(error, Err(error) if error.to_string().contains("complete capture required"))
         );
     }
 
     #[test]
     fn sealed_promotion_builds_a_bounded_manifest() {
         let cases = [test_case()];
-        let bundle = promote_l2_evidence(
+        let bundle = build_l2_candidate_v3(
             L2EvidenceSweep::ApplicationProcessKill,
             Scenario::InviterTransaction,
             COMPLETE_PROCESS_OBSERVATION,
             &metadata(),
             &cases,
-            &clean_channels(),
         )
-        .expect("promote complete checked evidence");
+        .expect("emit bounded v3 evidence candidate");
         let manifest = bundle
             .manifests()
             .next()
             .expect("one case manifest")
-            .encode_v2();
+            .encode_v3();
 
         for required in [
-            "protocol=l2-evidence-candidate-v2\n",
+            "protocol=l2-evidence-candidate-v3\n",
             "provenance=self-reported\n",
             "publication=requires-external-attestation\n",
             "result=pass\n",
@@ -1336,13 +1312,16 @@ mod tests {
             "github_workflow_sha=0123456789abcdef0123456789abcdef01234567\n",
             "runner_environment=github-hosted\n",
             "sqlcipher_version=4.14.0 community\n",
-            "redaction=pass\n",
+            "secret_scan=pass\n",
+            "capture_completeness=unproven\n",
+            "redaction=unverified\n",
             "cleanup=pass\n",
         ] {
             assert!(manifest.contains(required), "missing {required:?}");
         }
         assert!(manifest.len() <= MAX_MANIFEST_BYTES);
         assert!(!manifest.contains("publication=prohibited"));
+        assert!(!manifest.contains("\nredaction=pass\n"));
     }
 
     #[test]
@@ -1406,29 +1385,20 @@ mod tests {
     }
 
     #[test]
-    fn sealed_promotion_rejects_canaries_on_every_surface() {
+    fn candidate_rejects_a_canary_in_its_internal_observation() {
         const CANARY: &[u8] = b"SC-L2-CANARY-DATABASE-KEY";
-        for channels in [
-            L2EvidenceChannels::new(CANARY, b"", b"", b"", b""),
-            L2EvidenceChannels::new(b"", CANARY, b"", b"", b""),
-            L2EvidenceChannels::new(b"", b"", CANARY, b"", b""),
-            L2EvidenceChannels::new(b"", b"", b"", CANARY, b""),
-            L2EvidenceChannels::new(b"", b"", b"", b"", CANARY),
-        ] {
-            let cases = [test_case()];
-            assert!(
-                promote_l2_evidence(
-                    L2EvidenceSweep::ApplicationProcessKill,
-                    Scenario::InviterTransaction,
-                    COMPLETE_PROCESS_OBSERVATION,
-                    &metadata(),
-                    &cases,
-                    &channels.expect("bounded hostile channel"),
-                )
-                .is_err(),
-                "canary-bearing evidence surface must fail closed",
-            );
-        }
+        let cases = [test_case()];
+        assert!(
+            build_l2_candidate_v3(
+                L2EvidenceSweep::ApplicationProcessKill,
+                Scenario::InviterTransaction,
+                std::str::from_utf8(CANARY).expect("ASCII canary"),
+                &metadata(),
+                &cases,
+            )
+            .is_err(),
+            "canary-bearing observation must fail closed",
+        );
     }
 
     #[test]

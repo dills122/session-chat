@@ -23,25 +23,16 @@ mod checked {
         assert!(evidence.len() < 2048);
         assert!(evidence.contains("publication=prohibited\n"));
         if let Ok(image) = std::env::var("SESSION_CHAT_L2_RUNNER_IMAGE") {
-            let channels = sessionctl::l2_process::L2EvidenceChannels::new(
-                evidence.as_bytes(),
-                b"",
-                b"",
-                b"",
-                b"",
-            )
-            .expect("channels");
             let bundle = report
-                .candidate_v2(
+                .candidate_v3(
                     std::path::Path::new(env!("CARGO_BIN_EXE_sessionctl-l2")),
                     &image,
-                    &channels,
                 )
-                .expect("provenance-bound Welcome evidence");
+                .expect("Welcome v3 evidence candidates");
             for manifest in bundle.manifests() {
                 println!(
                     "L2_CANDIDATE_BEGIN\n{}L2_CANDIDATE_END",
-                    manifest.encode_v2()
+                    manifest.encode_v3()
                 );
             }
         }
@@ -217,16 +208,8 @@ mod checked {
         let evidence = report.encode_v1();
         assert!(evidence.contains("coverage=complete\n"));
         if let Ok(image) = std::env::var("SESSION_CHAT_L2_RUNNER_IMAGE") {
-            let channels = sessionctl::l2_process::L2EvidenceChannels::new(
-                evidence.as_bytes(),
-                b"",
-                b"",
-                b"",
-                b"",
-            )
-            .unwrap();
             let bundle = report
-                .candidate_v2(&std::env::current_exe().unwrap(), &image, &channels)
+                .candidate_v3(&std::env::current_exe().unwrap(), &image)
                 .unwrap_or_else(|error| {
                     let binary_bytes = std::fs::metadata(std::env::current_exe().unwrap())
                         .expect("Welcome engine test binary metadata")
@@ -236,7 +219,7 @@ mod checked {
             for manifest in bundle.manifests() {
                 println!(
                     "L2_CANDIDATE_BEGIN\n{}L2_CANDIDATE_END",
-                    manifest.encode_v2()
+                    manifest.encode_v3()
                 );
             }
         }

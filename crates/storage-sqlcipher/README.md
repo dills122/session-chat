@@ -16,11 +16,30 @@ required Linux, macOS, and Windows CI runners and prove that:
   and pending encrypted Welcome commit or roll back together;
 - the joiner's joined MLS state and deletion of its exact one-time KeyPackage
   commit or roll back together across the two upstream storage calls;
+- cloned handles reject every other read or write while that split upstream
+  callback leaves the joiner SQL transaction open;
 - ambiguous post-commit results recover idempotently without repeating MLS;
 - committed inviter and joiner results survive close and reopen;
 - a wrong key is rejected and the closed database omits fixture plaintext and
   the normal SQLite header; and
 - SQLCipher's page-HMAC integrity check succeeds for retained fixtures.
+
+The exact KeyPackage-deletion callback is the sole operation allowed through
+that open transaction. Current upstream traits cannot distinguish which clone
+invoked it, so same-open-scope callers remain trusted not to call `delete`
+directly with the pending reference or an aborting foreign reference.
+
+On Unix, creation atomically reserves the main database as an owner-only `0600`
+regular file before SQLCipher opens it. Existing main files and recognized
+rollback/WAL sidecars are tightened through already-open no-follow handles;
+SQLite subsequently inherits the main-file mode for new sidecars. Writable
+ancestry must be current-user or root owned and provide sticky-directory
+protection where group or world writable; SQLite receives the canonical path
+with no-follow enabled. Untrusted ancestry rejects the open.
+Retained tests cover a permissive umask, a live rollback journal, existing-file
+hardening, and main/sidecar symlink collisions. Windows continues to rely on inherited DACLs
+from a protected parent; arbitrary caller-supplied ACL validation remains a
+production blocker.
 
 Schema version 3 retains the version-2 sole Welcome-outbox owner and adds one
 opaque versioned MLS client-identity record. Version 4 binds that record to one
@@ -53,16 +72,24 @@ concurrent recovery that first proves non-commit fences the staged writer;
 known success, known pre-commit failure, and ambiguous post-commit results can
 be finalized in the same open scope. Restart abandons pre-membership work, while
 outcome-unknown recovery releases the invitation only after reconciling the
-exact durable membership transaction. Replay identifiers remain
-retained through the invitation expiry, and the persisted 1-through-8 owner
-limits cannot be reinterpreted on reopen. The outbox portion
+exact durable membership transaction. Replay identifiers remain retained
+through the invitation expiry. The persisted 1-through-8 invitation bound and
+independent 1-through-8 authorization bound cannot be reinterpreted on reopen.
+The authorization bound limits simultaneous live work and retained replay
+shadows per exact invitation generation; terminal history for one generation
+cannot starve unrelated live work, and total rows remain bounded by the checked
+product of both limits. The outbox portion
 persists one nonzero store identity, exact canonical Welcome and LocalV1
 endpoint bytes, delivery state, bounded attempts, monotonic lease generation,
 opaque lease identity, lease expiry, and the per-row attempt ceiling so restart
 cannot reinterpret committed work. Schema metadata is bound to SQLite's
-application `user_version`; the v1-to-v2, v2-to-v3, v3-to-v4, and v4-to-v5 migrations take
+application `user_version`; the v1-to-v2, v2-to-v3, v3-to-v4, v4-to-v5, and
+v5-to-v6 migrations take
 exclusive transactions, and v4-to-v5 persists the caller-selected bounded
-authorization policy inside that transaction. A frozen schema-v2 fixture preserves leased, delivered,
+authorization policy inside that transaction. The v5-to-v6 migration explicitly
+splits its former retained-attempt field into live, per-generation replay, and
+derived total-row ceilings instead of silently reinterpreting v5 metadata. A
+frozen schema-v2 fixture preserves leased, delivered,
 and attempts-exhausted outbox rows plus the store identity through v5, while a
 forced migration conflict proves that versions and rows roll back intact. A
 frozen schema-v3 transition proves that a real legacy identity/group pair stays
@@ -113,6 +140,5 @@ cargo test -p storage-sqlcipher --all-features --locked --offline
 cargo clippy -p storage-sqlcipher --all-targets --all-features --locked --offline -- -D warnings
 ```
 
-Test databases and SQLite sidecars now use the shared private-directory fixture
+Test databases and SQLite sidecars use the shared private-directory fixture
 owner in `scripts/test-private-dir`; new tamper copies use exclusive creation.
-This test-only change does not harden arbitrary product caller-supplied paths.

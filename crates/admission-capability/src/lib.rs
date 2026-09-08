@@ -276,6 +276,7 @@ impl CapabilityAdmissionVerifier {
             .reservation_position(&pending.verified.reservation)
             .is_none()
         {
+            let _ = registry.release(pending.invitation_reservation, now_unix_seconds);
             return Err(CapabilityAdmissionError::ReservationMismatch);
         }
         match decision {
@@ -325,6 +326,7 @@ impl CapabilityAdmissionVerifier {
             invitation_reservation,
         } = *approved;
         if self.reservation_position(&verified.reservation).is_none() {
+            let _ = registry.release(invitation_reservation, now_unix_seconds);
             return Err(CapabilityAdmissionError::ReservationMismatch);
         }
         let request_expires_at_unix_seconds = verified.opened.request().expires_at_unix_seconds();

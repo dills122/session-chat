@@ -299,6 +299,11 @@ implements both contracts for headless tests. Its bounded action queue can
 deliver, drop, hold, release out of order, or duplicate one accepted attempt.
 Exact retries retain one logical delivery identifier, while changed bytes under
 the same envelope identifier report a normalized conflict without overwrite.
+Live memory deliveries repeat byte-identically across direct receive and
+cursorless poll calls until exact acknowledgement; expiry is the only
+receive-side removal transition. The shared connected-delivery oracle polls
+before acknowledgement twice and checks absence both before and after an
+idempotent acknowledgement retry.
 Its additive adverse controls model persistent outage, one normalized corrupt
 poll, digest-checked exact-byte stale replay, and acknowledgement-result loss
 before or after deletion, all behind bounded test-only queues and secret-free
@@ -347,9 +352,10 @@ inviter/joiner application checkpoint before fresh reopen. That narrow local
 storage evidence is supplemented by ADR 0025 Welcome-delivery recovery.
 Neither establishes power-loss safety,
 rollback resistance, platform key custody, or production transport behavior.
-Its raw observations remain non-public; the retained L2-8 gate lets only sealed
-complete aggregates emit self-reported candidate v2 bundles with execution-time
-binary/artifact binding and secret/canary scans. ADR 0028 requires external
+Its raw observations remain non-public; the retained L2-8 gate lets complete
+recovery matrices emit self-reported candidate v3 bundles with execution-time
+binary/artifact binding and bounded case-surface secret/canary scans. ADR 0030
+marks capture completeness unproved and redaction unverified. ADR 0028 requires external
 attestation verification before hosted provenance is accepted,
 and portable passage remains conditional on the exact revision's required
 three-OS CI result.

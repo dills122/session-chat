@@ -142,7 +142,7 @@ jobs:
       - name: Reject public evidence forgery
         run: cargo test -p sessionctl --test l2_public_evidence --locked --offline
 
-      - name: Verify evidence provenance and redaction
+      - name: Verify evidence provenance and bounded secret scans
         run: cargo test -p sessionctl --lib l2_process --locked --offline -- --test-threads=1
 
       - name: Reject defective persistent fault coverage in pull-request smoke

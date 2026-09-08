@@ -102,9 +102,13 @@ case used by both `transport-memory` and `transport-iroh`. It covers:
 2. byte-identical retry with the same receipt;
 3. same-ID/different-bytes conflict rejection;
 4. poll with byte-identical canonical envelope output;
-5. exact-set acknowledgement;
-6. idempotent acknowledgement retry; and
-7. final poll with no acknowledged content.
+5. second byte-identical poll before acknowledgement;
+6. exact-set acknowledgement;
+7. immediate poll with no acknowledged content;
+8. idempotent acknowledgement retry; and
+9. final poll with no acknowledged content.
+
+A deliberately destructive-poll/no-op-ack adapter must fail at step 5.
 
 The direct-loopback Iroh case additionally checks authenticated endpoint setup
 and clean bidirectional shutdown. Link unit and integration tests retain local

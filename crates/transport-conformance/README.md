@@ -70,6 +70,10 @@ it cannot consume the original mailbox's retained delivery, which remains
 available to its own right.
 The closed evidence matrix maps all required lifecycle cases to the retained
 provider, owner, common-contract, or compile-fail test that exercises them.
+The connected-delivery case polls the same canonical delivery twice before
+acknowledgement, requires absence immediately after exact acknowledgement, then
+retries that acknowledgement and requires absence again. A destructive-poll,
+no-op-ack adapter is retained as a negative oracle fixture.
 
 ## Verification
 

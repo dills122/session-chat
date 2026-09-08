@@ -244,14 +244,14 @@ fn expired_unusable_contexts_are_compacted_without_touching_live_reservations() 
 }
 
 #[test]
-fn schema_v4_shape_migrates_to_v5() {
+fn schema_v4_shape_migrates_to_v6() {
     let database = TestDatabase::new("migration-v4");
     let storage = SqlCipherStorage::create(&database.0, vault_key()).expect("storage created");
     drop(storage);
     downgrade_fixture_to_schema_v4(&database.0);
 
     let migrated = SqlCipherStorage::open(&database.0, vault_key()).expect("v4 migrates");
-    assert_eq!(migrated.schema_version().expect("schema version"), 5);
+    assert_eq!(migrated.schema_version().expect("schema version"), 6);
     assert_eq!(
         migrated
             .invitation_opening_state(&[0x51; 16])
@@ -271,7 +271,7 @@ fn schema_v4_migration_persists_the_requested_nondefault_policy() {
     let migrated =
         SqlCipherStorage::open_with_authorization_policy(&database.0, vault_key(), policy)
             .expect("v4 migrates under the requested policy");
-    assert_eq!(migrated.schema_version().expect("schema version"), 5);
+    assert_eq!(migrated.schema_version().expect("schema version"), 6);
     drop(migrated);
     assert!(matches!(
         SqlCipherStorage::open(&database.0, vault_key()),

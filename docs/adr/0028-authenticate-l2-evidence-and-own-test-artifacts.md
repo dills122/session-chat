@@ -2,6 +2,11 @@
 
 Status: accepted
 
+Candidate redaction semantics are superseded by
+[ADR 0030](0030-demote-l2-redaction-until-capture-is-owned.md). Candidate v3
+keeps external attestation and artifact ownership while marking complete
+capture unproved and redaction unverified.
+
 ## Context
 
 Security findings #316 and #317 showed that the L2 public promotion API mistook
@@ -13,9 +18,9 @@ paths, including a symlink-following tamper-copy write.
 
 ## Decision
 
-Retire unsigned `promote_v1`: it always rejects with an external-attestation
-requirement. Local collection emits only `l2-evidence-candidate-v2`, explicitly
-marked `provenance=self-reported` and
+This decision retired unsigned `promote_v1`: it always rejects with an
+external-attestation requirement. Its original local collection format was
+`l2-evidence-candidate-v2`, explicitly marked `provenance=self-reported` and
 `publication=requires-external-attestation`. Git cleanliness, compiler output,
 runner labels and GitHub environment values remain diagnostic assertions;
 neither PATH-selected Git nor a caller-selected compiler is a trust root.
@@ -33,8 +38,8 @@ replacement binary. SQLCipher return-code drivers run in the identified
 controller; the Welcome engine driver additionally has its own executable.
 These identities bind bytes, not a claim that the bytes are trustworthy.
 
-A trusted non-PR CI run collects complete redacted candidates, fails if Cargo or
-candidate parsing fails, and attests the exact JSON bundle with a full-commit
+A trusted non-PR CI run collects bounded candidates, fails if Cargo or candidate
+parsing fails, and attests the exact JSON bundle with a full-commit
 pinned GitHub provenance action. Uploaded candidates from PR runs are unsigned.
 Consumers must use `scripts/verify-l2-evidence.mjs` with an independently chosen
 expected source commit and approved absolute GitHub CLI path/content digest.
@@ -65,6 +70,18 @@ actions/reusable workflows require full 40-hex commits; Docker actions require
 explicit/complex keys and multiline action references fail closed. Unsupported
 syntax must be rewritten into the supported subset; it is never skipped.
 This preserves dependency-free Node tooling.
+
+Repository evidence manifests use a second strict dependency-free grammar:
+blank lines, comments, credential-free HTTPS sources, and canonical
+forward-slash paths beneath the declared repository evidence roots. The policy
+checker walks each path component without following links, requires a regular
+file, and verifies canonical containment under both repository and selected
+top-level evidence root. Dot segments, platform-specific separators, NTFS
+alternate streams, absolute paths, unknown prose, missing targets, links, and
+directories reject. Existing inventory headings are comments. The collection
+digest continues to bind exact
+manifest bytes; the recorded Git revision, rather than duplicated per-file
+hashes, binds repository evidence content.
 
 Core and retained spike SQLCipher tests share the publish-disabled
 `scripts/test-private-dir` fixture owner. It uses 256 random bits from the OS,

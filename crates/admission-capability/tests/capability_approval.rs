@@ -29,41 +29,52 @@ struct ApprovalFixture {
 }
 
 fn approval_fixture() -> ApprovalFixture {
+    approval_fixture_at(NOW)
+}
+
+fn approval_fixture_at(now_unix_seconds: u64) -> ApprovalFixture {
     let response_endpoint = LocalWelcomeDepositEndpoint::new(
         [0x61; 16],
         [0x71; 16],
         DepositCapability::new([0x81; 32]).expect("nonzero deposit capability"),
-        NOW + 120,
+        now_unix_seconds + 120,
     )
     .expect("create response endpoint");
-    approval_fixture_with_endpoint(response_endpoint)
+    approval_fixture_with_endpoint_at(response_endpoint, now_unix_seconds)
 }
 
 fn approval_fixture_with_endpoint(
     response_endpoint: LocalWelcomeDepositEndpoint,
 ) -> ApprovalFixture {
+    approval_fixture_with_endpoint_at(response_endpoint, NOW)
+}
+
+fn approval_fixture_with_endpoint_at(
+    response_endpoint: LocalWelcomeDepositEndpoint,
+    now_unix_seconds: u64,
+) -> ApprovalFixture {
     let protector = AwsLcInvitationJoinProtector::new();
     let generated = protector
-        .generate_capability_invitation(NOW, NOW + 300)
+        .generate_capability_invitation(now_unix_seconds, now_unix_seconds + 300)
         .expect("generate complete invitation");
     let invitation_id = *generated.invitation().invitation_id();
     let mut registry = InvitationRegistry::new(
         InvitationPolicy::new(3_600, 5, 8).expect("valid invitation policy"),
     );
     let issued = registry
-        .issue_v2(generated, NOW)
+        .issue_v2(generated, now_unix_seconds)
         .expect("issue provider-generated invitation");
     let encoded = issued.encode_canonical().expect("encode issued invitation");
     let validated = registry
-        .validate_descriptor_v2(&encoded, NOW)
+        .validate_descriptor_v2(&encoded, now_unix_seconds)
         .expect("validate issued descriptor read-only");
 
     let joiner = create_client().expect("create joiner");
     let key_package = joiner
-        .generate_key_package(NOW)
+        .generate_key_package(now_unix_seconds)
         .expect("generate KeyPackage");
     let exact = create_key_package_validator()
-        .validate_key_package(key_package.as_bytes(), NOW)
+        .validate_key_package(key_package.as_bytes(), now_unix_seconds)
         .expect("validate KeyPackage");
     let invitation_binding = InvitationJoinBinding::new(
         invitation_id,
@@ -73,7 +84,8 @@ fn approval_fixture_with_endpoint(
     )
     .expect("bind exact invitation generation");
     let request_binding =
-        JoinRequestBinding::new(REQUEST_ID, NOW, NOW + 120, NONCE).expect("bind request lifetime");
+        JoinRequestBinding::new(REQUEST_ID, now_unix_seconds, now_unix_seconds + 120, NONCE)
+            .expect("bind request lifetime");
     let mls_binding = MlsKeyPackageBinding::new(
         *exact.key_package_reference(),
         key_package.as_bytes().to_vec(),
@@ -215,7 +227,7 @@ fn a_foreign_verifier_cannot_mutate_invitation_state() {
 }
 
 #[test]
-fn a_foreign_verifier_cannot_release_a_pending_approval() {
+fn foreign_verifier_decision_releases_invitation_but_not_owner_replay() {
     let mut fixture = approval_fixture();
     let mut owner = verifier();
     let verified = owner
@@ -239,7 +251,38 @@ fn a_foreign_verifier_cannot_release_a_pending_approval() {
     assert_eq!(foreign.pending_count(), 0);
     assert_eq!(
         fixture.registry.lifecycle(&fixture.invitation_id),
-        Some(InvitationLifecycle::Reserved)
+        Some(InvitationLifecycle::Available)
+    );
+}
+
+#[test]
+fn expired_pending_replay_releases_its_invitation_on_decision() {
+    let mut fixture = approval_fixture();
+    let mut verifier = verifier();
+    let verified = verifier
+        .verify_and_reserve(fixture.opened, NOW)
+        .expect("owner reserves replay state");
+    let pending = verifier
+        .reserve_v2_for_approval(&mut fixture.registry, &fixture.validated, verified, NOW)
+        .expect("owner reserves invitation state");
+    let unrelated = approval_fixture_at(NOW + 120);
+    verifier
+        .verify_and_reserve(unrelated.opened, NOW + 120)
+        .expect("unrelated request prunes expired replay state");
+
+    assert!(matches!(
+        verifier.decide_v2(
+            &mut fixture.registry,
+            pending,
+            ManualApprovalDecision::Reject,
+            NOW + 120,
+        ),
+        Err(CapabilityAdmissionError::ReservationMismatch)
+    ));
+    assert_eq!(verifier.pending_count(), 1);
+    assert_eq!(
+        fixture.registry.lifecycle(&fixture.invitation_id),
+        Some(InvitationLifecycle::Available)
     );
 }
 
@@ -320,7 +363,7 @@ fn endpoint_expiry_at_approval_decision_releases_both_state_machines() {
 }
 
 #[test]
-fn foreign_verifier_cannot_prepare_an_approved_exact_add() {
+fn foreign_verifier_prepare_releases_invitation_but_not_owner_replay() {
     let mut fixture = approval_fixture();
     let mut owner = verifier();
     let verified = owner
@@ -354,7 +397,48 @@ fn foreign_verifier_cannot_prepare_an_approved_exact_add() {
     assert_eq!(foreign.pending_count(), 0);
     assert_eq!(
         fixture.registry.lifecycle(&fixture.invitation_id),
-        Some(InvitationLifecycle::Reserved)
+        Some(InvitationLifecycle::Available)
+    );
+}
+
+#[test]
+fn expired_approved_replay_releases_its_invitation_before_mls_prepare() {
+    let mut fixture = approval_fixture();
+    let mut verifier = verifier();
+    let verified = verifier
+        .verify_and_reserve(fixture.opened, NOW)
+        .expect("owner reserves replay state");
+    let pending = verifier
+        .reserve_v2_for_approval(&mut fixture.registry, &fixture.validated, verified, NOW)
+        .expect("owner reserves invitation state");
+    let CapabilityApprovalOutcome::Approved(approved) = verifier
+        .decide_v2(
+            &mut fixture.registry,
+            pending,
+            ManualApprovalDecision::Approve,
+            NOW,
+        )
+        .expect("record approval")
+    else {
+        panic!("approval must produce the one-shot approved value");
+    };
+    let unrelated = approval_fixture_at(NOW + 120);
+    verifier
+        .verify_and_reserve(unrelated.opened, NOW + 120)
+        .expect("unrelated request prunes expired replay state");
+    let inviter = create_client().expect("create inviter");
+    let mut group = inviter.create_group(group_id(), NOW).expect("create group");
+
+    assert!(matches!(
+        verifier.prepare_approved_add(&mut fixture.registry, approved, &mut group, NOW + 120,),
+        Err(CapabilityAdmissionError::ReservationMismatch)
+    ));
+    assert_eq!(verifier.pending_count(), 1);
+    assert_eq!(group.epoch(), 0);
+    assert_eq!(group.member_count(), 1);
+    assert_eq!(
+        fixture.registry.lifecycle(&fixture.invitation_id),
+        Some(InvitationLifecycle::Available)
     );
 }
 
