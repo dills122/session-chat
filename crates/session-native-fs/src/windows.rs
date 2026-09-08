@@ -8,22 +8,20 @@ use std::{
 
 use windows_sys::Win32::{
     Foundation::{ERROR_SUCCESS, GENERIC_READ, GENERIC_WRITE, INVALID_HANDLE_VALUE, LocalFree},
+    Globalization::{CSTR_EQUAL, CompareStringOrdinal},
     Security::{
-        ACCESS_ALLOWED_ACE, ACL_SIZE_INFORMATION, AclSizeInformation,
         Authorization::{
+            ConvertSecurityDescriptorToStringSecurityDescriptorW,
             ConvertStringSecurityDescriptorToSecurityDescriptorW, GetSecurityInfo, SE_FILE_OBJECT,
         },
-        DACL_SECURITY_INFORMATION, GetAce, GetAclInformation, GetSecurityDescriptorControl,
-        INHERITED_ACE, IsWellKnownSid, SE_DACL_PROTECTED, SECURITY_ATTRIBUTES,
-        WinCreatorOwnerRightsSid, WinLocalSystemSid,
+        DACL_SECURITY_INFORMATION, SECURITY_ATTRIBUTES,
     },
     Storage::FileSystem::{
-        BY_HANDLE_FILE_INFORMATION, CREATE_NEW, CreateFileW, FILE_ALL_ACCESS,
-        FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_NORMAL, FILE_ATTRIBUTE_REPARSE_POINT,
-        FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
-        GetFileInformationByHandle, OPEN_EXISTING, READ_CONTROL,
+        BY_HANDLE_FILE_INFORMATION, CREATE_NEW, CreateFileW, FILE_ATTRIBUTE_DIRECTORY,
+        FILE_ATTRIBUTE_NORMAL, FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_OPEN_REPARSE_POINT,
+        FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, GetFileInformationByHandle,
+        OPEN_EXISTING, READ_CONTROL,
     },
-    System::SystemServices::ACCESS_ALLOWED_ACE_TYPE,
 };
 
 /// Exclusively creates a regular file with a protected owner/System-only DACL,
@@ -118,8 +116,8 @@ fn create_owner_only_file_unverified(path: &Path) -> io::Result<File> {
     }
 }
 
-/// Confirms the effective DACL is protected and contains exactly full-control
-/// allow entries for Owner Rights and Local System.
+/// Confirms the effective DACL's canonical SDDL is exactly the protected,
+/// full-control Owner Rights and Local System descriptor.
 #[allow(unsafe_code)]
 pub fn verify_owner_only_file(file: &File) -> io::Result<()> {
     use std::os::windows::io::AsRawHandle;
@@ -184,88 +182,31 @@ fn verify_descriptor(
     if descriptor.is_null() || dacl.is_null() {
         return Err(io::Error::other("owner-only DACL unavailable"));
     }
-    let mut control = 0;
-    let mut revision = 0;
+    let expected: Vec<u16> = "D:P(A;;FA;;;OW)(A;;FA;;;SY)"
+        .encode_utf16()
+        .chain(Some(0))
+        .collect();
+    let mut rendered = ptr::null_mut();
+    let mut rendered_len = 0;
     // SAFETY: descriptor and DACL were returned together by `GetSecurityInfo`.
+    // Windows validates and canonicalizes the descriptor into a terminated
+    // LocalAlloc string, so Rust never dereferences an API-provided raw pointer.
     unsafe {
-        if GetSecurityDescriptorControl(descriptor, &mut control, &mut revision) == 0
-            || control & SE_DACL_PROTECTED == 0
-        {
-            return Err(io::Error::other("owner-only DACL is not protected"));
-        }
-        let mut info = ACL_SIZE_INFORMATION::default();
-        if GetAclInformation(
-            dacl,
-            (&raw mut info).cast(),
-            std::mem::size_of::<ACL_SIZE_INFORMATION>() as u32,
-            AclSizeInformation,
+        if ConvertSecurityDescriptorToStringSecurityDescriptorW(
+            descriptor,
+            1,
+            DACL_SECURITY_INFORMATION,
+            &mut rendered,
+            &mut rendered_len,
         ) == 0
-            || info.AceCount != 2
+            || rendered.is_null()
         {
-            return Err(io::Error::other("owner-only DACL entry count"));
+            return Err(io::Error::last_os_error());
         }
-        let acl_len = usize::try_from(info.AclBytesInUse)
-            .map_err(|_| io::Error::other("owner-only DACL size"))?;
-        if acl_len < std::mem::size_of::<windows_sys::Win32::Security::ACL>() {
-            return Err(io::Error::other("owner-only DACL size"));
-        }
-        let acl_start = dacl.cast::<u8>() as usize;
-        let acl_end = acl_start
-            .checked_add(acl_len)
-            .ok_or_else(|| io::Error::other("owner-only DACL bounds"))?;
-        let mut owner = false;
-        let mut system = false;
-        for index in 0..info.AceCount {
-            let mut raw_ace = ptr::null_mut();
-            if GetAce(dacl, index, &mut raw_ace) == 0 || raw_ace.is_null() {
-                return Err(io::Error::last_os_error());
-            }
-            let ace_start = raw_ace as usize;
-            let header_end = ace_start
-                .checked_add(std::mem::size_of::<windows_sys::Win32::Security::ACE_HEADER>())
-                .ok_or_else(|| io::Error::other("owner-only ACE bounds"))?;
-            if ace_start < acl_start || header_end > acl_end {
-                return Err(io::Error::other("owner-only ACE bounds"));
-            }
-            let header = raw_ace
-                .cast::<windows_sys::Win32::Security::ACE_HEADER>()
-                .read_unaligned();
-            let ace_end = ace_start
-                .checked_add(usize::from(header.AceSize))
-                .ok_or_else(|| io::Error::other("owner-only ACE bounds"))?;
-            let sid_offset = std::mem::offset_of!(ACCESS_ALLOWED_ACE, SidStart);
-            let sid_start = ace_start
-                .checked_add(sid_offset)
-                .ok_or_else(|| io::Error::other("owner-only SID bounds"))?;
-            let sid_header_end = sid_start
-                .checked_add(8)
-                .ok_or_else(|| io::Error::other("owner-only SID bounds"))?;
-            if ace_end > acl_end || sid_header_end > ace_end {
-                return Err(io::Error::other("owner-only ACE bounds"));
-            }
-            let ace = raw_ace.cast::<ACCESS_ALLOWED_ACE>().read_unaligned();
-            let sid_header = std::slice::from_raw_parts(sid_start as *const u8, 8);
-            let sid_len = 8usize
-                .checked_add(usize::from(sid_header[1]).saturating_mul(4))
-                .ok_or_else(|| io::Error::other("owner-only SID bounds"))?;
-            if sid_start.checked_add(sid_len) != Some(ace_end)
-                || u32::from(header.AceType) != ACCESS_ALLOWED_ACE_TYPE
-                || u32::from(header.AceFlags) & INHERITED_ACE != 0
-                || ace.Mask != FILE_ALL_ACCESS
-            {
-                return Err(io::Error::other("owner-only DACL entry"));
-            }
-            let sid = (sid_start as *mut u8).cast();
-            if IsWellKnownSid(sid, WinCreatorOwnerRightsSid) != 0 {
-                owner = true;
-            } else if IsWellKnownSid(sid, WinLocalSystemSid) != 0 {
-                system = true;
-            } else {
-                return Err(io::Error::other("owner-only DACL principal"));
-            }
-        }
-        if !owner || !system {
-            return Err(io::Error::other("owner-only DACL principals"));
+        let matches = CompareStringOrdinal(rendered, -1, expected.as_ptr(), -1, 0) == CSTR_EQUAL;
+        LocalFree(rendered.cast());
+        if !matches {
+            return Err(io::Error::other("owner-only DACL mismatch"));
         }
     }
     Ok(())
