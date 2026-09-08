@@ -3263,7 +3263,9 @@ fn verify_complete_state(
     let expected_welcome = if expected == OracleState::InviterNew {
         let bytes = if welcome_path.exists() {
             read_bounded_owned_file_once(&welcome_path, 65_536, "L2 Welcome fixture cleanup")?
-        } else if checkpoint == Checkpoint::InviterAfterCommitReturn {
+        } else if checkpoint == Checkpoint::InviterAfterCommitReturn
+            || probe == L2HarnessProbe::IoFault
+        {
             committed_welcome(&connection, fixture)?
         } else {
             return Err(stage("L2 Welcome fixture"));
