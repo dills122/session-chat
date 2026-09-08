@@ -176,7 +176,7 @@ fn public_run_preflight_validates_then_flushes_the_complete_disclosure() {
             .expect("bind local endpoint");
         let server = endpoint.id();
         let encoded = issue_handoff(&endpoint, now, FastOperatorPathModeV1::Auto);
-        fs::write(&handoff_path, encoded).expect("write handoff");
+        write_valid_handoff(&handoff_path, &encoded);
         let mut join_output = Vec::new();
         let authorities = prepare_fast_adapter_join_v1(
             &mut join_output,
@@ -584,7 +584,7 @@ fn join_rejects_a_handoff_path_mode_mismatch_before_public_network_work() {
             .await
             .expect("bind local endpoint");
         let encoded = issue_handoff(&endpoint, now, FastOperatorPathModeV1::Auto);
-        fs::write(&handoff_path, encoded).expect("write handoff");
+        write_valid_handoff(&handoff_path, &encoded);
 
         assert!(
             run_fast_adapter_join(FastAdapterPathMode::RelayOnly, handoff_path.clone())
@@ -619,6 +619,18 @@ fn issue_handoff(
         .encode_operator_handoff_v2(mode)
         .expect("encode handoff")
         .to_vec()
+}
+
+fn write_valid_handoff(path: &std::path::Path, encoded: &[u8]) {
+    #[cfg(windows)]
+    {
+        let mut file = session_native_fs::create_owner_only_file(path)
+            .expect("create owner-only handoff fixture");
+        file.write_all(encoded).expect("write handoff fixture");
+        file.flush().expect("flush handoff fixture");
+    }
+    #[cfg(not(windows))]
+    fs::write(path, encoded).expect("write handoff fixture");
 }
 
 #[test]
