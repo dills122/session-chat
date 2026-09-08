@@ -253,6 +253,8 @@ checkpoint is distinct from that immutable tested code revision.
   separates transient output APIs from durable Add persistence obligations.
 - [Unbound adapter checkpoint rejection](adr/0032-reject-unbound-adapter-checkpoints.md)
   prevents memory or Iroh poll results from inheriting foreign owner bindings.
+- [One-shot transient MLS identities](adr/0033-make-transient-mls-identities-one-shot.md)
+  prevent one transient credential or signer from spanning multiple sessions.
 - [Architecture decision records](adr/) record the foundational decisions that
   other documents rely on.
 

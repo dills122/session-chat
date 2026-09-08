@@ -7,7 +7,7 @@ use std::{
     marker::PhantomData,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicU8, AtomicU64, Ordering},
     },
     thread::ThreadId,
     time::Duration,
@@ -68,6 +68,9 @@ const SIGNATURE_PUBLIC_KEY_BYTES: usize = 32;
 const SIGNATURE_SECRET_KEY_BYTES: usize = 64;
 const DURABLE_IDENTITY_KEY_CHECK: &[u8] = b"session-chat/durable-mls-identity/v1";
 const PROVIDER_STATE_WRITE_DIGEST_CONTEXT: &[u8] = b"session-chat/provider-state-write/v1";
+const TRANSIENT_CLIENT_FRESH: u8 = 0;
+const TRANSIENT_CLIENT_KEY_PACKAGE_ISSUED: u8 = 1;
+const TRANSIENT_CLIENT_CONSUMED: u8 = 2;
 
 /// Coarse, non-provider-specific MLS adapter failures.
 #[derive(Clone, Copy, Debug, Eq, Error, PartialEq)]
@@ -120,10 +123,18 @@ impl storage_mode::Sealed for TransientStorage {}
 impl storage_mode::Sealed for DurableStorage {}
 
 /// Closed set of storage modes carried by clients, groups, and pending Adds.
-pub trait SessionStorageMode: storage_mode::Sealed {}
+pub trait SessionStorageMode: storage_mode::Sealed {
+    #[doc(hidden)]
+    const IS_DURABLE: bool;
+}
 
-impl SessionStorageMode for TransientStorage {}
-impl SessionStorageMode for DurableStorage {}
+impl SessionStorageMode for TransientStorage {
+    const IS_DURABLE: bool = false;
+}
+
+impl SessionStorageMode for DurableStorage {
+    const IS_DURABLE: bool = true;
+}
 
 /// Opaque secret-bearing durable client-identity record.
 ///
@@ -391,11 +402,15 @@ fn phase_one_crypto_provider() -> AwsLcCryptoProvider {
 }
 
 /// A client whose MLS state is isolated behind configured provider repositories.
+///
+/// Transient clients permit one inviter group or one KeyPackage followed by one
+/// Welcome attempt. Durable clients remain reusable only for their bound group.
 pub struct SessionMlsClient<C: MlsConfig, S: SessionStorageMode> {
     inner: Client<C>,
     credential_identity: SessionCredentialId,
     signature_public_key: [u8; SIGNATURE_PUBLIC_KEY_BYTES],
     bound_group_id: Option<SessionGroupId>,
+    transient_use_state: AtomicU8,
     storage_mode: PhantomData<S>,
 }
 
@@ -428,6 +443,7 @@ fn create_client_with_credential_identity(
         credential_identity,
         signature_public_key,
         bound_group_id: None,
+        transient_use_state: AtomicU8::new(TRANSIENT_CLIENT_FRESH),
         storage_mode: PhantomData,
     })
 }
@@ -501,6 +517,7 @@ where
         credential_identity: SessionCredentialId(credential_identity),
         signature_public_key,
         bound_group_id: None,
+        transient_use_state: AtomicU8::new(TRANSIENT_CLIENT_FRESH),
         storage_mode: PhantomData,
     })
 }
@@ -602,6 +619,7 @@ where
         credential_identity: SessionCredentialId(durable_identity.credential_identity),
         signature_public_key: durable_identity.signature_public_key,
         bound_group_id: Some(group_id),
+        transient_use_state: AtomicU8::new(TRANSIENT_CLIENT_FRESH),
         storage_mode: PhantomData,
     })
 }
@@ -618,6 +636,16 @@ impl KeyPackageMessage {
 }
 
 impl<C: MlsConfig, S: SessionStorageMode> SessionMlsClient<C, S> {
+    fn transition_transient_use(&self, expected: u8, next: u8) -> Result<(), MlsAdapterError> {
+        if S::IS_DURABLE {
+            return Ok(());
+        }
+        self.transient_use_state
+            .compare_exchange(expected, next, Ordering::AcqRel, Ordering::Acquire)
+            .map(|_| ())
+            .map_err(|_| MlsAdapterError::ProtocolRejected)
+    }
+
     fn ensure_group_scope(&self, group_id: &SessionGroupId) -> Result<(), MlsAdapterError> {
         if self
             .bound_group_id
@@ -660,11 +688,33 @@ impl<C: MlsConfig, S: SessionStorageMode> SessionMlsClient<C, S> {
         SessionMlsGroup::from_provider(inner)
     }
 
-    /// Generates one one-shot KeyPackage using a caller-supplied clock value.
+    fn validate_local_identity(
+        &self,
+        group: &SessionMlsGroup<C, S>,
+    ) -> Result<(), MlsAdapterError> {
+        let local_identity = group
+            .inner
+            .current_member_signing_identity()
+            .map_err(|_| MlsAdapterError::ProtocolRejected)?;
+        let credential = local_identity
+            .credential
+            .as_basic()
+            .ok_or(MlsAdapterError::ProtocolRejected)?;
+        if credential.identifier() != self.credential_identity.as_bytes()
+            || local_identity.signature_key.as_ref() != self.signature_public_key
+        {
+            return Err(MlsAdapterError::ProtocolRejected);
+        }
+        Ok(())
+    }
+
+    /// Generates the only KeyPackage permitted for a transient client, or a
+    /// replacement KeyPackage for an exact-group durable client.
     pub fn generate_key_package(
         &self,
         now_unix_seconds: u64,
     ) -> Result<KeyPackageMessage, MlsAdapterError> {
+        self.transition_transient_use(TRANSIENT_CLIENT_FRESH, TRANSIENT_CLIENT_KEY_PACKAGE_ISSUED)?;
         let message = self
             .inner
             .generate_key_package_message(
@@ -683,12 +733,13 @@ impl<C: MlsConfig, S: SessionStorageMode> SessionMlsClient<C, S> {
         Ok(KeyPackageMessage(bytes))
     }
 
-    /// Creates an isolated one-member group with no extensions.
+    /// Creates one inviter group. Transient clients reject every later identity use.
     pub fn create_group(
         &self,
         group_id: SessionGroupId,
         now_unix_seconds: u64,
     ) -> Result<SessionMlsGroup<C, S>, MlsAdapterError> {
+        self.transition_transient_use(TRANSIENT_CLIENT_FRESH, TRANSIENT_CLIENT_CONSUMED)?;
         self.ensure_group_scope(&group_id)?;
         let inner = self
             .inner
@@ -702,12 +753,19 @@ impl<C: MlsConfig, S: SessionStorageMode> SessionMlsClient<C, S> {
         SessionMlsGroup::from_provider(inner)
     }
 
-    /// Consumes one bounded Welcome to join its corresponding two-member group.
+    /// Processes one Welcome for a previously generated KeyPackage.
+    ///
+    /// A transient client's pending identity is consumed before parsing, so a
+    /// failed attempt cannot be retried with another Welcome.
     pub fn join_group(
         &self,
         welcome: WelcomeMessage,
         now_unix_seconds: u64,
     ) -> Result<SessionMlsGroup<C, S>, MlsAdapterError> {
+        self.transition_transient_use(
+            TRANSIENT_CLIENT_KEY_PACKAGE_ISSUED,
+            TRANSIENT_CLIENT_CONSUMED,
+        )?;
         let message = decode_exact(&welcome.0).map_err(|_| MlsAdapterError::ProtocolRejected)?;
         if message.wire_format() != WireFormat::Welcome
             || message.cipher_suite() != Some(CIPHERSUITE)
@@ -727,6 +785,7 @@ impl<C: MlsConfig, S: SessionStorageMode> SessionMlsClient<C, S> {
         }
         let group = SessionMlsGroup::from_provider(inner)?;
         self.ensure_group_scope(&SessionGroupId(*group.group_id()))?;
+        self.validate_local_identity(&group)?;
         if group.member_count() != 2 {
             return Err(MlsAdapterError::UnexpectedProviderOutput);
         }
@@ -2079,6 +2138,7 @@ mod tests {
             credential_identity,
             signature_public_key,
             bound_group_id: None,
+            transient_use_state: AtomicU8::new(TRANSIENT_CLIENT_FRESH),
             storage_mode: PhantomData,
         })
     }

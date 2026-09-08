@@ -176,6 +176,48 @@ fn configured_provider_receives_real_group_writes_and_joiner_key_package_deletio
 }
 
 #[test]
+fn transient_join_rejects_key_package_owned_by_another_client_in_shared_storage() {
+    let shared_key_packages = InMemoryKeyPackageStorage::default();
+    let owner = create_transient_client_with_storage(
+        InMemoryGroupStateStorage::default(),
+        shared_key_packages.clone(),
+    )
+    .expect("KeyPackage owner");
+    let owner_key_package = owner.generate_key_package(NOW).expect("owner KeyPackage");
+    let validated = create_key_package_validator()
+        .validate_key_package(owner_key_package.as_bytes(), NOW)
+        .expect("validated owner KeyPackage");
+
+    let alice = create_transient_client_with_storage(
+        InMemoryGroupStateStorage::default(),
+        InMemoryKeyPackageStorage::default(),
+    )
+    .expect("Alice client");
+    let mut alice_group = alice
+        .create_group(SessionGroupId::new([0x41; 32]).expect("group id"), NOW)
+        .expect("Alice group");
+    let welcome = alice_group
+        .prepare_add(validated, NOW)
+        .expect("prepared Add")
+        .apply()
+        .expect("applied Add")
+        .into_welcome();
+
+    let substitute = create_transient_client_with_storage(
+        InMemoryGroupStateStorage::default(),
+        shared_key_packages,
+    )
+    .expect("substitute client");
+    let _substitute_key_package = substitute
+        .generate_key_package(NOW)
+        .expect("substitute KeyPackage");
+    assert!(matches!(
+        substitute.join_group(welcome, NOW),
+        Err(MlsAdapterError::ProtocolRejected)
+    ));
+}
+
+#[test]
 fn frozen_identity_v1_fixture_loads_the_expected_credential_and_signer() {
     let encoded = decode_hex(IDENTITY_V1_HEX);
     assert_eq!(encoded.len(), DURABLE_CLIENT_IDENTITY_BYTES);
@@ -210,6 +252,17 @@ fn frozen_identity_v1_fixture_loads_the_expected_credential_and_signer() {
     assert_eq!(validated.credential_identity(), &IDENTITY_V1_CREDENTIAL);
     assert_eq!(
         validated.leaf_signature_key(),
+        &IDENTITY_V1_SIGNING_PUBLIC_KEY
+    );
+    let replacement = client
+        .generate_key_package(NOW + 1)
+        .expect("durable signer creates replacement KeyPackage");
+    let replacement = create_key_package_validator()
+        .validate_key_package(replacement.as_bytes(), NOW + 1)
+        .expect("replacement KeyPackage validates");
+    assert_eq!(replacement.credential_identity(), &IDENTITY_V1_CREDENTIAL);
+    assert_eq!(
+        replacement.leaf_signature_key(),
         &IDENTITY_V1_SIGNING_PUBLIC_KEY
     );
 }

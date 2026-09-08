@@ -697,8 +697,12 @@ parsing, retained KeyPackage ownership through Add and Welcome targeting,
 two-member roster enforcement, explicit prepare/apply and abandoned-pending
 handling, replay, reordering, temporarily lost epoch commits, path updates,
 removal, explicit-only group-state writes, and the provider-neutral established-
-session message interface from ADR 0013. The headless `sessionctl` acceptance
-flow now composes fresh capability admission, an atomic SQLCipher inviter
+session message interface from ADR 0013. ADR 0033 additionally makes transient
+credentials and signers one-shot: one inviter group or one KeyPackage followed
+by one Welcome attempt. The attempt is consumed before provider work, and a
+successful join must reproduce the pending client's exact credential and leaf
+signing key even when KeyPackage storage is shared. The headless `sessionctl`
+acceptance flow now composes fresh capability admission, an atomic SQLCipher inviter
 transaction, ambiguous-result recovery, exact identity/group reload, reconstructed coordinator Welcome
 delivery, bidirectional protected messages, path update, removal, and
 post-removal rejection across the local adapters. It adds durable-component
@@ -967,6 +971,11 @@ sets an exact pending-persistence obligation; ordinary writes reject it, raw
 provider writes are private, and transport outputs become available only from
 the successfully persisted result. Failed or stale staging yields no
 transport-capable value and requires authoritative recovery or reload.
+ADR 0033 prevents one transient client identity from creating or joining more
+than one session and consumes failed Welcome attempts. Durable identity reuse
+remains limited to the exact stored group and is required for restart and
+replacement-KeyPackage workflows. These controls do not prevent correlation by
+other local state, endpoint metadata, timing, or application behavior.
 Wrong-key, pre-commit rollback, ambiguous-result recovery,
 close/reopen, and closed-file checks are retained on
 the required Linux, macOS, and Windows CI runners. Schema version 2 also makes

@@ -201,8 +201,10 @@ architecture:
   provider-owned approved one-shot value to enter MLS prepare/apply.
 - `session-crypto-mls` isolates the pinned `mls-rs`/AWS-LC provider behind
   bounded KeyPackage, Welcome, and message inputs and models an in-memory
-  two-member Add, path-update, message, and removal lifecycle. It is the only
-  current implementation of the provider-neutral message contract.
+  two-member Add, path-update, message, and removal lifecycle. Transient clients
+  permit one inviter group or one KeyPackage followed by one fail-closed Welcome
+  attempt; durable clients retain exact-group identity continuity. It is the
+  only current implementation of the provider-neutral message contract.
 - `session-transport` creates bounded local one-Welcome mailboxes with distinct
   deposit, receive, and acknowledgement authorities, exact-retry idempotency,
   expiry, and no ambient credentials. Its additive generalized values provide
@@ -323,6 +325,10 @@ stage-and-write succeeds. Bound application staging carries only envelope
 metadata; SQLCipher obtains Welcome ciphertext inside the exact active provider
 write. Explicit transient write and output APIs remain only for process-local
 lifecycle and provider tests.
+ADR 0033 makes each transient MLS credential and signer one-shot across group
+creation and join. A transient client either creates one inviter group or
+generates one KeyPackage and consumes its pending identity on the first Welcome
+attempt. Durable clients remain reusable only inside their bound group.
 Human approval UX does not exist. The separate memory conformance model and
 SQLCipher laboratory exercise atomic visibility, durable Welcome-owner
 recovery, and ambiguous-result retry. The in-memory committed join result now carries the

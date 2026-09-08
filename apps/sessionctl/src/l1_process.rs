@@ -1504,7 +1504,8 @@ fn build_hostile_join_request(
         .at_stage("hostile matrix Bob KeyPackage validation")?;
     let (key_package_bytes, credential_identity, leaf_signature_key) =
         if matches!(case, HostileJoinCase::WrongKeyPackage) {
-            let foreign_key_package = bob
+            let foreign_bob = create_client().at_stage("hostile matrix foreign Bob client")?;
+            let foreign_key_package = foreign_bob
                 .generate_key_package(issued_at)
                 .at_stage("hostile matrix foreign KeyPackage")?;
             let foreign_validated = create_key_package_validator()

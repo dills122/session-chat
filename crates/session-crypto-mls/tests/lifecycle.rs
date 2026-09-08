@@ -34,6 +34,89 @@ fn clients_generate_fresh_nonzero_session_credential_identities() -> Result<(), 
 }
 
 #[test]
+fn transient_client_rejects_a_second_group_identity_use() -> Result<(), MlsAdapterError> {
+    let alice = create_client()?;
+    let first_group_id = SessionGroupId::new([0x71; 32])?;
+    let second_group_id = SessionGroupId::new([0x72; 32])?;
+
+    let _first_group = alice.create_group(first_group_id, NOW)?;
+    assert!(matches!(
+        alice.create_group(second_group_id, NOW),
+        Err(MlsAdapterError::ProtocolRejected)
+    ));
+
+    Ok(())
+}
+
+#[test]
+fn transient_client_rejects_a_second_key_package() -> Result<(), MlsAdapterError> {
+    let bob = create_client()?;
+
+    let _first_key_package = bob.generate_key_package(NOW)?;
+    assert!(matches!(
+        bob.generate_key_package(NOW),
+        Err(MlsAdapterError::ProtocolRejected)
+    ));
+
+    Ok(())
+}
+
+#[test]
+fn transient_client_rejects_a_second_distinct_welcome() -> Result<(), MlsAdapterError> {
+    let bob = create_client()?;
+    let key_package = bob.generate_key_package(NOW)?;
+    let validator = create_key_package_validator();
+    let first_validated = validator.validate_key_package(key_package.as_bytes(), NOW)?;
+    let second_validated = validator.validate_key_package(key_package.as_bytes(), NOW)?;
+
+    let first_alice = create_client()?;
+    let mut first_group = first_alice.create_group(SessionGroupId::new([0x73; 32])?, NOW)?;
+    let first_welcome = first_group
+        .prepare_add(first_validated, NOW)?
+        .apply()?
+        .into_welcome();
+    let second_alice = create_client()?;
+    let mut second_group = second_alice.create_group(SessionGroupId::new([0x74; 32])?, NOW)?;
+    let second_welcome = second_group
+        .prepare_add(second_validated, NOW)?
+        .apply()?
+        .into_welcome();
+
+    let _joined = bob.join_group(first_welcome, NOW)?;
+    assert!(matches!(
+        bob.join_group(second_welcome, NOW),
+        Err(MlsAdapterError::ProtocolRejected)
+    ));
+
+    Ok(())
+}
+
+#[test]
+fn malformed_welcome_consumes_transient_join_identity() -> Result<(), MlsAdapterError> {
+    let alice = create_client()?;
+    let bob = create_client()?;
+    let key_package = bob.generate_key_package(NOW)?;
+    let validated =
+        create_key_package_validator().validate_key_package(key_package.as_bytes(), NOW)?;
+    let mut group = alice.create_group(SessionGroupId::new([0x75; 32])?, NOW)?;
+    let addition = group.prepare_add(validated, NOW)?.apply()?;
+    let valid_welcome = addition.welcome().as_bytes().to_vec();
+    let mut malformed_welcome = valid_welcome.clone();
+    malformed_welcome.push(0);
+
+    assert!(matches!(
+        bob.join_group(WelcomeMessage::from_bytes(&malformed_welcome)?, NOW),
+        Err(MlsAdapterError::ProtocolRejected)
+    ));
+    assert!(matches!(
+        bob.join_group(WelcomeMessage::from_bytes(&valid_welcome)?, NOW),
+        Err(MlsAdapterError::ProtocolRejected)
+    ));
+
+    Ok(())
+}
+
+#[test]
 fn exact_validated_key_package_reaches_add_welcome_and_two_party_messages()
 -> Result<(), MlsAdapterError> {
     let alice = create_client().expect("create Alice");
@@ -69,12 +152,6 @@ fn exact_validated_key_package_reaches_add_welcome_and_two_party_messages()
     assert_eq!(addition.key_package_reference(), &expected_reference);
     assert!(!addition.commit().as_bytes().is_empty());
 
-    let mut trailing_welcome = addition.welcome().as_bytes().to_vec();
-    trailing_welcome.push(0);
-    assert!(matches!(
-        bob.join_group(WelcomeMessage::from_bytes(&trailing_welcome)?, NOW),
-        Err(MlsAdapterError::ProtocolRejected)
-    ));
     let welcome = WelcomeMessage::from_bytes(addition.welcome().as_bytes())?;
     let mut bob_group = bob.join_group(welcome, NOW).expect("join from Welcome");
     assert_eq!(bob_group.group_id(), group_id().as_bytes());
