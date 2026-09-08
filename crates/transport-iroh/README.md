@@ -43,6 +43,10 @@ shared connected-delivery conformance case proves byte-identical canonical
 envelopes, exact deposit retry identity, conflicting same-ID rejection,
 polling, exact-set acknowledgement, acknowledgement retry, and final absence
 over a direct loopback Iroh connection.
+Current receive authority does not carry reusable-mailbox lifecycle identity.
+Checkpoint-bound polls therefore fail with `AuthorityScopeMismatch` before any
+request frame is sent; future support requires a versioned, server-authenticated
+binding rather than a client-only comparison.
 
 The explicit two-computer evidence harness serializes one canonical bounded v2
 all-rights operator handoff. Its bytes bind the selected path policy and contain

@@ -8,9 +8,11 @@ use std::{
 
 use session_protocol::OpaqueEnvelope;
 use session_transport::{
-    AcknowledgementRequest, BoundedDeliveryIds, CanonicalEnvelope, Cursor, DeliveryId,
-    DepositRequest, DispatchControl, EnvelopeDelivery, OperationBudget, PollRequest, PollWait,
-    RetryAdvice, TransportFailureCode,
+    AcknowledgementRequest, BindingFingerprint, BoundedDeliveryIds, CanonicalEnvelope, Cursor,
+    CursorBindingV1, CursorSchemaVersion, DeliveryId, DepositRequest, DispatchControl,
+    EnvelopeDelivery, MailboxContinuityId, MailboxGeneration, OperationBudget, PollRequest,
+    PollWait, ProviderStateEpoch, ReceiveCheckpointRevision, ReceiveCheckpointV1,
+    ReceiveScopeFingerprint, RetryAdvice, TransportFailureCode, TransportProfileId,
 };
 use transport_memory::{DeliveryAction, DeterministicMemoryTransport, MemoryMailboxPolicy};
 
@@ -169,6 +171,34 @@ fn poll_request(deadline: Instant, cursor: Option<Cursor>) -> PollRequest {
         OperationBudget::new(deadline, 4_096, 1).expect("bounded budget"),
     )
     .expect("bounded poll request")
+}
+
+fn checkpoint_bound_poll_request(deadline: Instant) -> PollRequest {
+    let binding = CursorBindingV1::new(
+        TransportProfileId::FastV1,
+        BindingFingerprint::from_bytes([0x91; 32]).expect("binding fingerprint"),
+        MailboxContinuityId::from_provider_bytes([0x92; 16]).expect("continuity ID"),
+        MailboxGeneration::new(1).expect("generation"),
+        ReceiveScopeFingerprint::from_bytes([0x93; 32]).expect("receive scope"),
+        CursorSchemaVersion::new(1).expect("cursor schema"),
+        ProviderStateEpoch::new(1).expect("provider epoch"),
+        NOW + 180,
+    )
+    .expect("foreign binding");
+    ReceiveCheckpointV1::new_generation(
+        binding,
+        ReceiveCheckpointRevision::new(1).expect("revision"),
+        NOW,
+    )
+    .expect("foreign checkpoint")
+    .poll_request(
+        4,
+        4_096,
+        PollWait::immediate(),
+        OperationBudget::new(deadline, 4_096, 1).expect("bounded budget"),
+        NOW,
+    )
+    .expect("checkpoint-bound poll")
 }
 
 fn assert_ambiguous_committed_deposit_recovers(
@@ -364,6 +394,32 @@ fn memory_adapter_carries_exact_canonical_bytes_through_the_generalized_boundary
         .expect("mailbox remains readable")
         .is_empty()
     );
+}
+
+#[test]
+fn memory_adapter_rejects_checkpoint_binding_it_did_not_issue() {
+    let start = Instant::now();
+    let control = TestControl {
+        monotonic_now: start,
+        wall_now_unix_seconds: Some(NOW),
+        cancelled: false,
+    };
+    let mut transport = transport();
+    let (_, receive, _) = transport
+        .create_mailbox(NOW + 180, NOW)
+        .expect("mailbox")
+        .into_dispatch_parts();
+
+    let result = ready(EnvelopeDelivery::poll(
+        &mut transport,
+        &receive,
+        checkpoint_bound_poll_request(start + Duration::from_secs(5)),
+        &control,
+    ));
+    let Err(failure) = result else {
+        panic!("unbound memory authority must reject checkpoint-bound poll");
+    };
+    assert_eq!(failure.code(), TransportFailureCode::AuthorityScopeMismatch);
 }
 
 #[test]

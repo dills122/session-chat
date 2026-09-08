@@ -816,6 +816,12 @@ validated batch carry the exact binding, owner revision, checkpoint-position
 kind, and cursor bytes into commit; duplicate delivery IDs fail validation.
 Explicit resynchronization is owner-CAS recorded before polling from none and is
 restart reloadable.
+The current memory and Iroh adapters issue no authority bound to that lifecycle
+identity. ADR 0032 therefore makes both reject checkpoint-bound polls before
+mailbox reads or Iroh network work. Unbound experimental polls remain available;
+neither adapter may be composed with durable checkpoint ownership until its
+receive authority binds the complete cursor scope and the Iroh wire authenticates
+that binding server-side.
 Owner-defined opaque commit evidence cannot be constructed or token-spliced by
 callers, and explicit wall time gates commit, load, immediate lease, and restart
 recovery. Mismatched outcome cardinality, page binding, commit evidence, CAS

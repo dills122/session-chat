@@ -230,12 +230,16 @@ architecture:
   exact-byte stale replay, acknowledgement-result loss, poll-page, exact-set
   acknowledgement, cursor-rejection, and secret-free probe controls for
   headless tests.
+  It rejects checkpoint-bound polls because its receive authority has no
+  reusable-mailbox lifecycle binding.
   It is not a network transport.
 - `transport-iroh` is a bounded authenticated ordered-frame link and connected
   `EnvelopeDelivery` provider for explicit FastV1 online experiments. Its
   volatile mailbox service and headless host/join harness reuse the common
   nine-operation contract over direct-only loopback; public N0 constructors
-  and reachability checks are separately invoked operator tests. It is not an
+  and reachability checks are separately invoked operator tests. It issues no
+  authority for durable cursor checkpoints and rejects checkpoint-bound polls
+  before network work. It is not an
   offline mailbox, durable provider, product network profile, or production
   client transport.
 - `transport-conformance` is a publish-disabled offline test-support crate. Its

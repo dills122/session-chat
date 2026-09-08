@@ -249,6 +249,10 @@ checkpoint is distinct from that immutable tested code revision.
 - [Demoted L2 redaction claims](adr/0030-demote-l2-redaction-until-capture-is-owned.md)
   records candidate v3, bounded case-surface secret scans, unproved capture
   completeness, and unverified redaction.
+- [Durable MLS Add binding](adr/0031-separate-transient-and-durable-mls-add-results.md)
+  separates transient output APIs from durable Add persistence obligations.
+- [Unbound adapter checkpoint rejection](adr/0032-reject-unbound-adapter-checkpoints.md)
+  prevents memory or Iroh poll results from inheriting foreign owner bindings.
 - [Architecture decision records](adr/) record the foundational decisions that
   other documents rely on.
 

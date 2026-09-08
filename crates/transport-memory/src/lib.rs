@@ -953,6 +953,11 @@ impl EnvelopeDelivery for DeterministicMemoryTransport {
         let authority = authority.provider();
         let observation = control.checkpoint(request.budget())?;
         let now_unix_seconds = observation.wall_now_unix_seconds();
+        if request.receive_binding().is_some() {
+            return Err(transport_failure(
+                TransportFailureCode::AuthorityScopeMismatch,
+            ));
+        }
         if self.availability == MemoryAvailability::Unavailable {
             return Err(transport_failure(TransportFailureCode::Unavailable));
         }
