@@ -3123,7 +3123,14 @@ fn run_verifier(root: &Path) -> Result<(), SessionCtlError> {
     } else {
         config.case()?.expected()
     };
-    let outcome = verify_complete_state(root, &key, expected, &fixture, config.probe)?;
+    let outcome = verify_complete_state(
+        root,
+        &key,
+        expected,
+        config.target.checkpoint(),
+        &fixture,
+        config.probe,
+    )?;
     if config.probe == L2HarnessProbe::LingeringHandle {
         let _connection = open_keyed_connection(&root.join(DATABASE_NAME), &key)?;
         thread::sleep(Duration::from_secs(10));
@@ -3175,6 +3182,7 @@ fn verify_complete_state(
     root: &Path,
     key: &Zeroizing<[u8; KEY_BYTES]>,
     expected: OracleState,
+    checkpoint: Checkpoint,
     fixture: &CaseFixture,
     probe: L2HarnessProbe,
 ) -> Result<VerificationOutcome, SessionCtlError> {
@@ -3253,11 +3261,15 @@ fn verify_complete_state(
     }
     let welcome_path = root.join(WELCOME_FIXTURE_NAME);
     let expected_welcome = if expected == OracleState::InviterNew {
-        Some(read_bounded_owned_file_once(
-            &welcome_path,
-            65_536,
-            "L2 Welcome fixture cleanup",
-        )?)
+        let bytes = if welcome_path.exists() {
+            read_bounded_owned_file_once(&welcome_path, 65_536, "L2 Welcome fixture cleanup")?
+        } else if checkpoint == Checkpoint::InviterAfterCommitReturn {
+            committed_welcome(&connection, fixture)?
+        } else {
+            return Err(stage("L2 Welcome fixture"));
+        };
+        validate_committed_welcome(&bytes)?;
+        Some(bytes)
     } else {
         if welcome_path.exists() {
             drop(read_bounded_owned_file_once(
@@ -3303,6 +3315,37 @@ fn verify_complete_state(
         return Err(stage("L2 exact retry digest"));
     }
     Ok(VerificationOutcome::Complete)
+}
+
+fn committed_welcome(
+    connection: &Connection,
+    fixture: &CaseFixture,
+) -> Result<Zeroizing<Vec<u8>>, SessionCtlError> {
+    let welcome = connection
+        .query_row(
+            "SELECT welcome FROM inviter_joins WHERE transaction_id = ?1",
+            params![fixture.transaction_id],
+            |row| row.get::<_, Vec<u8>>(0),
+        )
+        .optional()
+        .map_err(|_| stage("L2 inviter Welcome oracle"))?
+        .ok_or_else(|| stage("L2 inviter Welcome oracle"))?;
+    if welcome.len() > 65_536 {
+        return Err(stage("L2 inviter Welcome oracle"));
+    }
+    Ok(Zeroizing::new(welcome))
+}
+
+fn validate_committed_welcome(welcome: &[u8]) -> Result<(), SessionCtlError> {
+    let envelope = OpaqueEnvelope::decode_canonical(welcome)
+        .map_err(|_| stage("L2 inviter Welcome oracle"))?;
+    if envelope.envelope_id() != &[0x81; 16]
+        || envelope.expires_at_unix_seconds() != OUTBOX_EXPIRES_AT
+        || WelcomeMessage::from_bytes(envelope.ciphertext()).is_err()
+    {
+        return Err(stage("L2 inviter Welcome oracle"));
+    }
+    Ok(())
 }
 
 fn database_digest(root: &Path) -> Result<[u8; 32], SessionCtlError> {

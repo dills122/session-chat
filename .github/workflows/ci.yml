@@ -160,15 +160,12 @@ jobs:
         run: cargo test -p sessionctl --test l2_io_faults checked::pause_child_canary_is_captured_and_rejected_before_public_evidence --locked --offline -- --exact --test-threads=1
 
       - name: Verify complete inviter process recovery
-        if: github.event_name != 'pull_request'
         run: node scripts/collect-l2-evidence.mjs l2_crash_restart_inviter
 
       - name: Verify complete joiner process recovery
-        if: github.event_name != 'pull_request'
         run: node scripts/collect-l2-evidence.mjs l2_crash_restart_joiner
 
       - name: Verify complete SQLite fault and engine recovery
-        if: github.event_name != 'pull_request'
         run: node scripts/collect-l2-evidence.mjs l2_io_faults
 
       - name: Attest exact L2 candidate bundles from the trusted source workflow
