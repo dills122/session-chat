@@ -20,7 +20,7 @@ use windows_sys::Win32::{
     Storage::FileSystem::{
         BY_HANDLE_FILE_INFORMATION, CREATE_NEW, CreateFileW, FILE_ALL_ACCESS,
         FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_NORMAL, FILE_ATTRIBUTE_REPARSE_POINT,
-        FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_DELETE, FILE_SHARE_READ,
+        FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
         GetFileInformationByHandle, OPEN_EXISTING, READ_CONTROL,
     },
     System::SystemServices::ACCESS_ALLOWED_ACE_TYPE,
@@ -44,7 +44,7 @@ pub fn open_owner_only_regular_file(path: &Path) -> io::Result<File> {
         CreateFileW(
             path.as_ptr(),
             GENERIC_READ | READ_CONTROL,
-            FILE_SHARE_READ | FILE_SHARE_DELETE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
             ptr::null(),
             OPEN_EXISTING,
             FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT,
@@ -254,6 +254,8 @@ mod tests {
         let path = unique_path("owner-only");
         let file = create_owner_only_file(&path).unwrap();
         verify_owner_only_file(&file).unwrap();
+        let reader = open_owner_only_regular_file(&path).unwrap();
+        drop(reader);
         drop(file);
         fs::remove_file(path).unwrap();
     }

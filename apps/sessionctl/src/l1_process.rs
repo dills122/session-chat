@@ -2465,6 +2465,7 @@ fn remove_directory_contents(directory: &cap_std::fs::Dir) -> std::io::Result<()
         if file_type.is_dir() {
             let child = directory.open_dir(&name)?;
             remove_directory_contents(&child)?;
+            drop(child);
             directory.remove_dir(&name)?;
         } else {
             directory.remove_file(&name)?;
@@ -3306,6 +3307,7 @@ mod tests {
         fs::remove_dir_all(moved).unwrap();
     }
 
+    #[cfg(unix)]
     #[test]
     fn process_root_cleanup_preserves_replacement_after_validation() {
         let mut root = ProcessRoot::new().unwrap();
@@ -3330,6 +3332,7 @@ mod tests {
         assert!(owned_root_removed);
     }
 
+    #[cfg(unix)]
     #[test]
     fn process_root_cleanup_preserves_same_marker_replacement() {
         let mut root = ProcessRoot::new().unwrap();
@@ -3354,6 +3357,23 @@ mod tests {
         assert!(result.is_ok());
         assert!(replacement_survived);
         assert!(owned_root_removed);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn process_root_cleanup_denies_rebinding_while_capability_is_live() {
+        let mut root = ProcessRoot::new().unwrap();
+        let path = root.path().to_owned();
+        let moved = path.with_extension("replacement-attempt");
+
+        let result = root.cleanup_with(|candidate| {
+            assert!(fs::rename(candidate, &moved).is_err());
+            Ok(())
+        });
+
+        assert!(result.is_ok());
+        assert!(!path.exists());
+        assert!(!moved.exists());
     }
 
     #[cfg(unix)]
