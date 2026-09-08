@@ -2,12 +2,15 @@
 
 use std::{
     fmt,
-    fs::{self, File, OpenOptions},
+    fs::{self, File},
     io::{self, Read, Write},
     path::{Path, PathBuf},
     str::FromStr,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+
+#[cfg(unix)]
+use std::fs::OpenOptions;
 
 use same_file::Handle;
 use session_transport::{
@@ -613,7 +616,7 @@ fn read_handoff(path: &Path) -> Result<Zeroizing<Vec<u8>>, SessionCtlError> {
         {
             return Err(stage("Fast adapter handoff file"));
         }
-        return read_bounded(file);
+        read_bounded(file)
     }
     #[cfg(unix)]
     {
