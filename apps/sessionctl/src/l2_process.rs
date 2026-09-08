@@ -3022,37 +3022,42 @@ fn run_real_storage_transaction(
                 .map_err(|_| stage("L2 writer Add"))?
                 .apply()
                 .map_err(|_| stage("L2 writer Add"))?;
+            let endpoint = fixture_endpoint()?;
+            let persisted = addition
+                .stage_and_write_to_storage(&mut group, |binding| {
+                    let transaction = InviterJoinTransaction::new_bound(
+                        fixture.transaction_id,
+                        fixture.invitation_id,
+                        fixture.invitation_generation,
+                        fixture.join_request_id,
+                        fixture.request_fingerprint,
+                        fixture.group_id,
+                        0,
+                        1,
+                        APPROVAL_RECORD.to_vec(),
+                        [0x81; 16],
+                        OUTBOX_EXPIRES_AT,
+                        endpoint,
+                        OUTBOX_EXPIRES_AT,
+                    )
+                    .map_err(|_| StoreError::Rejected)?;
+                    storage.stage_bound_inviter(
+                        binding,
+                        transaction,
+                        BASELINE_NOW,
+                        PersistenceFault::None,
+                    )
+                })
+                .map_err(|_| stage("L2 writer transaction"))?;
             let envelope = OpaqueEnvelope::new(
                 [0x81; 16],
                 OUTBOX_EXPIRES_AT,
-                addition.welcome().as_bytes().to_vec(),
+                persisted.welcome().as_bytes().to_vec(),
             )
             .map_err(|_| stage("L2 writer Welcome"))?
             .encode_canonical()
             .map_err(|_| stage("L2 writer Welcome"))?;
             write_bounded_owned_file(&root.join(WELCOME_FIXTURE_NAME), &envelope, true, 65_536)?;
-            let endpoint = fixture_endpoint()?;
-            let transaction = InviterJoinTransaction::new(
-                fixture.transaction_id,
-                fixture.invitation_id,
-                fixture.invitation_generation,
-                fixture.join_request_id,
-                fixture.request_fingerprint,
-                fixture.group_id,
-                0,
-                1,
-                APPROVAL_RECORD.to_vec(),
-                envelope,
-                endpoint,
-                OUTBOX_EXPIRES_AT,
-            )
-            .map_err(|_| stage("L2 writer transaction"))?;
-            storage
-                .stage_inviter(transaction, BASELINE_NOW, PersistenceFault::None)
-                .map_err(|_| stage("L2 writer transaction"))?;
-            group
-                .write_to_storage()
-                .map_err(|_| stage("L2 writer transaction"))?;
             observer
                 .checkpoint(Checkpoint::InviterBeforeShadowFinalize, 0)
                 .map_err(|_| stage("L2 writer barrier"))?;

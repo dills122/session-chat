@@ -28,13 +28,20 @@ The adapter currently provides:
   and leaf signature key;
 - in-memory two-member Add/Welcome, application-message, path-update, and
   removal transitions with explicit prepare/apply stages;
+- sealed transient and durable storage-mode markers carried through clients,
+  groups, and prepared Adds; only transient groups expose the explicitly named
+  raw provider-write test seam;
 - a non-forgeable, one-shot persistence operation derived from an applied Add,
   tied to the exact group instance and state revision, and carrying its exact
   KeyPackage reference, credential identity, leaf key, group, epoch transition,
   and Welcome; any intervening state-changing operation invalidates it before
   durable staging, while a one-shot thread-bound authority plus an MLS-owned
   domain-separated digest of the exact group-state and ordered epoch callback
-  records rejects callbacks substituted by caller-supplied storage; and
+  records rejects callbacks substituted by caller-supplied storage; staging
+  callbacks cannot read Welcome ciphertext, while the configured provider can
+  read it only during the matching active write; durable groups retain that
+  obligation after staging or provider failure, and release Welcome/Commit
+  transport outputs only in the successful persisted result; and
 - a versioned opaque durable-identity contract that creates once, reloads the
   same credential and AWS-LC signing key, and rejects a stored group whose local
   member does not match that reconstructed client; and
@@ -70,8 +77,9 @@ approval UX remain unimplemented.
 Retained tests cover malformed, trailing, oversized, expired, replayed,
 reordered, delayed, duplicate-identity, abandoned-pending-Commit, path-update,
 third-member, and removal cases. A recording storage provider verifies that
-create/prepare/apply cause no implicit group-state write and that an explicit
-provider write causes one write.
+create/prepare/apply cause no implicit group-state write, an explicit transient
+provider write causes one write, and a durable Add rejects ordinary persistence
+until its exact bound stage-and-write succeeds.
 
 The default client helper still uses process memory. The durable helper requires
 one exact group identifier and a caller-owned identity store, inserts exactly

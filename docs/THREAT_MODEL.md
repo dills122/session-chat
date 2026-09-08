@@ -956,6 +956,11 @@ KeyPackage-deletion callback can reacquire it. The exact pending reference may
 finish the transaction, while any foreign 32-byte reference rolls it back. The
 upstream deletion trait cannot prove which same-process clone called it, so
 same-open-scope callers remain trusted not to invoke that callback directly.
+ADR 0031 additionally separates transient and durable MLS types. A durable Add
+sets an exact pending-persistence obligation; ordinary writes reject it, raw
+provider writes are private, and transport outputs become available only from
+the successfully persisted result. Failed or stale staging yields no
+transport-capable value and requires authoritative recovery or reload.
 Wrong-key, pre-commit rollback, ambiguous-result recovery,
 close/reopen, and closed-file checks are retained on
 the required Linux, macOS, and Windows CI runners. Schema version 2 also makes
@@ -1019,8 +1024,10 @@ the exact applied KeyPackage tuple, group/epoch, Welcome, group-instance state
 revision, and one-shot originating-thread write authority. An MLS-owned
 provider-facing wrapper additionally fingerprints the exact serialized group
 state and ordered epoch insert/update records before any caller-supplied
-storage wrapper runs; SQLCipher recomputes that domain-separated SHA-256 digest
-from the callback it receives. It rechecks the resulting binding with the
+storage wrapper runs. The application staging callback receives no Welcome
+accessor. SQLCipher can materialize the canonical Welcome envelope only while
+the originating provider write and its domain-separated SHA-256 state digest
+are active. It rechecks the resulting binding with the
 exact authorization and fresh monotonic elapsed time under the database write
 lock, and commits the terminal authorization and invitation states atomically
 with MLS and outbox state; exact

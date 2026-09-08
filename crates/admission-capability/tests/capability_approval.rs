@@ -1,14 +1,18 @@
+use std::sync::{Arc, Mutex};
+
 use admission_capability::{
     CapabilityAdmissionError, CapabilityAdmissionPolicy, CapabilityAdmissionVerifier,
     CapabilityApprovalOutcome, ManualApprovalDecision,
 };
+use mls_rs::storage_provider::in_memory::{InMemoryGroupStateStorage, InMemoryKeyPackageStorage};
 use session_admission::{AdmissionMethod, PendingAdmission};
 use session_core::{
     InvitationLifecycle, InvitationPolicy, InvitationRegistry, ValidatedCapabilityInvitationV2,
 };
 use session_crypto_hpke::{AwsLcInvitationJoinProtector, InvitationJoinProtector};
 use session_crypto_mls::{
-    KeyPackageReference, SessionGroupId, create_client, create_key_package_validator,
+    DurableClientIdentityRecord, DurableClientIdentityStorage, KeyPackageReference, SessionGroupId,
+    create_client, create_durable_client_with_storage, create_key_package_validator,
 };
 use session_protocol::{
     CapabilityJoinRequest, DepositCapability, InvitationJoinBinding, JoinRequestBinding,
@@ -19,6 +23,50 @@ use session_transport::{LocalMailboxPolicy, LocalMemoryWelcomeTransport, LocalTr
 const NOW: u64 = 1_700_000_000;
 const REQUEST_ID: [u8; 16] = [0x41; 16];
 const NONCE: [u8; 32] = [0x51; 32];
+
+struct StoredIdentity {
+    group_id: [u8; 32],
+    encoded: Vec<u8>,
+}
+
+#[derive(Clone, Default)]
+struct IdentityStore(Arc<Mutex<Option<StoredIdentity>>>);
+
+impl DurableClientIdentityStorage for IdentityStore {
+    type Error = ();
+
+    fn load_client_identity(
+        &self,
+        group_id: &SessionGroupId,
+    ) -> Result<Option<DurableClientIdentityRecord>, Self::Error> {
+        let retained = self.0.lock().map_err(|_| ())?;
+        let Some(retained) = retained.as_ref() else {
+            return Ok(None);
+        };
+        if &retained.group_id != group_id.as_bytes() {
+            return Err(());
+        }
+        DurableClientIdentityRecord::from_storage_bytes(retained.encoded.clone())
+            .map(Some)
+            .map_err(|_| ())
+    }
+
+    fn insert_client_identity(
+        &self,
+        group_id: &SessionGroupId,
+        encoded: DurableClientIdentityRecord,
+    ) -> Result<(), Self::Error> {
+        let mut retained = self.0.lock().map_err(|_| ())?;
+        if retained.is_some() {
+            return Err(());
+        }
+        *retained = Some(StoredIdentity {
+            group_id: *group_id.as_bytes(),
+            encoded: encoded.into_storage_bytes().to_vec(),
+        });
+        Ok(())
+    }
+}
 
 struct ApprovalFixture {
     registry: InvitationRegistry,
@@ -311,8 +359,17 @@ fn request_expiry_before_prepare_releases_both_state_machines() {
         approved.key_package_reference(),
         &fixture.key_package_reference
     );
-    let inviter = create_client().expect("create inviter");
-    let mut group = inviter.create_group(group_id(), NOW).expect("create group");
+    let durable_group_id = group_id();
+    let inviter = create_durable_client_with_storage(
+        durable_group_id,
+        InMemoryGroupStateStorage::default(),
+        InMemoryKeyPackageStorage::default(),
+        IdentityStore::default(),
+    )
+    .expect("create durable inviter");
+    let mut group = inviter
+        .create_group(durable_group_id, NOW)
+        .expect("create group");
 
     assert!(
         verifier
@@ -383,8 +440,17 @@ fn foreign_verifier_prepare_releases_invitation_but_not_owner_replay() {
     else {
         panic!("approval must produce the one-shot approved value");
     };
-    let inviter = create_client().expect("create inviter");
-    let mut group = inviter.create_group(group_id(), NOW).expect("create group");
+    let durable_group_id = group_id();
+    let inviter = create_durable_client_with_storage(
+        durable_group_id,
+        InMemoryGroupStateStorage::default(),
+        InMemoryKeyPackageStorage::default(),
+        IdentityStore::default(),
+    )
+    .expect("create durable inviter");
+    let mut group = inviter
+        .create_group(durable_group_id, NOW)
+        .expect("create group");
     let mut foreign = verifier();
 
     assert!(matches!(
@@ -701,8 +767,17 @@ fn durability_pending_join_defers_invitation_consumption_until_commit_is_confirm
     else {
         panic!("approval must produce the one-shot approved value");
     };
-    let inviter = create_client().expect("create inviter");
-    let mut group = inviter.create_group(group_id(), NOW).expect("create group");
+    let durable_group_id = group_id();
+    let inviter = create_durable_client_with_storage(
+        durable_group_id,
+        InMemoryGroupStateStorage::default(),
+        InMemoryKeyPackageStorage::default(),
+        IdentityStore::default(),
+    )
+    .expect("create durable inviter");
+    let mut group = inviter
+        .create_group(durable_group_id, NOW)
+        .expect("create group");
 
     let durability_pending = verifier
         .prepare_approved_add(&mut fixture.registry, approved, &mut group, NOW)
@@ -714,8 +789,6 @@ fn durability_pending_join_defers_invitation_consumption_until_commit_is_confirm
         durability_pending.key_package_reference(),
         &fixture.key_package_reference
     );
-    assert!(!durability_pending.commit().as_bytes().is_empty());
-    assert!(!durability_pending.welcome().as_bytes().is_empty());
     assert_eq!(
         durability_pending
             .response_endpoint()
@@ -728,14 +801,16 @@ fn durability_pending_join_defers_invitation_consumption_until_commit_is_confirm
         durability_pending.invitation_lifecycle(),
         Some(InvitationLifecycle::Reserved)
     );
-    let committed = durability_pending
+    let (addition, _endpoint, settlement) = durability_pending.into_durable_owner_parts();
+    let persisted = addition
+        .stage_and_write_to_storage(&mut group, |_binding| Ok::<_, ()>(()))
+        .expect("persist exact durable Add");
+    settlement
         .finalize_committed()
         .expect("confirmed durable commit consumes the in-memory shadow");
 
-    assert_eq!(
-        committed.key_package_reference(),
-        &fixture.key_package_reference
-    );
+    assert!(!persisted.commit().as_bytes().is_empty());
+    assert!(!persisted.welcome().as_bytes().is_empty());
     assert_eq!(verifier.pending_count(), 1);
     assert_eq!(
         fixture.registry.lifecycle(&fixture.invitation_id),
@@ -764,8 +839,17 @@ fn proven_uncommitted_durable_join_releases_admission_reservations() {
     else {
         panic!("approval must produce the one-shot approved value");
     };
-    let inviter = create_client().expect("create inviter");
-    let mut group = inviter.create_group(group_id(), NOW).expect("create group");
+    let durable_group_id = group_id();
+    let inviter = create_durable_client_with_storage(
+        durable_group_id,
+        InMemoryGroupStateStorage::default(),
+        InMemoryKeyPackageStorage::default(),
+        IdentityStore::default(),
+    )
+    .expect("create durable inviter");
+    let mut group = inviter
+        .create_group(durable_group_id, NOW)
+        .expect("create group");
 
     verifier
         .prepare_approved_add(&mut fixture.registry, approved, &mut group, NOW)
@@ -805,8 +889,17 @@ fn abandoning_ambiguous_durable_join_preserves_reservations_fail_closed() {
     else {
         panic!("approval must produce the one-shot approved value");
     };
-    let inviter = create_client().expect("create inviter");
-    let mut group = inviter.create_group(group_id(), NOW).expect("create group");
+    let durable_group_id = group_id();
+    let inviter = create_durable_client_with_storage(
+        durable_group_id,
+        InMemoryGroupStateStorage::default(),
+        InMemoryKeyPackageStorage::default(),
+        IdentityStore::default(),
+    )
+    .expect("create durable inviter");
+    let mut group = inviter
+        .create_group(durable_group_id, NOW)
+        .expect("create group");
 
     drop(
         verifier

@@ -5,7 +5,8 @@ use std::sync::{
 
 use mls_rs_core::group::{EpochRecord, GroupState, GroupStateStorage};
 use session_crypto_mls::{
-    SessionGroupId, create_client, create_client_with_storage, create_key_package_validator,
+    SessionGroupId, create_client, create_key_package_validator,
+    create_transient_client_with_storage,
 };
 use storage_sqlcipher::{JoinerTransaction, PersistenceFault, SqlCipherStorage, VaultKey};
 use zeroize::Zeroizing;
@@ -70,7 +71,7 @@ fn actual_joiner_write_atomically_persists_group_and_deletes_one_time_key_packag
     )
     .expect("storage created");
     let interleaved_access_rejected = Arc::new(AtomicBool::new(false));
-    let bob = create_client_with_storage(
+    let bob = create_transient_client_with_storage(
         ProbingGroupStorage {
             storage: storage.clone(),
             interleaved_access_rejected: Arc::clone(&interleaved_access_rejected),
@@ -106,7 +107,7 @@ fn actual_joiner_write_atomically_persists_group_and_deletes_one_time_key_packag
     storage
         .stage_joiner(failed, PersistenceFault::BeforeCommit)
         .expect("joiner transaction staged");
-    assert!(bob_group.write_to_storage().is_err());
+    assert!(bob_group.write_transient_state_to_storage().is_err());
     assert!(interleaved_access_rejected.load(Ordering::SeqCst));
     assert!(
         storage
@@ -131,7 +132,7 @@ fn actual_joiner_write_atomically_persists_group_and_deletes_one_time_key_packag
     storage
         .stage_joiner(retry, PersistenceFault::AfterCommit)
         .expect("retry staged");
-    assert!(bob_group.write_to_storage().is_err());
+    assert!(bob_group.write_transient_state_to_storage().is_err());
 
     assert!(
         storage
@@ -157,7 +158,7 @@ fn actual_joiner_write_atomically_persists_group_and_deletes_one_time_key_packag
         .stage_joiner(exact_recovery, PersistenceFault::None)
         .expect("recovery staged");
     bob_group
-        .write_to_storage()
+        .write_transient_state_to_storage()
         .expect("committed join recovered idempotently");
 
     drop(bob_group);

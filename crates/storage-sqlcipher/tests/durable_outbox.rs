@@ -107,33 +107,39 @@ fn commit_real_mls_inviter(
         .expect("prepared Add")
         .apply()
         .expect("applied Add");
-    let welcome = OpaqueEnvelope::new(
-        envelope_id,
-        NOW + 180,
-        addition.welcome().as_bytes().to_vec(),
-    )
-    .expect("Welcome envelope")
-    .encode_canonical()
-    .expect("canonical Welcome");
-    let transaction = InviterJoinTransaction::new(
-        TRANSACTION_ID,
-        INVITATION_ID,
-        [2; 64],
-        [3; 16],
-        [6; 32],
-        *alice_group.group_id(),
-        0,
-        1,
-        vec![7; 32],
-        welcome.clone(),
-        endpoint,
-        NOW + 120,
-    )
-    .expect("bounded transaction");
-    storage
-        .stage_inviter(transaction, NOW, fault)
-        .expect("transaction staged");
-    let result = alice_group.write_to_storage().map_err(|_| ());
+    let result = addition.stage_and_write_to_storage(&mut alice_group, |binding| {
+        let transaction = InviterJoinTransaction::new_bound(
+            TRANSACTION_ID,
+            INVITATION_ID,
+            [2; 64],
+            [3; 16],
+            [6; 32],
+            *group_id.as_bytes(),
+            0,
+            1,
+            vec![7; 32],
+            envelope_id,
+            NOW + 180,
+            endpoint,
+            NOW + 120,
+        )
+        .expect("bounded transaction");
+        storage.stage_bound_inviter(binding, transaction, NOW, fault)
+    });
+    let welcome = result
+        .as_ref()
+        .map(|persisted| {
+            OpaqueEnvelope::new(
+                envelope_id,
+                NOW + 180,
+                persisted.welcome().as_bytes().to_vec(),
+            )
+            .expect("Welcome envelope")
+            .encode_canonical()
+            .expect("canonical Welcome")
+        })
+        .unwrap_or_default();
+    let result = result.map(|_| ()).map_err(|_| ());
     drop(alice_group);
     drop(alice);
     drop(bob);

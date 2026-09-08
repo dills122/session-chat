@@ -50,3 +50,9 @@ transaction committed or uncommitted. The storage owner retains replay and the
 ADR 0008 membership/Welcome transaction across restart without serializing the
 parsed KeyPackage. Rollback resistance, human approval UX, and network
 transport remain unimplemented.
+
+Transient and durable MLS modes are distinct. Transient approval returns
+transport outputs for process-local tests. A durability-pending approval exposes
+no Welcome or Commit; it transfers an output-hidden durable Add to the owner
+transaction, which releases `PersistedAddition` outputs only after the exact
+bound provider write succeeds.

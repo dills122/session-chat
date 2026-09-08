@@ -15,6 +15,7 @@ thiserror.workspace = true
 
 [dev-dependencies]
 ed25519-dalek.workspace = true
+mls-rs.workspace = true
 session-transport = { version = "=0.1.0", path = "../session-transport" }
 
 [lints]

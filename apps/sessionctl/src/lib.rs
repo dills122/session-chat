@@ -56,7 +56,7 @@ use session_transport::{
 };
 use storage_sqlcipher::{
     AuthorizationShadowInput, AuthorizationState, InvitationOpeningState, InviterJoinTransaction,
-    PersistenceFault, SqlCipherStorage, VaultKey, WelcomeOutboxState,
+    PersistenceFault, SqlCipherStorage, StoreError, VaultKey, WelcomeOutboxState,
 };
 use thiserror::Error;
 use transport_memory::{DeliveryAction, DeterministicMemoryTransport, MemoryMailboxPolicy};
@@ -632,34 +632,12 @@ fn run_phase_one_flow(
     if durability_pending.key_package_reference() != &expected_key_package_reference {
         return Err(stage("Welcome ownership"));
     }
-    let welcome_envelope = OpaqueEnvelope::new(
-        random_nonzero()?,
-        REQUEST_EXPIRES_AT,
-        durability_pending.welcome().as_bytes().to_vec(),
-    )
-    .at_stage("Welcome envelope")?;
-    let canonical_welcome_envelope = welcome_envelope
-        .encode_canonical()
-        .at_stage("Welcome envelope encoding")?;
+    let welcome_envelope_id = random_nonzero()?;
     let transaction_id = random_nonzero()?;
-    let inviter_transaction = InviterJoinTransaction::new(
-        transaction_id,
-        *issued.invitation().invitation_id(),
-        *issued.invitation().signature(),
-        join_request_id,
-        request_fingerprint,
-        *alice_group.group_id(),
-        0,
-        1,
-        approval_record,
-        canonical_welcome_envelope.clone(),
-        durability_pending
-            .response_endpoint()
-            .encode_canonical()
-            .at_stage("Welcome endpoint encoding")?,
-        REQUEST_EXPIRES_AT,
-    )
-    .at_stage("inviter transaction")?;
+    let response_endpoint = durability_pending
+        .response_endpoint()
+        .encode_canonical()
+        .at_stage("Welcome endpoint encoding")?;
     let membership = storage
         .begin_membership_authorization(durable_approved, transaction_id, &protector, NOW)
         .at_stage("membership authorization")?;
@@ -668,6 +646,22 @@ fn run_phase_one_flow(
     let inject_rollback = faults.fail_at(PhaseOneFaultPoint::MembershipPersistence);
     let inject_ambiguous_response = faults.fail_at(PhaseOneFaultPoint::MembershipCommitResponse);
     let write_result = committed_addition.stage_and_write_to_storage(&mut alice_group, |binding| {
+        let inviter_transaction = InviterJoinTransaction::new_bound(
+            transaction_id,
+            *issued.invitation().invitation_id(),
+            *issued.invitation().signature(),
+            join_request_id,
+            request_fingerprint,
+            *alice_group_id.as_bytes(),
+            0,
+            1,
+            approval_record,
+            welcome_envelope_id,
+            REQUEST_EXPIRES_AT,
+            response_endpoint,
+            REQUEST_EXPIRES_AT,
+        )
+        .map_err(|_| StoreError::Rejected)?;
         storage.stage_authorized_inviter(
             membership,
             binding,
@@ -733,6 +727,15 @@ fn run_phase_one_flow(
         faults.observe(PhaseOneObservation::CommittedMembershipRetained);
         return Err(stage("membership commit response"));
     }
+    let persisted_addition = write_result.map_err(|_| stage("membership persistence"))?;
+    let canonical_welcome_envelope = OpaqueEnvelope::new(
+        welcome_envelope_id,
+        REQUEST_EXPIRES_AT,
+        persisted_addition.welcome().as_bytes().to_vec(),
+    )
+    .at_stage("Welcome envelope")?
+    .encode_canonical()
+    .at_stage("Welcome envelope encoding")?;
     if faults.fail_at(PhaseOneFaultPoint::WelcomeDeposit) {
         let invitation_id = *issued.invitation().invitation_id();
         let mailbox_empty = welcome_transport

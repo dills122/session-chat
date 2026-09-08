@@ -1767,34 +1767,12 @@ fn run_alice_init_with_receiver(
             return Err(stage("process MLS apply"));
         }
     };
-    let welcome_envelope = OpaqueEnvelope::new(
-        random_nonzero()?,
-        REQUEST_EXPIRES_AT,
-        pending_durability.welcome().as_bytes().to_vec(),
-    )
-    .at_stage("process Welcome envelope")?;
-    let canonical_welcome = welcome_envelope
-        .encode_canonical()
-        .at_stage("process Welcome encoding")?;
+    let welcome_envelope_id = random_nonzero()?;
     let transaction_id = random_nonzero()?;
-    let transaction = InviterJoinTransaction::new(
-        transaction_id,
-        *issued.invitation().invitation_id(),
-        *issued.invitation().signature(),
-        join_request_id,
-        request_fingerprint,
-        *group.group_id(),
-        0,
-        1,
-        approval_record,
-        canonical_welcome,
-        pending_durability
-            .response_endpoint()
-            .encode_canonical()
-            .at_stage("process endpoint encoding")?,
-        REQUEST_EXPIRES_AT,
-    )
-    .at_stage("process inviter transaction")?;
+    let response_endpoint = pending_durability
+        .response_endpoint()
+        .encode_canonical()
+        .at_stage("process endpoint encoding")?;
     let membership = storage
         .begin_membership_authorization(durable_approved, transaction_id, &protector, NOW)
         .at_stage("process membership authorization")?;
@@ -1802,6 +1780,22 @@ fn run_alice_init_with_receiver(
         pending_durability.into_durable_owner_parts();
     committed_addition
         .stage_and_write_to_storage(&mut group, |binding| {
+            let transaction = InviterJoinTransaction::new_bound(
+                transaction_id,
+                *issued.invitation().invitation_id(),
+                *issued.invitation().signature(),
+                join_request_id,
+                request_fingerprint,
+                *group_id.as_bytes(),
+                0,
+                1,
+                approval_record,
+                welcome_envelope_id,
+                REQUEST_EXPIRES_AT,
+                response_endpoint,
+                REQUEST_EXPIRES_AT,
+            )
+            .map_err(|_| StoreError::Rejected)?;
             storage.stage_authorized_inviter(
                 membership,
                 binding,

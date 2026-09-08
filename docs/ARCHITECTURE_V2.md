@@ -312,6 +312,13 @@ shadows from that exact result. The SQLCipher-backed headless paths issue the
 opening context before publication, retain replay and approval shadows across
 restart, and abandon rather than reconstruct lost provider authority. This is
 retained laboratory integration, not a rollback-resistant product client.
+ADR 0031 makes transient and durable MLS state distinct types. Durable Add
+application records a state-revision obligation, rejects ordinary provider
+writes, and withholds Welcome and Commit outputs until its exact bound
+stage-and-write succeeds. Bound application staging carries only envelope
+metadata; SQLCipher obtains Welcome ciphertext inside the exact active provider
+write. Explicit transient write and output APIs remain only for process-local
+lifecycle and provider tests.
 Human approval UX does not exist. The separate memory conformance model and
 SQLCipher laboratory exercise atomic visibility, durable Welcome-owner
 recovery, and ambiguous-result retry. The in-memory committed join result now carries the
