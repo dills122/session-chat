@@ -204,6 +204,15 @@ fn verify_descriptor(
         {
             return Err(io::Error::other("owner-only DACL entry count"));
         }
+        let acl_len = usize::try_from(info.AclBytesInUse)
+            .map_err(|_| io::Error::other("owner-only DACL size"))?;
+        if acl_len < std::mem::size_of::<windows_sys::Win32::Security::ACL>() {
+            return Err(io::Error::other("owner-only DACL size"));
+        }
+        let acl_start = dacl.cast::<u8>() as usize;
+        let acl_end = acl_start
+            .checked_add(acl_len)
+            .ok_or_else(|| io::Error::other("owner-only DACL bounds"))?;
         let mut owner = false;
         let mut system = false;
         for index in 0..info.AceCount {
@@ -211,14 +220,42 @@ fn verify_descriptor(
             if GetAce(dacl, index, &mut raw_ace) == 0 || raw_ace.is_null() {
                 return Err(io::Error::last_os_error());
             }
-            let ace = &*raw_ace.cast::<ACCESS_ALLOWED_ACE>();
-            if u32::from(ace.Header.AceType) != ACCESS_ALLOWED_ACE_TYPE
-                || u32::from(ace.Header.AceFlags) & INHERITED_ACE != 0
+            let ace_start = raw_ace as usize;
+            let header_end = ace_start
+                .checked_add(std::mem::size_of::<windows_sys::Win32::Security::ACE_HEADER>())
+                .ok_or_else(|| io::Error::other("owner-only ACE bounds"))?;
+            if ace_start < acl_start || header_end > acl_end {
+                return Err(io::Error::other("owner-only ACE bounds"));
+            }
+            let header = raw_ace
+                .cast::<windows_sys::Win32::Security::ACE_HEADER>()
+                .read_unaligned();
+            let ace_end = ace_start
+                .checked_add(usize::from(header.AceSize))
+                .ok_or_else(|| io::Error::other("owner-only ACE bounds"))?;
+            let sid_offset = std::mem::offset_of!(ACCESS_ALLOWED_ACE, SidStart);
+            let sid_start = ace_start
+                .checked_add(sid_offset)
+                .ok_or_else(|| io::Error::other("owner-only SID bounds"))?;
+            let sid_header_end = sid_start
+                .checked_add(8)
+                .ok_or_else(|| io::Error::other("owner-only SID bounds"))?;
+            if ace_end > acl_end || sid_header_end > ace_end {
+                return Err(io::Error::other("owner-only ACE bounds"));
+            }
+            let ace = raw_ace.cast::<ACCESS_ALLOWED_ACE>().read_unaligned();
+            let sid_header = std::slice::from_raw_parts(sid_start as *const u8, 8);
+            let sid_len = 8usize
+                .checked_add(usize::from(sid_header[1]).saturating_mul(4))
+                .ok_or_else(|| io::Error::other("owner-only SID bounds"))?;
+            if sid_start.checked_add(sid_len) != Some(ace_end)
+                || u32::from(header.AceType) != ACCESS_ALLOWED_ACE_TYPE
+                || u32::from(header.AceFlags) & INHERITED_ACE != 0
                 || ace.Mask != FILE_ALL_ACCESS
             {
                 return Err(io::Error::other("owner-only DACL entry"));
             }
-            let sid = (&raw const ace.SidStart).cast_mut().cast();
+            let sid = (sid_start as *mut u8).cast();
             if IsWellKnownSid(sid, WinCreatorOwnerRightsSid) != 0 {
                 owner = true;
             } else if IsWellKnownSid(sid, WinLocalSystemSid) != 0 {
