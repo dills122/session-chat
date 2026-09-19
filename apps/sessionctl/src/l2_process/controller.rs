@@ -1,6 +1,46 @@
 //! L2 process controllers, child roles, and evidence parsing.
 
-use super::*;
+use super::database::{
+    L2ArtifactSnapshot, collect_evidence_binding, encrypted_artifact_snapshot,
+    prove_database_handle_cleanup,
+};
+use super::execution::{ExecutableSnapshot, ExecutionIdentity};
+use super::fixtures::{
+    CaseFixture, inject_defective_schema, inject_identity_loss, inject_inviter_lifecycle_defect,
+    inject_joiner_retained_key_package, inject_mixed_group, inject_reservation_substitution,
+    prepare_baseline, read_fixture, read_optional_welcome_canary,
+};
+use super::io_model::{
+    L2IoBaselineReport, L2IoDriverObservation, L2IoFaultDriver, L2IoFaultReport, L2IoFileRole,
+    L2IoOperation, L2IoPauseDriver, L2IoPauseKillReport, L2IoPauseObservation, L2IoPauseSweepCase,
+    l2_io_pause_supported,
+};
+use super::model::{
+    CaseConfig, L2EvidenceBinding, L2HarnessProbe, L2ProcessBaseline, L2ProcessCase,
+    L2ProcessReport, oracle_label,
+};
+use super::resources::{
+    AutoContinueBarrier, ManagedChild, ProcessRoot, git_dirty_at, lock_digest_at,
+    pinned_toolchain_at, read_case_config, read_key, repository_root, validate_root,
+    write_owned_file,
+};
+use super::verifier::{advance_writer_to_target, run_verifier};
+use super::welcome;
+use super::writer::{run_real_storage_transaction, run_writer};
+use super::{
+    CASE_CONFIG_NAME, CHILD_WAIT, DATABASE_NAME, FRAME_WAIT, KEY_BYTES,
+    MAX_APPLICATION_CHECKPOINTS, MAX_CHILD_OUTPUT_BYTES, MAX_EVIDENCE_BYTES,
+    VERIFIER_CASE_FIXTURE_NAME, VERIFIER_KEY_NAME, WELCOME_FIXTURE_NAME, WRITER_CASE_FIXTURE_NAME,
+    WRITER_KEY_NAME,
+};
+use crate::{SessionCtlError, random_nonzero, resolve_l1_process_git_commit, stage};
+use std::path::{Path, PathBuf};
+use storage_sqlcipher::VaultKey;
+use storage_sqlcipher::fault_testing;
+use storage_sqlcipher::fault_testing::{
+    CONTROL_FRAME_BYTES, CaseId, Checkpoint, ControlFrame, FaultObserver, OracleState, Scenario,
+};
+use zeroize::Zeroizing;
 
 /// Runs one bounded controller probe through the checked hidden binary.
 pub fn run_l2_process_probe(

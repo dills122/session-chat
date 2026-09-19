@@ -1,6 +1,26 @@
 //! Private process roots, owned files, child supervision, and pipes.
 
-use super::*;
+use super::model::CaseConfig;
+use super::{
+    CASE_CONFIG_BYTES, CASE_CONFIG_NAME, KEY_BYTES, MAX_CASE_ENTRIES, MAX_CHILD_OUTPUT_BYTES,
+    MAX_LOCKFILE_BYTES, MAX_TOOLCHAIN_BYTES, POLL_INTERVAL, ROOT_MARKER, ROOT_MARKER_NAME,
+};
+use crate::provenance::repository_dirty_at;
+use crate::{SessionCtlError, random_nonzero, stage};
+use aws_lc_rs::digest::{SHA256, digest};
+use std::ffi::OsStr;
+use std::fmt::Write as _;
+use std::fs::{self, File, OpenOptions};
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
+use std::process::{Child, ChildStdin, Command, ExitStatus, Stdio};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
+use std::thread::{self, JoinHandle};
+use std::time::{Duration, Instant};
+use storage_sqlcipher::fault_testing::{
+    BarrierFailure, BarrierTransport, CONTROL_FRAME_BYTES, ControlFrame, FrameKind, Role,
+};
+use zeroize::{Zeroize, Zeroizing};
 
 pub(super) struct AutoContinueBarrier;
 

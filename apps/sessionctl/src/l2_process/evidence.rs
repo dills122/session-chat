@@ -1,12 +1,14 @@
 use std::path::Path;
 
-use crate::provenance::{CompilerProvenance, compiler_provenance};
+use aws_lc_rs::digest::{SHA256, digest};
+use storage_sqlcipher::fault_testing::Scenario;
 
-use super::{
-    L2EvidenceCase, L2EvidenceCaseTarget, L2IoPauseSweepReport, L2IoSweepReport,
-    L2ProcessSweepReport, SHA256, Scenario, SessionCtlError, digest, git_dirty_at, hex,
-    lock_digest_at, pinned_toolchain_at, repository_root, resolve_l1_process_git_commit, stage,
-};
+use crate::provenance::{CompilerProvenance, compiler_provenance};
+use crate::{SessionCtlError, resolve_l1_process_git_commit, stage};
+
+use super::io_model::{L2IoPauseSweepReport, L2IoSweepReport};
+use super::model::{L2EvidenceCase, L2EvidenceCaseTarget, L2ProcessSweepReport};
+use super::resources::{git_dirty_at, hex, lock_digest_at, pinned_toolchain_at, repository_root};
 
 const MAX_MANIFEST_BYTES: usize = 4_096;
 
@@ -85,7 +87,7 @@ struct L2EvidenceMetadata {
     sqlcipher_version: String,
     sqlite_version: String,
     test_binary_digest: [u8; 32],
-    executables: super::ExecutionIdentity,
+    executables: super::execution::ExecutionIdentity,
 }
 
 struct L2CiContext {
@@ -156,7 +158,7 @@ impl L2EvidenceMetadata {
             sqlcipher_version: sqlcipher_version.to_owned(),
             sqlite_version: sqlite_version.to_owned(),
             test_binary_digest,
-            executables: super::ExecutionIdentity {
+            executables: super::execution::ExecutionIdentity {
                 verifier: test_binary_digest,
                 producer: test_binary_digest,
                 fault_driver: None,
@@ -1165,8 +1167,8 @@ mod tests {
                 expected: "I0",
                 observed: "I0",
             },
-            binding: super::super::L2EvidenceBinding {
-                executables: Some(super::super::ExecutionIdentity::fixture()),
+            binding: super::super::model::L2EvidenceBinding {
+                executables: Some(super::super::execution::ExecutionIdentity::fixture()),
                 sqlcipher_version: String::from("4.14.0 community"),
                 sqlite_version: String::from("3.50.4"),
                 baseline_artifact_digest: [0x22; 32],
@@ -1186,7 +1188,7 @@ mod tests {
         let producing_digest = super::super::execution::binary_digest(&a).unwrap();
         for separate_driver in [false, true] {
             let mut case = test_case();
-            case.binding.executables = Some(super::super::ExecutionIdentity {
+            case.binding.executables = Some(super::super::execution::ExecutionIdentity {
                 verifier: producing_digest,
                 producer: [8; 32],
                 fault_driver: separate_driver.then_some(producing_digest),

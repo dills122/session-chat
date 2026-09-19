@@ -1,12 +1,41 @@
 //! Bounded Welcome-owner process-kill evidence; no production activation path.
-use super::*;
+use super::database::{
+    collect_evidence_binding, encrypted_artifact_snapshot, open_keyed_connection,
+    prove_database_handle_cleanup, schema_fingerprint, table_count,
+};
+use super::execution::{ExecutableSnapshot, ExecutionIdentity};
+use super::fixtures::{CaseFixture, prepare_baseline, read_optional_welcome_canary};
+#[cfg(test)]
+use super::model::L2EvidenceBinding;
+use super::model::{L2EvidenceCase, L2EvidenceCaseTarget, canonical_evidence_cases};
+use super::resources::{
+    AutoContinueBarrier, ManagedChild, ProcessRoot, read_bounded_owned_file, read_key,
+    read_owned_file, write_bounded_owned_file, write_owned_file,
+};
+use super::verifier::{database_digest, inject_retry_mutation};
+use super::writer::{fixture_endpoint, run_real_storage_transaction};
+use super::{
+    BASELINE_NOW, CASE_WAIT, CHILD_WAIT, DATABASE_NAME, EXPECTED_SCHEMA_VERSION,
+    MAX_DATABASE_BYTES, OUTBOX_EXPIRES_AT, SCHEMA_FINGERPRINT_SHA256, VERIFIER_KEY_NAME,
+    WELCOME_FIXTURE_NAME, WRITER_KEY_NAME,
+};
+use crate::{SessionCtlError, random_nonzero, stage};
+use rusqlite::Connection;
+use session_protocol::LocalWelcomeDepositEndpoint;
 use session_transport::{
     CoordinatorPolicy, DepositReceipt, DepositRequest, DepositRight, DispatchControl,
     EnvelopeDeposit, LocalV1DepositEndpointResolver, RetryAdvice, TransportFailure,
     TransportFailureCode, WelcomeDeliveryCoordinator, WelcomeOutboxPort,
 };
+use std::io::{Read, Write};
+use std::path::Path;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+use storage_sqlcipher::fault_testing;
+use storage_sqlcipher::fault_testing::{BarrierFailure, CaseId, FaultObserver, Scenario};
 use storage_sqlcipher::fault_testing::{WelcomeBarrier, WelcomeCheckpoint};
+use storage_sqlcipher::{MAXIMUM_WELCOME_DELIVERY_ATTEMPTS, SqlCipherStorage, VaultKey};
+use zeroize::Zeroizing;
 
 pub(super) const CONFIG: &str = "welcome.config";
 pub(super) const BASELINE: &str = "baseline.sqlite3";
