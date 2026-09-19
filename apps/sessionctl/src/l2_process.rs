@@ -23,53 +23,16 @@
 //! use sessionctl::l2_process::promote_l2_evidence;
 //! ```
 
-use std::{
-    ffi::OsStr,
-    fmt::Write as _,
-    fs::{self, File, OpenOptions},
-    io::{Read, Write},
-    path::{Path, PathBuf},
-    process::{Child, ChildStdin, Command, ExitStatus, Stdio},
-    sync::mpsc::{self, Receiver, RecvTimeoutError},
-    thread::{self, JoinHandle},
-    time::{Duration, Instant},
-};
+use std::time::Duration;
 
-use aws_lc_rs::digest::{SHA256, digest};
-use mls_rs_core::{
-    group::{GroupState, GroupStateStorage},
-    key_package::KeyPackageStorage,
-};
-use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
-use session_crypto_mls::{
-    SessionGroupId, WelcomeMessage, create_client, create_durable_client_with_storage,
-    create_key_package_validator, load_durable_client_with_storage,
-};
-use session_protocol::{DepositCapability, LocalWelcomeDepositEndpoint, OpaqueEnvelope};
-use storage_sqlcipher::{
-    InvitationState, InviterJoinTransaction, JoinerTransaction, MAXIMUM_WELCOME_DELIVERY_ATTEMPTS,
-    PersistenceFault, SqlCipherStorage, StoreError, VaultKey, WelcomeOutboxState, fault_testing,
-};
-use zeroize::{Zeroize, Zeroizing};
-
-use self::fault_testing::{
-    BarrierFailure, BarrierTransport, CONTROL_FRAME_BYTES, CaseId, Checkpoint, ControlFrame,
-    FaultObserver, FrameKind, OracleState, Role, Scenario,
-};
-use super::{
-    SessionCtlError, provenance::repository_dirty_at, random_nonzero,
-    resolve_l1_process_git_commit, stage,
-};
+use storage_sqlcipher::fault_testing::CONTROL_FRAME_BYTES;
 
 mod controller;
 mod database;
 mod execution;
-use database::{
-    L2ArtifactSnapshot, collect_evidence_binding, encrypted_artifact_snapshot,
-    open_keyed_connection, prove_database_handle_cleanup, schema_fingerprint, table_count,
-    verify_connection_configuration,
-};
 mod fixtures;
+mod io_model;
+mod model;
 mod resources;
 mod verifier;
 mod writer;
@@ -78,37 +41,11 @@ pub use controller::{
     run_l2_io_pause_writer, run_l2_process_baseline, run_l2_process_case,
     run_l2_process_internal_role, run_l2_process_probe,
 };
-use fixtures::{
-    CaseFixture, inject_defective_schema, inject_identity_loss, inject_inviter_lifecycle_defect,
-    inject_joiner_retained_key_package, inject_mixed_group, inject_reservation_substitution,
-    prepare_baseline, read_fixture, read_optional_welcome_canary,
-};
-#[cfg(test)]
-use resources::PipeReader;
-use resources::{
-    AutoContinueBarrier, ManagedChild, ProcessRoot, StdioBarrier, git_dirty_at, hex,
-    lock_digest_at, pinned_toolchain_at, read_bounded_owned_file, read_bounded_owned_file_once,
-    read_bounded_repository_file, read_case_config, read_key, read_owned_file, repository_root,
-    sanitize_environment, validate_owned_file, validate_root, write_bounded_owned_file,
-    write_owned_file,
-};
-#[cfg(test)]
-use verifier::CheckpointTraversal;
-use verifier::{advance_writer_to_target, database_digest, inject_retry_mutation, run_verifier};
-use writer::{fixture_endpoint, run_real_storage_transaction, run_writer};
-mod io_model;
-mod model;
-use execution::{ExecutableSnapshot, ExecutionIdentity};
 pub use io_model::{
     L2IoBaselineObservation, L2IoBaselineReport, L2IoDriverObservation, L2IoFaultDriver,
     L2IoFaultMode, L2IoFaultObservation, L2IoFaultReport, L2IoFileRole, L2IoOperation,
     L2IoPauseDriver, L2IoPauseKillReport, L2IoPauseObservation, L2IoPauseSweepReport,
     L2IoSweepReport, L2IoSweepTarget,
-};
-use io_model::{L2IoPauseSweepCase, l2_io_pause_supported};
-use model::{
-    CaseConfig, L2EvidenceBinding, L2EvidenceCase, L2EvidenceCaseTarget, canonical_evidence_cases,
-    oracle_label, pass_fail,
 };
 pub use model::{
     L2HarnessProbe, L2ProcessBaseline, L2ProcessCase, L2ProcessReport, L2ProcessSweepReport,

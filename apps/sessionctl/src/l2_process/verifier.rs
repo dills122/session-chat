@@ -1,6 +1,38 @@
 //! Fresh-process L2 verifier and complete-state oracle.
 
-use super::*;
+use super::database::{
+    open_keyed_connection, schema_fingerprint, table_count, verify_connection_configuration,
+};
+use super::fixtures::{CaseFixture, read_fixture};
+use super::model::{L2HarnessProbe, L2ProcessCase, oracle_label};
+use super::resources::{
+    ManagedChild, read_bounded_owned_file, read_bounded_owned_file_once, read_case_config, read_key,
+};
+use super::writer::fixture_endpoint;
+use super::{
+    APPROVAL_RECORD, BASELINE_NOW, CASE_WAIT, DATABASE_NAME, EXPECTED_SCHEMA_VERSION, FRAME_WAIT,
+    KEY_BYTES, MAX_APPLICATION_CHECKPOINTS, MAX_DATABASE_BYTES, OUTBOX_EXPIRES_AT,
+    RESERVATION_EXPIRES_AT, SCHEMA_FINGERPRINT_SHA256, VERIFIER_CASE_FIXTURE_NAME,
+    VERIFIER_KEY_NAME, WELCOME_FIXTURE_NAME,
+};
+use crate::{SessionCtlError, stage};
+use aws_lc_rs::digest::{SHA256, digest};
+use mls_rs_core::group::{GroupState, GroupStateStorage};
+use mls_rs_core::key_package::KeyPackageStorage;
+use rusqlite::{Connection, OptionalExtension, params};
+use session_crypto_mls::{SessionGroupId, WelcomeMessage, load_durable_client_with_storage};
+use session_protocol::OpaqueEnvelope;
+use std::path::Path;
+use std::thread;
+use std::time::{Duration, Instant};
+use storage_sqlcipher::fault_testing::{
+    CONTROL_FRAME_BYTES, Checkpoint, ControlFrame, OracleState, Role, Scenario,
+};
+use storage_sqlcipher::{
+    InvitationState, InviterJoinTransaction, JoinerTransaction, MAXIMUM_WELCOME_DELIVERY_ATTEMPTS,
+    PersistenceFault, SqlCipherStorage, StoreError, VaultKey, WelcomeOutboxState,
+};
+use zeroize::Zeroizing;
 
 pub(super) fn run_verifier(root: &Path) -> Result<(), SessionCtlError> {
     let config = read_case_config(root)?;
