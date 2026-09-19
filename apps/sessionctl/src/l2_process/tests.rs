@@ -131,6 +131,10 @@ fn pipe_failures_keep_distinct_secret_free_causes() {
         reader.collect(Duration::from_millis(1)),
         Err(SessionCtlError::Stage("L2 output timeout"))
     ));
+    assert!(matches!(
+        reader.read_exact_frame(1, Duration::from_millis(1)),
+        Err(SessionCtlError::Stage("L2 frame timeout"))
+    ));
     drop(sender);
     assert!(matches!(
         reader.collect(CHILD_WAIT),

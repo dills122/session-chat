@@ -34,6 +34,12 @@ retained L2 implementation does not relabel graceful L1 evidence, and it does
 not authorize production, power-loss, rollback-resistance, secure-deletion, or
 platform-key-custody claims.
 
+The checked harness retains its two-second child-exit deadline so a stalled
+verifier is killed promptly. Once a child has exited or been reaped, its bounded
+stdout and stderr readers have a separate ten-second EOF deadline. This
+accommodates intermittent Windows pipe-drain delays without accepting a
+lingering child or unbounded output.
+
 The canonical scenario and layer definitions remain in
 [`REAL_WORLD_E2E_TESTING.md`](REAL_WORLD_E2E_TESTING.md). ADR 0017 retains the
 SQLCipher laboratory decision, and ADR 0021 retains the existing graceful L1

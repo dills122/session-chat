@@ -199,8 +199,8 @@ fn kill_case(
         return Err(stage("L2 Welcome engine pause target"));
     }
     child.terminate_and_reap()?;
-    let stdout = child.stdout.collect(CHILD_WAIT)?;
-    let stderr = child.stderr.collect(CHILD_WAIT)?;
+    let stdout = child.stdout.collect(PIPE_DRAIN_WAIT)?;
+    let stderr = child.stderr.collect(PIPE_DRAIN_WAIT)?;
     drop(child);
     if !stderr.is_empty() {
         return Err(stage("L2 Welcome engine diagnostic"));
@@ -209,8 +209,8 @@ fn kill_case(
     if !verifier.wait(CASE_WAIT)?.success() {
         return Err(stage("L2 Welcome engine verifier"));
     }
-    let output = verifier.stdout.collect(CHILD_WAIT)?;
-    verifier.stderr.require_empty(CHILD_WAIT)?;
+    let output = verifier.stdout.collect(PIPE_DRAIN_WAIT)?;
+    verifier.stderr.require_empty(PIPE_DRAIN_WAIT)?;
     drop(verifier);
     let observed = welcome::verified_state(&output)?;
     prove_database_handle_cleanup(path)?;

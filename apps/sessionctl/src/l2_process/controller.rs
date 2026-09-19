@@ -499,8 +499,8 @@ fn verify_l2_io_root(
     if !status.success() {
         return Err(stage("L2 I/O verifier"));
     }
-    let stdout = verifier.stdout.collect(CHILD_WAIT)?;
-    let stderr = verifier.stderr.collect(CHILD_WAIT)?;
+    let stdout = verifier.stdout.collect(PIPE_DRAIN_WAIT)?;
+    let stderr = verifier.stderr.collect(PIPE_DRAIN_WAIT)?;
     if !stderr.is_empty() || root.join(VERIFIER_KEY_NAME).exists() {
         return Err(stage("L2 I/O verifier output"));
     }
@@ -634,8 +634,8 @@ fn run_controller(
         L2HarnessProbe::Stall => return Err(stage("L2 checkpoint timeout")),
         L2HarnessProbe::IoFault => return Err(stage("L2 process probe")),
     }
-    writer.stdout.require_empty(CHILD_WAIT)?;
-    writer.stderr.require_empty(CHILD_WAIT)?;
+    writer.stdout.require_empty(PIPE_DRAIN_WAIT)?;
+    writer.stderr.require_empty(PIPE_DRAIN_WAIT)?;
     if welcome_canary.is_none() {
         welcome_canary = read_optional_welcome_canary(root)?;
     }
@@ -674,8 +674,8 @@ fn run_controller(
     if !status.success() {
         return Err(stage("L2 verifier"));
     }
-    let stdout = verifier.stdout.collect(CHILD_WAIT)?;
-    let stderr = verifier.stderr.collect(CHILD_WAIT)?;
+    let stdout = verifier.stdout.collect(PIPE_DRAIN_WAIT)?;
+    let stderr = verifier.stderr.collect(PIPE_DRAIN_WAIT)?;
     let expected = config.case()?.expected();
     if !stderr.is_empty() {
         return Err(stage("L2 verifier output"));
