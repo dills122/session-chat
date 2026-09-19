@@ -15,7 +15,7 @@ session-protocol = { version = "=0.1.0", path = "../session-protocol" }
 zeroize.workspace = true
 
 [dev-dependencies]
-hpke = { version = "=0.14.0", default-features = false, features = ["alloc", "aes", "x25519"] }
+hpke = { version = "=0.14.1", default-features = false, features = ["alloc", "aes", "x25519"] }
 
 [lints]
 workspace = true
