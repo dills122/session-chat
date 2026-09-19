@@ -34,6 +34,11 @@ retained L2 implementation does not relabel graceful L1 evidence, and it does
 not authorize production, power-loss, rollback-resistance, secure-deletion, or
 platform-key-custody claims.
 
+The checked harness bounds child exit and post-exit pipe draining to ten seconds
+per wait. Windows CI has intermittently exceeded the earlier two-second drain
+window after a child exited; the longer bound still fails closed on missing EOF
+and is recorded as `child_wait_ms` in candidate evidence.
+
 The canonical scenario and layer definitions remain in
 [`REAL_WORLD_E2E_TESTING.md`](REAL_WORLD_E2E_TESTING.md). ADR 0017 retains the
 SQLCipher laboratory decision, and ADR 0021 retains the existing graceful L1

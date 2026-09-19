@@ -76,7 +76,8 @@ const MAX_TOOLCHAIN_BYTES: usize = 4_096;
 const MAX_DATABASE_BYTES: usize = 64 * 1024 * 1024;
 const MAX_APPLICATION_CHECKPOINTS: usize = 192;
 const FRAME_WAIT: Duration = Duration::from_secs(1);
-const CHILD_WAIT: Duration = Duration::from_secs(2);
+// Allow a bounded post-exit pipe drain on busy Windows runners.
+const CHILD_WAIT: Duration = Duration::from_secs(10);
 const CASE_WAIT: Duration = Duration::from_secs(120);
 const POLL_INTERVAL: Duration = Duration::from_millis(5);
 const BASELINE_NOW: u64 = 1_900_000_000;
