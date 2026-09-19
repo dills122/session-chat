@@ -357,6 +357,75 @@ impl L2EvidenceCase {
     }
 }
 
+#[derive(Clone, Copy)]
+pub(super) struct CaseConfig {
+    pub(super) target: ControlFrame,
+    pub(super) probe: L2HarnessProbe,
+}
+
+impl CaseConfig {
+    pub(super) fn encode(self) -> [u8; CASE_CONFIG_BYTES] {
+        let mut encoded = [0_u8; CASE_CONFIG_BYTES];
+        encoded[..CONTROL_FRAME_BYTES].copy_from_slice(&self.target.encode());
+        encoded[CONTROL_FRAME_BYTES] = self.probe.code();
+        encoded
+    }
+
+    pub(super) fn decode(encoded: &[u8]) -> Result<Self, SessionCtlError> {
+        if encoded.len() != CASE_CONFIG_BYTES {
+            return Err(stage("L2 case config"));
+        }
+        let target = ControlFrame::decode(&encoded[..CONTROL_FRAME_BYTES])
+            .map_err(|_| stage("L2 case config"))?;
+        let probe = L2HarnessProbe::try_from(encoded[CONTROL_FRAME_BYTES])?;
+        if target.kind() != FrameKind::Checkpoint
+            || target.role() != Role::Writer
+            || L2ProcessCase::new(target.checkpoint(), target.occurrence()).is_err()
+        {
+            return Err(stage("L2 case config"));
+        }
+        Ok(Self { target, probe })
+    }
+
+    pub(super) fn case(self) -> Result<L2ProcessCase, SessionCtlError> {
+        L2ProcessCase::new(self.target.checkpoint(), self.target.occurrence())
+    }
+}
+
+pub(super) const fn pass_fail(value: bool) -> &'static str {
+    if value { "pass" } else { "fail" }
+}
+
+pub(super) fn canonical_evidence_cases(
+    mut cases: Vec<L2EvidenceCase>,
+) -> Result<Vec<L2EvidenceCase>, SessionCtlError> {
+    if cases.is_empty() || cases.len() > 4_096 {
+        return Err(stage("L2 evidence case index"));
+    }
+    cases.sort_by(|left, right| left.key.cmp(&right.key));
+    let first = cases
+        .first()
+        .ok_or_else(|| stage("L2 evidence case index"))?;
+    if cases.windows(2).any(|pair| pair[0].key == pair[1].key)
+        || cases.iter().any(|case| {
+            case.key.is_empty()
+                || case.key.len() > 256
+                || !case
+                    .key
+                    .bytes()
+                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+                || case.binding.sqlcipher_version != first.binding.sqlcipher_version
+                || case.binding.sqlite_version != first.binding.sqlite_version
+                || case.binding.executables.is_none()
+                || case.binding.executables != first.binding.executables
+                || !case.binding.redaction
+        })
+    {
+        return Err(stage("L2 evidence case index"));
+    }
+    Ok(cases)
+}
+
 /// Baseline-observed application checkpoints for one real storage transaction.
 pub struct L2ProcessBaseline {
     pub(super) executables: Option<ExecutionIdentity>,

@@ -73,7 +73,6 @@ mod fixtures;
 mod resources;
 mod verifier;
 mod writer;
-use controller::{CaseConfig, canonical_evidence_cases, pass_fail};
 pub use controller::{
     L2IoPauseKillCase, prepare_l2_io_pause_kill_case, run_l2_io_baseline, run_l2_io_fault_case,
     run_l2_io_pause_writer, run_l2_process_baseline, run_l2_process_case,
@@ -107,7 +106,10 @@ pub use io_model::{
     L2IoSweepReport, L2IoSweepTarget,
 };
 use io_model::{L2IoPauseSweepCase, l2_io_pause_supported};
-use model::{L2EvidenceBinding, L2EvidenceCase, L2EvidenceCaseTarget, oracle_label};
+use model::{
+    CaseConfig, L2EvidenceBinding, L2EvidenceCase, L2EvidenceCaseTarget, canonical_evidence_cases,
+    oracle_label, pass_fail,
+};
 pub use model::{
     L2HarnessProbe, L2ProcessBaseline, L2ProcessCase, L2ProcessReport, L2ProcessSweepReport,
 };
