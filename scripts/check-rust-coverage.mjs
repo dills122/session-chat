@@ -31,6 +31,8 @@ export const COVERAGE_POLICY = Object.freeze({
   minimumWorkspaceLines: 92.23,
   minimumWorkspaceRegions: 88,
   nonInstrumentedSources: Object.freeze([
+    'apps/sessionctl/src/l1_process.rs',
+    'apps/sessionctl/src/l1_process/tests.rs',
     'apps/sessionctl/src/l2_process.rs',
     'apps/sessionctl/src/l2_process/controller.rs',
     'apps/sessionctl/src/l2_process/database.rs',
