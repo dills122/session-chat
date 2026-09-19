@@ -16,8 +16,8 @@ use super::verifier::{database_digest, inject_retry_mutation};
 use super::writer::{fixture_endpoint, run_real_storage_transaction};
 use super::{
     BASELINE_NOW, CASE_WAIT, CHILD_WAIT, DATABASE_NAME, EXPECTED_SCHEMA_VERSION,
-    MAX_DATABASE_BYTES, OUTBOX_EXPIRES_AT, SCHEMA_FINGERPRINT_SHA256, VERIFIER_KEY_NAME,
-    WELCOME_FIXTURE_NAME, WRITER_KEY_NAME,
+    MAX_DATABASE_BYTES, OUTBOX_EXPIRES_AT, PIPE_DRAIN_WAIT, SCHEMA_FINGERPRINT_SHA256,
+    VERIFIER_KEY_NAME, WELCOME_FIXTURE_NAME, WRITER_KEY_NAME,
 };
 use crate::{SessionCtlError, random_nonzero, stage};
 use rusqlite::Connection;

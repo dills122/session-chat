@@ -14,7 +14,7 @@ use super::resources::{
 };
 use super::welcome::{self, WelcomeWorkload};
 use super::{
-    CASE_WAIT, CHILD_WAIT, DATABASE_NAME, POLL_INTERVAL, VERIFIER_KEY_NAME, WRITER_KEY_NAME,
+    CASE_WAIT, DATABASE_NAME, PIPE_DRAIN_WAIT, POLL_INTERVAL, VERIFIER_KEY_NAME, WRITER_KEY_NAME,
 };
 use crate::{SessionCtlError, random_nonzero, stage};
 use session_transport::WelcomeOutboxPort;
