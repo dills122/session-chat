@@ -4,6 +4,9 @@ Status: accepted for a bounded conformance laboratory; production baseline unsel
 
 Date: 2026-08-24
 
+The AWS-LC dependency pin in this decision is superseded by ADR 0036; the
+portable record and suite contracts remain unchanged.
+
 ## Context
 
 ADRs 0016 and 0017 leave the durable database key outside the database, while

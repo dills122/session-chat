@@ -1,0 +1,114 @@
+# Based on the crates.io 0.25.0 manifest. Only the AWS-LC version pins differ.
+# See README.md and docs/adr/0036-update-aws-lc-for-patched-rustls.md.
+
+[package]
+edition = "2021"
+name = "mls-rs-crypto-awslc"
+version = "0.25.0"
+build = false
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
+description = "AWS-LC based CryptoProvider for mls-rs"
+homepage = "https://github.com/awslabs/mls-rs"
+readme = false
+keywords = [
+    "mls",
+    "mls-rs",
+    "aws-lc",
+]
+license = "Apache-2.0 OR MIT"
+repository = "https://github.com/awslabs/mls-rs"
+
+[features]
+default = ["non-fips"]
+fips = [
+    "aws-lc-rs/fips",
+    "dep:aws-lc-fips-sys",
+]
+non-fips = [
+    "aws-lc-rs/aws-lc-sys",
+    "dep:aws-lc-sys",
+]
+post-quantum = [
+    "aws-lc-rs/unstable",
+    "mls-rs-core/post-quantum",
+]
+
+[lib]
+name = "mls_rs_crypto_awslc"
+path = "src/lib.rs"
+
+[[test]]
+name = "cipher_suite_builder"
+path = "tests/cipher_suite_builder.rs"
+
+[dependencies.aws-lc-fips-sys]
+version = "=0.13.14"
+optional = true
+
+[dependencies.aws-lc-rs]
+version = "=1.18.1"
+features = ["alloc"]
+default-features = false
+
+[dependencies.aws-lc-sys]
+version = "=0.45.0"
+optional = true
+
+[dependencies.maybe-async]
+version = "0.2.10"
+
+[dependencies.mls-rs-core]
+version = "0.27.0"
+
+[dependencies.mls-rs-crypto-hpke]
+version = "0.21.0"
+
+[dependencies.mls-rs-crypto-traits]
+version = "0.22.0"
+
+[dependencies.mls-rs-identity-x509]
+version = "0.21.0"
+
+[dependencies.thiserror]
+version = "2"
+
+[dependencies.zeroize]
+version = "1"
+features = ["zeroize_derive"]
+
+[dev-dependencies.assert_matches]
+version = "1.5.0"
+
+[dev-dependencies.futures-test]
+version = "0.3.25"
+
+[dev-dependencies.hex]
+version = "0.4"
+features = ["serde"]
+
+[dev-dependencies.mls-rs-core]
+version = "0.27.0"
+features = ["test_suite"]
+
+[dev-dependencies.mls-rs-crypto-hpke]
+version = "0.21.0"
+features = ["test_utils"]
+
+[dev-dependencies.serde]
+version = "1.0"
+features = ["derive"]
+
+[dev-dependencies.serde_json]
+version = "1.0"
+
+[target."cfg(mls_build_async)".dependencies.async-trait]
+version = "0.1.74"
+
+[lints.rust.unexpected_cfgs]
+level = "warn"
+priority = 0
+check-cfg = ["cfg(mls_build_async)"]

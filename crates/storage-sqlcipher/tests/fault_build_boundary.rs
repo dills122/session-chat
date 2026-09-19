@@ -5,14 +5,19 @@ use std::{fs, process::Command};
 #[test]
 fn ordinary_build_does_not_export_fault_testing() {
     let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let workspace_root = manifest_dir
+        .parent()
+        .and_then(std::path::Path::parent)
+        .expect("workspace root");
+    let provider_patch = workspace_root.join("vendor/mls-rs-crypto-awslc");
     let fixture_owner = test_private_dir::PrivateDir::new().expect("private compile fixture");
     let fixture_root = fixture_owner.path().to_owned();
     fs::create_dir_all(fixture_root.join("src")).expect("fixture directory");
     fs::write(
         fixture_root.join("Cargo.toml"),
         format!(
-            "[package]\nname = \"fault-module-unavailable\"\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n\n[dependencies]\nstorage-sqlcipher = {{ path = {:?} }}\n\n[workspace]\n",
-            manifest_dir
+            "[package]\nname = \"fault-module-unavailable\"\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n\n[dependencies]\nstorage-sqlcipher = {{ path = {:?} }}\n\n[patch.crates-io]\nmls-rs-crypto-awslc = {{ path = {:?} }}\n\n[workspace]\n",
+            manifest_dir, provider_patch
         ),
     )
     .expect("fixture manifest");
@@ -25,13 +30,7 @@ fn ordinary_build_does_not_export_fault_testing() {
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
     let target_dir = std::env::var_os("CARGO_TARGET_DIR")
         .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| {
-            manifest_dir
-                .parent()
-                .and_then(std::path::Path::parent)
-                .expect("workspace root")
-                .join("target")
-        });
+        .unwrap_or_else(|| workspace_root.join("target"));
     let output = Command::new(cargo)
         .arg("check")
         .arg("--offline")
