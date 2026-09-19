@@ -62,10 +62,19 @@ The policy makes these distinctions explicit:
 
 <!-- coverage-policy:non-instrumented-sources:start -->
 - `apps/sessionctl/src/l2_process.rs`
+- `apps/sessionctl/src/l2_process/controller.rs`
+- `apps/sessionctl/src/l2_process/database.rs`
 - `apps/sessionctl/src/l2_process/evidence.rs`
 - `apps/sessionctl/src/l2_process/execution.rs`
+- `apps/sessionctl/src/l2_process/fixtures.rs`
+- `apps/sessionctl/src/l2_process/io_model.rs`
+- `apps/sessionctl/src/l2_process/model.rs`
+- `apps/sessionctl/src/l2_process/resources.rs`
+- `apps/sessionctl/src/l2_process/tests.rs`
+- `apps/sessionctl/src/l2_process/verifier.rs`
 - `apps/sessionctl/src/l2_process/welcome.rs`
 - `apps/sessionctl/src/l2_process/welcome_io.rs`
+- `apps/sessionctl/src/l2_process/writer.rs`
 - `crates/session-native-fs/src/lib.rs`
 - `crates/session-native-fs/src/windows.rs`
 - `crates/storage-sqlcipher-fault-vfs/src/lib.rs`
@@ -73,7 +82,7 @@ The policy makes these distinctions explicit:
 - `crates/transport-conformance/src/lib.rs`
 <!-- coverage-policy:non-instrumented-sources:end -->
 
-The five `l2_process` files and `storage-sqlcipher` fault module exist only
+The `l2_process` files and `storage-sqlcipher` fault module exist only
 under registered checked fault-testing cfgs; their checked-cfg commands remain
 separate retained evidence. The `session-native-fs` crate is Windows-only: its
 crate root contains only a gated module and re-exports on the Linux coverage

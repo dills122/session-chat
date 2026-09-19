@@ -67,10 +67,19 @@ const policy = {
 
 const APPROVED_NON_INSTRUMENTED_SOURCES = [
   'apps/sessionctl/src/l2_process.rs',
+  'apps/sessionctl/src/l2_process/controller.rs',
+  'apps/sessionctl/src/l2_process/database.rs',
   'apps/sessionctl/src/l2_process/evidence.rs',
   'apps/sessionctl/src/l2_process/execution.rs',
+  'apps/sessionctl/src/l2_process/fixtures.rs',
+  'apps/sessionctl/src/l2_process/io_model.rs',
+  'apps/sessionctl/src/l2_process/model.rs',
+  'apps/sessionctl/src/l2_process/resources.rs',
+  'apps/sessionctl/src/l2_process/tests.rs',
+  'apps/sessionctl/src/l2_process/verifier.rs',
   'apps/sessionctl/src/l2_process/welcome.rs',
   'apps/sessionctl/src/l2_process/welcome_io.rs',
+  'apps/sessionctl/src/l2_process/writer.rs',
   'crates/session-native-fs/src/lib.rs',
   'crates/session-native-fs/src/windows.rs',
   'crates/storage-sqlcipher-fault-vfs/src/lib.rs',
@@ -165,6 +174,7 @@ test('ordinary production coverage explicitly excludes checked-cfg fault modules
   for (const source of [
     'apps/sessionctl/src/l2_process.rs',
     'apps/sessionctl/src/l2_process/evidence.rs',
+    'apps/sessionctl/src/l2_process/verifier.rs',
     'crates/storage-sqlcipher/src/fault_testing.rs',
   ]) {
     assert.ok(COVERAGE_POLICY.nonInstrumentedSources.includes(source), source);
