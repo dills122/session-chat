@@ -66,6 +66,8 @@ const policy = {
 };
 
 const APPROVED_NON_INSTRUMENTED_SOURCES = [
+  'apps/sessionctl/src/l1_process.rs',
+  'apps/sessionctl/src/l1_process/tests.rs',
   'apps/sessionctl/src/l2_process.rs',
   'apps/sessionctl/src/l2_process/evidence.rs',
   'apps/sessionctl/src/l2_process/execution.rs',
@@ -166,6 +168,15 @@ test('ordinary production coverage explicitly excludes checked-cfg fault modules
     'apps/sessionctl/src/l2_process.rs',
     'apps/sessionctl/src/l2_process/evidence.rs',
     'crates/storage-sqlcipher/src/fault_testing.rs',
+  ]) {
+    assert.ok(COVERAGE_POLICY.nonInstrumentedSources.includes(source), source);
+  }
+});
+
+test('L1 facade and unit-test module are explicitly outside integration-target instrumentation', () => {
+  for (const source of [
+    'apps/sessionctl/src/l1_process.rs',
+    'apps/sessionctl/src/l1_process/tests.rs',
   ]) {
     assert.ok(COVERAGE_POLICY.nonInstrumentedSources.includes(source), source);
   }
