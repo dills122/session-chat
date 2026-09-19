@@ -261,6 +261,8 @@ checkpoint is distinct from that immutable tested code revision.
   replaces PATH-selected Git and rustc with in-process status and build-bound compiler identity.
 - [Capability-bound local artifact handling](adr/0035-bind-local-artifacts-to-created-filesystem-objects.md)
   binds L1 cleanup to retained directory authority and Fast Windows handoffs to verified native handles.
+- [Patched rustls dependency graph](adr/0036-update-aws-lc-for-patched-rustls.md)
+  records the AWS-LC provider manifest patch needed to remove a vulnerable TLS dependency.
 - [Architecture decision records](adr/) record the foundational decisions that
   other documents rely on.
 

@@ -85,6 +85,14 @@ The proposed v2 product replaces it with client-owned MLS sessions, encrypted
 pre-membership rendezvous, optional external admission evidence, and pluggable
 delivery transports.
 
+ADR 0036 updates the locked TLS and AWS-LC graph after RUSTSEC-2026-0285.
+`rustls` 0.23.45 rejects the reported TLS 1.3 encryption-level crossing;
+`aws-lc-rs` 1.18.1 also replaces the earlier provider version in the MLS, HPKE,
+key-wrapper, and FastV1 laboratory graph. The local `mls-rs-crypto-awslc`
+package changes only its AWS-LC dependency pins because upstream 0.25.0 still
+pins the old pair. This remediation does not make the local provider patch an
+upstream-reviewed release or establish production cryptographic assurance.
+
 This document is repository-scoped. It covers both:
 
 - The archived v1 trust failures that future work must not reintroduce.

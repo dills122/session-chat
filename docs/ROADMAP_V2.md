@@ -228,10 +228,12 @@ passage remains per-revision three-OS evidence, so this adds no power-loss,
 filesystem, rollback-resistance, or production-durability claim.
 
 ADR 0019 and `key-protector-passphrase` now retain the bounded portable
-key-wrapper conformance experiment: exact Argon2id 0.5.3 and AWS-LC 1.16.3
+key-wrapper conformance experiment: exact Argon2id 0.5.3 and AWS-LC 1.18.1
 AES-256-GCM, one fixed measurement profile, a closed 102-byte record,
 authentication to the expected `SessionId`, coarse failures, and hostile-input
 pre-work bounds.
+ADR 0036 records the AWS-LC provider update needed for patched rustls while
+preserving the wrapped-record contract and existing fixtures.
 This completes the isolated construction and bounded lifecycle-orchestration
 checkpoints. The adapter now implements the exact-session protector and consumes
 a one-shot credential without retaining it, but does not supply SQLCipher or

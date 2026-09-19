@@ -395,11 +395,13 @@ production-provider conformance and packet-captured evidence remain later work.
   CI before native enhanced modes.
 - **Bounded construction selected for conformance only:** ADR 0019 and
   `key-protector-passphrase` fix exact RustCrypto `argon2` 0.5.3 with only its
-  `zeroize` feature, AWS-LC 1.16.3 AES-256-GCM, one fixed RFC 9106-derived
+  `zeroize` feature, AWS-LC 1.18.1 AES-256-GCM, one fixed RFC 9106-derived
   measurement profile, and a closed expected-`SessionId`-bound 102-byte record.
   ADR 0020 now wires its exact-session protector only to the deterministic
   vault lifecycle through a bounded one-shot credential/result contract. This
   is not the selected production baseline and is not wired to SQLCipher.
+  ADR 0036 records the AWS-LC dependency update while retaining the same
+  laboratory record contract and fixture checks.
 - Measure the fixed Argon2id `m=65,536 KiB`, `t=3`, `p=4` profile's wall-clock
   latency and peak memory on minimum supported Linux, macOS, and Windows
   hardware, including low-memory and concurrent-load behavior. CI conformance

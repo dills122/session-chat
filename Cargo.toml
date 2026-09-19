@@ -26,6 +26,11 @@ resolver = "3"
 edition = "2024"
 license = "MIT"
 
+[patch.crates-io]
+# Upstream 0.25.0 pins aws-lc-rs 1.16.3, which conflicts with patched rustls.
+# See docs/adr/0036-update-aws-lc-for-patched-rustls.md.
+mls-rs-crypto-awslc = { path = "vendor/mls-rs-crypto-awslc" }
+
 # Keep all checked L2 executables, including the library test controller,
 # within the evidence reader's 256 MiB bound on Linux. Dependencies also
 # retain file/line information rather than full debug data.
@@ -36,7 +41,7 @@ debug = 1
 argon2 = { version = "=0.6.0", default-features = false, features = ["zeroize"] }
 cap-std = "=4.0.3"
 ed25519-dalek = { version = "=3.0.0", default-features = false, features = ["fast", "zeroize"] }
-aws-lc-rs = { version = "=1.16.3", default-features = false, features = ["non-fips"] }
+aws-lc-rs = { version = "=1.18.1", default-features = false, features = ["non-fips"] }
 git2 = { version = "=0.21.0", default-features = false, features = ["vendored-libgit2"] }
 iroh = { version = "=1.1.0", default-features = false, features = ["portmapper", "tls-aws-lc-rs"] }
 libc = "=0.2.189"
