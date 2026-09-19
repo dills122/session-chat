@@ -745,8 +745,8 @@ fn run_case(
             return Err(stage("L2 Welcome writer"));
         }
     }
-    writer.stdout.require_empty(CHILD_WAIT)?;
-    writer.stderr.require_empty(CHILD_WAIT)?;
+    writer.stdout.require_empty(PIPE_DRAIN_WAIT)?;
+    writer.stderr.require_empty(PIPE_DRAIN_WAIT)?;
     drop(writer);
     if defect {
         inject_retry_mutation(path, &key, &fixture, Scenario::InviterTransaction)?;
@@ -755,8 +755,8 @@ fn run_case(
     if !verifier.wait(CASE_WAIT)?.success() {
         return Err(stage("L2 Welcome verifier"));
     }
-    let output = verifier.stdout.collect(CHILD_WAIT)?;
-    verifier.stderr.require_empty(CHILD_WAIT)?;
+    let output = verifier.stdout.collect(PIPE_DRAIN_WAIT)?;
+    verifier.stderr.require_empty(PIPE_DRAIN_WAIT)?;
     let observed = verified_state(&output)?;
     let committed = target.is_none_or(|i| workload.trace()[..=i].contains(&5));
     let last = target.map_or(

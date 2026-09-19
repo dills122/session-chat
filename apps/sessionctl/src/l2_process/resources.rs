@@ -435,7 +435,7 @@ impl PipeReader {
             .checked_add(timeout)
             .ok_or_else(|| stage("L2 output deadline"))?;
         while self.buffered.len() < expected && !self.eof {
-            self.receive(deadline)?;
+            self.receive(deadline, "L2 frame timeout")?;
             if self.buffered.len() > expected {
                 return Err(stage("L2 output bound"));
             }
@@ -459,15 +459,19 @@ impl PipeReader {
             .checked_add(timeout)
             .ok_or_else(|| stage("L2 output deadline"))?;
         while !self.eof {
-            self.receive(deadline)?;
+            self.receive(deadline, "L2 output timeout")?;
         }
         Ok(std::mem::take(&mut self.buffered))
     }
 
-    pub(super) fn receive(&mut self, deadline: Instant) -> Result<(), SessionCtlError> {
+    pub(super) fn receive(
+        &mut self,
+        deadline: Instant,
+        timeout_stage: &'static str,
+    ) -> Result<(), SessionCtlError> {
         let remaining = deadline
             .checked_duration_since(Instant::now())
-            .ok_or_else(|| stage("L2 output timeout"))?;
+            .ok_or_else(|| stage(timeout_stage))?;
         match self.receiver.recv_timeout(remaining) {
             Ok(PipeMessage::Bytes(bytes)) => {
                 if self.buffered.len().saturating_add(bytes.len()) > MAX_CHILD_OUTPUT_BYTES {
@@ -483,7 +487,7 @@ impl PipeReader {
             Ok(PipeMessage::OverLimit) => Err(stage("L2 output bound")),
             Ok(PipeMessage::ReadFailed) => Err(stage("L2 output read")),
             Err(RecvTimeoutError::Disconnected) => Err(stage("L2 output disconnected")),
-            Err(RecvTimeoutError::Timeout) => Err(stage("L2 output timeout")),
+            Err(RecvTimeoutError::Timeout) => Err(stage(timeout_stage)),
         }
     }
 }
