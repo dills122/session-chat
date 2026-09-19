@@ -1,5 +1,9 @@
 //! Execution-time identity: run private snapshots, retain digests, reject source replacement.
-use super::*;
+use crate::{SessionCtlError, stage};
+use aws_lc_rs::digest::{SHA256, digest};
+use std::fs::{self, File, OpenOptions};
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
 const MAX_BINARY: u64 = 256 * 1024 * 1024;
 
 #[derive(Clone, Eq, PartialEq)]

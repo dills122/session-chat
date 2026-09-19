@@ -1,7 +1,31 @@
 //! Welcome commit-window kills through the existing named-VFS driver boundary.
-use super::welcome::WelcomeWorkload;
-use super::*;
+use super::database::{
+    collect_evidence_binding, encrypted_artifact_snapshot, prove_database_handle_cleanup,
+};
+use super::execution::{ExecutableSnapshot, ExecutionIdentity};
+use super::fixtures::read_optional_welcome_canary;
+use super::io_model::{
+    L2IoDriverObservation, L2IoFaultDriver, L2IoPauseDriver, L2IoSweepTarget, l2_io_pause_supported,
+};
+use super::model::{L2EvidenceCase, L2EvidenceCaseTarget, canonical_evidence_cases};
+use super::resources::{
+    AutoContinueBarrier, ManagedChild, ProcessRoot, read_key, read_owned_file,
+    sanitize_environment, validate_root, write_owned_file,
+};
+use super::welcome::{self, WelcomeWorkload};
+use super::{
+    CASE_WAIT, CHILD_WAIT, DATABASE_NAME, POLL_INTERVAL, VERIFIER_KEY_NAME, WRITER_KEY_NAME,
+};
+use crate::{SessionCtlError, random_nonzero, stage};
 use session_transport::WelcomeOutboxPort;
+use std::path::Path;
+use std::process::{Command, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
+use storage_sqlcipher::fault_testing;
+use storage_sqlcipher::fault_testing::{CaseId, FaultObserver, Scenario};
+use storage_sqlcipher::{SqlCipherStorage, VaultKey};
+use zeroize::Zeroizing;
 
 /// Complete baseline-derived Welcome SQLite commit-window evidence.
 pub struct WelcomeEngineSweepReport {

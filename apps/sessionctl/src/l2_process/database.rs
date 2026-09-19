@@ -1,6 +1,18 @@
 //! SQLCipher connection, schema, and evidence artifact inspection.
 
-use super::*;
+use super::evidence;
+use super::fixtures::CaseFixture;
+use super::model::L2EvidenceBinding;
+use super::resources::{hex, read_bounded_repository_file, validate_owned_file};
+use super::writer::fixture_endpoint;
+use super::{APPROVAL_RECORD, DATABASE_NAME, KEY_BYTES, MAX_DATABASE_BYTES};
+use crate::{SessionCtlError, stage};
+use aws_lc_rs::digest::{SHA256, digest};
+use rusqlite::{Connection, OpenFlags};
+use std::fmt::Write as _;
+use std::fs;
+use std::path::Path;
+use zeroize::{Zeroize, Zeroizing};
 
 pub(super) fn verify_connection_configuration(
     connection: &Connection,
