@@ -1,6 +1,11 @@
 //! SQLite I/O fault and pause report models.
 
-use super::*;
+use super::MAX_EVIDENCE_BYTES;
+use super::model::{
+    L2EvidenceBinding, L2EvidenceCase, canonical_evidence_cases, oracle_label, pass_fail,
+};
+use crate::{SessionCtlError, stage};
+use storage_sqlcipher::fault_testing::{OracleState, Scenario};
 
 /// Closed file roles retained by the L2 I/O evidence schema.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

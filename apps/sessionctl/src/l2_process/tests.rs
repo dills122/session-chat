@@ -1,5 +1,28 @@
 //! L2 harness local unit tests.
-use super::*;
+use super::database::{open_keyed_connection, schema_fingerprint};
+use super::execution::ExecutionIdentity;
+use super::io_model::{
+    L2IoBaselineObservation, L2IoBaselineReport, L2IoFileRole, L2IoOperation, L2IoPauseKillReport,
+    L2IoPauseObservation, L2IoPauseSweepReport, L2IoSweepTarget,
+};
+use super::model::{
+    L2EvidenceBinding, L2EvidenceCase, L2EvidenceCaseTarget, canonical_evidence_cases,
+};
+use super::resources::{ManagedChild, PipeReader, ProcessRoot, git_dirty_at, repository_root};
+use super::verifier::CheckpointTraversal;
+use super::{
+    CHILD_WAIT, DATABASE_NAME, KEY_BYTES, MAX_APPLICATION_CHECKPOINTS, MAX_CHILD_OUTPUT_BYTES,
+    SCHEMA_FINGERPRINT_SHA256,
+};
+use crate::SessionCtlError;
+use std::io::Read;
+use std::process::{Command, Stdio};
+use std::sync::mpsc;
+use std::thread;
+use std::time::{Duration, Instant};
+use storage_sqlcipher::fault_testing::{CaseId, Checkpoint, ControlFrame, OracleState, Scenario};
+use storage_sqlcipher::{SqlCipherStorage, VaultKey};
+use zeroize::Zeroizing;
 
 fn test_evidence_binding() -> L2EvidenceBinding {
     L2EvidenceBinding {
