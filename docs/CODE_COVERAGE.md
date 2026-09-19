@@ -61,6 +61,8 @@ The policy makes these distinctions explicit:
 ### Approved non-instrumented source allowances
 
 <!-- coverage-policy:non-instrumented-sources:start -->
+- `apps/sessionctl/src/l1_process.rs`
+- `apps/sessionctl/src/l1_process/tests.rs`
 - `apps/sessionctl/src/l2_process.rs`
 - `apps/sessionctl/src/l2_process/evidence.rs`
 - `apps/sessionctl/src/l2_process/execution.rs`
@@ -73,12 +75,15 @@ The policy makes these distinctions explicit:
 - `crates/transport-conformance/src/lib.rs`
 <!-- coverage-policy:non-instrumented-sources:end -->
 
-The five `l2_process` files and `storage-sqlcipher` fault module exist only
-under registered checked fault-testing cfgs; their checked-cfg commands remain
-separate retained evidence. The `session-native-fs` crate is Windows-only: its
-crate root contains only a gated module and re-exports on the Linux coverage
-host, while its native implementation is compiled, linted, tested, and scanned
-by the Windows Rust and Rust CodeQL jobs. The fault-VFS and
+The `l1_process` facade contains declarations, bounds, and re-exports but no
+executable function bodies. Its `tests.rs` module exists only under `cfg(test)`;
+integration-target instrumentation excludes it while the ordinary Rust CI job
+runs its unit tests. The five `l2_process` files and `storage-sqlcipher` fault
+module exist only under registered checked fault-testing cfgs; their checked-cfg
+commands remain separate retained evidence. The `session-native-fs` crate is
+Windows-only: its crate root contains only a gated module and re-exports on the
+Linux coverage host, while its native implementation is compiled, linted,
+tested, and scanned by the Windows Rust and Rust CodeQL jobs. The fault-VFS and
 transport-conformance crate roots contain declarations, re-exports, and
 constants but no executable function bodies. The checker requires every
 allowance to exist and fails if one becomes instrumented or stale.
