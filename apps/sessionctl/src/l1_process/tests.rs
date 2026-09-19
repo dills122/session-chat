@@ -1,6 +1,8 @@
 //! L1 process, IPC, root, and evidence unit tests.
 
 use super::super::MAILBOX_EXPIRES_AT;
+#[cfg(unix)]
+use super::ROOT_MARKER;
 use super::controller::run_l1_process_internal_role;
 use super::hostile::{HostileJoinCase, build_hostile_join_request};
 use super::ipc::{FrameKind, IpcFrame, atomic_write, read_bounded_wait};
@@ -10,21 +12,23 @@ use super::network::{
     read_bounded_wait_async, read_network_invitation, run_network_host_with_endpoint,
 };
 use super::resources::{
-    ChildSet, ManagedChild, ProcessRoot, bounded_command_status, create_private_directory,
-    direct_invitation_path, frame_name, fresh_process_root_path, lock_digest_at,
-    pinned_toolchain_at, read_bounded_file, validate_root,
+    ChildSet, ManagedChild, ProcessRoot, bounded_command_status, direct_invitation_path,
+    frame_name, fresh_process_root_path, lock_digest_at, pinned_toolchain_at, validate_root,
 };
+#[cfg(unix)]
+use super::resources::{create_private_directory, read_bounded_file};
 use super::roles::run_alice_init_with_wait;
 use super::{
     FRAME_WAIT, IPC_HEADER_BYTES, IPC_MAGIC, IPC_VERSION, MAX_EVIDENCE_BYTES, MAX_IPC_FRAME_BYTES,
     MAX_IPC_PARTS, MAX_LOCKFILE_BYTES, MAX_TOOLCHAIN_BYTES, NETWORK_OPERATION_WAIT,
-    PRIVATE_STATE_BYTES, ROOT_MARKER,
+    PRIVATE_STATE_BYTES,
 };
 use session_crypto_mls::{SESSION_GROUP_ID_BYTES, SessionGroupId};
 use session_protocol::{MAX_WIRE_OBJECT_BYTES, OpaqueEnvelope, SignedCapabilityInvitationV2};
 use std::ffi::OsStr;
 use std::fs;
 use std::fs::File;
+#[cfg(unix)]
 use std::fs::OpenOptions;
 use std::future::ready;
 use std::path::PathBuf;
