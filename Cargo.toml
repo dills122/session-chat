@@ -45,7 +45,7 @@ aws-lc-rs = { version = "=1.18.1", default-features = false, features = ["non-fi
 git2 = { version = "=0.21.0", default-features = false, features = ["vendored-libgit2"] }
 iroh = { version = "=1.1.0", default-features = false, features = ["portmapper", "tls-aws-lc-rs"] }
 libc = "=0.2.189"
-rustix = { version = "=1.1.4", features = ["process"] }
+rustix = { version = "=1.1.5", features = ["process"] }
 minicbor = { version = "=2.3.0", features = ["std"] }
 mls-rs = { version = "=0.56.0", default-features = false, features = [
   "external_client",
