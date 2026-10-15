@@ -185,7 +185,7 @@ jobs:
           subject-path: target/l2-candidates/*.json
 
       - name: Retain candidate bytes for independent attestation verification
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: l2-candidates-${{ matrix.image }}
           path: target/l2-candidates/*.json
