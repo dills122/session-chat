@@ -51,7 +51,7 @@ jobs:
         run: node --test scripts/setup-codex-links.test.mjs
 
       - name: Restore Rust dependency build cache
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           cache-bin: false
           cache-workspace-crates: false
@@ -116,7 +116,7 @@ jobs:
           node-version-file: .node-version
 
       - name: Restore Rust dependency build cache
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           cache-bin: false
           cache-workspace-crates: false
